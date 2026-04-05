@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "notes": [
+    "These ranges are reserved for World Master-owned content slots and dummy placeholders.",
+    "They are not a claim that all rows already exist in the server DB.",
+    "Use these ranges when pre-seeding dummy entries that WM can later repurpose or rewrite."
+  ],
+  "ranges": {
+    "quest_template": {
+      "start": 910000,
+      "end": 910999,
+      "purpose": "WM private quest arcs, branch quests, and follow-up quests"
+    },
+    "item_template": {
+      "start": 911000,
+      "end": 911999,
+      "purpose": "WM private reward items, equipped-gate items, and item prototypes"
+    },
+    "spell_dbc_or_spell_slots": {
+      "start": 900000,
+      "end": 900999,
+      "purpose": "WM private spell reward slots, wrapper spells, and alternate ability variants"
+    },
+    "gossip_menu": {
+      "start": 912000,
+      "end": 912499,
+      "purpose": "WM-authored conversation nodes and branching menus"
+    },
+    "npc_text": {
+      "start": 912500,
+      "end": 912999,
+      "purpose": "WM-authored dialogue text blocks"
+    },
+    "wm_arc_keys": {
+      "prefix": "wm_",
+      "examples": [
+        "wm_ironforge_arcane_incident",
+        "wm_redridge_shadow_patrol"
+      ]
+    }
+  }
+}
