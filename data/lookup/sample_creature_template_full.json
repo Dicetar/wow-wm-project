@@ -1,0 +1,58 @@
+[
+  {
+    "entry": 1498,
+    "name": "Bethor Iceshard",
+    "subname": null,
+    "minlevel": 60,
+    "maxlevel": 60,
+    "faction": 68,
+    "npcflag": 2,
+    "type": 7,
+    "family": 0,
+    "rank": 0,
+    "unit_class": 1,
+    "gossip_menu_id": 0
+  },
+  {
+    "entry": 68,
+    "name": "Stormwind City Guard",
+    "subname": null,
+    "minlevel": 55,
+    "maxlevel": 55,
+    "faction": 11,
+    "npcflag": 1,
+    "type": 7,
+    "family": 0,
+    "rank": 0,
+    "unit_class": 1,
+    "gossip_menu_id": 435
+  },
+  {
+    "entry": 69,
+    "name": "Timber Wolf",
+    "subname": null,
+    "minlevel": 2,
+    "maxlevel": 2,
+    "faction": 32,
+    "npcflag": 0,
+    "type": 1,
+    "family": 1,
+    "rank": 0,
+    "unit_class": 1,
+    "gossip_menu_id": 0
+  },
+  {
+    "entry": 46,
+    "name": "Murloc Forager",
+    "subname": "",
+    "minlevel": 9,
+    "maxlevel": 10,
+    "faction": 18,
+    "npcflag": 0,
+    "type": 7,
+    "family": 0,
+    "rank": 0,
+    "unit_class": 1,
+    "gossip_menu_id": 0
+  }
+]
