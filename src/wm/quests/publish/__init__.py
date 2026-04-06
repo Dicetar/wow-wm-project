@@ -16,33 +16,18 @@ from wm.quests.validator import validate_bounty_quest_draft
 from wm.targets.resolver import TargetProfile
 
 
-REQUIRED_QUEST_TEMPLATE_COLUMNS = {
+QUEST_TEMPLATE_BASE_COLUMNS = {
     "ID",
     "QuestType",
     "QuestLevel",
     "MinLevel",
     "LogTitle",
-    "QuestDescription",
-    "ObjectiveText1",
-    "OfferRewardText",
-    "RequestItemsText",
     "RewardMoney",
     "RewardItem1",
     "RewardAmount1",
     "RequiredNpcOrGo1",
     "RequiredNpcOrGoCount1",
 }
-
-REQUIRED_TABLES = {
-    "quest_template",
-    "creature_queststarter",
-    "creature_questender",
-    "creature_template",
-    "wm_publish_log",
-    "wm_rollback_snapshot",
-}
-
-OPTIONAL_TABLES = {"wm_reserved_slot"}
 
 
 @dataclass(slots=True)
@@ -61,6 +46,7 @@ class QuestPreflightReport:
     issues: list[PublishIssue] = field(default_factory=list)
     existing_quest_rows: list[dict[str, Any]] = field(default_factory=list)
     reserved_slot: dict[str, Any] | None = None
+    compatibility: dict[str, Any] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -73,6 +59,7 @@ class QuestPreflightReport:
             "issues": [issue.to_dict() for issue in self.issues],
             "existing_quest_rows": self.existing_quest_rows,
             "reserved_slot": self.reserved_slot,
+            "compatibility": self.compatibility,
         }
 
 
@@ -98,8 +85,27 @@ class QuestPublisher:
     def preflight(self, draft: BountyQuestDraft) -> QuestPreflightReport:
         report = QuestPreflightReport(quest_id=draft.quest_id)
 
-        table_presence = self._table_presence(REQUIRED_TABLES | OPTIONAL_TABLES)
-        for table_name in sorted(REQUIRED_TABLES):
+        all_tables = {
+            "quest_template",
+            "creature_queststarter",
+            "creature_questender",
+            "creature_template",
+            "wm_publish_log",
+            "wm_rollback_snapshot",
+            "wm_reserved_slot",
+            "quest_offer_reward",
+            "quest_request_items",
+        }
+        table_presence = self._table_presence(all_tables)
+
+        for table_name in sorted({
+            "quest_template",
+            "creature_queststarter",
+            "creature_questender",
+            "creature_template",
+            "wm_publish_log",
+            "wm_rollback_snapshot",
+        }):
             if not table_presence.get(table_name, False):
                 report.issues.append(
                     PublishIssue(
@@ -108,17 +114,62 @@ class QuestPublisher:
                     )
                 )
 
-        if table_presence.get("quest_template", False):
-            available_columns = self._quest_template_columns()
-            missing_columns = sorted(REQUIRED_QUEST_TEMPLATE_COLUMNS - available_columns)
-            for column_name in missing_columns:
-                report.issues.append(
-                    PublishIssue(
-                        path=f"quest_template.{column_name}",
-                        message=f"Required quest_template column `{column_name}` is missing.",
-                    )
-                )
+        quest_template_columns = self._table_columns("quest_template") if table_presence.get("quest_template", False) else set()
+        quest_offer_reward_columns = self._table_columns("quest_offer_reward") if table_presence.get("quest_offer_reward", False) else set()
+        quest_request_items_columns = self._table_columns("quest_request_items") if table_presence.get("quest_request_items", False) else set()
 
+        compatibility = self._build_compatibility_matrix(
+            table_presence=table_presence,
+            quest_template_columns=quest_template_columns,
+            quest_offer_reward_columns=quest_offer_reward_columns,
+            quest_request_items_columns=quest_request_items_columns,
+        )
+        report.compatibility = compatibility
+
+        for column_name in sorted(QUEST_TEMPLATE_BASE_COLUMNS - quest_template_columns):
+            report.issues.append(
+                PublishIssue(
+                    path=f"quest_template.{column_name}",
+                    message=f"Required quest_template column `{column_name}` is missing.",
+                )
+            )
+
+        if not compatibility["quest_description_supported"]:
+            report.issues.append(
+                PublishIssue(
+                    path="quest_text.description",
+                    message="Quest description text is not supported by this schema (expected `QuestDescription` or `Details`).",
+                )
+            )
+        if not compatibility["objective_text_supported"]:
+            report.issues.append(
+                PublishIssue(
+                    path="quest_text.objective",
+                    message="Objective text is not supported by this schema (expected `ObjectiveText1` or `Objectives`).",
+                )
+            )
+        if not compatibility["offer_reward_text_supported"]:
+            report.issues.append(
+                PublishIssue(
+                    path="quest_text.offer_reward",
+                    message=(
+                        "Offer reward text is not supported by this schema "
+                        "(expected `quest_template.OfferRewardText` or `quest_offer_reward.RewardText`)."
+                    ),
+                )
+            )
+        if not compatibility["request_items_text_supported"]:
+            report.issues.append(
+                PublishIssue(
+                    path="quest_text.request_items",
+                    message=(
+                        "Request / completion text is not supported by this schema "
+                        "(expected `quest_template.RequestItemsText` or `quest_request_items.CompletionText`)."
+                    ),
+                )
+            )
+
+        if table_presence.get("quest_template", False):
             report.existing_quest_rows = self._query_world(
                 "SELECT ID, LogTitle FROM quest_template "
                 f"WHERE ID = {int(draft.quest_id)}"
@@ -191,7 +242,7 @@ class QuestPublisher:
         return report
 
     def capture_snapshot_preview(self, draft: BountyQuestDraft) -> dict[str, Any]:
-        return {
+        snapshot = {
             "quest_template": self._query_world(
                 "SELECT * FROM quest_template "
                 f"WHERE ID = {int(draft.quest_id)}"
@@ -205,12 +256,24 @@ class QuestPublisher:
                 f"WHERE quest = {int(draft.quest_id)}"
             ),
         }
+        table_presence = self._table_presence({"quest_offer_reward", "quest_request_items"})
+        if table_presence.get("quest_offer_reward", False):
+            snapshot["quest_offer_reward"] = self._query_world(
+                "SELECT * FROM quest_offer_reward "
+                f"WHERE ID = {int(draft.quest_id)}"
+            )
+        if table_presence.get("quest_request_items", False):
+            snapshot["quest_request_items"] = self._query_world(
+                "SELECT * FROM quest_request_items "
+                f"WHERE ID = {int(draft.quest_id)}"
+            )
+        return snapshot
 
     def publish(self, *, draft: BountyQuestDraft, mode: str) -> QuestPublishResult:
         validation = validate_bounty_quest_draft(draft)
         preflight = self.preflight(draft)
         snapshot_preview = self.capture_snapshot_preview(draft)
-        sql_plan = compile_bounty_quest_sql_plan(draft)
+        sql_plan = self._compile_sql_plan(draft, preflight)
 
         if mode not in {"dry-run", "apply"}:
             raise ValueError(f"Unsupported publish mode: {mode}")
@@ -264,6 +327,51 @@ class QuestPublisher:
             applied=True,
         )
 
+    def _compile_sql_plan(self, draft: BountyQuestDraft, preflight: QuestPreflightReport):
+        table_presence = self._table_presence({"quest_offer_reward", "quest_request_items"})
+        available_tables = {name for name, present in table_presence.items() if present}
+        quest_template_columns = self._table_columns("quest_template")
+        quest_offer_reward_columns = self._table_columns("quest_offer_reward") if "quest_offer_reward" in available_tables else set()
+        quest_request_items_columns = self._table_columns("quest_request_items") if "quest_request_items" in available_tables else set()
+
+        return compile_bounty_quest_sql_plan(
+            draft,
+            quest_template_columns=quest_template_columns,
+            available_tables=available_tables,
+            quest_offer_reward_columns=quest_offer_reward_columns,
+            quest_request_items_columns=quest_request_items_columns,
+        )
+
+    def _build_compatibility_matrix(
+        self,
+        *,
+        table_presence: dict[str, bool],
+        quest_template_columns: set[str],
+        quest_offer_reward_columns: set[str],
+        quest_request_items_columns: set[str],
+    ) -> dict[str, Any]:
+        return {
+            "quest_description_supported": bool({"QuestDescription", "Details"} & quest_template_columns),
+            "objective_text_supported": bool({"ObjectiveText1", "Objectives"} & quest_template_columns),
+            "offer_reward_text_supported": (
+                "OfferRewardText" in quest_template_columns
+                or (
+                    table_presence.get("quest_offer_reward", False)
+                    and "RewardText" in quest_offer_reward_columns
+                )
+            ),
+            "request_items_text_supported": (
+                "RequestItemsText" in quest_template_columns
+                or (
+                    table_presence.get("quest_request_items", False)
+                    and "CompletionText" in quest_request_items_columns
+                )
+            ),
+            "quest_template_columns": sorted(quest_template_columns),
+            "quest_offer_reward_columns": sorted(quest_offer_reward_columns),
+            "quest_request_items_columns": sorted(quest_request_items_columns),
+        }
+
     def _execute_publish_failure_log(self, quest_id: int, error_message: str) -> None:
         safe_error = error_message.replace("'", "''")
         try:
@@ -297,10 +405,10 @@ class QuestPublisher:
             database="information_schema",
             sql=sql,
         )
-        present = {str(row['TABLE_NAME']): True for row in rows}
+        present = {str(row["TABLE_NAME"]): True for row in rows}
         return {name: present.get(name, False) for name in table_names}
 
-    def _quest_template_columns(self) -> set[str]:
+    def _table_columns(self, table_name: str) -> set[str]:
         rows = self.client.query(
             host=self.settings.world_db_host,
             port=self.settings.world_db_port,
@@ -310,10 +418,10 @@ class QuestPublisher:
             sql=(
                 "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
                 f"WHERE TABLE_SCHEMA = {_sql_string(self.settings.world_db_name)} "
-                "AND TABLE_NAME = 'quest_template'"
+                f"AND TABLE_NAME = {_sql_string(table_name)}"
             ),
         )
-        return {str(row['COLUMN_NAME']) for row in rows}
+        return {str(row["COLUMN_NAME"]) for row in rows}
 
     def _query_world(self, sql: str) -> list[dict[str, Any]]:
         return self.client.query(
@@ -429,12 +537,38 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m wm.quests.publish")
     parser.add_argument("--draft-json", type=Path, help="Path to a quest draft JSON file.")
     parser.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
+    parser.add_argument("--output-json", type=Path, help="Write the full JSON result to this file.")
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Print a compact human-readable summary instead of the full JSON result.",
+    )
     parser.add_argument(
         "--demo",
         action="store_true",
         help="Use the built-in Bethor -> Murloc bounty draft instead of loading from a file.",
     )
     return parser
+
+
+def _render_compact_summary(result: QuestPublishResult) -> str:
+    lines = [
+        f"mode: {result.mode}",
+        f"applied: {str(result.applied).lower()}",
+        f"validation.ok: {str(result.validation.get('ok', False)).lower()}",
+        f"preflight.ok: {str(result.preflight.get('ok', False)).lower()}",
+        "",
+        "issues:",
+    ]
+    issues = result.preflight.get("issues", [])
+    if not issues:
+        lines.append("- none")
+    else:
+        for issue in issues:
+            lines.append(
+                f"- {issue.get('path')} | {issue.get('severity')} | {issue.get('message')}"
+            )
+    return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -449,7 +583,20 @@ def main(argv: list[str] | None = None) -> int:
     client = MysqlCliClient()
     publisher = QuestPublisher(client=client, settings=settings)
     result = publisher.publish(draft=draft, mode=args.mode)
-    print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+    payload = json.dumps(result.to_dict(), indent=2, ensure_ascii=False)
+
+    if args.output_json is not None:
+        args.output_json.parent.mkdir(parents=True, exist_ok=True)
+        args.output_json.write_text(payload, encoding="utf-8")
+
+    if args.summary or args.output_json is not None:
+        print(_render_compact_summary(result))
+        if args.output_json is not None:
+            print("")
+            print(f"output_json: {args.output_json}")
+    else:
+        print(payload)
+
     return 0 if (result.preflight.get("ok", False) and result.validation.get("ok", False)) else 2
 
 
