@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-import tempfile
 import unittest
 
 from wm.config import Settings
 from wm.quests.generate_bounty import LiveCreatureResolver
-from wm.targets.resolver import TargetProfile
 
 
 class FakeMysqlClient:
+    def __init__(self) -> None:
+        self.last_sql: str | None = None
+
     def query(self, *, host: str, port: int, user: str, password: str, database: str, sql: str):
         del host, port, user, password, database
-        if "entry = 1498" in sql:
+        self.last_sql = sql
+        if "`entry` = 1498" in sql:
             return [{
                 "entry": "1498",
                 "name": "Bethor Iceshard",
@@ -28,7 +28,7 @@ class FakeMysqlClient:
                 "unit_class": "4",
                 "gossip_menu_id": "0",
             }]
-        if "entry = 46" in sql:
+        if "`entry` = 46" in sql:
             return [{
                 "entry": "46",
                 "name": "Murloc Forager",
@@ -48,12 +48,16 @@ class FakeMysqlClient:
 
 class GenerateBountyTests(unittest.TestCase):
     def test_live_resolver_decodes_creature_row(self) -> None:
-        resolver = LiveCreatureResolver(client=FakeMysqlClient(), settings=Settings(world_db_name="acore_world"))
+        client = FakeMysqlClient()
+        resolver = LiveCreatureResolver(client=client, settings=Settings(world_db_name="acore_world"))
         result = resolver.resolve(1498)
         self.assertEqual(result.entry, 1498)
         self.assertEqual(result.name, "Bethor Iceshard")
         self.assertIn("QUEST_GIVER", result.profile.service_roles)
         self.assertEqual(result.profile.mechanical_type, "HUMANOID")
+        self.assertIsNotNone(client.last_sql)
+        self.assertIn("`rank`", client.last_sql or "")
+        self.assertIn("FROM `creature_template`", client.last_sql or "")
 
 
 if __name__ == "__main__":

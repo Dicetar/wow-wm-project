@@ -42,9 +42,9 @@ class LiveCreatureResolver:
             password=self.settings.world_db_password,
             database=self.settings.world_db_name,
             sql=(
-                "SELECT entry, name, subname, minlevel, maxlevel, faction, npcflag, type, family, rank, unit_class, gossip_menu_id "
-                "FROM creature_template "
-                f"WHERE entry = {int(entry)} LIMIT 1"
+                "SELECT `entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`, `type`, `family`, `rank`, `unit_class`, `gossip_menu_id` "
+                "FROM `creature_template` "
+                f"WHERE `entry` = {int(entry)} LIMIT 1"
             ),
         )
         if not rows:
