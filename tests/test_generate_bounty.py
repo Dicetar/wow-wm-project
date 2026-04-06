@@ -13,30 +13,45 @@ class FakeMysqlClient:
     def query(self, *, host: str, port: int, user: str, password: str, database: str, sql: str):
         del host, port, user, password, database
         self.last_sql = sql
-        if "`entry` = 1498" in sql:
+        if "`entry` = 1498" in sql or "`name` = 'Marshal McBride'" in sql:
             return [{
                 "entry": "1498",
-                "name": "Bethor Iceshard",
-                "subname": "Mage Trainer",
-                "minlevel": "30",
-                "maxlevel": "30",
-                "faction": "68",
+                "name": "Marshal McBride",
+                "subname": None,
+                "minlevel": "1",
+                "maxlevel": "1",
+                "faction": "12",
                 "npcflag": "2",
                 "type": "7",
                 "family": "0",
                 "rank": "0",
-                "unit_class": "4",
+                "unit_class": "1",
                 "gossip_menu_id": "0",
             }]
-        if "`entry` = 46" in sql:
+        if "`entry` = 6" in sql or "`name` = 'Kobold Vermin'" in sql:
             return [{
-                "entry": "46",
-                "name": "Murloc Forager",
+                "entry": "6",
+                "name": "Kobold Vermin",
                 "subname": None,
-                "minlevel": "9",
-                "maxlevel": "10",
-                "faction": "18",
+                "minlevel": "2",
+                "maxlevel": "3",
+                "faction": "25",
                 "npcflag": "0",
+                "type": "7",
+                "family": "0",
+                "rank": "0",
+                "unit_class": "1",
+                "gossip_menu_id": "0",
+            }]
+        if "LIKE '%Marshal%'" in sql:
+            return [{
+                "entry": "1498",
+                "name": "Marshal McBride",
+                "subname": None,
+                "minlevel": "1",
+                "maxlevel": "1",
+                "faction": "12",
+                "npcflag": "2",
                 "type": "7",
                 "family": "0",
                 "rank": "0",
@@ -50,14 +65,20 @@ class GenerateBountyTests(unittest.TestCase):
     def test_live_resolver_decodes_creature_row(self) -> None:
         client = FakeMysqlClient()
         resolver = LiveCreatureResolver(client=client, settings=Settings(world_db_name="acore_world"))
-        result = resolver.resolve(1498)
+        result = resolver.resolve(entry=1498)
         self.assertEqual(result.entry, 1498)
-        self.assertEqual(result.name, "Bethor Iceshard")
+        self.assertEqual(result.name, "Marshal McBride")
         self.assertIn("QUEST_GIVER", result.profile.service_roles)
         self.assertEqual(result.profile.mechanical_type, "HUMANOID")
         self.assertIsNotNone(client.last_sql)
         self.assertIn("`rank`", client.last_sql or "")
         self.assertIn("FROM `creature_template`", client.last_sql or "")
+
+    def test_live_resolver_supports_exact_name_lookup(self) -> None:
+        resolver = LiveCreatureResolver(client=FakeMysqlClient(), settings=Settings(world_db_name="acore_world"))
+        result = resolver.resolve(name="Marshal McBride")
+        self.assertEqual(result.entry, 1498)
+        self.assertEqual(result.name, "Marshal McBride")
 
 
 if __name__ == "__main__":

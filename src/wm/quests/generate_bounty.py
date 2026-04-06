@@ -34,23 +34,59 @@ class LiveCreatureResolver:
         self.client = client
         self.settings = settings
 
-    def resolve(self, entry: int) -> CreatureLookupResult:
-        rows = self.client.query(
+    def resolve(self, *, entry: int | None = None, name: str | None = None) -> CreatureLookupResult:
+        if entry is None and not name:
+            raise ValueError("Provide either an entry or a creature name.")
+
+        if entry is not None:
+            rows = self._query_rows(
+                "SELECT `entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`, `type`, `family`, `rank`, `unit_class`, `gossip_menu_id` "
+                "FROM `creature_template` "
+                f"WHERE `entry` = {int(entry)} LIMIT 1"
+            )
+            if not rows:
+                raise ValueError(f"Creature entry {entry} was not found in creature_template.")
+            return self._build_result(rows[0])
+
+        assert name is not None
+        exact_rows = self._query_rows(
+            "SELECT `entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`, `type`, `family`, `rank`, `unit_class`, `gossip_menu_id` "
+            "FROM `creature_template` "
+            f"WHERE `name` = {_sql_string(name)} ORDER BY `entry` LIMIT 10"
+        )
+        if len(exact_rows) == 1:
+            return self._build_result(exact_rows[0])
+        if len(exact_rows) > 1:
+            raise ValueError(
+                "Multiple exact creature matches found for name "
+                f"{name!r}: {self._render_candidates(exact_rows)}"
+            )
+
+        like_rows = self._query_rows(
+            "SELECT `entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`, `type`, `family`, `rank`, `unit_class`, `gossip_menu_id` "
+            "FROM `creature_template` "
+            f"WHERE `name` LIKE {_sql_string('%' + name + '%')} ORDER BY `name`, `entry` LIMIT 10"
+        )
+        if len(like_rows) == 1:
+            return self._build_result(like_rows[0])
+        if not like_rows:
+            raise ValueError(f"No creature name match found for {name!r}.")
+        raise ValueError(
+            "Multiple partial creature matches found for name "
+            f"{name!r}: {self._render_candidates(like_rows)}"
+        )
+
+    def _query_rows(self, sql: str) -> list[dict[str, Any]]:
+        return self.client.query(
             host=self.settings.world_db_host,
             port=self.settings.world_db_port,
             user=self.settings.world_db_user,
             password=self.settings.world_db_password,
             database=self.settings.world_db_name,
-            sql=(
-                "SELECT `entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`, `type`, `family`, `rank`, `unit_class`, `gossip_menu_id` "
-                "FROM `creature_template` "
-                f"WHERE `entry` = {int(entry)} LIMIT 1"
-            ),
+            sql=sql,
         )
-        if not rows:
-            raise ValueError(f"Creature entry {entry} was not found in creature_template.")
 
-        row = rows[0]
+    def _build_result(self, row: dict[str, Any]) -> CreatureLookupResult:
         profile = TargetProfile(
             entry=int(row["entry"]),
             name=str(row.get("name") or ""),
@@ -73,11 +109,24 @@ class LiveCreatureResolver:
             profile=profile,
         )
 
+    @staticmethod
+    def _render_candidates(rows: list[dict[str, Any]]) -> str:
+        return ", ".join(
+            f"{row.get('entry')}:{row.get('name')}" for row in rows
+        )
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m wm.quests.generate_bounty")
-    parser.add_argument("--questgiver-entry", type=int, required=True)
-    parser.add_argument("--target-entry", type=int, required=True)
+
+    questgiver_group = parser.add_mutually_exclusive_group(required=True)
+    questgiver_group.add_argument("--questgiver-entry", type=int)
+    questgiver_group.add_argument("--questgiver-name")
+
+    target_group = parser.add_mutually_exclusive_group(required=True)
+    target_group.add_argument("--target-entry", type=int)
+    target_group.add_argument("--target-name")
+
     parser.add_argument("--quest-id", type=int, required=True)
     parser.add_argument("--kill-count", type=int, default=8)
     parser.add_argument("--reward-money-copper", type=int, default=1200)
@@ -117,8 +166,8 @@ def main(argv: list[str] | None = None) -> int:
     client = MysqlCliClient()
     resolver = LiveCreatureResolver(client=client, settings=settings)
 
-    questgiver = resolver.resolve(args.questgiver_entry)
-    target = resolver.resolve(args.target_entry)
+    questgiver = resolver.resolve(entry=args.questgiver_entry, name=args.questgiver_name)
+    target = resolver.resolve(entry=args.target_entry, name=args.target_name)
 
     draft = build_bounty_quest_draft(
         quest_id=args.quest_id,
@@ -145,6 +194,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     return 0
+
+
+def _sql_string(value: str) -> str:
+    escaped = value.replace("'", "''")
+    return f"'{escaped}'"
 
 
 if __name__ == "__main__":
