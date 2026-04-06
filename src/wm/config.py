@@ -38,6 +38,13 @@ class Settings:
     char_db_user: str = "root"
     char_db_password: str = ""
 
+    soap_enabled: bool = False
+    soap_host: str = "127.0.0.1"
+    soap_port: int = 7878
+    soap_user: str = ""
+    soap_password: str = ""
+    soap_path: str = "/"
+
     @classmethod
     def from_env(cls) -> "Settings":
         _load_dotenv()
@@ -54,4 +61,10 @@ class Settings:
             char_db_name=os.getenv("WM_CHAR_DB_NAME", "acore_characters"),
             char_db_user=os.getenv("WM_CHAR_DB_USER", "root"),
             char_db_password=os.getenv("WM_CHAR_DB_PASSWORD", ""),
+            soap_enabled=os.getenv("WM_SOAP_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            soap_host=os.getenv("WM_SOAP_HOST", "127.0.0.1"),
+            soap_port=int(os.getenv("WM_SOAP_PORT", "7878")),
+            soap_user=os.getenv("WM_SOAP_USER", ""),
+            soap_password=os.getenv("WM_SOAP_PASSWORD", ""),
+            soap_path=os.getenv("WM_SOAP_PATH", "/"),
         )
