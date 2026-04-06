@@ -11,8 +11,33 @@ class FakeMysqlClient:
         self.last_sql: str | None = None
 
     def query(self, *, host: str, port: int, user: str, password: str, database: str, sql: str):
-        del host, port, user, password, database
+        del host, port, user, password
         self.last_sql = sql
+        if database == "information_schema" and "TABLE_NAME = 'quest_template'" in sql:
+            columns = [
+                "Method",
+                "QuestType",
+                "QuestFlags",
+                "SpecialFlags",
+                "QuestInfoID",
+                "QuestSortID",
+                "ZoneOrSort",
+                "SuggestedPlayers",
+            ]
+            return [{"COLUMN_NAME": column} for column in columns]
+        if database == "acore_world" and "FROM `creature_queststarter`" in sql:
+            return [{"quest": "783"}]
+        if database == "acore_world" and "FROM `quest_template`" in sql and "WHERE `ID` = 783" in sql:
+            return [{
+                "Method": "2",
+                "QuestType": "0",
+                "QuestFlags": "8",
+                "SpecialFlags": "0",
+                "QuestInfoID": "0",
+                "QuestSortID": "0",
+                "ZoneOrSort": "12",
+                "SuggestedPlayers": "1",
+            }]
         if "`entry` = 1498" in sql or "`name` = 'Marshal McBride'" in sql:
             return [{
                 "entry": "1498",
@@ -79,6 +104,13 @@ class GenerateBountyTests(unittest.TestCase):
         result = resolver.resolve(name="Marshal McBride")
         self.assertEqual(result.entry, 1498)
         self.assertEqual(result.name, "Marshal McBride")
+
+    def test_fetch_template_defaults_for_questgiver(self) -> None:
+        resolver = LiveCreatureResolver(client=FakeMysqlClient(), settings=Settings(world_db_name="acore_world"))
+        defaults = resolver.fetch_template_defaults_for_questgiver(1498)
+        self.assertEqual(defaults["Method"], 2)
+        self.assertEqual(defaults["QuestFlags"], 8)
+        self.assertEqual(defaults["ZoneOrSort"], 12)
 
 
 if __name__ == "__main__":
