@@ -496,6 +496,7 @@ def load_bounty_quest_draft(path: str | Path) -> BountyQuestDraft:
             reward_item_count=int(reward.get("reward_item_count", 1)),
         ),
         tags=[str(x) for x in raw.get("tags", [])],
+        template_defaults={str(k): v for k, v in (raw.get("template_defaults") or {}).items()},
     )
 
 

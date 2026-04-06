@@ -40,6 +40,7 @@ class BountyQuestDraft:
     objective: BountyQuestObjective
     reward: BountyQuestReward
     tags: list[str] = field(default_factory=list)
+    template_defaults: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

@@ -30,6 +30,20 @@ DEFAULT_QUEST_TEMPLATE_COLUMNS = {
     "RequiredNpcOrGoCount1",
 }
 
+_TEMPLATE_DEFAULT_COPY_COLUMNS = {
+    "Method",
+    "QuestMethod",
+    "Type",
+    "QuestType",
+    "QuestFlags",
+    "Flags",
+    "SpecialFlags",
+    "QuestInfoID",
+    "QuestSortID",
+    "ZoneOrSort",
+    "SuggestedPlayers",
+}
+
 
 def compile_bounty_quest_sql_plan(
     draft,
@@ -43,6 +57,7 @@ def compile_bounty_quest_sql_plan(
     available_tables = set(available_tables or set())
     quest_offer_reward_columns = set(quest_offer_reward_columns or set())
     quest_request_items_columns = set(quest_request_items_columns or set())
+    template_defaults = {str(k): v for k, v in getattr(draft, "template_defaults", {}).items()}
 
     reward_item_entry = draft.reward.reward_item_entry or 0
     reward_item_count = draft.reward.reward_item_count if draft.reward.reward_item_entry is not None else 0
@@ -68,10 +83,29 @@ def compile_bounty_quest_sql_plan(
             insert_columns.append(column_name)
             insert_values.append(sql_value)
 
+    def add_default_column(column_name: str, fallback_sql_value: str | None = None) -> None:
+        if column_name not in quest_template_columns:
+            return
+        if column_name in template_defaults and template_defaults[column_name] not in (None, ""):
+            add_column(column_name, _sql_literal(template_defaults[column_name]))
+            return
+        if fallback_sql_value is not None:
+            add_column(column_name, fallback_sql_value)
+
     add_column("ID", str(draft.quest_id))
-    add_column("QuestType", "0")
+    add_default_column("Method", "2")
+    add_default_column("QuestMethod", "2")
+    add_default_column("Type", "0")
+    add_default_column("QuestType", "0")
     add_column("QuestLevel", str(draft.quest_level))
     add_column("MinLevel", str(draft.min_level))
+    add_default_column("ZoneOrSort")
+    add_default_column("QuestSortID")
+    add_default_column("QuestInfoID")
+    add_default_column("SuggestedPlayers")
+    add_default_column("Flags")
+    add_default_column("QuestFlags")
+    add_default_column("SpecialFlags")
     add_column("LogTitle", _sql_quote(draft.title))
 
     if "QuestDescription" in quest_template_columns:
@@ -137,3 +171,13 @@ def compile_bounty_quest_sql_plan(
 def _sql_quote(value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace("'", "''")
     return f"'{escaped}'"
+
+
+def _sql_literal(value: Any) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return _sql_quote(str(value))

@@ -17,6 +17,7 @@ def build_bounty_quest_draft(
     reward_item_entry: int | None = None,
     reward_item_name: str | None = None,
     reward_item_count: int = 1,
+    template_defaults: dict[str, object] | None = None,
 ) -> BountyQuestDraft:
     normalized_kill_count = max(1, int(kill_count))
     resolved_quest_level = int(quest_level if quest_level is not None else max(target_profile.level_max, 1))
@@ -66,4 +67,5 @@ def build_bounty_quest_draft(
             reward_item_count=int(reward_item_count),
         ),
         tags=tags,
+        template_defaults={str(k): v for k, v in (template_defaults or {}).items()},
     )
