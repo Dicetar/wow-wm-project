@@ -67,3 +67,17 @@ CREATE TABLE IF NOT EXISTS wm_rollback_snapshot (
     snapshot_json LONGTEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS wm_reserved_slot (
+    EntityType VARCHAR(64) NOT NULL,
+    ReservedID INT NOT NULL,
+    SlotStatus VARCHAR(32) NOT NULL DEFAULT 'free',
+    ArcKey VARCHAR(128) NULL,
+    CharacterGUID INT NULL,
+    SourceQuestID INT NULL,
+    NotesJSON LONGTEXT NULL,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (EntityType, ReservedID),
+    KEY idx_reserved_slot_status (EntityType, SlotStatus)
+);
