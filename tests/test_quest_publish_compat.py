@@ -22,6 +22,7 @@ class FakeCompatMysqlClient:
                 {"TABLE_NAME": "creature_template"},
                 {"TABLE_NAME": "wm_publish_log"},
                 {"TABLE_NAME": "wm_rollback_snapshot"},
+                {"TABLE_NAME": "wm_reserved_slot"},
                 {"TABLE_NAME": "quest_offer_reward"},
                 {"TABLE_NAME": "quest_request_items"},
             ]
@@ -45,6 +46,8 @@ class FakeCompatMysqlClient:
             return [{"COLUMN_NAME": "ID"}, {"COLUMN_NAME": "RewardText"}]
         if database == "information_schema" and "TABLE_NAME = 'quest_request_items'" in sql:
             return [{"COLUMN_NAME": "ID"}, {"COLUMN_NAME": "CompletionText"}]
+        if database == "acore_world" and "JOIN creature_queststarter" in sql:
+            return []
         if database == "acore_world" and "FROM creature_template" in sql:
             return [{"entry": "1", "name": "ok"}]
         if database == "acore_world" and "FROM quest_template" in sql and "SELECT ID, LogTitle" in sql:
@@ -60,7 +63,7 @@ class FakeCompatMysqlClient:
         if database == "acore_world" and "FROM quest_request_items" in sql:
             return []
         if database == "acore_world" and "FROM wm_reserved_slot" in sql:
-            return []
+            return [{"EntityType": "quest", "ReservedID": "910001", "SlotStatus": "staged", "ArcKey": None, "CharacterGUID": None, "SourceQuestID": None, "NotesJSON": None}]
         raise AssertionError(f"Unexpected SQL in {database}: {sql}")
 
 
