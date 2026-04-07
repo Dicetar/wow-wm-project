@@ -133,6 +133,14 @@ python -m wm.quests.edit_live --quest-id 910005 --title "Marshal's Bonus Kobold 
 python -m wm.quests.rollback --quest-id 910005 --mode apply --runtime-sync auto --summary --output-json .\artifacts\quest_910005_rollback.json
 ```
 
+## Operational notes
+
+When you need to restore or wipe WM-generated quest IDs, use:
+
+- `docs/CLEANUP_PLAYBOOK.md`
+
+That note documents the practical difference between rollback and purge, the runtime/client cleanup ladder, and the PowerShell-specific cleanup pitfalls we already hit.
+
 ## Current operational rule
 
 For fresh quests and major objective behavior changes:
