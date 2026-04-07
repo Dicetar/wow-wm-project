@@ -1,159 +1,183 @@
-# Roadmap
+# Roadmap (current)
 
-## Architecture choice
+This file reflects the **current implementation state** of the repository.
+
+The original bootstrap-era roadmap has been preserved at:
+
+- `docs/archive/ROADMAP.bootstrap.md`
+
+## Project principles
 
 Use a **retrieval-first external service** with a **translation layer** in front of any LLM work.
 
-The WM should not start by generating prose. It should start by understanding the world deterministically.
+The WM should not begin by generating prose. It should begin by understanding the world deterministically, then publishing live content through controlled, reversible operations.
 
-## Phase 0 — foundation
+Hard rules:
 
-### Goal
-Make the runtime predictable and the project runnable on your machine.
+- the LLM never writes directly to the game
+- every live publishable artifact must be validated first
+- every live publishable artifact must be reversible
+- managed ID ranges beat improvised IDs
+- runtime sync is a real step, not a footnote
+- prototype event ingestion must remain replaceable later
 
-### Deliverables
-- Python project skeleton
+---
+
+## Current implemented baseline
+
+### Lookup and translation
+
+Implemented:
 - local config via `.env`
 - bootstrap SQL for WM-owned tables
-- lookup ingestion convention
-- Windows deployment guide
-- Target Resolver v1 CLI
+- target resolver and live target profile utilities
+- candidate lookup / ranking helpers
+- enum/ID translation files and lookup notes
 
-### Exit criteria
-- local environment boots successfully
-- tests pass
-- a sample creature entry can be resolved into a normalized profile
+### Quest platform prototype
 
----
+Implemented:
+- live DB bounty quest generation
+- schema-aware quest validator and SQL compiler
+- quest publish preflight against the live schema
+- rollback snapshots and publish logs
+- live publish with SOAP runtime reload commands
+- live quest edit for title / reward changes
+- quest inspection / comparison tools
+- rollback command restoring from latest snapshot
+- reserved-slot seeding and managed-slot enforcement
+- duplicate-title guard for the same questgiver
 
-## Phase 1 — Target Resolver v1
-
-### Goal
-Turn raw AzerothCore creature data into LLM-safe target profiles.
-
-### Inputs
-- `creature_template_full` export
-- enum maps (`type`, `family`, `npcflag`, `rank`, `unit_class`)
-- optional faction-label map
-
-### Outputs
-- normalized target profile JSON with:
-  - entry
-  - name
-  - subname
-  - level range
-  - faction id + optional label
-  - service roles
-  - mechanical type
-  - family
-  - rank
-  - unit class
-
-### Exit criteria
-- Bethor resolves correctly as a quest giver humanoid with faction 68
-- Grey Wolf / Timber Wolf resolve correctly as beasts with wolf family
-- service roles are decoded from bitmasks, not guessed from names
+This means the repo is already beyond "bootstrap only" status.
 
 ---
 
-## Phase 2 — Journal Layer
+## Phase 1 — Quest platform hardening
 
 ### Goal
-Track what the player has done with subjects.
+Turn the working quest prototype into a reliable operator-grade WM content pipeline.
 
 ### Deliverables
-- `wm_subject_definition`
-- `wm_subject_enrichment`
-- `wm_player_subject_journal`
-- `wm_player_subject_event`
-- journal summarizer that returns compact history per `(player, subject)`
+- mandatory managed reserved slots for quest publishing
+- duplicate-title and active-slot safety checks
+- rollback v1 with runtime sync
+- updated docs matching the real codebase
+- more explicit publish / rollback state reporting
 
 ### Exit criteria
-- journal can represent examples such as:
-  - "Player completed Stieve's quest"
-  - "Player learned Mining from Stieve"
-  - "Player killed Grey Wolf 18 times"
-  - "Player skinned Grey Wolf 10 times"
+- a quest can be seeded into a staged slot
+- a generated quest can be published live
+- the same quest can be edited live without going through a full republish
+- the quest can be rolled back from the latest snapshot
+- publishing the same effective quest twice to the same questgiver is blocked by default
 
 ---
 
-## Phase 3 — Enrichment Layer
+## Phase 2 — Contextual quest generation
 
 ### Goal
-Add narrative facts without touching core AzerothCore tables.
+Make quest generation context-aware instead of merely syntactically valid.
 
 ### Deliverables
-- manual enrichment rows keyed by `subject_type + entry_id`
-- support fields such as:
-  - species
-  - profession
-  - role_label
-  - home_area
-  - short_description
-  - tags
+- generation that consumes target resolver output directly
+- journal-aware generation inputs
+- reward scaling and kill-count heuristics
+- duplicate / repetition controls using recent history
+- more quest archetypes beyond bounty:
+  - delivery
+  - investigate
+  - report
+  - collection
 
 ### Exit criteria
-- Bethor can resolve to mechanical facts + enrichment facts
-- Murloc-specific named NPCs can be identified via exact entry enrichment instead of model guessing
+- generated quests use world facts instead of raw IDs
+- repeated generation for the same area / questgiver becomes meaningfully different without becoming random garbage
+- recent quest history affects new generation choices
 
 ---
 
-## Phase 4 — Prompt Builder
+## Phase 3 — Registry and lifecycle governance
 
 ### Goal
-Build model inputs from translated facts, not raw DB rows.
+Manage WM-created artifacts as first-class objects with provenance and lifecycle.
 
 ### Deliverables
-- prompt context package builder
-- compact journal summary formatter
-- target profile formatter
-- quest/NPC/event prompt templates
+- stronger artifact registry conventions
+- staged → active → retired / archived lifecycle discipline
+- cache-risk and reused-ID tracking
+- provenance in publish logs:
+  - source prompt / generator kind
+  - target context
+  - operator action
 
 ### Exit criteria
-- prompts no longer contain raw integers like `npcflag=66`
-- prompts only expose translated facts such as `service_roles=[QuestGiver, ProfessionTrainer]`
+- every generated quest can be traced to its source and lifecycle state
+- slot reuse is intentional and visible
+- rollback and retirement semantics are explicit instead of implied
 
 ---
 
-## Phase 5 — Quest Pipeline
+## Phase 4 — Evented WM lite
 
 ### Goal
-Generate and publish a safe first content type.
+Let the WM react to the world without requiring a custom C++ bridge yet.
 
 ### Deliverables
-- quest schema
-- validator
-- SQL compiler
-- rollback snapshot table usage
-- publish command runner
+- simple event ingestion adapters:
+  - DB polling
+  - quest completion checks
+  - kill milestone checks
+  - manual / chat-triggered WM commands
+- session memory and anti-spam logic
+- lightweight world reactions:
+  - rotating board refreshes
+  - follow-up quest offers
+  - simple generated announcements
 
 ### Exit criteria
-- one generated quest can be staged, published, and rolled back
+- a player action can trigger a WM reaction using resolver + journal context
+- eventing works without baking WM logic into the core server
 
 ---
 
-## Phase 6 — Evented WM
+## Phase 5 — Item slot pipeline v1
 
 ### Goal
-Connect player activity to world reactions.
+Begin item work safely, using the same discipline learned from quests.
 
 ### Deliverables
-- event ingestion interface
-- prototype adapters for logs / DB polling
-- later thin-bridge integration if a compile-ready source tree becomes available
+- reserved item slot strategy
+- item validator with hard caps
+- publish / rollback flow for managed item slots
+- quest reward integration for managed items
 
 ### Exit criteria
-- a player action can trigger a WM reaction using target + journal context
+- one managed custom item can be produced, rewarded, and retired without unsafe freeform mutation
 
 ---
 
-## Value vs effort notes
+## Phase 6 — Thin bridge exploration
 
-| Slice | Value | Effort | Why it comes now |
-|---|---:|---:|---|
-| Target Resolver v1 | High | Low | Everything later depends on clean target facts |
-| Journal Layer | High | Medium | Enables contextual memory without AI guessing |
-| Enrichment Layer | High | Medium | Gives named NPCs specific identity beyond raw mechanics |
-| Prompt Builder | Medium | Medium | Important, but only after facts are trustworthy |
-| Quest Pipeline | Very High | Medium | First visible content payoff |
-| Evented WM | Very High | High | Best delayed until fundamentals are deterministic |
+### Goal
+Improve live-awareness only after the external platform is strong enough to deserve a bridge.
+
+### Deliverables
+- investigate a minimal AzerothCore-side bridge only if a compile-capable source path is available
+- structured event emission to the external WM service
+- no migration of WM decision-making into the core itself
+
+### Exit criteria
+- transient world events can be emitted cleanly to the external WM without changing the core project philosophy
+
+---
+
+## What is intentionally not first
+
+Not first:
+- Eluna dependency
+- combat overhaul
+- deep item generation without slot governance
+- direct freeform LLM-to-SQL content mutation
+- giant UI/admin surface area
+
+Those are all real possibilities later, but they are not the shortest path to a stable World Master platform.

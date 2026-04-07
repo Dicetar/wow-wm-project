@@ -47,6 +47,7 @@ class QuestPreflightReport:
     existing_quest_rows: list[dict[str, Any]] = field(default_factory=list)
     reserved_slot: dict[str, Any] | None = None
     compatibility: dict[str, Any] = field(default_factory=dict)
+    duplicate_title_rows: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -60,6 +61,7 @@ class QuestPreflightReport:
             "existing_quest_rows": self.existing_quest_rows,
             "reserved_slot": self.reserved_slot,
             "compatibility": self.compatibility,
+            "duplicate_title_rows": self.duplicate_title_rows,
         }
 
 
@@ -85,7 +87,7 @@ class QuestPublisher:
     def preflight(self, draft: BountyQuestDraft) -> QuestPreflightReport:
         report = QuestPreflightReport(quest_id=draft.quest_id)
 
-        all_tables = {
+        required_tables = {
             "quest_template",
             "creature_queststarter",
             "creature_questender",
@@ -93,19 +95,11 @@ class QuestPublisher:
             "wm_publish_log",
             "wm_rollback_snapshot",
             "wm_reserved_slot",
-            "quest_offer_reward",
-            "quest_request_items",
         }
+        all_tables = set(required_tables) | {"quest_offer_reward", "quest_request_items"}
         table_presence = self._table_presence(all_tables)
 
-        for table_name in sorted({
-            "quest_template",
-            "creature_queststarter",
-            "creature_questender",
-            "creature_template",
-            "wm_publish_log",
-            "wm_rollback_snapshot",
-        }):
+        for table_name in sorted(required_tables):
             if not table_presence.get(table_name, False):
                 report.issues.append(
                     PublishIssue(
@@ -174,12 +168,18 @@ class QuestPublisher:
                 "SELECT ID, LogTitle FROM quest_template "
                 f"WHERE ID = {int(draft.quest_id)}"
             )
-            if report.existing_quest_rows:
+
+        if table_presence.get("creature_queststarter", False) and table_presence.get("quest_template", False):
+            report.duplicate_title_rows = self._find_duplicate_title_rows(draft)
+            if report.duplicate_title_rows:
+                duplicate_ids = ", ".join(str(row.get("ID")) for row in report.duplicate_title_rows)
                 report.issues.append(
                     PublishIssue(
-                        path="quest_id",
-                        message="Quest ID already exists and will be replaced if apply mode is used.",
-                        severity="warning",
+                        path="dedupe.title",
+                        message=(
+                            f"Quest giver {draft.questgiver_entry} already offers WM-visible quest title `{draft.title}` "
+                            f"through quest IDs: {duplicate_ids}. Use edit_live or retire/rollback the old quest first."
+                        ),
                     )
                 )
 
@@ -213,9 +213,26 @@ class QuestPublisher:
                         PublishIssue(
                             path="reserved_slot.status",
                             message=(
-                                f"Reserved slot for quest {draft.quest_id} exists but has status `{slot_status}`; "
-                                "expected `staged` or `active`."
+                                f"Reserved slot for quest {draft.quest_id} has status `{slot_status}`; "
+                                "expected `staged` for fresh publish or `active` for already-published managed content."
                             ),
+                        )
+                    )
+                elif slot_status == "active" and report.existing_quest_rows:
+                    report.issues.append(
+                        PublishIssue(
+                            path="reserved_slot.status",
+                            message=(
+                                f"Quest slot {draft.quest_id} is already active. Use `wm.quests.edit_live` for in-place changes, "
+                                "or rollback / retire the old quest before publishing a new draft into this slot."
+                            ),
+                        )
+                    )
+                elif slot_status == "staged" and report.existing_quest_rows:
+                    report.issues.append(
+                        PublishIssue(
+                            path="quest_id",
+                            message="Quest ID already exists and will be replaced from a staged reserved slot if apply mode is used.",
                             severity="warning",
                         )
                     )
@@ -224,20 +241,11 @@ class QuestPublisher:
                     PublishIssue(
                         path="reserved_slot",
                         message=(
-                            f"No wm_reserved_slot row exists for quest {draft.quest_id}. "
-                            "Publishing can continue, but reserved-slot tracking is not wired for this quest yet."
+                            f"Quest publishing now requires a managed wm_reserved_slot row for quest {draft.quest_id}. "
+                            "Seed a quest slot range and stage a slot before publishing."
                         ),
-                        severity="warning",
                     )
                 )
-        else:
-            report.issues.append(
-                PublishIssue(
-                    path="table.wm_reserved_slot",
-                    message="Optional table `wm_reserved_slot` is missing; reserved quest ID tracking is disabled for this publish.",
-                    severity="warning",
-                )
-            )
 
         return report
 
@@ -273,7 +281,7 @@ class QuestPublisher:
         validation = validate_bounty_quest_draft(draft)
         preflight = self.preflight(draft)
         snapshot_preview = self.capture_snapshot_preview(draft)
-        sql_plan = self._compile_sql_plan(draft, preflight)
+        sql_plan = self._compile_sql_plan(draft)
 
         if mode not in {"dry-run", "apply"}:
             raise ValueError(f"Unsupported publish mode: {mode}")
@@ -327,7 +335,7 @@ class QuestPublisher:
             applied=True,
         )
 
-    def _compile_sql_plan(self, draft: BountyQuestDraft, preflight: QuestPreflightReport):
+    def _compile_sql_plan(self, draft: BountyQuestDraft):
         table_presence = self._table_presence({"quest_offer_reward", "quest_request_items"})
         available_tables = {name for name, present in table_presence.items() if present}
         quest_template_columns = self._table_columns("quest_template")
@@ -371,6 +379,15 @@ class QuestPublisher:
             "quest_offer_reward_columns": sorted(quest_offer_reward_columns),
             "quest_request_items_columns": sorted(quest_request_items_columns),
         }
+
+    def _find_duplicate_title_rows(self, draft: BountyQuestDraft) -> list[dict[str, Any]]:
+        return self._query_world(
+            "SELECT qt.ID, qt.LogTitle FROM quest_template qt "
+            "JOIN creature_queststarter cqs ON cqs.quest = qt.ID "
+            f"WHERE cqs.id = {int(draft.questgiver_entry)} "
+            f"AND qt.LogTitle = {_sql_string(draft.title)} "
+            f"AND qt.ID <> {int(draft.quest_id)}"
+        )
 
     def _execute_publish_failure_log(self, quest_id: int, error_message: str) -> None:
         safe_error = error_message.replace("'", "''")
