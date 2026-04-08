@@ -2,7 +2,7 @@
 
 An external-first **World Master** platform for **AzerothCore 3.3.5**.
 
-This repository is no longer just a bootstrap. It now contains a working first live-content vertical slice for quests:
+This repository is no longer just a bootstrap. It now contains a working live-content platform across quests, items, spells, and the first deterministic event spine:
 
 - target resolution and lookup translation
 - live DB-backed bounty quest generation
@@ -10,7 +10,9 @@ This repository is no longer just a bootstrap. It now contains a working first l
 - rollback snapshots and publish logs
 - SOAP-driven runtime sync after publish
 - live quest editing for titles and rewards
+- managed item-slot and spell-slot publishers
 - reserved-slot utilities for WM-managed ID ranges
+- canonical event storage, polling, projection, rules, planning, and execution
 
 ## Archived docs
 
@@ -52,19 +54,27 @@ Use the archived files if you want the original resolver-first framing:
 - inspect and compare generated quests against known-good quest rows
 - rollback a published quest to the latest stored snapshot
 
-### Slot / registry groundwork
+### Item and spell slot pipelines
 
-- reserved-slot models and allocator utilities
-- DB-backed reserved slot allocator
-- quest publishing requires a managed reserved slot
-- duplicate quest-title protection for the same questgiver
-- reserved-slot seeding utility for WM-owned ID ranges
+- managed item publish groundwork
+- managed spell publish groundwork
+- quest reward flow that can attach managed items
+- reserved-slot models and allocator utilities across quest/item/spell ranges
+
+### Event spine groundwork
+
+- canonical WM event log
+- DB-first event polling adapter
+- journal projection from canonical events
+- deterministic reaction rules with cooldowns
+- reaction planner and executor that call the existing quest/item/spell publishers
 
 ## Bootstrap SQL
 
 The WM bootstrap SQL now owns these major table families:
 
 - journal / enrichment tables
+- canonical event, cursor, cooldown, and reaction log tables
 - publish log and rollback snapshots
 - reserved ID range table for managed quest/item/spell slots
 
@@ -103,6 +113,14 @@ WM_SOAP_PASSWORD=soap
 WM_SOAP_PATH=/
 ```
 
+Optional event-spine defaults for auto-generated repeat-hunt follow-ups:
+
+```dotenv
+WM_EVENT_DEFAULT_QUESTGIVER_ENTRY=1498
+WM_EVENT_FOLLOWUP_KILL_COUNT=6
+WM_EVENT_DEFAULT_REWARD_MONEY_COPPER=1400
+```
+
 ### 3. Seed a reserved quest range
 
 ```bash
@@ -133,6 +151,26 @@ python -m wm.quests.edit_live --quest-id 910005 --title "Marshal's Bonus Kobold 
 python -m wm.quests.rollback --quest-id 910005 --mode apply --runtime-sync auto --summary --output-json .\artifacts\quest_910005_rollback.json
 ```
 
+### 8. Run the deterministic event spine
+
+```bash
+python -m wm.events.run --adapter db --mode dry-run --summary
+```
+
+If `WM_EVENT_DEFAULT_QUESTGIVER_ENTRY` is configured and a free managed quest slot exists, repeat-hunt opportunities can now plan a real bounty quest draft instead of falling back to a no-op.
+
+For focused live-safe checks, you can scope the run to one player and override the default questgiver for that run:
+
+```bash
+python -m wm.events.run --adapter db --mode dry-run --player-guid 5406 --questgiver-entry 197 --summary
+```
+
+Live apply is intentionally guarded. To publish from the event spine, scope the run to one player and confirm the live mutation explicitly:
+
+```bash
+python -m wm.events.run --adapter db --mode apply --player-guid 5406 --questgiver-entry 197 --confirm-live-apply --summary
+```
+
 ## Operational notes
 
 When you need to restore or wipe WM-generated quest IDs, use:
@@ -153,9 +191,9 @@ The project treats runtime sync as a real step, not an optional cosmetic extra.
 
 The next development focus is:
 
-1. stabilize the quest platform
-2. harden rollback and slot governance
-3. make generation context-aware using resolver + journal data
-4. expand from quests into safer item-slot workflows
+1. finish hardening the deterministic event spine
+2. use that spine to unlock smart contextual reactions
+3. keep improving quest / item / spell platform safety where the spine depends on it
+4. defer demo selection until the reusable bricks are in place
 
 See `docs/ROADMAP.md` for the current plan.

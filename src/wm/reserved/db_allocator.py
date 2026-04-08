@@ -14,15 +14,7 @@ class ReservedSlotDbAllocator:
         self.client = client
         self.settings = settings
 
-    def allocate_next_free_slot(
-        self,
-        *,
-        entity_type: str,
-        arc_key: str | None = None,
-        character_guid: int | None = None,
-        source_quest_id: int | None = None,
-        notes: list[str] | None = None,
-    ) -> ReservedSlot | None:
+    def peek_next_free_slot(self, *, entity_type: str) -> ReservedSlot | None:
         rows = self.client.query(
             host=self.settings.world_db_host,
             port=self.settings.world_db_port,
@@ -38,8 +30,22 @@ class ReservedSlotDbAllocator:
         )
         if not rows:
             return None
+        return _build_slot(rows[0])
 
-        reserved_id = int(rows[0]["ReservedID"])
+    def allocate_next_free_slot(
+        self,
+        *,
+        entity_type: str,
+        arc_key: str | None = None,
+        character_guid: int | None = None,
+        source_quest_id: int | None = None,
+        notes: list[str] | None = None,
+    ) -> ReservedSlot | None:
+        preview = self.peek_next_free_slot(entity_type=entity_type)
+        if preview is None:
+            return None
+
+        reserved_id = int(preview.reserved_id)
         notes_json = _json_or_null(notes or [])
         sql = (
             "UPDATE wm_reserved_slot SET "
@@ -50,6 +56,39 @@ class ReservedSlotDbAllocator:
             f"NotesJSON = {notes_json} "
             f"WHERE EntityType = {_sql_string(entity_type)} "
             f"AND ReservedID = {reserved_id} "
+            "AND SlotStatus = 'free'"
+        )
+        self._execute(sql)
+        return self.get_slot(entity_type=entity_type, reserved_id=reserved_id)
+
+    def ensure_slot_prepared(
+        self,
+        *,
+        entity_type: str,
+        reserved_id: int,
+        arc_key: str | None = None,
+        character_guid: int | None = None,
+        source_quest_id: int | None = None,
+        notes: list[str] | None = None,
+    ) -> ReservedSlot | None:
+        slot = self.get_slot(entity_type=entity_type, reserved_id=reserved_id)
+        if slot is None:
+            return None
+        if slot.slot_status in {"staged", "active"}:
+            return slot
+        if slot.slot_status != "free":
+            return slot
+
+        notes_json = _json_or_null(notes or [])
+        sql = (
+            "UPDATE wm_reserved_slot SET "
+            "SlotStatus = 'staged', "
+            f"ArcKey = {_sql_string_or_null(arc_key)}, "
+            f"CharacterGUID = {_sql_int_or_null(character_guid)}, "
+            f"SourceQuestID = {_sql_int_or_null(source_quest_id)}, "
+            f"NotesJSON = {notes_json} "
+            f"WHERE EntityType = {_sql_string(entity_type)} "
+            f"AND ReservedID = {int(reserved_id)} "
             "AND SlotStatus = 'free'"
         )
         self._execute(sql)

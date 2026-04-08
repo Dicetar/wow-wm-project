@@ -45,6 +45,10 @@ class Settings:
     soap_password: str = ""
     soap_path: str = "/"
 
+    event_default_questgiver_entry: int | None = None
+    event_followup_kill_count: int = 6
+    event_default_reward_money_copper: int = 1200
+
     @classmethod
     def from_env(cls) -> "Settings":
         _load_dotenv()
@@ -67,4 +71,11 @@ class Settings:
             soap_user=os.getenv("WM_SOAP_USER", ""),
             soap_password=os.getenv("WM_SOAP_PASSWORD", ""),
             soap_path=os.getenv("WM_SOAP_PATH", "/"),
+            event_default_questgiver_entry=(
+                int(os.getenv("WM_EVENT_DEFAULT_QUESTGIVER_ENTRY"))
+                if os.getenv("WM_EVENT_DEFAULT_QUESTGIVER_ENTRY") not in (None, "")
+                else None
+            ),
+            event_followup_kill_count=int(os.getenv("WM_EVENT_FOLLOWUP_KILL_COUNT", "6")),
+            event_default_reward_money_copper=int(os.getenv("WM_EVENT_DEFAULT_REWARD_MONEY_COPPER", "1200")),
         )

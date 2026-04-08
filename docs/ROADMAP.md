@@ -1,6 +1,6 @@
 # Roadmap (current)
 
-This file reflects the **current implementation state** of the repository.
+This file reflects the current implementation state of the repository.
 
 The original bootstrap-era roadmap has been preserved at:
 
@@ -8,7 +8,7 @@ The original bootstrap-era roadmap has been preserved at:
 
 ## Project principles
 
-Use a **retrieval-first external service** with a **translation layer** in front of any LLM work.
+Use a retrieval-first external service with a translation layer in front of any LLM work.
 
 The WM should not begin by generating prose. It should begin by understanding the world deterministically, then publishing live content through controlled, reversible operations.
 
@@ -34,7 +34,7 @@ Implemented:
 - candidate lookup / ranking helpers
 - enum/ID translation files and lookup notes
 
-### Quest platform prototype
+### Quest, item, and spell platform baseline
 
 Implemented:
 - live DB bounty quest generation
@@ -45,118 +45,127 @@ Implemented:
 - live quest edit for title / reward changes
 - quest inspection / comparison tools
 - rollback command restoring from latest snapshot
-- reserved-slot seeding and managed-slot enforcement
+- managed item slot publish flow
+- managed spell slot publish flow
+- quest reward flow that can attach managed items
+- reserved-slot seeding and managed-slot enforcement across quest/item/spell ranges
 - duplicate-title guard for the same questgiver
 
-This means the repo is already beyond "bootstrap only" status.
+### Event spine baseline
+
+Implemented on the event-spine track:
+- canonical WM event contract and storage
+- DB-first polling adapter against existing WM-owned journal events
+- projection from canonical observed events into compact journal counters
+- deterministic rule evaluation with cooldown guards
+- reaction planning and execution through existing quest/item/spell publishers
+
+This means the repo is already beyond bootstrap-only status and is moving toward an event-driven WM core.
 
 ---
 
-## Phase 1 — Quest platform hardening
+## Phase 1 - Event spine hardening
 
 ### Goal
-Turn the working quest prototype into a reliable operator-grade WM content pipeline.
+Turn the event spine into a reliable operator-grade WM orchestration layer.
 
 ### Deliverables
-- mandatory managed reserved slots for quest publishing
-- duplicate-title and active-slot safety checks
-- rollback v1 with runtime sync
-- updated docs matching the real codebase
-- more explicit publish / rollback state reporting
+- unify canonical publish paths so event execution has one safe target per artifact type
+- harden canonical event storage, cursor handling, and replay safety
+- tighten projection/evaluation bookkeeping and anti-spam behavior
+- make dry-run/apply reporting clearer across reaction planning and execution
+- update docs to reflect the event-driven direction
 
 ### Exit criteria
-- a quest can be seeded into a staged slot
-- a generated quest can be published live
-- the same quest can be edited live without going through a full republish
-- the quest can be rolled back from the latest snapshot
-- publishing the same effective quest twice to the same questgiver is blocked by default
+- one adapter can ingest world activity into canonical events
+- the same event is never projected twice
+- deterministic rules can emit reaction opportunities safely
+- reaction execution can call the quest/item/spell publishers through one coherent path
+- cooldowns suppress repeated firehose reactions
 
 ---
 
-## Phase 2 — Contextual quest generation
+## Phase 2 - Contextual smart reactions
 
 ### Goal
-Make quest generation context-aware instead of merely syntactically valid.
+Make reactions context-aware instead of merely structurally valid.
 
 ### Deliverables
-- generation that consumes target resolver output directly
-- journal-aware generation inputs
-- reward scaling and kill-count heuristics
-- duplicate / repetition controls using recent history
-- more quest archetypes beyond bounty:
-  - delivery
-  - investigate
-  - report
-  - collection
+- context shaping that consumes resolver output and journal summaries directly
+- event-to-reaction heuristics that use recent player history
+- deterministic opportunity detection with optional LLM content shaping layered on top
+- richer follow-up quest, reward, passive, and announcement payload generation
+- duplicate/repetition controls using recent reaction history
 
 ### Exit criteria
-- generated quests use world facts instead of raw IDs
-- repeated generation for the same area / questgiver becomes meaningfully different without becoming random garbage
-- recent quest history affects new generation choices
+- reactions use world facts instead of raw IDs
+- repeated reactions for the same area or subject become meaningfully different without becoming random garbage
+- recent history changes what WM chooses to do next
 
 ---
 
-## Phase 3 — Registry and lifecycle governance
+## Phase 3 - Registry and lifecycle governance
 
 ### Goal
 Manage WM-created artifacts as first-class objects with provenance and lifecycle.
 
 ### Deliverables
 - stronger artifact registry conventions
-- staged → active → retired / archived lifecycle discipline
+- staged -> active -> retired/archived lifecycle discipline
 - cache-risk and reused-ID tracking
 - provenance in publish logs:
-  - source prompt / generator kind
+  - source prompt or generator kind
   - target context
   - operator action
 
 ### Exit criteria
-- every generated quest can be traced to its source and lifecycle state
+- every generated artifact can be traced to its source and lifecycle state
 - slot reuse is intentional and visible
 - rollback and retirement semantics are explicit instead of implied
 
 ---
 
-## Phase 4 — Evented WM lite
+## Phase 4 - Broader adapter surface
 
 ### Goal
-Let the WM react to the world without requiring a custom C++ bridge yet.
+Expand perception without changing the event contract.
 
 ### Deliverables
-- simple event ingestion adapters:
-  - DB polling
-  - quest completion checks
-  - kill milestone checks
-  - manual / chat-triggered WM commands
-- session memory and anti-spam logic
-- lightweight world reactions:
-  - rotating board refreshes
-  - follow-up quest offers
-  - simple generated announcements
+- additional ingestion adapters:
+  - log scanning
+  - manual/operator triggers
+  - bridge-fed events if a compile path exists later
+- stronger anti-spam, replay, and checkpoint controls
+- better event enrichment before planning
+- keep downstream planning/execution unchanged while adapters evolve
 
 ### Exit criteria
-- a player action can trigger a WM reaction using resolver + journal context
-- eventing works without baking WM logic into the core server
+- multiple adapters can feed the same canonical event bus
+- adapter swapping does not force planner or executor rewrites
 
 ---
 
-## Phase 5 — Item slot pipeline v1
+## Phase 5 - Content breadth expansion
 
 ### Goal
-Begin item work safely, using the same discipline learned from quests.
+Expand what WM can safely create once the event spine is trustworthy.
 
 ### Deliverables
-- reserved item slot strategy
-- item validator with hard caps
-- publish / rollback flow for managed item slots
-- quest reward integration for managed items
+- more quest archetypes beyond bounty:
+  - delivery
+  - investigate
+  - report
+  - collection
+- broader managed item use
+- broader managed spell/passive use
+- eventual creature/NPC authoring only if a chosen demo requires it
 
 ### Exit criteria
-- one managed custom item can be produced, rewarded, and retired without unsafe freeform mutation
+- WM can compose richer multi-artifact scenarios without breaking slot governance
 
 ---
 
-## Phase 6 — Thin bridge exploration
+## Phase 6 - Thin bridge exploration
 
 ### Goal
 Improve live-awareness only after the external platform is strong enough to deserve a bridge.

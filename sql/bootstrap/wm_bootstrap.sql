@@ -50,6 +50,66 @@ CREATE TABLE IF NOT EXISTS wm_player_subject_event (
     CreatedAt TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS wm_event_log (
+    EventID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    EventClass VARCHAR(32) NOT NULL,
+    EventType VARCHAR(64) NOT NULL,
+    Source VARCHAR(64) NOT NULL,
+    SourceEventKey VARCHAR(128) NOT NULL,
+    OccurredAt VARCHAR(64) NOT NULL,
+    RecordedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PlayerGUID INT NULL,
+    SubjectType VARCHAR(32) NULL,
+    SubjectEntry INT NULL,
+    MapID INT NULL,
+    ZoneID INT NULL,
+    AreaID INT NULL,
+    EventValue VARCHAR(255) NULL,
+    MetadataJSON LONGTEXT NULL,
+    ProjectedAt TIMESTAMP NULL DEFAULT NULL,
+    EvaluatedAt TIMESTAMP NULL DEFAULT NULL,
+    UNIQUE KEY uniq_event_source_key (Source, SourceEventKey),
+    KEY idx_event_log_class (EventClass),
+    KEY idx_event_log_projected (EventClass, ProjectedAt),
+    KEY idx_event_log_evaluated (EventClass, EvaluatedAt)
+);
+
+CREATE TABLE IF NOT EXISTS wm_event_cursor (
+    AdapterName VARCHAR(64) NOT NULL,
+    CursorKey VARCHAR(64) NOT NULL,
+    CursorValue VARCHAR(255) NOT NULL,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (AdapterName, CursorKey)
+);
+
+CREATE TABLE IF NOT EXISTS wm_reaction_cooldown (
+    ReactionKey VARCHAR(255) NOT NULL,
+    RuleType VARCHAR(64) NOT NULL,
+    PlayerGUID INT NOT NULL,
+    SubjectType VARCHAR(32) NOT NULL,
+    SubjectEntry INT NOT NULL,
+    CooldownUntil TIMESTAMP NOT NULL,
+    LastTriggeredAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    MetadataJSON LONGTEXT NULL,
+    PRIMARY KEY (ReactionKey),
+    KEY idx_reaction_cooldown_expiry (CooldownUntil)
+);
+
+CREATE TABLE IF NOT EXISTS wm_reaction_log (
+    ReactionID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ReactionKey VARCHAR(255) NOT NULL,
+    RuleType VARCHAR(64) NOT NULL,
+    Status VARCHAR(32) NOT NULL,
+    PlayerGUID INT NOT NULL,
+    SubjectType VARCHAR(32) NOT NULL,
+    SubjectEntry INT NOT NULL,
+    PlannedActionsJSON LONGTEXT NOT NULL,
+    ResultJSON LONGTEXT NULL,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_reaction_log_key (ReactionKey),
+    KEY idx_reaction_log_status (Status)
+);
+
 CREATE TABLE IF NOT EXISTS wm_publish_log (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     artifact_type VARCHAR(64) NOT NULL,
