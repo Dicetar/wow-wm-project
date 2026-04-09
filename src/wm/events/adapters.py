@@ -9,6 +9,12 @@ from wm.db.mysql_cli import MysqlCliClient
 from wm.events.models import OBSERVED_EVENT_TYPES
 from wm.events.models import WMEvent
 from wm.events.store import EventStore
+from wm.reactive.store import ReactiveQuestStore
+from wm.sources.addon_log import AddonLogTailAdapter
+from wm.sources.combat_log import CombatLogTailAdapter
+
+
+ADAPTER_CHOICES = ("db", "addon_log", "combat_log")
 
 
 class EventAdapter(Protocol):
@@ -90,6 +96,47 @@ class DBPollingAdapter:
         if self.last_cursor_value is None and rows:
             self.last_cursor_value = str(rows[-1]["EventID"])
         return events
+
+
+def build_event_adapter(
+    *,
+    adapter_name: str,
+    client: MysqlCliClient,
+    settings: Settings,
+    store: EventStore,
+    batch_size: int | None = None,
+    player_guid_filter: int | None = None,
+    reactive_store: ReactiveQuestStore | None = None,
+) -> EventAdapter:
+    if adapter_name == "db":
+        return DBPollingAdapter(
+            client=client,
+            settings=settings,
+            store=store,
+            batch_size=int(batch_size or 100),
+            player_guid_filter=player_guid_filter,
+        )
+    if adapter_name == "addon_log":
+        reactive_store = reactive_store or ReactiveQuestStore(client=client, settings=settings)
+        return AddonLogTailAdapter(
+            client=client,
+            settings=settings,
+            store=store,
+            reactive_store=reactive_store,
+            batch_size=(int(batch_size) if batch_size is not None else int(settings.addon_log_batch_size)),
+            player_guid_filter=player_guid_filter,
+        )
+    if adapter_name == "combat_log":
+        reactive_store = reactive_store or ReactiveQuestStore(client=client, settings=settings)
+        return CombatLogTailAdapter(
+            client=client,
+            settings=settings,
+            store=store,
+            reactive_store=reactive_store,
+            batch_size=(int(batch_size) if batch_size is not None else int(settings.combat_log_batch_size)),
+            player_guid_filter=player_guid_filter,
+        )
+    raise ValueError(f"Unsupported adapter: {adapter_name}")
 
 
 def _string_or_none(value: object) -> str | None:

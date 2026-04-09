@@ -1,12 +1,15 @@
-from unittest.mock import patch
 import unittest
+from unittest.mock import patch
 
+from wm.config import Settings
 from wm.events.models import WMEvent
 from wm.events.rules import DeterministicRuleEngine
 from wm.journal.models import JournalCounters
 from wm.journal.models import JournalSummary
 from wm.journal.models import SubjectCard
 from wm.journal.reader import SubjectJournalBundle
+from wm.reactive.models import PlayerQuestRuntimeState
+from wm.reactive.models import ReactiveQuestRule
 
 
 class _DummyClient:
@@ -17,6 +20,7 @@ class FakeRuleStore:
     def __init__(self) -> None:
         self.marked_evaluated: list[int] = []
         self.cooldown_active = False
+        self.subject_events: list[WMEvent] = []
 
     def is_evaluated(self, *, event_id: int) -> bool:
         return event_id in self.marked_evaluated
@@ -27,6 +31,49 @@ class FakeRuleStore:
     def is_cooldown_active(self, key, *, at: str | None = None) -> bool:
         del key, at
         return self.cooldown_active
+
+    def list_subject_events(
+        self,
+        *,
+        player_guid: int,
+        subject_type: str,
+        subject_entry: int,
+        event_type: str | None = None,
+        event_class: str = "observed",
+        limit: int = 200,
+        newest_first: bool = False,
+    ):
+        del limit, newest_first
+        rows = [
+            event
+            for event in self.subject_events
+            if event.player_guid == player_guid
+            and event.subject_type == subject_type
+            and event.subject_entry == subject_entry
+            and event.event_class == event_class
+        ]
+        if event_type is not None:
+            rows = [event for event in rows if event.event_type == event_type]
+        return rows
+
+
+class FakeReactiveStore:
+    def __init__(self) -> None:
+        self.rules = []
+        self.runtime_state = "none"
+        self.snapshot = None
+
+    def list_active_rules(self, *, subject_type=None, subject_entry=None, trigger_event_type=None):
+        del subject_type, subject_entry, trigger_event_type
+        return list(self.rules)
+
+    def fetch_character_quest_status(self, *, player_guid: int, quest_id: int) -> str:
+        del player_guid, quest_id
+        return self.runtime_state
+
+    def get_player_quest_runtime_state(self, *, player_guid: int, quest_id: int):
+        del player_guid, quest_id
+        return self.snapshot
 
 
 class DeterministicRuleEngineTests(unittest.TestCase):
@@ -98,6 +145,240 @@ class DeterministicRuleEngineTests(unittest.TestCase):
 
         self.assertEqual(len(result.derived_events), 2)
         self.assertEqual(result.opportunities, [])
+        self.assertEqual(len(result.suppressed_opportunities), 1)
+        self.assertEqual(result.suppressed_opportunities[0].metadata["suppression_reason"], "cooldown_active")
+
+    def test_preview_does_not_mark_event_evaluated(self) -> None:
+        store = FakeRuleStore()
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=None,  # type: ignore[arg-type]
+            store=store,
+            repeat_kill_threshold=10,
+        )
+        event = WMEvent(
+            event_id=7,
+            event_class="observed",
+            event_type="kill",
+            source="db_poll",
+            source_event_key="7",
+            occurred_at="2026-04-08 12:00:00",
+            player_guid=42,
+            subject_type="creature",
+            subject_entry=46,
+        )
+
+        with patch("wm.events.rules.load_subject_journal_for_creature", return_value=self._bundle(kill_count=10)):
+            result = engine.evaluate(event, preview=True)
+
+        self.assertEqual(len(result.opportunities), 1)
+        self.assertEqual(store.marked_evaluated, [])
+
+    def test_kill_burst_rule_triggers_once_on_fourth_kill(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="db_poll",
+                source_event_key=str(index),
+                occurred_at=f"2026-04-08 12:00:0{index}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=6,
+            )
+            for index in range(1, 5)
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:kobold_vermin",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=6,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=120,
+                quest_id=910000,
+                turn_in_npc_entry=197,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={},
+                notes=[],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+        event = store.subject_events[-1]
+
+        result = engine.evaluate(event)
+
+        self.assertEqual({item.event_type for item in result.derived_events}, {"kill_burst_detected"})
+        self.assertEqual(len(result.opportunities), 1)
+        self.assertEqual(result.opportunities[0].opportunity_type, "reactive_bounty_grant")
+        self.assertEqual(result.opportunities[0].metadata["quest_id"], 910000)
+
+    def test_kill_burst_fifth_kill_does_not_retrigger(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="db_poll",
+                source_event_key=str(index),
+                occurred_at=f"2026-04-08 12:00:0{index}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=6,
+            )
+            for index in range(1, 6)
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:kobold_vermin",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=6,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=120,
+                quest_id=910000,
+                turn_in_npc_entry=197,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={},
+                notes=[],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1])
+
+        self.assertEqual(result.opportunities, [])
+
+    def test_reactive_rule_suppresses_active_and_rewarded_states(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="db_poll",
+                source_event_key=str(index),
+                occurred_at=f"2026-04-08 12:00:0{index}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=6,
+            )
+            for index in range(1, 5)
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:kobold_vermin",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=6,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=120,
+                quest_id=910000,
+                turn_in_npc_entry=197,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={},
+                notes=[],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+        event = store.subject_events[-1]
+
+        reactive_store.runtime_state = "incomplete"
+        active_result = engine.evaluate(event, preview=True)
+        self.assertEqual(active_result.opportunities, [])
+        self.assertEqual(active_result.suppressed_opportunities[0].metadata["suppression_reason"], "quest_active")
+
+        reactive_store.runtime_state = "complete"
+        complete_result = engine.evaluate(event, preview=True)
+        self.assertEqual(complete_result.suppressed_opportunities[0].metadata["suppression_reason"], "quest_complete_pending_turnin")
+
+        reactive_store.runtime_state = "rewarded"
+        reactive_store.snapshot = PlayerQuestRuntimeState(
+            player_guid=5406,
+            quest_id=910000,
+            current_state="rewarded",
+            last_transition_at="2026-04-08 12:00:05",
+        )
+        rewarded_result = engine.evaluate(event, preview=True)
+        self.assertEqual(rewarded_result.suppressed_opportunities[0].metadata["suppression_reason"], "post_reward_cooldown_active")
+
+    def test_derived_event_key_is_compacted_for_long_source_keys(self) -> None:
+        store = FakeRuleStore()
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:kobold_vermin",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=6,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=120,
+                quest_id=910000,
+                turn_in_npc_entry=197,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={},
+                notes=[],
+            )
+        ]
+        long_key = "combat_log:" + ("x" * 400)
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="combat_log",
+                source_event_key=f"{long_key}:{index}",
+                occurred_at=f"2026-04-08 12:00:0{index}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=6,
+            )
+            for index in range(1, 5)
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1], preview=True)
+
+        self.assertEqual(len(result.derived_events), 1)
+        self.assertLessEqual(len(result.derived_events[0].source_event_key), 120)
 
 
 if __name__ == "__main__":

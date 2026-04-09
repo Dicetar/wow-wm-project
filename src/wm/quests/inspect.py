@@ -69,7 +69,7 @@ class QuestInspector:
             ),
         }
 
-        table_presence = self._table_presence({"quest_offer_reward", "quest_request_items"})
+        table_presence = self._table_presence({"quest_offer_reward", "quest_request_items", "quest_template_addon"})
         if table_presence.get("quest_offer_reward", False):
             result["quest_offer_reward"] = self._query_world(
                 "SELECT * FROM `quest_offer_reward` "
@@ -78,6 +78,11 @@ class QuestInspector:
         if table_presence.get("quest_request_items", False):
             result["quest_request_items"] = self._query_world(
                 "SELECT * FROM `quest_request_items` "
+                f"WHERE `ID` = {int(quest_id)}"
+            )
+        if table_presence.get("quest_template_addon", False):
+            result["quest_template_addon"] = self._query_world(
+                "SELECT * FROM `quest_template_addon` "
                 f"WHERE `ID` = {int(quest_id)}"
             )
         return result
@@ -124,6 +129,8 @@ class QuestInspector:
             "right_offer_reward": right.get("quest_offer_reward", []),
             "left_request_items": left.get("quest_request_items", []),
             "right_request_items": right.get("quest_request_items", []),
+            "left_template_addon": left.get("quest_template_addon", []),
+            "right_template_addon": right.get("quest_template_addon", []),
         }
 
     def _quest_template_columns(self) -> set[str]:

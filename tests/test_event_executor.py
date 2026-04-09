@@ -6,6 +6,10 @@ from wm.events.models import PlannedAction
 from wm.events.models import ReactionCooldownKey
 from wm.events.models import ReactionPlan
 from wm.events.models import SubjectRef
+from wm.refs import CreatureRef
+from wm.refs import NpcRef
+from wm.refs import PlayerRef
+from wm.refs import QuestRef
 
 
 class _DummyClient:
@@ -88,6 +92,47 @@ class FakeSlotAllocator:
         return None
 
 
+class FakeReactiveStore:
+    def fetch_character_name(self, *, player_guid: int) -> str | None:
+        return {42: "Qraag", 5406: "Qraaglock"}.get(player_guid)
+
+
+class FakeQuestRuntimeManager:
+    def __init__(self) -> None:
+        self.preview_calls: list[tuple[int, str | None, int]] = []
+        self.grant_calls: list[tuple[int, str | None, int]] = []
+
+    def preview_grant(self, *, player_guid: int, player_name: str | None, quest_id: int):
+        self.preview_calls.append((player_guid, player_name, quest_id))
+        class Preview:
+            ok = True
+            def to_dict(self_nonlocal):
+                return {
+                    "ok": True,
+                    "player_guid": player_guid,
+                    "player_name": player_name,
+                    "quest_id": quest_id,
+                    "command_preview": f".quest add {quest_id} {player_name}",
+                    "issues": [],
+                    "notes": [],
+                }
+        return Preview()
+
+    def grant_quest(self, *, player_guid: int, player_name: str | None, quest_id: int):
+        self.grant_calls.append((player_guid, player_name, quest_id))
+        class Result:
+            ok = True
+            def to_dict(self_nonlocal):
+                return {
+                    "command": f".quest add {quest_id} {player_name}",
+                    "ok": True,
+                    "result": "Quest added.",
+                    "fault_code": None,
+                    "fault_string": None,
+                }
+        return Result()
+
+
 class ReactionExecutorTests(unittest.TestCase):
     def _plan(self) -> ReactionPlan:
         return ReactionPlan(
@@ -154,6 +199,24 @@ class ReactionExecutorTests(unittest.TestCase):
         self.assertTrue(quest_details["slot_preparation"]["will_stage_on_apply"])
         self.assertTrue(any("would be staged automatically" in note for note in quest_details["dry_run_notes"]))
 
+    def test_preview_is_read_only(self) -> None:
+        store = FakeExecutionStore()
+        slot_allocator = FakeSlotAllocator()
+        executor = ReactionExecutor(client=_DummyClient(), settings=Settings(), store=store, slot_allocator=slot_allocator)
+        executor.quest_publisher = FakePublisher()
+        executor.item_publisher = FakePublisher()
+        executor.spell_publisher = FakePublisher()
+
+        result = executor.preview(plan=self._plan())
+
+        self.assertEqual(result.mode, "preview")
+        self.assertEqual(result.status, "preview")
+        self.assertEqual([step.status for step in result.steps], ["dry-run", "dry-run", "dry-run"])
+        self.assertEqual(store.recorded_events, [])
+        self.assertEqual(store.logged_reactions, [])
+        self.assertEqual(store.cooldowns, [])
+        self.assertEqual(slot_allocator.calls, [])
+
     def test_apply_logs_action_events_and_sets_cooldown(self) -> None:
         store = FakeExecutionStore()
         slot_allocator = FakeSlotAllocator()
@@ -173,6 +236,111 @@ class ReactionExecutorTests(unittest.TestCase):
         self.assertEqual(len(store.cooldowns), 1)
         self.assertEqual(slot_allocator.calls[0][0], "quest")
         self.assertEqual(slot_allocator.calls[0][1], 910001)
+
+    def test_reactive_quest_grant_preview_and_apply_use_runtime_path(self) -> None:
+        store = FakeExecutionStore()
+        runtime_manager = FakeQuestRuntimeManager()
+        executor = ReactionExecutor(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=FakeReactiveStore(),  # type: ignore[arg-type]
+            reactive_runtime=runtime_manager,  # type: ignore[arg-type]
+        )
+        plan = ReactionPlan(
+            plan_key="reactive_bounty:kobold_vermin:5406:creature:6",
+            opportunity_type="reactive_bounty_grant",
+            rule_type="reactive_bounty:kobold_vermin",
+            player_guid=5406,
+            subject=SubjectRef(subject_type="creature", subject_entry=6),
+            actions=[
+                PlannedAction(
+                    kind="quest_grant",
+                    payload={
+                        "quest_id": 910000,
+                        "player_guid": 5406,
+                        "rule_key": "reactive_bounty:kobold_vermin",
+                        "turn_in_npc_entry": 197,
+                    },
+                )
+            ],
+        )
+
+        preview = executor.preview(plan=plan)
+        applied = executor.execute(plan=plan, mode="apply")
+
+        self.assertEqual(preview.steps[0].kind, "quest_grant")
+        self.assertTrue(preview.steps[0].details["dry_run_ready"])
+        self.assertEqual(applied.steps[0].status, "applied")
+        self.assertEqual(
+            [event.event_type for event in store.recorded_events],
+            ["reaction_planned", "quest_grant_issued"],
+        )
+        self.assertEqual(runtime_manager.preview_calls[0], (5406, "Qraaglock", 910000))
+        self.assertEqual(runtime_manager.grant_calls[0], (5406, "Qraaglock", 910000))
+
+    def test_structured_ref_payloads_are_accepted(self) -> None:
+        store = FakeExecutionStore()
+        executor = ReactionExecutor(client=_DummyClient(), settings=Settings(), store=store)
+        executor.quest_publisher = FakePublisher()
+        plan = ReactionPlan(
+            plan_key="reactive_bounty:kobold_vermin:5406:creature:6",
+            opportunity_type="reactive_bounty_grant",
+            rule_type="reactive_bounty:kobold_vermin",
+            player_guid=5406,
+            subject=SubjectRef(subject_type="creature", subject_entry=6),
+            actions=[
+                PlannedAction(
+                    kind="quest_publish",
+                    payload={
+                        "quest": QuestRef(id=910000, title="Bounty: Kobold Vermin").to_dict(),
+                        "quest_id": 910000,
+                        "quest_level": 4,
+                        "min_level": 2,
+                        "questgiver": NpcRef(entry=197, name="Marshal McBride").to_dict(),
+                        "questgiver_entry": 197,
+                        "questgiver_name": "Marshal McBride",
+                        "starter_npc": None,
+                        "ender_npc": NpcRef(entry=197, name="Marshal McBride").to_dict(),
+                        "start_npc_entry": None,
+                        "end_npc_entry": 197,
+                        "title": "Bounty: Kobold Vermin",
+                        "quest_description": "Cull them.",
+                        "objective_text": "Slay them.",
+                        "offer_reward_text": "Well done.",
+                        "request_items_text": "Did you do it?",
+                        "objective": {
+                            "target": CreatureRef(entry=6, name="Kobold Vermin").to_dict(),
+                            "target_entry": 6,
+                            "target_name": "Kobold Vermin",
+                            "kill_count": 4,
+                        },
+                        "reward": {"money_copper": 900, "reward_item_count": 1},
+                        "_wm_reserved_slot": {"entity_type": "quest", "reserved_id": 910000},
+                    },
+                ),
+                PlannedAction(
+                    kind="quest_grant",
+                    payload={
+                        "quest": QuestRef(id=910000, title="Bounty: Kobold Vermin").to_dict(),
+                        "player": PlayerRef(guid=5406, name="Qraaglock").to_dict(),
+                        "subject": CreatureRef(entry=6, name="Kobold Vermin").to_dict(),
+                        "turn_in_npc": NpcRef(entry=197, name="Marshal McBride").to_dict(),
+                        "quest_id": 910000,
+                        "player_guid": 5406,
+                    },
+                ),
+            ],
+        )
+        executor.reactive_store = FakeReactiveStore()  # type: ignore[assignment]
+        executor.reactive_runtime = FakeQuestRuntimeManager()  # type: ignore[assignment]
+
+        result = executor.preview(plan=plan)
+
+        self.assertEqual(result.steps[0].status, "dry-run")
+        self.assertEqual(result.steps[1].status, "dry-run")
+        self.assertEqual(result.steps[1].details["quest"]["title"], "Bounty: Kobold Vermin")
+        self.assertEqual(result.steps[1].details["player"]["guid"], 5406)
 
 
 if __name__ == "__main__":

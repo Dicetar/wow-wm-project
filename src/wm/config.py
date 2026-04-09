@@ -48,6 +48,13 @@ class Settings:
     event_default_questgiver_entry: int | None = None
     event_followup_kill_count: int = 6
     event_default_reward_money_copper: int = 1200
+    addon_log_path: str = r"D:\WOW\Azerothcore_WoTLK_Repack\logs\WMOps.log"
+    addon_log_batch_size: int = 200
+    addon_channel_name: str = "WMBridgePrivate"
+    addon_prefix: str = "WMBRIDGE"
+    combat_log_path: str = r"D:\WOW\world of warcraft 3.3.5a hd\Logs\WoWCombatLog.txt"
+    combat_log_batch_size: int = 200
+    combat_log_player_name: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -78,4 +85,21 @@ class Settings:
             ),
             event_followup_kill_count=int(os.getenv("WM_EVENT_FOLLOWUP_KILL_COUNT", "6")),
             event_default_reward_money_copper=int(os.getenv("WM_EVENT_DEFAULT_REWARD_MONEY_COPPER", "1200")),
+            addon_log_path=os.getenv(
+                "WM_ADDON_LOG_PATH",
+                r"D:\WOW\Azerothcore_WoTLK_Repack\logs\WMOps.log",
+            ),
+            addon_log_batch_size=int(os.getenv("WM_ADDON_LOG_BATCH_SIZE", "200")),
+            addon_channel_name=os.getenv("WM_ADDON_CHANNEL_NAME", "WMBridgePrivate"),
+            addon_prefix=os.getenv("WM_ADDON_PREFIX", "WMBRIDGE"),
+            combat_log_path=os.getenv(
+                "WM_COMBAT_LOG_PATH",
+                r"D:\WOW\world of warcraft 3.3.5a hd\Logs\WoWCombatLog.txt",
+            ),
+            combat_log_batch_size=int(os.getenv("WM_COMBAT_LOG_BATCH_SIZE", "200")),
+            combat_log_player_name=(
+                os.getenv("WM_COMBAT_LOG_PLAYER_NAME")
+                if os.getenv("WM_COMBAT_LOG_PLAYER_NAME") not in (None, "")
+                else None
+            ),
         )

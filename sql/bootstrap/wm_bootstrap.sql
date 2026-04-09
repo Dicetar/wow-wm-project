@@ -110,6 +110,39 @@ CREATE TABLE IF NOT EXISTS wm_reaction_log (
     KEY idx_reaction_log_status (Status)
 );
 
+CREATE TABLE IF NOT EXISTS wm_reactive_quest_rule (
+    RuleKey VARCHAR(128) NOT NULL,
+    IsActive TINYINT NOT NULL DEFAULT 1,
+    PlayerGUIDScope INT NULL,
+    SubjectType VARCHAR(32) NOT NULL,
+    SubjectEntry INT NOT NULL,
+    TriggerEventType VARCHAR(64) NOT NULL,
+    KillThreshold INT NOT NULL DEFAULT 4,
+    WindowSeconds INT NOT NULL DEFAULT 120,
+    QuestID INT NOT NULL,
+    TurnInNpcEntry INT NOT NULL,
+    GrantMode VARCHAR(64) NOT NULL DEFAULT 'direct_quest_add',
+    PostRewardCooldownSeconds INT NOT NULL DEFAULT 60,
+    MetadataJSON LONGTEXT NULL,
+    NotesJSON LONGTEXT NULL,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (RuleKey),
+    KEY idx_reactive_rule_active (IsActive, SubjectType, SubjectEntry, TriggerEventType),
+    KEY idx_reactive_rule_quest (QuestID)
+);
+
+CREATE TABLE IF NOT EXISTS wm_player_quest_runtime_state (
+    PlayerGUID INT NOT NULL,
+    QuestID INT NOT NULL,
+    CurrentState VARCHAR(32) NOT NULL,
+    LastTransitionAt TIMESTAMP NULL DEFAULT NULL,
+    LastObservedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    MetadataJSON LONGTEXT NULL,
+    PRIMARY KEY (PlayerGUID, QuestID),
+    KEY idx_player_quest_runtime_state (QuestID, CurrentState)
+);
+
 CREATE TABLE IF NOT EXISTS wm_publish_log (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     artifact_type VARCHAR(64) NOT NULL,

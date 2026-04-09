@@ -70,6 +70,34 @@ class BountyQuestDraftTests(unittest.TestCase):
         self.assertIn("Murloc Forager''s End", joined)
         self.assertIn("INSERT INTO quest_template", joined)
         self.assertIn("INSERT INTO creature_queststarter", joined)
+        self.assertIn("LogDescription", joined)
+        self.assertIn("QuestCompletionLog", joined)
+
+    def test_direct_grant_bounty_omits_starter_and_keeps_ender(self) -> None:
+        draft = build_bounty_quest_draft(
+            quest_id=910003,
+            questgiver_entry=197,
+            questgiver_name="Marshal McBride",
+            target_profile=self._target(),
+            kill_count=4,
+            reward_money_copper=800,
+            start_npc_entry=None,
+            end_npc_entry=197,
+            grant_mode="direct_quest_add",
+        )
+        draft.template_defaults["SpecialFlags"] = 1
+
+        self.assertIsNone(draft.start_npc_entry)
+        self.assertEqual(draft.end_npc_entry, 197)
+        plan = compile_bounty_quest_sql_plan(
+            draft,
+            available_tables={"quest_template_addon"},
+            quest_template_addon_columns={"ID", "SpecialFlags"},
+        )
+        joined = "\n".join(plan.statements)
+        self.assertNotIn("INSERT INTO creature_queststarter", joined)
+        self.assertIn("INSERT INTO creature_questender", joined)
+        self.assertIn("INSERT INTO quest_template_addon (ID, SpecialFlags) VALUES (910003, 1);", joined)
 
 
 if __name__ == "__main__":

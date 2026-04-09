@@ -12,6 +12,9 @@ OBSERVED_EVENT_TYPES = {
     "talk",
     "quest_accept",
     "quest_complete",
+    "quest_granted",
+    "quest_completed",
+    "quest_rewarded",
     "loot_item",
     "item_use",
     "enter_area",
@@ -19,6 +22,7 @@ OBSERVED_EVENT_TYPES = {
 
 DERIVED_EVENT_TYPES = {
     "repeat_hunt_detected",
+    "kill_burst_detected",
     "familiar_npc_detected",
     "followup_eligible",
     "area_pressure_detected",
@@ -26,6 +30,7 @@ DERIVED_EVENT_TYPES = {
 
 ACTION_EVENT_TYPES = {
     "reaction_planned",
+    "quest_grant_issued",
     "quest_published",
     "item_published",
     "spell_published",
@@ -216,11 +221,13 @@ class ProjectionResult:
 class RuleEvaluationResult:
     derived_events: list[WMEvent] = field(default_factory=list)
     opportunities: list[ReactionOpportunity] = field(default_factory=list)
+    suppressed_opportunities: list[ReactionOpportunity] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "derived_events": [event.to_dict() for event in self.derived_events],
             "opportunities": [opportunity.to_dict() for opportunity in self.opportunities],
+            "suppressed_opportunities": [opportunity.to_dict() for opportunity in self.suppressed_opportunities],
         }
 
 
@@ -247,4 +254,52 @@ class ExecutionResult:
             "plan": self.plan.to_dict(),
             "status": self.status,
             "steps": [step.to_dict() for step in self.steps],
+        }
+
+
+@dataclass(slots=True)
+class ReactionLogRecord:
+    reaction_id: int
+    reaction_key: str
+    rule_type: str
+    status: str
+    player_guid: int
+    subject: SubjectRef
+    planned_actions: dict[str, Any]
+    result: dict[str, Any] | None = None
+    created_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "reaction_id": self.reaction_id,
+            "reaction_key": self.reaction_key,
+            "rule_type": self.rule_type,
+            "status": self.status,
+            "player_guid": self.player_guid,
+            "subject": self.subject.to_dict(),
+            "planned_actions": self.planned_actions,
+            "result": self.result,
+            "created_at": self.created_at,
+        }
+
+
+@dataclass(slots=True)
+class ReactionCooldownRecord:
+    reaction_key: str
+    rule_type: str
+    player_guid: int
+    subject: SubjectRef
+    cooldown_until: str
+    last_triggered_at: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "reaction_key": self.reaction_key,
+            "rule_type": self.rule_type,
+            "player_guid": self.player_guid,
+            "subject": self.subject.to_dict(),
+            "cooldown_until": self.cooldown_until,
+            "last_triggered_at": self.last_triggered_at,
+            "metadata": self.metadata,
         }

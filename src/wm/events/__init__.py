@@ -10,6 +10,8 @@ from wm.events.models import LocationRef
 from wm.events.models import PlannedAction
 from wm.events.models import ProjectionResult
 from wm.events.models import ReactionCooldownKey
+from wm.events.models import ReactionCooldownRecord
+from wm.events.models import ReactionLogRecord
 from wm.events.models import ReactionOpportunity
 from wm.events.models import ReactionPlan
 from wm.events.models import RecordResult
@@ -31,6 +33,8 @@ __all__ = [
     "PlannedAction",
     "ProjectionResult",
     "ReactionCooldownKey",
+    "ReactionCooldownRecord",
+    "ReactionLogRecord",
     "ReactionOpportunity",
     "ReactionPlan",
     "RecordResult",

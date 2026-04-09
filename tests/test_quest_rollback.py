@@ -5,6 +5,7 @@ import unittest
 
 from wm.config import Settings
 from wm.quests.rollback import QuestRollbackManager
+from wm.reactive.models import ReactiveQuestRule
 
 
 class FakeMysqlClient:
@@ -16,6 +17,7 @@ class FakeMysqlClient:
         if database == "acore_world" and "FROM wm_rollback_snapshot" in sql:
             snapshot = {
                 "quest_template": [],
+                "quest_template_addon": [],
                 "creature_queststarter": [],
                 "creature_questender": [],
                 "quest_offer_reward": [],
@@ -26,14 +28,24 @@ class FakeMysqlClient:
             return [
                 {"TABLE_NAME": "quest_offer_reward"},
                 {"TABLE_NAME": "quest_request_items"},
+                {"TABLE_NAME": "quest_template_addon"},
                 {"TABLE_NAME": "wm_reserved_slot"},
             ]
         raise AssertionError(f"Unexpected SQL in database {database}: {sql}")
 
 
 class RecordingRollbackManager(QuestRollbackManager):
-    def __init__(self) -> None:
-        super().__init__(client=FakeMysqlClient(), settings=Settings(world_db_name="acore_world"))
+    def __init__(self, *, reactive_rule: ReactiveQuestRule | None = None) -> None:
+        class FakeReactiveStore:
+            def get_rule_by_quest_id(self_nonlocal, *, quest_id: int):
+                del quest_id
+                return reactive_rule
+
+        super().__init__(
+            client=FakeMysqlClient(),
+            settings=Settings(world_db_name="acore_world"),
+            reactive_store=FakeReactiveStore(),  # type: ignore[arg-type]
+        )
         self.executed: list[str] = []
 
     def _execute_world(self, sql: str) -> None:
@@ -56,9 +68,39 @@ class QuestRollbackTests(unittest.TestCase):
         self.assertTrue(result.ok)
         joined = "\n".join(manager.executed)
         self.assertIn("DELETE FROM creature_queststarter WHERE quest = 910005;", joined)
+        self.assertIn("DELETE FROM quest_template_addon WHERE ID = 910005;", joined)
         self.assertIn("DELETE FROM quest_template WHERE ID = 910005;", joined)
         self.assertIn("UPDATE wm_reserved_slot SET SlotStatus = 'staged'", joined)
         self.assertIn("'rollback', 'success'", joined)
+
+    def test_reactive_quest_requires_explicit_override(self) -> None:
+        manager = RecordingRollbackManager(
+            reactive_rule=ReactiveQuestRule(
+                rule_key="reactive_bounty:kobold_vermin",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=6,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=120,
+                quest_id=910005,
+                turn_in_npc_entry=197,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={},
+                notes=[],
+            )
+        )
+
+        result = manager.rollback(
+            quest_id=910005,
+            mode="dry-run",
+            runtime_sync_mode="off",
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any(issue.path == "reactive_rule" for issue in result.issues))
 
 
 if __name__ == "__main__":

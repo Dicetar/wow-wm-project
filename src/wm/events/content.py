@@ -6,6 +6,10 @@ from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient
 from wm.events.models import PlannedAction
 from wm.events.models import ReactionOpportunity
+from wm.refs import CreatureRef
+from wm.refs import NpcRef
+from wm.refs import PlayerRef
+from wm.refs import QuestRef
 from wm.quests.bounty import build_bounty_quest_draft
 from wm.quests.generate_bounty import LiveCreatureResolver
 from wm.reserved.db_allocator import ReservedSlotDbAllocator
@@ -26,6 +30,8 @@ class DeterministicContentFactory:
         self.resolver = resolver or LiveCreatureResolver(client=client, settings=settings)
 
     def build_actions(self, opportunity: ReactionOpportunity) -> tuple[list[PlannedAction], dict[str, Any]]:
+        if opportunity.opportunity_type == "reactive_bounty_grant":
+            return self._build_reactive_bounty_grant_actions(opportunity)
         if opportunity.rule_type == "repeat_hunt_followup":
             return self._build_repeat_hunt_actions(opportunity)
         if opportunity.rule_type == "area_pressure_refresh":
@@ -155,9 +161,87 @@ class DeterministicContentFactory:
             {"subject_name": subject_name, "talk_count": talk_count, "content_factory": "deterministic_familiar_npc"},
         )
 
+    def _build_reactive_bounty_grant_actions(self, opportunity: ReactionOpportunity) -> tuple[list[PlannedAction], dict[str, Any]]:
+        reactive_rule = opportunity.metadata.get("reactive_rule")
+        if not isinstance(reactive_rule, dict):
+            return (
+                [
+                    PlannedAction(
+                        kind="noop",
+                        payload={"reason": "Reactive bounty opportunity is missing rule metadata."},
+                        description="Reactive bounty grant requires attached rule metadata.",
+                    )
+                ],
+                {"content_factory": "reactive_bounty_grant", "grant_generation": "missing_rule_metadata"},
+            )
+
+        quest_id = reactive_rule.get("quest_id")
+        if quest_id in (None, ""):
+            return (
+                [
+                    PlannedAction(
+                        kind="noop",
+                        payload={"reason": "Reactive bounty opportunity is missing quest_id."},
+                        description="Reactive bounty grant requires a reusable quest ID.",
+                    )
+                ],
+                {"content_factory": "reactive_bounty_grant", "grant_generation": "missing_quest_id"},
+            )
+
+        action = PlannedAction(
+            kind="quest_grant",
+            payload={
+                "quest": QuestRef(
+                    id=int(quest_id),
+                    title=_str_or_none(reactive_rule.get("quest", {}).get("title"))
+                    if isinstance(reactive_rule.get("quest"), dict)
+                    else None,
+                ).to_dict(),
+                "player": PlayerRef(
+                    guid=int(opportunity.player_guid),
+                    name=_str_or_none(reactive_rule.get("player_scope", {}).get("name"))
+                    if isinstance(reactive_rule.get("player_scope"), dict)
+                    else None,
+                ).to_dict(),
+                "subject": CreatureRef(
+                    entry=int(opportunity.subject.subject_entry),
+                    name=_subject_name(opportunity),
+                ).to_dict(),
+                "turn_in_npc": NpcRef(
+                    entry=int(reactive_rule.get("turn_in_npc_entry") or 0),
+                    name=_str_or_none(reactive_rule.get("turn_in_npc", {}).get("name"))
+                    if isinstance(reactive_rule.get("turn_in_npc"), dict)
+                    else None,
+                ).to_dict(),
+                "quest_id": int(quest_id),
+                "player_guid": int(opportunity.player_guid),
+                "rule_key": str(reactive_rule.get("rule_key") or opportunity.rule_type),
+                "turn_in_npc_entry": int(reactive_rule.get("turn_in_npc_entry") or 0),
+                "grant_mode": str(reactive_rule.get("grant_mode") or "direct_quest_add"),
+                "subject_name": _subject_name(opportunity),
+                "kill_threshold": int(reactive_rule.get("kill_threshold") or 0),
+                "window_seconds": int(reactive_rule.get("window_seconds") or 0),
+            },
+            description="Grant a reusable reactive bounty directly to the player through SOAP.",
+        )
+        return (
+            [action],
+            {
+                "content_factory": "reactive_bounty_grant",
+                "grant_generation": "ready",
+                "quest_id": int(quest_id),
+            },
+        )
+
 
 def _subject_name(opportunity: ReactionOpportunity) -> str:
     name = opportunity.metadata.get("subject_name")
     if isinstance(name, str) and name.strip():
         return name.strip()
     return f"{opportunity.subject.subject_type}:{opportunity.subject.subject_entry}"
+
+
+def _str_or_none(value: object) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)

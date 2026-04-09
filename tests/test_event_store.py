@@ -5,6 +5,7 @@ import unittest
 from wm.config import Settings
 from wm.events.models import WMEvent
 from wm.events.store import EventStore
+from wm.events.store import _sql_datetime_or_expression
 
 
 class _DummyClient:
@@ -16,6 +17,8 @@ class MemoryEventStore(EventStore):
         super().__init__(client=_DummyClient(), settings=Settings(world_db_name="acore_world"))
         self._events: dict[tuple[str, str], dict[str, object]] = {}
         self._cursors: dict[tuple[str, str], str] = {}
+        self._reaction_logs: list[dict[str, object]] = []
+        self._cooldowns: list[dict[str, object]] = []
         self._event_auto_id = 1
 
     def _query_world(self, sql: str):
@@ -41,6 +44,45 @@ class MemoryEventStore(EventStore):
                 }
             ]
 
+        if "FROM wm_event_log" in sql and "ORDER BY EventID" in sql:
+            rows = list(self._events.values())
+            if "EventClass = " in sql:
+                event_class = _extract_single_quoted(sql, "EventClass = ")
+                rows = [row for row in rows if row["EventClass"] == event_class]
+            if "PlayerGUID = " in sql:
+                player_guid = int(_extract_int(sql, "PlayerGUID = "))
+                rows = [row for row in rows if row["PlayerGUID"] == player_guid]
+            if "SubjectType = " in sql:
+                subject_type = _extract_single_quoted(sql, "SubjectType = ")
+                rows = [row for row in rows if row["SubjectType"] == subject_type]
+            if "SubjectEntry = " in sql:
+                subject_entry = int(_extract_int(sql, "SubjectEntry = "))
+                rows = [row for row in rows if row["SubjectEntry"] == subject_entry]
+            if "EventType = " in sql:
+                event_type = _extract_single_quoted(sql, "EventType = ")
+                rows = [row for row in rows if row["EventType"] == event_type]
+            reverse = "ORDER BY EventID DESC" in sql
+            rows.sort(key=lambda row: int(row["EventID"]), reverse=reverse)
+            return rows
+
+        if "FROM wm_reaction_log" in sql:
+            rows = list(self._reaction_logs)
+            if "PlayerGUID = " in sql:
+                player_guid = int(_extract_int(sql, "PlayerGUID = "))
+                rows = [row for row in rows if row["PlayerGUID"] == player_guid]
+            if "Status = " in sql:
+                status = _extract_single_quoted(sql, "Status = ")
+                rows = [row for row in rows if row["Status"] == status]
+            rows.sort(key=lambda row: int(row["ReactionID"]), reverse=True)
+            return rows
+
+        if "FROM wm_reaction_cooldown" in sql:
+            rows = list(self._cooldowns)
+            if "PlayerGUID = " in sql:
+                player_guid = int(_extract_int(sql, "PlayerGUID = "))
+                rows = [row for row in rows if row["PlayerGUID"] == player_guid]
+            return rows
+
         raise AssertionError(f"Unexpected SQL: {sql}")
 
     def _execute_world(self, sql: str) -> None:
@@ -60,6 +102,13 @@ class MemoryEventStore(EventStore):
                 "Source": source,
                 "SourceEventKey": source_event_key,
                 "OccurredAt": values.group(5),
+                "PlayerGUID": int(values.group(6)) if values.group(6) != "NULL" else None,
+                "SubjectType": values.group(7).strip("'") if values.group(7) != "NULL" else None,
+                "SubjectEntry": int(values.group(8)) if values.group(8) != "NULL" else None,
+                "MapID": int(values.group(9)) if values.group(9) != "NULL" else None,
+                "ZoneID": int(values.group(10)) if values.group(10) != "NULL" else None,
+                "AreaID": int(values.group(11)) if values.group(11) != "NULL" else None,
+                "EventValue": values.group(12).strip("'") if values.group(12) != "NULL" else None,
                 "MetadataJSON": json.dumps({"parsed": True}),
             }
             self._event_auto_id += 1
@@ -76,6 +125,10 @@ class MemoryEventStore(EventStore):
 
 
 class EventStoreTests(unittest.TestCase):
+    def test_sql_datetime_expression_normalizes_iso_strings(self) -> None:
+        self.assertEqual(_sql_datetime_or_expression("2026-04-08T14:03:40Z"), "'2026-04-08 14:03:40'")
+        self.assertEqual(_sql_datetime_or_expression("2026-04-08T14:03:40.123Z"), "'2026-04-08 14:03:40'")
+
     def test_record_dedupes_duplicate_source_event(self) -> None:
         store = MemoryEventStore()
         event = WMEvent(
@@ -104,6 +157,119 @@ class EventStoreTests(unittest.TestCase):
         self.assertIsNotNone(cursor)
         self.assertEqual(cursor.cursor_value, "15")
 
+    def test_list_recent_events_filters_by_class_and_player(self) -> None:
+        store = MemoryEventStore()
+        store.record(
+            [
+                WMEvent(
+                    event_class="observed",
+                    event_type="kill",
+                    source="db_poll",
+                    source_event_key="1001",
+                    occurred_at="2026-04-08 12:00:00",
+                    player_guid=5406,
+                    subject_type="creature",
+                    subject_entry=6,
+                ),
+                WMEvent(
+                    event_class="derived",
+                    event_type="repeat_hunt_detected",
+                    source="wm.rules",
+                    source_event_key="derived-1",
+                    occurred_at="2026-04-08 12:01:00",
+                    player_guid=5406,
+                    subject_type="creature",
+                    subject_entry=6,
+                ),
+            ]
+        )
+
+        rows = store.list_recent_events(event_class="observed", player_guid=5406, limit=5)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].event_type, "kill")
+
+    def test_list_recent_reaction_logs_parses_rows(self) -> None:
+        store = MemoryEventStore()
+        store._reaction_logs.append(
+            {
+                "ReactionID": 5,
+                "ReactionKey": "repeat_hunt_followup:5406:creature:6",
+                "RuleType": "repeat_hunt_followup",
+                "Status": "dry-run",
+                "PlayerGUID": 5406,
+                "SubjectType": "creature",
+                "SubjectEntry": 6,
+                "PlannedActionsJSON": json.dumps({"plan_key": "repeat_hunt_followup:5406:creature:6"}),
+                "ResultJSON": json.dumps({"status": "dry-run"}),
+                "CreatedAt": "2026-04-08 10:00:00",
+            }
+        )
+
+        rows = store.list_recent_reaction_logs(player_guid=5406, limit=5)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].status, "dry-run")
+        self.assertEqual(rows[0].subject.subject_entry, 6)
+
+    def test_list_active_cooldowns_parses_rows(self) -> None:
+        store = MemoryEventStore()
+        store._cooldowns.append(
+            {
+                "ReactionKey": "repeat_hunt_followup:5406:creature:6",
+                "RuleType": "repeat_hunt_followup",
+                "PlayerGUID": 5406,
+                "SubjectType": "creature",
+                "SubjectEntry": 6,
+                "CooldownUntil": "2026-04-08 11:00:00",
+                "LastTriggeredAt": "2026-04-08 10:00:00",
+                "MetadataJSON": json.dumps({"plan_key": "repeat_hunt_followup:5406:creature:6"}),
+            }
+        )
+
+        rows = store.list_active_cooldowns(player_guid=5406, limit=5)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].rule_type, "repeat_hunt_followup")
+        self.assertEqual(rows[0].metadata["plan_key"], "repeat_hunt_followup:5406:creature:6")
+
+    def test_list_subject_events_filters_by_subject_and_type(self) -> None:
+        store = MemoryEventStore()
+        store.record(
+            [
+                WMEvent(
+                    event_class="observed",
+                    event_type="kill",
+                    source="db_poll",
+                    source_event_key="kill-1",
+                    occurred_at="2026-04-08 12:00:00",
+                    player_guid=5406,
+                    subject_type="creature",
+                    subject_entry=6,
+                ),
+                WMEvent(
+                    event_class="observed",
+                    event_type="talk",
+                    source="db_poll",
+                    source_event_key="talk-1",
+                    occurred_at="2026-04-08 12:00:05",
+                    player_guid=5406,
+                    subject_type="creature",
+                    subject_entry=197,
+                ),
+            ]
+        )
+
+        rows = store.list_subject_events(
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=6,
+            event_type="kill",
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].source_event_key, "kill-1")
+
 
 def _extract_single_quoted(sql: str, marker: str) -> str:
     start = sql.index(marker) + len(marker)
@@ -111,6 +277,15 @@ def _extract_single_quoted(sql: str, marker: str) -> str:
     match = re.match(r"'([^']*)'", quoted)
     if match is None:
         raise AssertionError(f"Could not extract quoted marker {marker} from SQL: {sql}")
+    return match.group(1)
+
+
+def _extract_int(sql: str, marker: str) -> str:
+    start = sql.index(marker) + len(marker)
+    digits = sql[start:]
+    match = re.match(r"(\d+)", digits)
+    if match is None:
+        raise AssertionError(f"Could not extract integer marker {marker} from SQL: {sql}")
     return match.group(1)
 
 

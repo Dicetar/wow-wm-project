@@ -127,6 +127,39 @@ class DeterministicContentFactoryTests(unittest.TestCase):
         self.assertEqual([action.kind for action in actions], ["announcement"])
         self.assertEqual(notes["quest_generation"], "skipped_missing_default_questgiver")
 
+    def test_reactive_bounty_builds_direct_grant_action(self) -> None:
+        factory = DeterministicContentFactory(
+            client=None,  # type: ignore[arg-type]
+            settings=Settings(),
+            slot_allocator=FakeAllocator(FakeSlot(910010)),  # type: ignore[arg-type]
+            resolver=FakeResolver(),  # type: ignore[arg-type]
+        )
+        opportunity = ReactionOpportunity(
+            opportunity_type="reactive_bounty_grant",
+            rule_type="reactive_bounty:kobold_vermin",
+            player_guid=5406,
+            subject=SubjectRef(subject_type="creature", subject_entry=6),
+            source_event_key="evt-200",
+            metadata={
+                "subject_name": "Kobold Vermin",
+                "reactive_rule": {
+                    "rule_key": "reactive_bounty:kobold_vermin",
+                    "quest_id": 910000,
+                    "turn_in_npc_entry": 197,
+                    "grant_mode": "direct_quest_add",
+                    "kill_threshold": 4,
+                    "window_seconds": 120,
+                },
+            },
+        )
+
+        actions, notes = factory.build_actions(opportunity)
+
+        self.assertEqual([action.kind for action in actions], ["quest_grant"])
+        self.assertEqual(actions[0].payload["quest_id"], 910000)
+        self.assertEqual(actions[0].payload["player_guid"], 5406)
+        self.assertEqual(notes["grant_generation"], "ready")
+
 
 if __name__ == "__main__":
     unittest.main()

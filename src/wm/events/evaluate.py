@@ -26,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     engine = DeterministicRuleEngine(client=client, settings=settings, store=store)
 
     events = store.list_unevaluated_observed_events(limit=args.limit)
-    evaluations = [engine.evaluate(event) for event in events]
+    evaluations = [engine._evaluate(event, preview=False, mark_evaluated=False) for event in events]
 
     derived_events = []
     opportunities = []
@@ -35,6 +35,9 @@ def main(argv: list[str] | None = None) -> int:
         opportunities.extend(evaluation.opportunities)
     if derived_events:
         store.record(derived_events)
+    for event in events:
+        if event.event_id is not None:
+            store.mark_evaluated(event_id=event.event_id)
 
     payload = {
         "event_count": len(events),

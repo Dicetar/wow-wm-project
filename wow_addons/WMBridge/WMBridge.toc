@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: WMBridge
+## Notes: Hidden addon-channel bridge for World Master live events.
+## Author: Codex
+## Version: 0.1.0
+## SavedVariables:
+
+WMBridge.lua

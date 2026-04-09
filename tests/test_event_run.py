@@ -26,7 +26,7 @@ class EventRunValidationTests(unittest.TestCase):
 
     def test_apply_requires_confirmation(self) -> None:
         settings = Settings(event_default_questgiver_entry=197)
-        args = Namespace(mode="apply", confirm_live_apply=False, player_guid=5406)
+        args = Namespace(mode="apply", confirm_live_apply=False, player_guid=5406, adapter="db")
 
         with self.assertRaises(SystemExit) as ctx:
             _validate_run_arguments(args=args, settings=settings)
@@ -35,21 +35,36 @@ class EventRunValidationTests(unittest.TestCase):
 
     def test_apply_requires_player_guid(self) -> None:
         settings = Settings(event_default_questgiver_entry=197)
-        args = Namespace(mode="apply", confirm_live_apply=True, player_guid=None)
+        args = Namespace(mode="apply", confirm_live_apply=True, player_guid=None, adapter="db")
 
         with self.assertRaises(SystemExit) as ctx:
             _validate_run_arguments(args=args, settings=settings)
 
         self.assertIn("--player-guid", str(ctx.exception))
 
-    def test_apply_requires_questgiver(self) -> None:
+    def test_apply_does_not_require_questgiver_for_reactive_flows(self) -> None:
         settings = Settings()
-        args = Namespace(mode="apply", confirm_live_apply=True, player_guid=5406)
+        args = Namespace(mode="apply", confirm_live_apply=True, player_guid=5406, adapter="db")
+
+        _validate_run_arguments(args=args, settings=settings)
+
+    def test_combat_log_requires_player_guid_even_for_dry_run(self) -> None:
+        settings = Settings()
+        args = Namespace(mode="dry-run", confirm_live_apply=False, player_guid=None, adapter="combat_log")
 
         with self.assertRaises(SystemExit) as ctx:
             _validate_run_arguments(args=args, settings=settings)
 
-        self.assertIn("--questgiver-entry", str(ctx.exception))
+        self.assertIn("Combat log runs require --player-guid", str(ctx.exception))
+
+    def test_addon_log_requires_player_guid_even_for_dry_run(self) -> None:
+        settings = Settings()
+        args = Namespace(mode="dry-run", confirm_live_apply=False, player_guid=None, adapter="addon_log")
+
+        with self.assertRaises(SystemExit) as ctx:
+            _validate_run_arguments(args=args, settings=settings)
+
+        self.assertIn("Addon log runs require --player-guid", str(ctx.exception))
 
     def test_apply_allows_single_scoped_plan(self) -> None:
         plan = ReactionPlan(

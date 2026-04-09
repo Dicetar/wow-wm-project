@@ -96,7 +96,7 @@ class QuestPublisher:
             "wm_rollback_snapshot",
             "wm_reserved_slot",
         }
-        all_tables = set(required_tables) | {"quest_offer_reward", "quest_request_items"}
+        all_tables = set(required_tables) | {"quest_offer_reward", "quest_request_items", "quest_template_addon"}
         table_presence = self._table_presence(all_tables)
 
         for table_name in sorted(required_tables):
@@ -109,12 +109,14 @@ class QuestPublisher:
                 )
 
         quest_template_columns = self._table_columns("quest_template") if table_presence.get("quest_template", False) else set()
+        quest_template_addon_columns = self._table_columns("quest_template_addon") if table_presence.get("quest_template_addon", False) else set()
         quest_offer_reward_columns = self._table_columns("quest_offer_reward") if table_presence.get("quest_offer_reward", False) else set()
         quest_request_items_columns = self._table_columns("quest_request_items") if table_presence.get("quest_request_items", False) else set()
 
         compatibility = self._build_compatibility_matrix(
             table_presence=table_presence,
             quest_template_columns=quest_template_columns,
+            quest_template_addon_columns=quest_template_addon_columns,
             quest_offer_reward_columns=quest_offer_reward_columns,
             quest_request_items_columns=quest_request_items_columns,
         )
@@ -169,7 +171,7 @@ class QuestPublisher:
                 f"WHERE ID = {int(draft.quest_id)}"
             )
 
-        if table_presence.get("creature_queststarter", False) and table_presence.get("quest_template", False):
+        if draft.start_npc_entry is not None and table_presence.get("creature_queststarter", False) and table_presence.get("quest_template", False):
             report.duplicate_title_rows = self._find_duplicate_title_rows(draft)
             if report.duplicate_title_rows:
                 duplicate_ids = ", ".join(str(row.get("ID")) for row in report.duplicate_title_rows)
@@ -189,6 +191,20 @@ class QuestPublisher:
                     PublishIssue(
                         path="questgiver_entry",
                         message=f"Quest giver entry {draft.questgiver_entry} does not exist in creature_template.",
+                    )
+                )
+            if draft.start_npc_entry is not None and not self._creature_exists(draft.start_npc_entry):
+                report.issues.append(
+                    PublishIssue(
+                        path="start_npc_entry",
+                        message=f"Starter NPC entry {draft.start_npc_entry} does not exist in creature_template.",
+                    )
+                )
+            if draft.end_npc_entry is not None and not self._creature_exists(draft.end_npc_entry):
+                report.issues.append(
+                    PublishIssue(
+                        path="end_npc_entry",
+                        message=f"Ender NPC entry {draft.end_npc_entry} does not exist in creature_template.",
                     )
                 )
             if not self._creature_exists(draft.objective.target_entry):
@@ -264,7 +280,7 @@ class QuestPublisher:
                 f"WHERE quest = {int(draft.quest_id)}"
             ),
         }
-        table_presence = self._table_presence({"quest_offer_reward", "quest_request_items"})
+        table_presence = self._table_presence({"quest_offer_reward", "quest_request_items", "quest_template_addon"})
         if table_presence.get("quest_offer_reward", False):
             snapshot["quest_offer_reward"] = self._query_world(
                 "SELECT * FROM quest_offer_reward "
@@ -273,6 +289,11 @@ class QuestPublisher:
         if table_presence.get("quest_request_items", False):
             snapshot["quest_request_items"] = self._query_world(
                 "SELECT * FROM quest_request_items "
+                f"WHERE ID = {int(draft.quest_id)}"
+            )
+        if table_presence.get("quest_template_addon", False):
+            snapshot["quest_template_addon"] = self._query_world(
+                "SELECT * FROM quest_template_addon "
                 f"WHERE ID = {int(draft.quest_id)}"
             )
         return snapshot
@@ -336,15 +357,17 @@ class QuestPublisher:
         )
 
     def _compile_sql_plan(self, draft: BountyQuestDraft):
-        table_presence = self._table_presence({"quest_offer_reward", "quest_request_items"})
+        table_presence = self._table_presence({"quest_offer_reward", "quest_request_items", "quest_template_addon"})
         available_tables = {name for name, present in table_presence.items() if present}
         quest_template_columns = self._table_columns("quest_template")
+        quest_template_addon_columns = self._table_columns("quest_template_addon") if "quest_template_addon" in available_tables else set()
         quest_offer_reward_columns = self._table_columns("quest_offer_reward") if "quest_offer_reward" in available_tables else set()
         quest_request_items_columns = self._table_columns("quest_request_items") if "quest_request_items" in available_tables else set()
 
         return compile_bounty_quest_sql_plan(
             draft,
             quest_template_columns=quest_template_columns,
+            quest_template_addon_columns=quest_template_addon_columns,
             available_tables=available_tables,
             quest_offer_reward_columns=quest_offer_reward_columns,
             quest_request_items_columns=quest_request_items_columns,
@@ -355,6 +378,7 @@ class QuestPublisher:
         *,
         table_presence: dict[str, bool],
         quest_template_columns: set[str],
+        quest_template_addon_columns: set[str],
         quest_offer_reward_columns: set[str],
         quest_request_items_columns: set[str],
     ) -> dict[str, Any]:
@@ -376,6 +400,7 @@ class QuestPublisher:
                 )
             ),
             "quest_template_columns": sorted(quest_template_columns),
+            "quest_template_addon_columns": sorted(quest_template_addon_columns),
             "quest_offer_reward_columns": sorted(quest_offer_reward_columns),
             "quest_request_items_columns": sorted(quest_request_items_columns),
         }
@@ -384,7 +409,7 @@ class QuestPublisher:
         return self._query_world(
             "SELECT qt.ID, qt.LogTitle FROM quest_template qt "
             "JOIN creature_queststarter cqs ON cqs.quest = qt.ID "
-            f"WHERE cqs.id = {int(draft.questgiver_entry)} "
+            f"WHERE cqs.id = {int(draft.start_npc_entry or draft.questgiver_entry)} "
             f"AND qt.LogTitle = {_sql_string(draft.title)} "
             f"AND qt.ID <> {int(draft.quest_id)}"
         )
@@ -512,6 +537,17 @@ def load_bounty_quest_draft(path: str | Path) -> BountyQuestDraft:
             ),
             reward_item_count=int(reward.get("reward_item_count", 1)),
         ),
+        start_npc_entry=(
+            int(raw["start_npc_entry"])
+            if raw.get("start_npc_entry") not in (None, "")
+            else None
+        ),
+        end_npc_entry=(
+            int(raw["end_npc_entry"])
+            if raw.get("end_npc_entry") not in (None, "")
+            else None
+        ),
+        grant_mode=str(raw.get("grant_mode") or "npc_start"),
         tags=[str(x) for x in raw.get("tags", [])],
         template_defaults={str(k): v for k, v in (raw.get("template_defaults") or {}).items()},
     )

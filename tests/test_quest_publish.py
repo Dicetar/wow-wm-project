@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import tempfile
 import unittest
 
 from wm.config import Settings
@@ -23,6 +22,7 @@ class FakeMysqlClient:
         if database == "information_schema" and "FROM information_schema.TABLES" in sql:
             return [
                 {"TABLE_NAME": "quest_template"},
+                {"TABLE_NAME": "quest_template_addon"},
                 {"TABLE_NAME": "creature_queststarter"},
                 {"TABLE_NAME": "creature_questender"},
                 {"TABLE_NAME": "creature_template"},
@@ -31,13 +31,17 @@ class FakeMysqlClient:
                 {"TABLE_NAME": "wm_reserved_slot"},
             ]
         if database == "information_schema" and "FROM information_schema.COLUMNS" in sql:
+            if "TABLE_NAME = 'quest_template_addon'" in sql:
+                return [{"COLUMN_NAME": "ID"}, {"COLUMN_NAME": "SpecialFlags"}]
             columns = [
                 "ID",
                 "QuestType",
                 "QuestLevel",
                 "MinLevel",
                 "LogTitle",
+                "LogDescription",
                 "QuestDescription",
+                "QuestCompletionLog",
                 "ObjectiveText1",
                 "OfferRewardText",
                 "RequestItemsText",
@@ -50,6 +54,8 @@ class FakeMysqlClient:
             return [{"COLUMN_NAME": column} for column in columns]
         if database == "acore_world" and "FROM creature_template" in sql and "entry = 1498" in sql:
             return [{"entry": "1498", "name": "Bethor Iceshard"}]
+        if database == "acore_world" and "FROM creature_template" in sql and "entry = 197" in sql:
+            return [{"entry": "197", "name": "Marshal McBride"}]
         if database == "acore_world" and "FROM creature_template" in sql and "entry = 46" in sql:
             return [{"entry": "46", "name": "Murloc Forager"}]
         if database == "acore_world" and "JOIN creature_queststarter" in sql:
@@ -61,6 +67,8 @@ class FakeMysqlClient:
         if database == "acore_world" and "FROM creature_queststarter" in sql:
             return []
         if database == "acore_world" and "FROM creature_questender" in sql:
+            return []
+        if database == "acore_world" and "FROM quest_template_addon" in sql:
             return []
         if database == "acore_world" and "FROM wm_reserved_slot" in sql:
             return self.reserved_rows
@@ -136,10 +144,13 @@ class QuestPublishTests(unittest.TestCase):
 
     def test_publish_apply_records_execution_plan(self) -> None:
         publisher = RecordingQuestPublisher(client=FakeMysqlClient(), settings=self._settings())
-        result = publisher.publish(draft=self._draft(), mode="apply")
+        draft = self._draft()
+        draft.template_defaults["SpecialFlags"] = 1
+        result = publisher.publish(draft=draft, mode="apply")
         self.assertTrue(result.applied)
         self.assertTrue(any("wm_rollback_snapshot" in statement for statement in publisher.executed_statements))
         self.assertTrue(any("INSERT INTO quest_template" in statement for statement in publisher.executed_statements))
+        self.assertTrue(any("INSERT INTO quest_template_addon" in statement for statement in publisher.executed_statements))
         self.assertTrue(any("wm_publish_log" in statement and "success" in statement for statement in publisher.executed_statements))
         self.assertTrue(any("UPDATE wm_reserved_slot SET SlotStatus = 'active'" in statement for statement in publisher.executed_statements))
 
@@ -148,12 +159,32 @@ class QuestPublishTests(unittest.TestCase):
             "draft": self._draft().to_dict(),
             "validation": {"ok": True, "issues": []},
         }
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "draft.json"
-            path.write_text(json.dumps(draft_payload), encoding="utf-8")
-            draft = load_bounty_quest_draft(path)
+        tmpdir = Path("artifacts") / "test_tmp"
+        tmpdir.mkdir(parents=True, exist_ok=True)
+        path = tmpdir / "draft_envelope.json"
+        path.write_text(json.dumps(draft_payload), encoding="utf-8")
+        draft = load_bounty_quest_draft(path)
         self.assertEqual(draft.quest_id, 910001)
         self.assertEqual(draft.objective.target_entry, 46)
+
+    def test_direct_grant_preflight_allows_no_starter(self) -> None:
+        publisher = RecordingQuestPublisher(client=FakeMysqlClient(), settings=self._settings())
+        draft = build_bounty_quest_draft(
+            quest_id=910001,
+            questgiver_entry=197,
+            questgiver_name="Marshal McBride",
+            target_profile=self._target(),
+            kill_count=4,
+            reward_money_copper=1200,
+            start_npc_entry=None,
+            end_npc_entry=197,
+            grant_mode="direct_quest_add",
+        )
+
+        report = publisher.preflight(draft)
+
+        self.assertTrue(report.ok)
+        self.assertEqual(report.duplicate_title_rows, [])
 
 
 if __name__ == "__main__":

@@ -40,6 +40,16 @@ def validate_bounty_quest_draft(draft: BountyQuestDraft) -> ValidationResult:
 
     if draft.questgiver_entry <= 0:
         issues.append(ValidationIssue(path="questgiver_entry", message="Quest giver entry must be positive."))
+    if draft.start_npc_entry is not None and draft.start_npc_entry <= 0:
+        issues.append(ValidationIssue(path="start_npc_entry", message="Start NPC entry must be positive when set."))
+    if draft.end_npc_entry is not None and draft.end_npc_entry <= 0:
+        issues.append(ValidationIssue(path="end_npc_entry", message="End NPC entry must be positive when set."))
+    if draft.grant_mode not in {"npc_start", "direct_quest_add"}:
+        issues.append(ValidationIssue(path="grant_mode", message="Grant mode must be `npc_start` or `direct_quest_add`."))
+    if draft.grant_mode == "npc_start" and draft.start_npc_entry is None:
+        issues.append(ValidationIssue(path="start_npc_entry", message="NPC-start quests require a starter NPC entry."))
+    if draft.end_npc_entry is None:
+        issues.append(ValidationIssue(path="end_npc_entry", message="Bounty quests require a turn-in NPC entry."))
 
     if draft.objective.target_entry <= 0:
         issues.append(ValidationIssue(path="objective.target_entry", message="Target entry must be positive."))

@@ -9,9 +9,12 @@ from wm.db.mysql_cli import MysqlCliClient, MysqlCliError
 from wm.events.models import AdapterCursor
 from wm.events.models import ProjectionResult
 from wm.events.models import ReactionCooldownKey
+from wm.events.models import ReactionCooldownRecord
+from wm.events.models import ReactionLogRecord
 from wm.events.models import ReactionPlan
 from wm.events.models import RecordResult
 from wm.events.models import WMEvent
+from wm.events.models import SubjectRef
 
 
 class EventStore:
@@ -97,6 +100,61 @@ class EventStore:
         )
         return [self._row_to_event(row) for row in rows]
 
+    def list_recent_events(
+        self,
+        *,
+        event_class: str | None = None,
+        player_guid: int | None = None,
+        limit: int = 20,
+        newest_first: bool = True,
+    ) -> list[WMEvent]:
+        predicates: list[str] = []
+        if event_class is not None:
+            predicates.append(f"EventClass = {_sql_string(event_class)}")
+        if player_guid is not None:
+            predicates.append(f"PlayerGUID = {int(player_guid)}")
+        where_clause = f"WHERE {' AND '.join(predicates)} " if predicates else ""
+        order = "DESC" if newest_first else "ASC"
+        rows = self._query_world(
+            "SELECT EventID, EventClass, EventType, Source, SourceEventKey, OccurredAt, PlayerGUID, SubjectType, "
+            "SubjectEntry, MapID, ZoneID, AreaID, EventValue, MetadataJSON "
+            "FROM wm_event_log "
+            f"{where_clause}"
+            f"ORDER BY EventID {order} "
+            f"LIMIT {int(limit)}"
+        )
+        return [self._row_to_event(row) for row in rows]
+
+    def list_subject_events(
+        self,
+        *,
+        player_guid: int,
+        subject_type: str,
+        subject_entry: int,
+        event_type: str | None = None,
+        event_class: str = "observed",
+        limit: int = 200,
+        newest_first: bool = False,
+    ) -> list[WMEvent]:
+        predicates = [
+            f"EventClass = {_sql_string(event_class)}",
+            f"PlayerGUID = {int(player_guid)}",
+            f"SubjectType = {_sql_string(subject_type)}",
+            f"SubjectEntry = {int(subject_entry)}",
+        ]
+        if event_type is not None:
+            predicates.append(f"EventType = {_sql_string(event_type)}")
+        order = "DESC" if newest_first else "ASC"
+        rows = self._query_world(
+            "SELECT EventID, EventClass, EventType, Source, SourceEventKey, OccurredAt, PlayerGUID, SubjectType, "
+            "SubjectEntry, MapID, ZoneID, AreaID, EventValue, MetadataJSON "
+            "FROM wm_event_log "
+            f"WHERE {' AND '.join(predicates)} "
+            f"ORDER BY EventID {order} "
+            f"LIMIT {int(limit)}"
+        )
+        return [self._row_to_event(row) for row in rows]
+
     def list_unevaluated_observed_events(self, *, limit: int = 100) -> list[WMEvent]:
         rows = self._query_world(
             "SELECT EventID, EventClass, EventType, Source, SourceEventKey, OccurredAt, PlayerGUID, SubjectType, "
@@ -123,6 +181,83 @@ class EventStore:
             "LIMIT 1"
         )
         return bool(rows)
+
+    def list_recent_reaction_logs(
+        self,
+        *,
+        player_guid: int | None = None,
+        status: str | None = None,
+        limit: int = 20,
+    ) -> list[ReactionLogRecord]:
+        predicates: list[str] = []
+        if player_guid is not None:
+            predicates.append(f"PlayerGUID = {int(player_guid)}")
+        if status is not None:
+            predicates.append(f"Status = {_sql_string(status)}")
+        where_clause = f"WHERE {' AND '.join(predicates)} " if predicates else ""
+        rows = self._query_world(
+            "SELECT ReactionID, ReactionKey, RuleType, Status, PlayerGUID, SubjectType, SubjectEntry, "
+            "PlannedActionsJSON, ResultJSON, CreatedAt "
+            "FROM wm_reaction_log "
+            f"{where_clause}"
+            "ORDER BY ReactionID DESC "
+            f"LIMIT {int(limit)}"
+        )
+        records: list[ReactionLogRecord] = []
+        for row in rows:
+            records.append(
+                ReactionLogRecord(
+                    reaction_id=int(row["ReactionID"]),
+                    reaction_key=str(row["ReactionKey"]),
+                    rule_type=str(row["RuleType"]),
+                    status=str(row["Status"]),
+                    player_guid=int(row["PlayerGUID"]),
+                    subject=SubjectRef(
+                        subject_type=str(row["SubjectType"]),
+                        subject_entry=int(row["SubjectEntry"]),
+                    ),
+                    planned_actions=_json_object_or_default(row.get("PlannedActionsJSON")),
+                    result=_json_object_or_none(row.get("ResultJSON")),
+                    created_at=_str_or_none(row.get("CreatedAt")),
+                )
+            )
+        return records
+
+    def list_active_cooldowns(
+        self,
+        *,
+        player_guid: int | None = None,
+        limit: int = 20,
+        at: str | None = None,
+    ) -> list[ReactionCooldownRecord]:
+        when = at or "CURRENT_TIMESTAMP"
+        predicates = [f"CooldownUntil > {_sql_datetime_or_expression(when)}"]
+        if player_guid is not None:
+            predicates.append(f"PlayerGUID = {int(player_guid)}")
+        rows = self._query_world(
+            "SELECT ReactionKey, RuleType, PlayerGUID, SubjectType, SubjectEntry, CooldownUntil, LastTriggeredAt, MetadataJSON "
+            "FROM wm_reaction_cooldown "
+            f"WHERE {' AND '.join(predicates)} "
+            "ORDER BY CooldownUntil DESC "
+            f"LIMIT {int(limit)}"
+        )
+        records: list[ReactionCooldownRecord] = []
+        for row in rows:
+            records.append(
+                ReactionCooldownRecord(
+                    reaction_key=str(row["ReactionKey"]),
+                    rule_type=str(row["RuleType"]),
+                    player_guid=int(row["PlayerGUID"]),
+                    subject=SubjectRef(
+                        subject_type=str(row["SubjectType"]),
+                        subject_entry=int(row["SubjectEntry"]),
+                    ),
+                    cooldown_until=str(row["CooldownUntil"]),
+                    last_triggered_at=str(row["LastTriggeredAt"]),
+                    metadata=_json_object_or_default(row.get("MetadataJSON")),
+                )
+            )
+        return records
 
     def mark_projected(self, *, event_id: int) -> None:
         self._execute_world(
@@ -226,7 +361,7 @@ class EventStore:
         elif event_type == "talk":
             updates.append("TalkCount = TalkCount + 1")
             counters["TalkCount"] = 1
-        elif event_type == "quest_complete":
+        elif event_type in {"quest_complete", "quest_completed"}:
             updates.append("QuestCompleteCount = QuestCompleteCount + 1")
             counters["QuestCompleteCount"] = 1
             if event_value:
@@ -241,8 +376,8 @@ class EventStore:
             "0, "
             "0, "
             f"{1 if event_type == 'talk' else 0}, "
-            f"{1 if event_type == 'quest_complete' else 0}, "
-            f"{_sql_string_or_null(event_value if event_type == 'quest_complete' else None)}"
+            f"{1 if event_type in {'quest_complete', 'quest_completed'} else 0}, "
+            f"{_sql_string_or_null(event_value if event_type in {'quest_complete', 'quest_completed'} else None)}"
             ") ON DUPLICATE KEY UPDATE "
             + ", ".join(updates)
         )
@@ -340,7 +475,19 @@ def _sql_int_or_null(value: int | None) -> str:
 def _sql_datetime_or_expression(value: str) -> str:
     if value == "CURRENT_TIMESTAMP":
         return value
-    return _sql_string(value)
+    normalized = str(value).strip()
+    if "T" in normalized:
+        normalized = normalized.replace("Z", "+00:00")
+        try:
+            from datetime import datetime
+
+            parsed = datetime.fromisoformat(normalized)
+            normalized = parsed.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            normalized = normalized.replace("T", " ").replace("Z", "")
+    if "." in normalized:
+        normalized = normalized.split(".", 1)[0]
+    return _sql_string(normalized)
 
 
 def _int_or_none(value: Any) -> int | None:
@@ -353,3 +500,20 @@ def _str_or_none(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
+
+
+def _json_object_or_default(value: Any) -> dict[str, Any]:
+    parsed = _json_object_or_none(value)
+    return parsed or {}
+
+
+def _json_object_or_none(value: Any) -> dict[str, Any] | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = json.loads(str(value))
+    except json.JSONDecodeError:
+        return {"raw": str(value)}
+    if isinstance(parsed, dict):
+        return parsed
+    return {"value": parsed}

@@ -10,6 +10,7 @@ from typing import Any
 
 from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient, MysqlCliError
+from wm.reactive.store import ReactiveQuestStore
 from wm.runtime_sync import RuntimeCommandResult, RuntimeSyncResult, SoapRuntimeClient, build_default_quest_reload_commands
 
 
@@ -50,12 +51,44 @@ class QuestRollbackResult:
 
 
 class QuestRollbackManager:
-    def __init__(self, *, client: MysqlCliClient, settings: Settings) -> None:
+    def __init__(
+        self,
+        *,
+        client: MysqlCliClient,
+        settings: Settings,
+        reactive_store: ReactiveQuestStore | None = None,
+    ) -> None:
         self.client = client
         self.settings = settings
+        self.reactive_store = reactive_store or ReactiveQuestStore(client=client, settings=settings)
 
-    def rollback(self, *, quest_id: int, mode: str, runtime_sync_mode: str) -> QuestRollbackResult:
+    def rollback(
+        self,
+        *,
+        quest_id: int,
+        mode: str,
+        runtime_sync_mode: str,
+        allow_reactive: bool = False,
+    ) -> QuestRollbackResult:
         issues: list[RollbackIssue] = []
+        reactive_rule = self.reactive_store.get_rule_by_quest_id(quest_id=quest_id)
+        if reactive_rule is not None and not allow_reactive:
+            issues.append(
+                RollbackIssue(
+                    path="reactive_rule",
+                    message=(
+                        f"Quest {quest_id} is owned by active reactive rule `{reactive_rule.rule_key}`. "
+                        "Pass --allow-reactive to override this guardrail."
+                    ),
+                )
+            )
+            return QuestRollbackResult(
+                quest_id=quest_id,
+                mode=mode,
+                applied=False,
+                ok=False,
+                issues=issues,
+            )
         snapshot_row = self._latest_snapshot_row(quest_id)
         if snapshot_row is None:
             issues.append(RollbackIssue(path="snapshot", message=f"No rollback snapshot exists for quest {quest_id}."))
@@ -91,7 +124,7 @@ class QuestRollbackManager:
                 issues=issues,
             )
 
-        table_presence = self._table_presence({"quest_offer_reward", "quest_request_items", "wm_reserved_slot"})
+        table_presence = self._table_presence({"quest_offer_reward", "quest_request_items", "quest_template_addon", "wm_reserved_slot"})
         restore_statements, restored_tables = self._build_restore_plan(
             quest_id=quest_id,
             snapshot=snapshot,
@@ -165,6 +198,8 @@ class QuestRollbackManager:
             statements.append(f"DELETE FROM quest_offer_reward WHERE ID = {int(quest_id)};")
         if table_presence.get("quest_request_items", False):
             statements.append(f"DELETE FROM quest_request_items WHERE ID = {int(quest_id)};")
+        if table_presence.get("quest_template_addon", False):
+            statements.append(f"DELETE FROM quest_template_addon WHERE ID = {int(quest_id)};")
         statements.append(f"DELETE FROM quest_template WHERE ID = {int(quest_id)};")
 
         restored_tables = {
@@ -173,6 +208,7 @@ class QuestRollbackManager:
             "creature_questender": len(snapshot.get("creature_questender", []) or []),
             "quest_offer_reward": len(snapshot.get("quest_offer_reward", []) or []),
             "quest_request_items": len(snapshot.get("quest_request_items", []) or []),
+            "quest_template_addon": len(snapshot.get("quest_template_addon", []) or []),
         }
 
         statements.extend(self._build_insert_statements("quest_template", snapshot.get("quest_template", []) or []))
@@ -180,6 +216,8 @@ class QuestRollbackManager:
             statements.extend(self._build_insert_statements("quest_offer_reward", snapshot.get("quest_offer_reward", []) or []))
         if table_presence.get("quest_request_items", False):
             statements.extend(self._build_insert_statements("quest_request_items", snapshot.get("quest_request_items", []) or []))
+        if table_presence.get("quest_template_addon", False):
+            statements.extend(self._build_insert_statements("quest_template_addon", snapshot.get("quest_template_addon", []) or []))
         statements.extend(self._build_insert_statements("creature_queststarter", snapshot.get("creature_queststarter", []) or []))
         statements.extend(self._build_insert_statements("creature_questender", snapshot.get("creature_questender", []) or []))
         return statements, restored_tables
@@ -340,6 +378,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--quest-id", type=int, required=True)
     parser.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
     parser.add_argument("--runtime-sync", choices=["auto", "off", "soap"], default="auto")
+    parser.add_argument("--allow-reactive", action="store_true")
     parser.add_argument("--summary", action="store_true")
     parser.add_argument("--output-json", type=Path)
     return parser
@@ -395,7 +434,12 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.from_env()
     client = MysqlCliClient()
     manager = QuestRollbackManager(client=client, settings=settings)
-    result = manager.rollback(quest_id=args.quest_id, mode=args.mode, runtime_sync_mode=args.runtime_sync)
+    result = manager.rollback(
+        quest_id=args.quest_id,
+        mode=args.mode,
+        runtime_sync_mode=args.runtime_sync,
+        allow_reactive=args.allow_reactive,
+    )
     raw = json.dumps(result.to_dict(), indent=2, ensure_ascii=False)
     if args.output_json is not None:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
