@@ -56,11 +56,33 @@ Implemented:
 Implemented on the event-spine track:
 - canonical WM event contract and storage
 - DB-first polling adapter against existing WM-owned journal events
+- hidden addon-log tail adapter against `WMOps.log`
+- client combat-log tail adapter against `WoWCombatLog.txt` as fallback/debug
 - projection from canonical observed events into compact journal counters
 - deterministic rule evaluation with cooldown guards
 - reaction planning and execution through existing quest/item/spell publishers
+- read-only inspect and preview commands for operator trust
+- reusable reactive bounty rule storage
+- direct quest-grant execution through SOAP for reusable reactive quests
+- player quest runtime-state snapshots plus observed `quest_granted` / `quest_completed` / `quest_rewarded` transitions
+- kill-burst gating for a stable repeatable quest with turn-in-only NPC linkage
+- shared player/creature/NPC/quest/item/spell ref models for internal schemas
 
 This means the repo is already beyond bootstrap-only status and is moving toward an event-driven WM core.
+
+### Rebuilt development baseline
+
+Implemented:
+- latest-baseline AzerothCore + module reconstruction tooling for native WM module work
+- side-by-side build/run workflow instead of in-place repack mutation
+- launcher and rebuild helper scripts for the rebuilt tree
+
+Current truth:
+- the rebuilt baseline is for WM development first
+- it is not yet a gameplay-parity replacement for the original repack
+- Individual Progression currently has known script/code drift
+- some custom NPC/service content still depends on missing older module SQL/code pairings
+- WeatherVibe loads but is not yet meaningfully configured in-world
 
 ---
 
@@ -74,14 +96,17 @@ Turn the event spine into a reliable operator-grade WM orchestration layer.
 - harden canonical event storage, cursor handling, and replay safety
 - tighten projection/evaluation bookkeeping and anti-spam behavior
 - make dry-run/apply reporting clearer across reaction planning and execution
+- add a true read-only operator layer so previewing does not mutate WM-owned audit state
 - update docs to reflect the event-driven direction
 
 ### Exit criteria
 - one adapter can ingest world activity into canonical events
+- a live hidden addon-channel source can feed the same event contract without server rebuilds
 - the same event is never projected twice
 - deterministic rules can emit reaction opportunities safely
 - reaction execution can call the quest/item/spell publishers through one coherent path
 - cooldowns suppress repeated firehose reactions
+- reusable reactive quests cannot be accidentally purged or rolled back without explicit override
 
 ---
 
@@ -96,6 +121,7 @@ Make reactions context-aware instead of merely structurally valid.
 - deterministic opportunity detection with optional LLM content shaping layered on top
 - richer follow-up quest, reward, passive, and announcement payload generation
 - duplicate/repetition controls using recent reaction history
+- improve reactive bounty flavor once the direct-grant kill-burst loop is proven reliable
 
 ### Exit criteria
 - reactions use world facts instead of raw IDs
@@ -132,7 +158,8 @@ Expand perception without changing the event contract.
 
 ### Deliverables
 - additional ingestion adapters:
-  - log scanning
+  - richer hidden-addon event coverage beyond `HELLO` / `KILL`
+  - richer combat-log coverage beyond `PARTY_KILL`
   - manual/operator triggers
   - bridge-fed events if a compile path exists later
 - stronger anti-spam, replay, and checkpoint controls
