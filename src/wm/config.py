@@ -5,6 +5,14 @@ import os
 from pathlib import Path
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _default_bootstrap_path(*parts: str) -> str:
+    return str(_repo_root().joinpath(".wm-bootstrap", *parts))
+
+
 def _load_dotenv(dotenv_path: str | Path = ".env") -> None:
     path = Path(dotenv_path)
     if not path.exists():
@@ -48,11 +56,11 @@ class Settings:
     event_default_questgiver_entry: int | None = None
     event_followup_kill_count: int = 6
     event_default_reward_money_copper: int = 1200
-    addon_log_path: str = r"D:\WOW\Azerothcore_WoTLK_Repack\logs\WMOps.log"
+    addon_log_path: str = _default_bootstrap_path("run", "logs", "WMOps.log")
     addon_log_batch_size: int = 200
     addon_channel_name: str = "WMBridgePrivate"
     addon_prefix: str = "WMBRIDGE"
-    combat_log_path: str = r"D:\WOW\world of warcraft 3.3.5a hd\Logs\WoWCombatLog.txt"
+    combat_log_path: str = _default_bootstrap_path("run", "logs", "WoWCombatLog.txt")
     combat_log_batch_size: int = 200
     combat_log_player_name: str | None = None
 
@@ -87,14 +95,14 @@ class Settings:
             event_default_reward_money_copper=int(os.getenv("WM_EVENT_DEFAULT_REWARD_MONEY_COPPER", "1200")),
             addon_log_path=os.getenv(
                 "WM_ADDON_LOG_PATH",
-                r"D:\WOW\Azerothcore_WoTLK_Repack\logs\WMOps.log",
+                _default_bootstrap_path("run", "logs", "WMOps.log"),
             ),
             addon_log_batch_size=int(os.getenv("WM_ADDON_LOG_BATCH_SIZE", "200")),
             addon_channel_name=os.getenv("WM_ADDON_CHANNEL_NAME", "WMBridgePrivate"),
             addon_prefix=os.getenv("WM_ADDON_PREFIX", "WMBRIDGE"),
             combat_log_path=os.getenv(
                 "WM_COMBAT_LOG_PATH",
-                r"D:\WOW\world of warcraft 3.3.5a hd\Logs\WoWCombatLog.txt",
+                _default_bootstrap_path("run", "logs", "WoWCombatLog.txt"),
             ),
             combat_log_batch_size=int(os.getenv("WM_COMBAT_LOG_BATCH_SIZE", "200")),
             combat_log_player_name=(

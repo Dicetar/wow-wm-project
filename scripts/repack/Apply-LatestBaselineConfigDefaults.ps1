@@ -42,30 +42,32 @@ function Set-OrAddConfigValue {
         throw "Config file not found: $Path"
     }
 
-    $content = Get-Content -LiteralPath $Path -Raw
-    $newline = if ($content -match "`r`n") { "`r`n" } else { "`n" }
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($lineText in [System.IO.File]::ReadAllLines($Path)) {
+        [void]$lines.Add($lineText)
+    }
     $line = "$Key = $Value"
-    $pattern = "(?m)^\s*" + [regex]::Escape($Key) + "\s*=.*$"
+    $pattern = '^\s*' + [regex]::Escape($Key) + '\s*=.*$'
+    $updated = $false
 
-    if ([regex]::IsMatch($content, $pattern)) {
-        $updated = [regex]::Replace(
-            $content,
-            $pattern,
-            [System.Text.RegularExpressions.MatchEvaluator] { param($m) $line },
-            1
-        )
-    }
-    else {
-        if ($content.Length -gt 0 -and -not $content.EndsWith($newline)) {
-            $content += $newline
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match $pattern) {
+            if ($lines[$index] -ne $line) {
+                $lines[$index] = $line
+                $updated = $true
+            }
+            break
         }
-
-        $updated = $content + $line + $newline
     }
 
-    if ($updated -ne $content) {
+    if (-not ($lines -match $pattern)) {
+        [void]$lines.Add($line)
+        $updated = $true
+    }
+
+    if ($updated) {
         $encoding = New-Object System.Text.UTF8Encoding($false)
-        [System.IO.File]::WriteAllText($Path, $updated, $encoding)
+        [System.IO.File]::WriteAllLines($Path, $lines, $encoding)
     }
 }
 
@@ -185,6 +187,7 @@ $dungeonMasterSettings = [ordered]@{
     "DungeonMaster.Roguelike.Buff.8"  = '"48469,Gift of the Wild,100"'
     "DungeonMaster.Roguelike.Buff.9"  = '"19506,Trueshot Aura,70"'
     "DungeonMaster.Roguelike.Buff.10" = '"24932,Leader of the Pack,70"'
+    "DungeonMaster.Roguelike.Buff.11" = '"27127,Arcane Brilliance,80"'
 }
 
 foreach ($entry in $worldSettings.GetEnumerator()) {

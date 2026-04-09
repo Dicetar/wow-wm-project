@@ -265,6 +265,110 @@ function Get-MySQLLibraryCandidate {
     return $libPath
 }
 
+function Get-MySQLRuntimeDllCandidate {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Root
+    )
+
+    $candidates = @(
+        (Join-Path $Root "lib\libmysql.dll"),
+        (Join-Path $Root "bin\libmysql.dll")
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Get-OpenSSLRuntimeDllCandidate {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Root,
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $candidates = @(
+        (Join-Path $Root "bin\$Name"),
+        (Join-Path $Root $Name)
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Stage-RuntimeDependencies {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BinRoot,
+        [string]$MySQLRoot,
+        [string]$OpenSSLRoot
+    )
+
+    $copies = @()
+    if ($MySQLRoot) {
+        $mysqlRuntimeDll = Get-MySQLRuntimeDllCandidate -Root $MySQLRoot
+        if ($mysqlRuntimeDll) {
+            $copies += $mysqlRuntimeDll
+        }
+    }
+
+    if ($OpenSSLRoot) {
+        foreach ($name in @("libcrypto-3-x64.dll", "libssl-3-x64.dll", "legacy.dll")) {
+            $dll = Get-OpenSSLRuntimeDllCandidate -Root $OpenSSLRoot -Name $name
+            if ($dll) {
+                $copies += $dll
+            }
+        }
+    }
+
+    foreach ($sourcePath in ($copies | Sort-Object -Unique)) {
+        Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $BinRoot ([System.IO.Path]::GetFileName($sourcePath))) -Force
+    }
+}
+
+function Stage-RepoSqlOverrides {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$SourceRoot
+    )
+
+    $overrideRoot = Join-Path $RepoRoot "sql\repack"
+    if (-not (Test-Path $overrideRoot)) {
+        return
+    }
+
+    $dbMappings = @{
+        "db_auth" = Join-Path $SourceRoot "data\sql\custom\db_auth"
+        "db_characters" = Join-Path $SourceRoot "data\sql\custom\db_characters"
+        "db_world" = Join-Path $SourceRoot "data\sql\custom\db_world"
+    }
+
+    foreach ($key in $dbMappings.Keys) {
+        $sourceDir = Join-Path $overrideRoot $key
+        if (-not (Test-Path $sourceDir)) {
+            continue
+        }
+
+        $targetDir = $dbMappings[$key]
+        New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+
+        foreach ($file in Get-ChildItem -Path $sourceDir -File -Filter "*.sql") {
+            Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $targetDir $file.Name) -Force
+        }
+    }
+}
+
 function Ensure-WorkspaceAlias {
     param(
         [Parameter(Mandatory = $true)]
@@ -448,6 +552,11 @@ function Clone-ModuleEntry {
 
     try {
         Invoke-Step "Cloning $($Module.status) module $($Module.display_name) into $targetDir" {
+            $gitDir = Join-Path $targetDir ".git"
+            if ((Test-Path $targetDir) -and -not (Test-Path $gitDir)) {
+                Remove-Item -LiteralPath $targetDir -Recurse -Force
+            }
+
             if (-not (Test-Path $targetDir)) {
                 if ($Module.commit) {
                     New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
@@ -463,13 +572,33 @@ function Clone-ModuleEntry {
                     Invoke-Native $git clone --depth 1 $Module.repo_url $targetDir
                 }
             }
-            elseif ($Module.commit) {
-                Invoke-Native $git -C $targetDir fetch --depth 1 origin $Module.commit
-                Invoke-Native $git -C $targetDir checkout $Module.commit
-            }
-            elseif ($Module.branch) {
-                Invoke-Native $git -C $targetDir fetch --depth 1 origin $Module.branch
-                Invoke-Native $git -C $targetDir checkout $Module.branch
+            else {
+                $remoteUrl = (& $git -C $targetDir remote get-url origin 2>$null).Trim()
+                if ($LASTEXITCODE -ne 0 -or -not $remoteUrl) {
+                    throw "Existing module directory is missing a usable origin remote."
+                }
+
+                if ($remoteUrl -ne $Module.repo_url) {
+                    Remove-Item -LiteralPath $targetDir -Recurse -Force
+                    if ($Module.branch) {
+                        Invoke-Native $git clone --depth 1 --branch $Module.branch $Module.repo_url $targetDir
+                    }
+                    else {
+                        Invoke-Native $git clone --depth 1 $Module.repo_url $targetDir
+                    }
+                }
+                elseif ($Module.commit) {
+                    Invoke-Native $git -C $targetDir fetch --depth 1 origin $Module.commit
+                    Invoke-Native $git -C $targetDir checkout $Module.commit
+                }
+                elseif ($Module.branch) {
+                    Invoke-Native $git -C $targetDir fetch --depth 1 origin $Module.branch
+                    Invoke-Native $git -C $targetDir checkout $Module.branch
+                }
+                else {
+                    Invoke-Native $git -C $targetDir fetch --depth 1 origin
+                    Invoke-Native $git -C $targetDir checkout FETCH_HEAD
+                }
             }
         }
         $result.cloned = $true
@@ -562,6 +691,10 @@ if (-not $BuildOnly) {
             Copy-Item -LiteralPath $item.source_path -Destination (Join-Path $targetDir $item.filename) -Force
         }
     }
+
+    Invoke-Step "Staging repo SQL overrides into AzerothCore custom SQL paths" {
+        Stage-RepoSqlOverrides -RepoRoot $repoRoot -SourceRoot $sourceRoot
+    }
 }
 
 if (Test-Path $compatibilityOverlayScript) {
@@ -578,6 +711,9 @@ if ($Build) {
     $buildWorkspaceRoot = Ensure-WorkspaceAlias -ActualWorkspaceRoot $WorkspaceRoot -AliasRoot $BuildAliasRoot
     $buildSourceRoot = Join-Path $buildWorkspaceRoot "source\azerothcore"
     $buildOutputRoot = Join-Path $buildWorkspaceRoot "build"
+    $binOutputRoot = Join-Path $buildOutputRoot "bin\RelWithDebInfo"
+    $mysqlRoot = $null
+    $openSslRoot = $null
     Invoke-Step "Generating Visual Studio build files" {
         Reset-CMakeCacheForDependencyResolution -BuildRoot $buildOutputRoot
         $cmakeArgs = @("-S", $buildSourceRoot, "-B", $buildOutputRoot, "-A", "x64", "-DBUILD_SHARED_LIBS=OFF")
@@ -616,6 +752,12 @@ if ($Build) {
     }
     Invoke-Step "Building worldserver/authserver (RelWithDebInfo)" {
         Invoke-Native -FilePath $msbuild -Arguments @((Join-Path $buildOutputRoot "AzerothCore.sln"), "/m:1", "/p:Configuration=RelWithDebInfo")
+    }
+    Invoke-Step "Staging runtime DLL dependencies into $binOutputRoot" {
+        if (-not (Test-Path $binOutputRoot)) {
+            throw "Expected build output directory was not found: $binOutputRoot"
+        }
+        Stage-RuntimeDependencies -BinRoot $binOutputRoot -MySQLRoot $mysqlRoot -OpenSSLRoot $openSslRoot
     }
 }
 

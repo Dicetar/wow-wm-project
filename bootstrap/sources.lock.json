@@ -1,0 +1,149 @@
+{
+  "workspace": {
+    "root": ".wm-bootstrap",
+    "directories": [
+      "src",
+      "src/azerothcore",
+      "src/modules",
+      "deps",
+      "downloads",
+      "build",
+      "run",
+      "run/bin",
+      "run/configs",
+      "run/configs/modules",
+      "run/logs",
+      "run/assets",
+      "run/helpers",
+      "run/sql",
+      "state",
+      "logs"
+    ]
+  },
+  "core": {
+    "repo_url": "https://github.com/mod-playerbots/azerothcore-wotlk.git",
+    "branch": "Playerbot",
+    "commit": null,
+    "target_path": "src/azerothcore"
+  },
+  "modules": [
+    { "key": "mod-playerbots", "repo_url": "https://github.com/mod-playerbots/mod-playerbots.git", "branch": null, "commit": null, "target_path": "src/modules/mod-playerbots" },
+    { "key": "1v1arena", "repo_url": "https://github.com/azerothcore/mod-1v1-arena.git", "branch": null, "commit": null, "target_path": "src/modules/1v1arena" },
+    { "key": "autobalance", "repo_url": "https://github.com/azerothcore/mod-autobalance.git", "branch": null, "commit": null, "target_path": "src/modules/autobalance" },
+    { "key": "autorevive", "repo_url": "https://github.com/azerothcore/mod-auto-revive.git", "branch": null, "commit": null, "target_path": "src/modules/autorevive" },
+    { "key": "bgqueuechecker", "repo_url": "https://github.com/AnchyDev/BGQueueChecker.git", "branch": null, "commit": null, "target_path": "src/modules/bgqueuechecker" },
+    { "key": "breakingnews", "repo_url": "https://github.com/azerothcore/mod-breaking-news-override.git", "branch": null, "commit": null, "target_path": "src/modules/breakingnews" },
+    { "key": "cfbg", "repo_url": "https://github.com/azerothcore/mod-cfbg.git", "branch": null, "commit": null, "target_path": "src/modules/cfbg" },
+    { "key": "challenge-modes", "repo_url": "https://github.com/ZhengPeiRu21/mod-challenge-modes.git", "branch": null, "commit": null, "target_path": "src/modules/challenge-modes" },
+    { "key": "desertion-warnings", "repo_url": "https://github.com/azerothcore/mod-desertion-warnings.git", "branch": null, "commit": null, "target_path": "src/modules/desertion-warnings" },
+    { "key": "duelreset", "repo_url": "https://github.com/azerothcore/mod-duel-reset.git", "branch": null, "commit": null, "target_path": "src/modules/duelreset" },
+    { "key": "dynamicxp", "repo_url": "https://github.com/azerothcore/mod-dynamic-xp.git", "branch": null, "commit": null, "target_path": "src/modules/dynamicxp" },
+    { "key": "emblem-transfer", "repo_url": "https://github.com/azerothcore/mod-emblem-transfer.git", "branch": null, "commit": null, "target_path": "src/modules/emblem-transfer" },
+    { "key": "mod-fly-anywhere", "repo_url": "https://github.com/abracadaniel22/mod-fly-anywhere.git", "branch": null, "commit": null, "target_path": "src/modules/mod-fly-anywhere" },
+    { "key": "individual-xp", "repo_url": "https://github.com/azerothcore/mod-individual-xp.git", "branch": null, "commit": null, "target_path": "src/modules/individual-xp" },
+    { "key": "mod-individual-progression", "repo_url": "https://github.com/ZhengPeiRu21/mod-individual-progression.git", "branch": null, "commit": null, "target_path": "src/modules/mod-individual-progression" },
+    { "key": "instance-reset", "repo_url": "https://github.com/azerothcore/mod-instance-reset.git", "branch": null, "commit": null, "target_path": "src/modules/instance-reset" },
+    { "key": "leech", "repo_url": "https://github.com/ZhengPeiRu21/mod-leech.git", "branch": null, "commit": null, "target_path": "src/modules/leech" },
+    { "key": "low-level-rbg", "repo_url": "https://github.com/azerothcore/mod-low-level-rbg.git", "branch": null, "commit": null, "target_path": "src/modules/low-level-rbg" },
+    { "key": "mod-changeablespawnrates", "repo_url": "https://github.com/justin-kaufmann/mod-changeablespawnrates.git", "branch": null, "commit": null, "target_path": "src/modules/mod-changeablespawnrates" },
+    { "key": "mod-junk-to-gold", "repo_url": "https://github.com/noisiver/mod-junk-to-gold.git", "branch": null, "commit": null, "target_path": "src/modules/mod-junk-to-gold" },
+    { "key": "mod-rdf-expansion", "repo_url": "https://github.com/azerothcore/mod-rdf-expansion.git", "branch": null, "commit": null, "target_path": "src/modules/mod-rdf-expansion" },
+    { "key": "mod-time-is-time", "repo_url": "https://github.com/dunjeon/mod-TimeIsTime.git", "branch": null, "commit": null, "target_path": "src/modules/mod-time-is-time" },
+    { "key": "mod-account-mount", "repo_url": "https://github.com/azerothcore/mod-account-mounts.git", "branch": null, "commit": null, "target_path": "src/modules/mod-account-mount" },
+    { "key": "mod-achievements", "repo_url": "https://github.com/azerothcore/mod-account-achievements.git", "branch": null, "commit": null, "target_path": "src/modules/mod-achievements" },
+    { "key": "mod-ahbot", "repo_url": "https://github.com/azerothcore/mod-ah-bot.git", "branch": null, "commit": null, "target_path": "src/modules/mod-ahbot" },
+    { "key": "mod-aq-war-effort", "repo_url": "https://github.com/azerothcore/mod-war-effort.git", "branch": null, "commit": null, "target_path": "src/modules/mod-aq-war-effort" },
+    { "key": "mod-boss-announcer", "repo_url": "https://github.com/azerothcore/mod-boss-announcer.git", "branch": null, "commit": null, "target_path": "src/modules/mod-boss-announcer" },
+    { "key": "mod-dead-means-dead", "repo_url": "https://github.com/kjack9/mod-dead-means-dead.git", "branch": null, "commit": null, "target_path": "src/modules/mod-dead-means-dead" },
+    { "key": "mod-dynamic-loot-rates", "repo_url": "https://github.com/hallgaeuer/mod-dynamic-loot-rates.git", "branch": null, "commit": null, "target_path": "src/modules/mod-dynamic-loot-rates" },
+    { "key": "mod-guildhouse", "repo_url": "https://github.com/azerothcore/mod-guildhouse.git", "branch": null, "commit": null, "target_path": "src/modules/mod-guildhouse" },
+    { "key": "mod-improved-bank", "repo_url": "https://github.com/silviu20092/mod-improved-bank.git", "branch": null, "commit": null, "target_path": "src/modules/mod-improved-bank" },
+    { "key": "mod-learnspells", "repo_url": "https://github.com/noisiver/mod-learnspells.git", "branch": null, "commit": null, "target_path": "src/modules/mod-learnspells" },
+    { "key": "mod-moneyforkills", "repo_url": "https://github.com/azerothcore/mod-money-for-kills.git", "branch": null, "commit": null, "target_path": "src/modules/mod-moneyforkills" },
+    { "key": "mod-no-hearthstone-cooldown", "repo_url": "https://github.com/BytesGalore/mod-no-hearthstone-cooldown.git", "branch": null, "commit": null, "target_path": "src/modules/mod-no-hearthstone-cooldown" },
+    { "key": "mod-npc-beastmaster", "repo_url": "https://github.com/azerothcore/mod-npc-beastmaster.git", "branch": null, "commit": null, "target_path": "src/modules/mod-npc-beastmaster" },
+    { "key": "mod-npc-enchanter", "repo_url": "https://github.com/azerothcore/mod-npc-enchanter.git", "branch": null, "commit": null, "target_path": "src/modules/mod-npc-enchanter" },
+    { "key": "mod-npc-buffer", "repo_url": "https://github.com/azerothcore/mod-npc-buffer.git", "branch": null, "commit": null, "target_path": "src/modules/mod-npc-buffer" },
+    { "key": "mod-npc-free-professions", "repo_url": "https://github.com/azerothcore/mod-npc-free-professions.git", "branch": null, "commit": null, "target_path": "src/modules/mod-npc-free-professions" },
+    { "key": "mod-ollama-chat", "repo_url": "https://github.com/DustinHendrickson/mod-ollama-chat.git", "branch": null, "commit": null, "target_path": "src/modules/mod-ollama-chat" },
+    { "key": "mod-phased-duels", "repo_url": "https://github.com/azerothcore/mod-phased-duels.git", "branch": null, "commit": null, "target_path": "src/modules/mod-phased-duels" },
+    { "key": "mod-player-bot-guildhouse", "repo_url": "https://github.com/DustinHendrickson/mod-player-bot-guildhouse.git", "branch": null, "commit": null, "target_path": "src/modules/mod-player-bot-guildhouse" },
+    { "key": "mod-player-bot-level-brackets", "repo_url": "https://github.com/DustinHendrickson/mod-player-bot-level-brackets.git", "branch": null, "commit": null, "target_path": "src/modules/mod-player-bot-level-brackets" },
+    { "key": "mod-pvptitles", "repo_url": "https://github.com/azerothcore/mod-pvp-titles.git", "branch": null, "commit": null, "target_path": "src/modules/mod-pvptitles" },
+    { "key": "mod-weather-vibe", "repo_url": "https://github.com/hermensbas/mod_weather_vibe.git", "branch": null, "commit": null, "target_path": "src/modules/mod-weather-vibe" },
+    { "key": "mod-top-arena", "repo_url": "https://github.com/azerothcore/mod-top-arena.git", "branch": null, "commit": null, "target_path": "src/modules/mod-top-arena" },
+    { "key": "morphsummon", "repo_url": "https://github.com/azerothcore/mod-morphsummon.git", "branch": null, "commit": null, "target_path": "src/modules/morphsummon" },
+    { "key": "npc-spectator", "repo_url": "https://github.com/Gozzim/mod-npc-spectator.git", "branch": null, "commit": null, "target_path": "src/modules/npc-spectator" },
+    { "key": "npc-talent-template", "repo_url": "https://github.com/azerothcore/mod-npc-talent-template.git", "branch": null, "commit": null, "target_path": "src/modules/npc-talent-template" },
+    { "key": "mod-queue-list-cache", "repo_url": "https://github.com/azerothcore/mod-queue-list-cache.git", "branch": null, "commit": null, "target_path": "src/modules/mod-queue-list-cache" },
+    { "key": "mod-quick-teleport", "repo_url": "https://github.com/azerothcore/mod-quick-teleport.git", "branch": null, "commit": null, "target_path": "src/modules/mod-quick-teleport" },
+    { "key": "mod-racial-trait-swap", "repo_url": "https://github.com/azerothcore/mod-racial-trait-swap.git", "branch": null, "commit": null, "target_path": "src/modules/mod-racial-trait-swap" },
+    { "key": "mod-random-enchants", "repo_url": "https://github.com/azerothcore/mod-random-enchants.git", "branch": null, "commit": null, "target_path": "src/modules/mod-random-enchants" },
+    { "key": "mod-reagent-bank", "repo_url": "https://github.com/ZhengPeiRu21/mod-reagent-bank.git", "branch": null, "commit": null, "target_path": "src/modules/mod-reagent-bank" },
+    { "key": "mod-reward-system", "repo_url": "https://github.com/azerothcore/mod-reward-played-time.git", "branch": null, "commit": null, "target_path": "src/modules/mod-reward-system" },
+    { "key": "mod-server-auto-shutdown", "repo_url": "https://github.com/azerothcore/mod-server-auto-shutdown.git", "branch": null, "commit": null, "target_path": "src/modules/mod-server-auto-shutdown" },
+    { "key": "skip-dk-module", "repo_url": "https://github.com/azerothcore/mod-skip-dk-starting-area.git", "branch": null, "commit": null, "target_path": "src/modules/skip-dk-module" },
+    { "key": "mod-solo-lfg", "repo_url": "https://github.com/azerothcore/mod-solo-lfg.git", "branch": null, "commit": null, "target_path": "src/modules/mod-solo-lfg" },
+    { "key": "transmog", "repo_url": "https://github.com/azerothcore/mod-transmog.git", "branch": null, "commit": null, "target_path": "src/modules/transmog" },
+    { "key": "who-logged", "repo_url": "https://github.com/azerothcore/mod-who-logged.git", "branch": null, "commit": null, "target_path": "src/modules/who-logged" }
+  ],
+  "dependencies": [
+    {
+      "key": "boost",
+      "type": "installer",
+      "url": "https://github.com/userdocs/boost/releases/download/boost-1.87.0/boost_1_87_0-msvc-14.3-64.exe",
+      "filename": "boost_1_87_0-msvc-14.3-64.exe",
+      "target_path": "deps/boost_1_87_0",
+      "required_marker": "boost/version.hpp",
+      "silent_args": [
+        "/SP-",
+        "/VERYSILENT",
+        "/SUPPRESSMSGBOXES",
+        "/NORESTART",
+        "/DIR={InstallDir}"
+      ]
+    },
+    {
+      "key": "openssl",
+      "type": "installer",
+      "url": "https://slproweb.com/download/Win64OpenSSL-3_6_1.exe",
+      "filename": "Win64OpenSSL-3_6_1.exe",
+      "target_path": "deps/openssl",
+      "required_marker": "include/openssl/opensslv.h",
+      "silent_args": [
+        "/SP-",
+        "/VERYSILENT",
+        "/SUPPRESSMSGBOXES",
+        "/NORESTART",
+        "/DIR={InstallDir}"
+      ]
+    },
+    {
+      "key": "mysql",
+      "type": "archive",
+      "url": "https://cdn.mysql.com/archives/mysql-8.4/mysql-8.4.7-winx64.zip",
+      "filename": "mysql-8.4.7-winx64.zip",
+      "target_path": "deps/mysql",
+      "required_marker": "bin/libmysql.dll",
+      "extracted_subdir": "mysql-8.4.7-winx64"
+    }
+  ],
+  "stage_assets": [
+    { "source": "wow_addons/WMBridge", "target": "run/assets/wow_addons/WMBridge", "kind": "directory" },
+    { "source": "sql/bootstrap", "target": "run/sql/bootstrap", "kind": "directory" },
+    { "source": "sql/repack", "target": "run/sql/repack", "kind": "directory" },
+    { "source": ".env.example", "target": "run/configs/.env.example", "kind": "file" },
+    { "source": "bootstrap/templates/README.txt", "target": "run/configs/README.txt", "kind": "file" },
+    { "source": "scripts/repack/Apply-RepackCompatibilityOverlay.ps1", "target": "run/helpers/Apply-RepackCompatibilityOverlay.ps1", "kind": "file" }
+  ],
+  "sql_overrides": [
+    { "source": "sql/repack/db_auth", "target": "data/sql/custom/db_auth" },
+    { "source": "sql/repack/db_characters", "target": "data/sql/custom/db_characters" },
+    { "source": "sql/repack/db_world", "target": "data/sql/custom/db_world" }
+  ],
+  "build": {
+    "generator_arch": "x64",
+    "configuration": "RelWithDebInfo",
+    "build_shared_libs": false
+  }
+}

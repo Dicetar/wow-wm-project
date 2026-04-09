@@ -9,6 +9,7 @@ venv/
 *.log
 .pytest_cache/
 .mypy_cache/
+.wm-bootstrap/
 artifacts/
 data/repack/
 data/test_tmp/
@@ -16,3 +17,4 @@ tmp*/
 pytest-cache-files-*/
 soap_test.ps1
 sql/dev/generated_seed_reserved_slots.sql
+optional/

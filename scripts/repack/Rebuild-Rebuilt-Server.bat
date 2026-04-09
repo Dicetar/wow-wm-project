@@ -3,7 +3,9 @@ title Rebuild AzerothCore Rebuilt Server
 mode con: cols=70 lines=18
 setlocal
 
-set "PROJECT_ROOT=D:\WOW\wm-project"
+set "SCRIPT_ROOT=%~dp0"
+if "%SCRIPT_ROOT:~-1%"=="\" set "SCRIPT_ROOT=%SCRIPT_ROOT:~0,-1%"
+for %%I in ("%SCRIPT_ROOT%\..\..") do set "PROJECT_ROOT=%%~fI"
 set "BUILD_SCRIPT=%PROJECT_ROOT%\scripts\repack\New-ExactSourceTree.ps1"
 set "POWERSHELL_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 

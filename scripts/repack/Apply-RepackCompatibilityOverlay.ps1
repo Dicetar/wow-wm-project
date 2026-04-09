@@ -1,5 +1,6 @@
 param(
-    [string]$WorkspaceRoot = "D:\WOW\Azerothcore_WoTLK_Rebuild"
+    [string]$WorkspaceRoot = "D:\WOW\Azerothcore_WoTLK_Rebuild",
+    [string]$SourceRoot
 )
 
 $ErrorActionPreference = "Stop"
@@ -132,7 +133,18 @@ function Sync-LoaderCompatibilityWrapper {
     return $null
 }
 
-$sourceRoot = Join-Path $WorkspaceRoot "source\azerothcore"
+if (-not $SourceRoot) {
+    $portableRoot = Join-Path $WorkspaceRoot "src\azerothcore"
+    $legacyRoot = Join-Path $WorkspaceRoot "source\azerothcore"
+    if (Test-Path $portableRoot) {
+        $SourceRoot = $portableRoot
+    }
+    else {
+        $SourceRoot = $legacyRoot
+    }
+}
+
+$sourceRoot = $SourceRoot
 
 $bgQueueCheckerPath = Join-Path $sourceRoot "modules\bgqueuechecker\src\BGQueueChecker.cpp"
 Replace-InFile `

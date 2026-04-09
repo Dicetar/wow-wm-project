@@ -74,6 +74,7 @@ This means the repo is already beyond bootstrap-only status and is moving toward
 
 Implemented:
 - latest-baseline AzerothCore + module reconstruction tooling for native WM module work
+- portable repo-relative `setup-wm.bat` -> `build-wm.bat` bootstrap flow under `.wm-bootstrap\`
 - side-by-side build/run workflow instead of in-place repack mutation
 - launcher and rebuild helper scripts for the rebuilt tree
 
