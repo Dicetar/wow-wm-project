@@ -2,8 +2,8 @@
   "id": "gossip_followup",
   "schema_version": "control.recipe.v1",
   "enabled": true,
-  "description": "React to a player selecting a gossip option.",
-  "trigger_event_types": ["gossip_select"],
+  "description": "React to a player selecting or ignoring a gossip option.",
+  "trigger_event_types": ["gossip_select", "gossip_session_expired"],
   "allowed_actions": ["quest_publish", "announcement", "noop"],
   "default_action": {
     "kind": "noop",

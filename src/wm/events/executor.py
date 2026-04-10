@@ -148,6 +148,10 @@ class ReactionExecutor:
                 "native_action_kind": native_action_kind,
                 "payload": native_payload,
                 "implemented": bool(NATIVE_ACTION_KIND_BY_ID[native_action_kind].implemented),
+                "priority": int(payload.get("priority") or 5),
+                "sequence_id": payload.get("sequence_id"),
+                "sequence_order": int(payload.get("sequence_order") or 0),
+                "wait_for_prior": bool(payload.get("wait_for_prior", False)),
                 "dry_run_ready": True,
                 "dry_run_notes": [
                     "Dry-run validates the native action contract only; the C++ bridge executes queued rows after apply."
@@ -162,6 +166,20 @@ class ReactionExecutor:
                     created_by=str(payload.get("created_by") or "wm.control"),
                     risk_level=str(payload.get("risk_level") or NATIVE_ACTION_KIND_BY_ID[native_action_kind].default_risk),
                     expires_seconds=int(payload.get("expires_seconds") or 60),
+                    max_attempts=int(payload.get("max_attempts") or 3),
+                    sequence_id=str(payload["sequence_id"]) if payload.get("sequence_id") not in (None, "") else None,
+                    sequence_order=int(payload.get("sequence_order") or 0),
+                    wait_for_prior=bool(payload.get("wait_for_prior", False)),
+                    priority=int(payload.get("priority") or 5),
+                    purge_after_seconds=(
+                        int(payload["purge_after_seconds"]) if payload.get("purge_after_seconds") not in (None, "") else None
+                    ),
+                    target_map_id=_int_or_none(payload.get("target_map_id")),
+                    target_x=_float_or_none(payload.get("target_x")),
+                    target_y=_float_or_none(payload.get("target_y")),
+                    target_z=_float_or_none(payload.get("target_z")),
+                    target_o=_float_or_none(payload.get("target_o")),
+                    target_player_guid=_int_or_none(payload.get("target_player_guid")),
                 )
                 final_request = self.native_bridge_actions.wait(request_id=request.request_id)
                 details["request"] = final_request.to_dict()
@@ -473,6 +491,12 @@ def _int_or_none(value: Any) -> int | None:
     if value in (None, ""):
         return None
     return int(value)
+
+
+def _float_or_none(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    return float(value)
 
 
 def _str_or_none(value: Any) -> str | None:

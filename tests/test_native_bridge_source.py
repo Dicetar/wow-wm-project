@@ -5,6 +5,7 @@ from wm.config import Settings
 from wm.events.adapters import build_event_adapter
 from wm.sources.native_bridge.action_kinds import native_action_kind_ids
 from wm.sources.native_bridge.adapter import NativeBridgeAdapter
+from wm.sources.native_bridge.adapter import _build_gossip_session_expired_events
 from wm.sources.native_bridge.adapter import _record_to_event
 from wm.sources.native_bridge.arm import arm_native_bridge_cursor
 from wm.sources.native_bridge.configure import parse_allowlist
@@ -24,6 +25,8 @@ class _FakeClient:
         self.sql_calls.append(sql)
         if "SHOW TABLES LIKE 'wm_bridge_event'" in sql:
             return [{"Tables_in_acore_world (wm_bridge_event)": "wm_bridge_event"}] if self.table_exists else []
+        if "FROM wm_event_log talk" in sql:
+            return []
         if "MAX(BridgeEventID)" in sql:
             return list(self.rows)
         if "FROM wm_bridge_event" in sql:
@@ -225,6 +228,47 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertEqual(spell_event.event_type, "spell_cast")
         self.assertEqual(aura_event.event_type, "aura_applied")
 
+    def test_adapter_derives_gossip_session_expired_after_timeout(self) -> None:
+        client = _FakeClient(
+            rows=[
+                {
+                    "EventID": "100",
+                    "SourceEventKey": "native_bridge:9",
+                    "OccurredAt": "2026-04-09 12:00:00",
+                    "ExpiredAt": "2026-04-09 12:00:45",
+                    "PlayerGUID": "5406",
+                    "SubjectType": "creature",
+                    "SubjectEntry": "197",
+                    "MapID": "0",
+                    "ZoneID": "12",
+                    "AreaID": "40",
+                    "EventValue": "Marshal McBride",
+                    "MetadataJSON": '{"payload":{"subject_name":"Marshal McBride"}}',
+                }
+            ]
+        )
+
+        def query(*, host, port, user, password, database, sql):  # type: ignore[no-untyped-def]
+            del host, port, user, password, database
+            client.sql_calls.append(sql)
+            if "FROM wm_event_log talk" in sql:
+                return list(client.rows)
+            return []
+
+        client.query = query  # type: ignore[method-assign]
+
+        events = _build_gossip_session_expired_events(
+            client=client,  # type: ignore[arg-type]
+            settings=Settings(world_db_name="acore_world", native_bridge_gossip_session_timeout_seconds=45),
+            player_guid=5406,
+        )
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].event_type, "gossip_session_expired")
+        self.assertEqual(events[0].source, "native_bridge_derived")
+        self.assertEqual(events[0].source_event_key, "native_bridge:9:gossip_session_expired")
+        self.assertTrue(any("gossip_select" in sql for sql in client.sql_calls))
+
     def test_build_event_adapter_supports_native_bridge(self) -> None:
         adapter = build_event_adapter(
             adapter_name="native_bridge",
@@ -298,6 +342,10 @@ class NativeBridgeSourceTests(unittest.TestCase):
 
         self.assertIn("wm_bridge_action_request", source)
         self.assertIn("debug_ping", source)
+        self.assertIn("ClaimExpiresAt", source)
+        self.assertIn("sequence_prior_failed", source)
+        self.assertIn("ORDER BY req.Priority ASC", source)
+        self.assertIn("world_announce_to_player", source)
         self.assertNotIn("HandleCommand", source)
         self.assertNotIn("ChatHandler", source)
 

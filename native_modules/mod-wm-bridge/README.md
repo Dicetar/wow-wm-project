@@ -46,8 +46,21 @@ Native action bus:
 - live player scope: `wm_bridge_player_scope`
 - policy gates: `wm_bridge_action_policy`
 - runtime heartbeat/status: `wm_bridge_runtime_status`
-- implemented native actions in this foundation pass: `debug_ping`, `debug_echo`, `debug_fail`, `context_snapshot_request`
+- queue robustness: request expiry, stale-claim recovery, max attempts, priority, and simple ordered sequences
+- implemented native actions in this foundation pass: `debug_ping`, `debug_echo`, `debug_fail`, `context_snapshot_request`, `world_announce_to_player`
 - broad mutation verbs are registered in WM Python/control contracts but remain policy-disabled and return `not_implemented` in C++ until each body has a lab test
+
+Bridge lab build note:
+
+- `.\incremental-bridge-lab.bat` resyncs the repo-owned `mod-wm-bridge` source into `D:\WOW\WM_BridgeLab` before running MSBuild, so fast native iterations do not require a full workspace rebuild just to pick up local bridge edits.
+
+Queue timing fields:
+
+- `ExpiresAt`: pending request deadline; pending rows become `expired` after this.
+- `ClaimExpiresAt`: native execution lease; stale `claimed` rows return to `pending` until `MaxAttempts` is reached.
+- `PurgeAfter`: Python cleanup hint only; C++ never deletes audit/debug rows automatically.
+- `Priority`: `1` urgent, `5` normal, `9` background.
+- `SequenceID`/`SequenceOrder`/`WaitForPrior`: optional manual/admin sequence ordering. Lower-order rows must be `done` before a waiting row runs.
 
 Enable one-player lab action testing:
 
@@ -57,3 +70,17 @@ Enable one-player lab action testing:
    `python -m wm.sources.native_bridge.actions_cli scope-player --player-guid 5406 --summary`
 4. Submit a ping:
    `python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --action-kind debug_ping --idempotency-key lab-debug-ping-1 --wait --summary`
+
+Submit a small ordered sequence:
+
+```powershell
+python -m wm.sources.native_bridge.actions_cli submit-sequence --player-guid 5406 --sequence-id lab-seq-1 --actions-json '[{"action_kind":"debug_ping"},{"action_kind":"debug_echo","payload":{"message":"after ping"}}]' --wait --summary
+```
+
+Inspect and maintain the queue:
+
+```powershell
+python -m wm.sources.native_bridge.actions_cli inspect --player-guid 5406 --limit 10 --summary
+python -m wm.sources.native_bridge.actions_cli recover-stale --summary
+python -m wm.sources.native_bridge.actions_cli cleanup --older-than-seconds 3600 --summary
+```

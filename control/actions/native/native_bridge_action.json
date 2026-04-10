@@ -11,12 +11,20 @@
     "payload": {},
     "created_by": "manual",
     "risk_level": "low",
-    "expires_seconds": 60
+    "expires_seconds": 60,
+    "max_attempts": 3,
+    "priority": 5,
+    "sequence_id": null,
+    "sequence_order": 0,
+    "wait_for_prior": false,
+    "purge_after_seconds": null
   },
   "native_action_kind_source": "src/wm/sources/native_bridge/action_kinds.py",
   "guardrails": [
     "No arbitrary SQL, shell command, GM command, or file edit payloads are accepted.",
     "The C++ module validates player scope and DB policy again before executing.",
+    "Priority, sequence, target coordinate, and expiry fields are queue metadata; action-specific payload data stays inside payload.",
+    "Sequence submission is a manual/admin testing path first, not a default LLM multi-action saga path.",
     "Most mutation verbs are policy-disabled and/or not implemented until hardened in the lab."
   ]
 }

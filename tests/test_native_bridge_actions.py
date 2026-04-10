@@ -31,6 +31,12 @@ class FakeMysqlClient:
         self.sql.append(sql)
         if "SELECT LAST_INSERT_ID() AS RequestID" in sql:
             return [{"RequestID": "42"}]
+        if "SELECT ROW_COUNT() AS Requeued" in sql:
+            return [{"Requeued": "1"}]
+        if "SELECT ROW_COUNT() AS Failed" in sql:
+            return [{"Failed": "2"}]
+        if "SELECT ROW_COUNT() AS Deleted" in sql:
+            return [{"Deleted": "3"}]
         if "FROM wm_bridge_action_request" in sql and "WHERE RequestID = 42" in sql:
             return [
                 {
@@ -61,13 +67,20 @@ class NativeBridgeActionTests(unittest.TestCase):
             "creature_spawn",
             "gossip_override_set",
             "companion_spawn",
+            "creature_set_display_id",
+            "creature_set_health_pct",
+            "creature_attack_player",
+            "player_play_sound",
+            "quest_complete",
             "zone_set_weather",
             "context_snapshot_request",
+            "world_announce_to_player",
             "debug_ping",
         }
 
         self.assertTrue(expected.issubset(set(native_action_kind_ids())))
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["debug_ping"].implemented)
+        self.assertTrue(NATIVE_ACTION_KIND_BY_ID["world_announce_to_player"].implemented)
         self.assertFalse(NATIVE_ACTION_KIND_BY_ID["player_teleport"].default_enabled)
 
     def test_client_submits_idempotent_queue_request(self) -> None:
@@ -80,11 +93,39 @@ class NativeBridgeActionTests(unittest.TestCase):
             action_kind="debug_ping",
             payload={},
             created_by="test",
+            sequence_id="seq-1",
+            sequence_order=2,
+            wait_for_prior=True,
+            priority=1,
+            target_map_id=0,
+            target_x=-8949.95,
+            target_y=-132.49,
+            target_z=83.53,
+            target_o=0.0,
         )
 
         self.assertEqual(request.request_id, 42)
         self.assertTrue(any("INSERT INTO wm_bridge_action_request" in sql for sql in client.sql))
         self.assertTrue(any("ON DUPLICATE KEY UPDATE" in sql for sql in client.sql))
+        joined = "\n".join(client.sql)
+        self.assertIn("SequenceID", joined)
+        self.assertIn("'seq-1'", joined)
+        self.assertIn("TargetMapID", joined)
+        self.assertIn("-8949.95", joined)
+
+    def test_client_can_recover_and_cleanup_queue_rows(self) -> None:
+        client = FakeMysqlClient()
+        bridge = NativeBridgeActionClient(client=client, settings=Settings())  # type: ignore[arg-type]
+
+        recovered = bridge.recover_stale_claims()
+        cleaned = bridge.cleanup_terminal_requests()
+
+        self.assertEqual(recovered, {"requeued": 1, "failed": 2})
+        self.assertEqual(cleaned, {"deleted": 3})
+        joined = "\n".join(client.sql)
+        self.assertIn("claim_expired_requeued", joined)
+        self.assertIn("claim_expired_max_attempts", joined)
+        self.assertIn("PurgeAfter IS NOT NULL", joined)
 
     def test_client_can_scope_player_and_set_policy(self) -> None:
         client = FakeMysqlClient()

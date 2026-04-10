@@ -17,6 +17,12 @@ if (-not (Test-Path $solutionPath)) {
     throw "Generated solution was not found: $solutionPath. Run build-bridge-lab.bat once before using incremental builds."
 }
 
+$localModuleCount = @($manifest.local_modules).Count
+if ($localModuleCount -gt 0) {
+    Sync-LocalModules -RepoRoot $repoRoot -WorkspaceRoot $paths.root -CoreRoot $paths.coreRoot -Manifest $manifest
+    Write-Host "bridge_lab_local_modules_resynced=true count=$localModuleCount"
+}
+
 $msbuild = Get-MSBuildPath
 Invoke-Native -FilePath $msbuild -Arguments @(
     $solutionPath,

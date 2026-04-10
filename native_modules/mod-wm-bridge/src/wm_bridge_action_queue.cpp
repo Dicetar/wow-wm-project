@@ -1,7 +1,10 @@
 #include "wm_bridge_action_queue.h"
 
 #include "DatabaseEnv.h"
+#include "ObjectAccessor.h"
+#include "Player.h"
 #include "QueryResult.h"
+#include "WorldSession.h"
 #include "wm_bridge_common.h"
 
 #include <algorithm>
@@ -55,6 +58,86 @@ namespace
         return "'" + EscapeForSql(value) + "'";
     }
 
+    std::string ExtractJsonStringField(std::string const& json, std::string const& key)
+    {
+        std::string const quotedKey = "\"" + key + "\"";
+        size_t keyPos = json.find(quotedKey);
+        if (keyPos == std::string::npos)
+        {
+            return "";
+        }
+
+        size_t colonPos = json.find(':', keyPos + quotedKey.size());
+        if (colonPos == std::string::npos)
+        {
+            return "";
+        }
+
+        size_t valuePos = colonPos + 1;
+        while (valuePos < json.size() && std::isspace(static_cast<unsigned char>(json[valuePos])))
+        {
+            ++valuePos;
+        }
+
+        if (valuePos >= json.size())
+        {
+            return "";
+        }
+
+        if (json[valuePos] != '"')
+        {
+            size_t endPos = json.find_first_of(",}", valuePos);
+            std::string value = json.substr(valuePos, endPos == std::string::npos ? std::string::npos : endPos - valuePos);
+            while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())))
+            {
+                value.pop_back();
+            }
+            return value;
+        }
+
+        std::string value;
+        bool escaped = false;
+        for (size_t index = valuePos + 1; index < json.size(); ++index)
+        {
+            char ch = json[index];
+            if (escaped)
+            {
+                switch (ch)
+                {
+                    case 'n':
+                        value += '\n';
+                        break;
+                    case 'r':
+                        value += '\r';
+                        break;
+                    case 't':
+                        value += '\t';
+                        break;
+                    default:
+                        value += ch;
+                        break;
+                }
+                escaped = false;
+                continue;
+            }
+
+            if (ch == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                break;
+            }
+
+            value += ch;
+        }
+
+        return value;
+    }
+
     int RiskRank(std::string risk)
     {
         std::transform(risk.begin(), risk.end(), risk.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
@@ -90,7 +173,7 @@ namespace
     {
         WorldDatabase.Execute(
             "UPDATE wm_bridge_action_request "
-            "SET Status = {}, ProcessedAt = NOW(), ResultJSON = {}, ErrorText = {}, UpdatedAt = CURRENT_TIMESTAMP "
+            "SET Status = {}, ClaimExpiresAt = NULL, ProcessedAt = NOW(), ResultJSON = {}, ErrorText = {}, UpdatedAt = CURRENT_TIMESTAMP "
             "WHERE RequestID = {}",
             SqlString(status),
             SqlString(resultJson),
@@ -240,7 +323,59 @@ namespace
             return;
         }
 
+        if (actionKind == "world_announce_to_player")
+        {
+            Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
+            if (!player || !player->GetSession())
+            {
+                CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
+                return;
+            }
+
+            std::string message = ExtractJsonStringField(payloadJson, "message");
+            if (message.empty())
+            {
+                message = ExtractJsonStringField(payloadJson, "text");
+            }
+            if (message.empty())
+            {
+                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_message"), "missing_message");
+                return;
+            }
+
+            player->GetSession()->SendAreaTriggerMessage(message);
+            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "message_sent"));
+            return;
+        }
+
         CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "not_implemented"), "not_implemented");
+    }
+
+    void RecoverExpiredClaims()
+    {
+        WorldDatabase.Execute(
+            "UPDATE wm_bridge_action_request "
+            "SET Status = 'pending', ClaimedAt = NULL, ClaimExpiresAt = NULL, ErrorText = 'claim_expired_requeued', UpdatedAt = CURRENT_TIMESTAMP "
+            "WHERE Status = 'claimed' AND ClaimExpiresAt IS NOT NULL AND ClaimExpiresAt <= NOW() AND AttemptCount < MaxAttempts");
+
+        WorldDatabase.Execute(
+            "UPDATE wm_bridge_action_request "
+            "SET Status = 'failed', ProcessedAt = NOW(), ResultJSON = {}, ErrorText = 'claim_expired_max_attempts', UpdatedAt = CURRENT_TIMESTAMP "
+            "WHERE Status = 'claimed' AND ClaimExpiresAt IS NOT NULL AND ClaimExpiresAt <= NOW() AND AttemptCount >= MaxAttempts",
+            SqlString(ResultJson("failed", "action_queue", "claim_expired_max_attempts")));
+    }
+
+    void ExpireBlockedSequenceRows()
+    {
+        WorldDatabase.Execute(
+            "UPDATE wm_bridge_action_request req "
+            "JOIN wm_bridge_action_request prior "
+            "ON prior.SequenceID = req.SequenceID "
+            "AND prior.SequenceOrder < req.SequenceOrder "
+            "AND prior.Status IN ('failed', 'rejected', 'expired') "
+            "SET req.Status = 'failed', req.ProcessedAt = NOW(), req.ResultJSON = {}, req.ErrorText = 'sequence_prior_failed', req.UpdatedAt = CURRENT_TIMESTAMP "
+            "WHERE req.Status = 'pending' AND req.WaitForPrior <> 0 AND req.SequenceID IS NOT NULL",
+            SqlString(ResultJson("failed", "action_queue", "sequence_prior_failed")));
     }
 }
 
@@ -265,12 +400,19 @@ namespace WmBridge
             "UPDATE wm_bridge_action_request "
             "SET Status = 'expired', ProcessedAt = NOW(), ErrorText = 'expired', UpdatedAt = CURRENT_TIMESTAMP "
             "WHERE Status = 'pending' AND ExpiresAt IS NOT NULL AND ExpiresAt <= NOW()");
+        RecoverExpiredClaims();
+        ExpireBlockedSequenceRows();
 
         QueryResult result = WorldDatabase.Query(
             "SELECT RequestID, PlayerGUID, ActionKind, PayloadJSON, RiskLevel, CreatedBy "
-            "FROM wm_bridge_action_request "
-            "WHERE Status = 'pending' AND (ExpiresAt IS NULL OR ExpiresAt > NOW()) "
-            "ORDER BY RequestID ASC LIMIT 1");
+            "FROM wm_bridge_action_request req "
+            "WHERE req.Status = 'pending' AND (req.ExpiresAt IS NULL OR req.ExpiresAt > NOW()) "
+            "AND (req.WaitForPrior = 0 OR req.SequenceID IS NULL OR NOT EXISTS ("
+            "SELECT 1 FROM wm_bridge_action_request prior "
+            "WHERE prior.SequenceID = req.SequenceID "
+            "AND prior.SequenceOrder < req.SequenceOrder "
+            "AND prior.Status <> 'done')) "
+            "ORDER BY req.Priority ASC, COALESCE(req.SequenceID, ''), req.SequenceOrder ASC, req.RequestID ASC LIMIT 1");
 
         if (!result)
         {
@@ -287,8 +429,11 @@ namespace WmBridge
 
         WorldDatabase.Execute(
             "UPDATE wm_bridge_action_request "
-            "SET Status = 'claimed', ClaimedAt = NOW(), UpdatedAt = CURRENT_TIMESTAMP "
+            "SET Status = 'claimed', ClaimedAt = NOW(), "
+            "ClaimExpiresAt = DATE_ADD(NOW(), INTERVAL {} MICROSECOND), "
+            "AttemptCount = AttemptCount + 1, UpdatedAt = CURRENT_TIMESTAMP "
             "WHERE RequestID = {} AND Status = 'pending'",
+            std::max<uint32>(config.actionPollIntervalMs * 3, 5000) * 1000,
             requestId);
 
         ExecuteClaimedAction(requestId, playerGuid, actionKind, payloadJson, riskLevel, createdBy);

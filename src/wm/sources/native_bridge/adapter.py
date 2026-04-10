@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 
 from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient
@@ -38,6 +39,7 @@ class NativeBridgeAdapter:
             event = _record_to_event(record)
             if event is not None:
                 events.append(event)
+        events.extend(_build_gossip_session_expired_events(client=self.client, settings=self.settings, player_guid=self.player_guid_filter))
         return events
 
 
@@ -239,8 +241,115 @@ def _record_to_event(record: NativeBridgeRecord) -> WMEvent | None:
     return None
 
 
+def _build_gossip_session_expired_events(
+    *,
+    client: MysqlCliClient,
+    settings: Settings,
+    player_guid: int | None,
+) -> list[WMEvent]:
+    timeout_seconds = int(settings.native_bridge_gossip_session_timeout_seconds)
+    if timeout_seconds <= 0:
+        return []
+
+    predicates = [
+        "talk.EventClass = 'observed'",
+        "talk.EventType = 'talk'",
+        "talk.Source = 'native_bridge'",
+        f"talk.OccurredAt <= DATE_SUB(NOW(), INTERVAL {timeout_seconds} SECOND)",
+        "NOT EXISTS ("
+        "SELECT 1 FROM wm_event_log expired "
+        "WHERE expired.Source = 'native_bridge_derived' "
+        "AND expired.SourceEventKey = CONCAT(talk.SourceEventKey, ':gossip_session_expired')"
+        ")",
+        "NOT EXISTS ("
+        "SELECT 1 FROM wm_event_log selected "
+        "WHERE selected.EventClass = 'observed' "
+        "AND selected.EventType = 'gossip_select' "
+        "AND selected.Source = 'native_bridge' "
+        "AND selected.PlayerGUID <=> talk.PlayerGUID "
+        "AND selected.SubjectType <=> talk.SubjectType "
+        "AND selected.SubjectEntry <=> talk.SubjectEntry "
+        "AND selected.EventID > talk.EventID "
+        f"AND selected.OccurredAt <= DATE_ADD(talk.OccurredAt, INTERVAL {timeout_seconds} SECOND)"
+        ")",
+    ]
+    if player_guid is not None:
+        predicates.append(f"talk.PlayerGUID = {int(player_guid)}")
+
+    rows = client.query(
+        host=settings.world_db_host,
+        port=settings.world_db_port,
+        user=settings.world_db_user,
+        password=settings.world_db_password,
+        database=settings.world_db_name,
+        sql=(
+            "SELECT talk.EventID, talk.SourceEventKey, talk.OccurredAt, "
+            "DATE_ADD(talk.OccurredAt, INTERVAL "
+            f"{timeout_seconds} SECOND) AS ExpiredAt, "
+            "talk.PlayerGUID, talk.SubjectType, talk.SubjectEntry, talk.MapID, talk.ZoneID, talk.AreaID, "
+            "talk.EventValue, talk.MetadataJSON "
+            "FROM wm_event_log talk "
+            f"WHERE {' AND '.join(predicates)} "
+            "ORDER BY talk.EventID ASC "
+            "LIMIT 25"
+        ),
+    )
+    events: list[WMEvent] = []
+    for row in rows:
+        metadata = _metadata_from_json(row.get("MetadataJSON"))
+        metadata.update(
+            {
+                "derived": True,
+                "derived_event_type": "gossip_session_expired",
+                "derived_from_event_id": _int_or_none(row.get("EventID")),
+                "derived_from_source_event_key": row.get("SourceEventKey"),
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        events.append(
+            WMEvent(
+                event_class="observed",
+                event_type="gossip_session_expired",
+                source="native_bridge_derived",
+                source_event_key=f"{row['SourceEventKey']}:gossip_session_expired",
+                occurred_at=str(row.get("ExpiredAt") or row.get("OccurredAt")),
+                player_guid=_int_or_none(row.get("PlayerGUID")),
+                subject_type=_str_or_none(row.get("SubjectType")),
+                subject_entry=_int_or_none(row.get("SubjectEntry")),
+                map_id=_int_or_none(row.get("MapID")),
+                zone_id=_int_or_none(row.get("ZoneID")),
+                area_id=_int_or_none(row.get("AreaID")),
+                event_value=_str_or_none(row.get("EventValue")),
+                metadata=metadata,
+            )
+        )
+    return events
+
+
+def _metadata_from_json(value: object) -> dict[str, object]:
+    if value in (None, ""):
+        return {}
+    try:
+        parsed = json.loads(str(value))
+    except json.JSONDecodeError:
+        return {"raw_metadata": str(value)}
+    return parsed if isinstance(parsed, dict) else {"value": parsed}
+
+
 def _string_from_payload(payload: dict[str, object], key: str) -> str | None:
     value = payload.get(key)
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def _int_or_none(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    return int(value)
+
+
+def _str_or_none(value: object) -> str | None:
     if value in (None, ""):
         return None
     return str(value)

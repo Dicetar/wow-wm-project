@@ -1,0 +1,9 @@
+{
+  "id": "gossip_session_expired",
+  "schema_version": "control.event.v1",
+  "enabled": true,
+  "event_type": "gossip_session_expired",
+  "description": "WM derived that a native gossip-open session timed out without a matching gossip selection.",
+  "required_fields": ["event_id", "player_guid", "subject_type", "subject_entry"],
+  "preferred_source": "native_bridge_derived"
+}

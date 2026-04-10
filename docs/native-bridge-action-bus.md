@@ -4,6 +4,8 @@ The native action bus is the next WM bridge layer after native perception.
 
 It lets WM enqueue one fixed, typed server action into `wm_bridge_action_request`, while `mod-wm-bridge` validates player scope and policy before executing it. C++ still does not plan, generate story, run arbitrary SQL, run GM commands, edit files, or decide cooldown policy. WM Python and the `control/` registry remain the brain.
 
+Gossip close is intentionally WM-derived for now. This AzerothCore branch exposes clean gossip open/select hooks, but not a clean module hook for close/cancel. WM emits `gossip_session_expired` after a configurable timeout when a native `talk` event has no matching `gossip_select`.
+
 ## Safety Defaults
 
 The action bus is compiled but inert until explicitly enabled:
@@ -20,6 +22,7 @@ Implemented native actions in the first safe slice:
 - `debug_echo`
 - `debug_fail`
 - `context_snapshot_request`
+- `world_announce_to_player`
 
 Everything risky should be proven in `D:\WOW\WM_BridgeLab` before promotion.
 
@@ -27,10 +30,19 @@ Everything risky should be proven in `D:\WOW\WM_BridgeLab` before promotion.
 
 Core queue and gates:
 
-- `wm_bridge_action_request`: one append-style action request with idempotency, status, payload, result, and error state.
+- `wm_bridge_action_request`: one append-style action request with idempotency, status, payload, priority, optional sequence metadata, lease/attempt state, result, and error state.
 - `wm_bridge_action_policy`: DB policy per action kind/profile with enabled flag, max risk, cooldown, burst limit, and admin-only flag.
 - `wm_bridge_player_scope`: DB-backed live player allowlist.
 - `wm_bridge_runtime_status`: native bridge heartbeat/status records.
+
+Queue timing and ordering:
+
+- `ExpiresAt` is the pending request deadline. If the row is still `pending` after this time, native code marks it `expired`.
+- `ClaimExpiresAt` is the execution lease. If worldserver crashes while a row is `claimed`, the next native poll or the Python maintenance CLI requeues it until `MaxAttempts` is reached.
+- `PurgeAfter` is only a Python cleanup hint. C++ never deletes terminal audit/debug rows automatically.
+- `Priority` sorts pending work as `1=urgent`, `5=normal`, `9=background`.
+- `SequenceID`, `SequenceOrder`, and `WaitForPrior` support manual/admin scene tests. Waiting rows run only after lower-order rows in the same sequence are `done`; if a prior row fails/rejects/expires, later waiting rows fail with `sequence_prior_failed`.
+- `TargetMapID`, `TargetX`, `TargetY`, `TargetZ`, `TargetO`, and `TargetPlayerGUID` are optional structural coordinates for future spawn/move/teleport-style actions. Flexible details remain in `PayloadJSON`.
 
 Support tables staged for future capability bodies:
 
@@ -63,6 +75,8 @@ The full build path regenerates CMake and resets the lab build directory. Use it
 ```powershell
 .\stage-bridge-lab-runtime.bat
 ```
+
+The incremental path also resyncs repo-owned local modules like `native_modules/mod-wm-bridge` into `D:\WOW\WM_BridgeLab` before compiling, so native bridge edits do not require a full workspace regenerate just to reach the lab binary.
 
 The current proven lab dependency layout uses a copied MySQL data directory under `D:\WOW\WM_BridgeLab\deps\mysql`. Start it on an isolated port and point lab configs at it:
 
@@ -134,6 +148,27 @@ python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --actio
 
 Expected result for `debug_fail`: status `failed`, with structured error text.
 
+Submit a small ordered sequence:
+
+```powershell
+python -m wm.sources.native_bridge.actions_cli submit-sequence --player-guid 5406 --sequence-id lab-seq-1 --actions-json '[{"action_kind":"debug_ping"},{"action_kind":"debug_echo","payload":{"message":"after ping"}}]' --wait --summary
+```
+
+Inspect and maintain queue state:
+
+```powershell
+python -m wm.sources.native_bridge.actions_cli inspect --player-guid 5406 --limit 10 --summary
+python -m wm.sources.native_bridge.actions_cli recover-stale --summary
+python -m wm.sources.native_bridge.actions_cli cleanup --older-than-seconds 3600 --summary
+```
+
+`world_announce_to_player` is implemented but policy-disabled by default. Enable it only in the lab for one scoped player:
+
+```powershell
+python -m wm.sources.native_bridge.actions_cli policy --action-kind world_announce_to_player --enable --max-risk-level low --cooldown-ms 1000 --burst-limit 5 --summary
+python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --action-kind world_announce_to_player --payload-json '{"message":"WM bridge lab ping"}' --idempotency-key lab-announce-1 --wait --summary
+```
+
 Lab verification on 2026-04-10:
 
 - isolated incremental `worldserver` target built successfully in `D:\WOW\WM_BridgeLab`
@@ -203,7 +238,7 @@ Recommended order:
 
 1. Prove `debug_ping`/`debug_echo`/`debug_fail` in `D:\WOW\WM_BridgeLab`.
 2. Harden `context_snapshot_request`, because it is observational and useful for debugging.
-3. Add one tiny mutation with easy rollback, such as `world_announce_to_player`.
+3. Prove the already-implemented `world_announce_to_player` with a one-player lab policy enable.
 4. Add `quest_add` as the first replacement for SOAP quest grant.
 5. Add item/spell/player/object verbs only after each has a dedicated lab test and policy default.
 

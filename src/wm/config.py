@@ -63,6 +63,7 @@ class Settings:
     native_bridge_batch_size: int = 200
     native_bridge_action_wait_seconds: float = 5.0
     native_bridge_action_poll_seconds: float = 0.25
+    native_bridge_gossip_session_timeout_seconds: int = 45
     wm_bridge_config_path: str = _default_bootstrap_path("run", "configs", "modules", "mod_wm_bridge.conf")
     control_root: str = str(_repo_root().joinpath("control"))
     control_proposal_state_path: str = _default_bootstrap_path("state", "control-proposals")
@@ -109,6 +110,7 @@ class Settings:
             native_bridge_batch_size=int(os.getenv("WM_NATIVE_BRIDGE_BATCH_SIZE", "200")),
             native_bridge_action_wait_seconds=float(os.getenv("WM_NATIVE_BRIDGE_ACTION_WAIT_SECONDS", "5.0")),
             native_bridge_action_poll_seconds=float(os.getenv("WM_NATIVE_BRIDGE_ACTION_POLL_SECONDS", "0.25")),
+            native_bridge_gossip_session_timeout_seconds=int(os.getenv("WM_NATIVE_BRIDGE_GOSSIP_SESSION_TIMEOUT_SECONDS", "45")),
             wm_bridge_config_path=os.getenv(
                 "WM_BRIDGE_CONFIG_PATH",
                 _default_bootstrap_path("run", "configs", "modules", "mod_wm_bridge.conf"),
