@@ -13,6 +13,7 @@ from wm.events.run import _validate_run_arguments
 from wm.events.run import execute_event_spine
 from wm.sources.addon_log import arm_addon_log_cursor
 from wm.sources.combat_log import arm_combat_log_cursor
+from wm.sources.native_bridge.arm import arm_native_bridge_cursor
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -44,13 +45,29 @@ def main(argv: list[str] | None = None) -> int:
             arm_result = arm_combat_log_cursor(settings=settings, store=store)
         elif args.adapter == "addon_log":
             arm_result = arm_addon_log_cursor(settings=settings, store=store)
-        else:
-            raise SystemExit("--arm-from-end is only supported with --adapter addon_log or --adapter combat_log.")
-        if args.summary:
-            print(
-                f"armed_from_end=true file_exists={arm_result.file_exists} "
-                f"previous_offset={arm_result.previous_offset} armed_offset={arm_result.armed_offset}"
+        elif args.adapter == "native_bridge":
+            arm_result = arm_native_bridge_cursor(
+                settings=settings,
+                store=store,
+                player_guid=args.player_guid,
+                client=client,
             )
+        else:
+            raise SystemExit(
+                "--arm-from-end is only supported with --adapter addon_log, --adapter combat_log, or --adapter native_bridge."
+            )
+        if args.summary:
+            if args.adapter == "native_bridge":
+                print(
+                    f"armed_from_end=true table_exists={arm_result.table_exists} "
+                    f"player_guid={arm_result.player_guid} previous_last_seen={arm_result.previous_last_seen} "
+                    f"armed_last_seen={arm_result.armed_last_seen}"
+                )
+            else:
+                print(
+                    f"armed_from_end=true file_exists={arm_result.file_exists} "
+                    f"previous_offset={arm_result.previous_offset} armed_offset={arm_result.armed_offset}"
+                )
 
     iteration = 0
     try:

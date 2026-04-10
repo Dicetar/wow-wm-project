@@ -66,6 +66,15 @@ class EventRunValidationTests(unittest.TestCase):
 
         self.assertIn("Addon log runs require --player-guid", str(ctx.exception))
 
+    def test_native_bridge_requires_player_guid_even_for_dry_run(self) -> None:
+        settings = Settings()
+        args = Namespace(mode="dry-run", confirm_live_apply=False, player_guid=None, adapter="native_bridge")
+
+        with self.assertRaises(SystemExit) as ctx:
+            _validate_run_arguments(args=args, settings=settings)
+
+        self.assertIn("Native bridge runs require --player-guid", str(ctx.exception))
+
     def test_apply_allows_single_scoped_plan(self) -> None:
         plan = ReactionPlan(
             plan_key="repeat_hunt_followup:5406:creature:6",

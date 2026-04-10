@@ -43,6 +43,16 @@ $openSslRoot = Get-DependencyInstallRoot -Manifest $manifest -WorkspaceRoot $pat
 $compatibilityOverlayScript = Join-Path $repoRoot "scripts\repack\Apply-RepackCompatibilityOverlay.ps1"
 $buildBinRoot = Join-Path $paths.buildRoot ("bin\" + $manifest.build.configuration)
 
+Invoke-Step "Resyncing repo-owned local modules into the workspace" {
+    Sync-LocalModules -RepoRoot $repoRoot -WorkspaceRoot $paths.root -CoreRoot $paths.coreRoot -Manifest $manifest
+}
+
+Invoke-Step "Disabling IPP optional SQL updates in the workspace" {
+    $ippModuleRoot = Join-Path $paths.moduleRoot "mod-individual-progression"
+    $moved = Disable-IppOptionalSql -ModuleRoot $ippModuleRoot
+    Write-Host "ipp_optional_sql_disabled=$moved"
+}
+
 Invoke-Step "Staging repo SQL overrides into AzerothCore custom SQL paths" {
     Stage-RepoSqlOverrides -RepoRoot $repoRoot -SourceRoot $paths.coreRoot -Manifest $manifest
 }
@@ -102,6 +112,8 @@ Invoke-Step "Building AzerothCore ($($manifest.build.configuration))" {
 
 Invoke-Step "Staging runtime DLLs into the build output" {
     Stage-RuntimeDependencies -BinRoot $buildBinRoot -MySQLRoot $mysqlRoot -OpenSSLRoot $openSslRoot
+    $lockPath = Write-RuntimeDllLock -BinRoot $buildBinRoot -StateRoot $paths.stateRoot
+    Write-Host "runtime_dll_lock=$lockPath"
 }
 
 Invoke-Step "Copying build output into the portable run layout" {

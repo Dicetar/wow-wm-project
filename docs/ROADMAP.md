@@ -67,6 +67,11 @@ Implemented on the event-spine track:
 - player quest runtime-state snapshots plus observed `quest_granted` / `quest_completed` / `quest_rewarded` transitions
 - kill-burst gating for a stable repeatable quest with turn-in-only NPC linkage
 - shared player/creature/NPC/quest/item/spell ref models for internal schemas
+- native bridge adapter for server-truth kill, quest, loot, gossip, area, spell, item, aura, and weather events
+- control contract registry for manual and future LLM action proposals
+- Pydantic `ControlProposal` schema shared by humans and LLMs
+- manual inspect/new/validate/apply workbench over the same executor gates
+- native bridge action queue contract with scoped player DB control, policy gates, request/audit rows, and a broad fixed action vocabulary
 
 This means the repo is already beyond bootstrap-only status and is moving toward an event-driven WM core.
 
@@ -77,6 +82,8 @@ Implemented:
 - portable repo-relative `setup-wm.bat` -> `build-wm.bat` bootstrap flow under `.wm-bootstrap\`
 - side-by-side build/run workflow instead of in-place repack mutation
 - launcher and rebuild helper scripts for the rebuilt tree
+- runtime DLL guard for MySQL/OpenSSL dependency mismatch detection
+- isolated `D:\WOW\WM_BridgeLab` helper scripts for bridge rebuild/testing before promotion
 
 Current truth:
 - the rebuilt baseline is for WM development first
@@ -111,18 +118,39 @@ Turn the event spine into a reliable operator-grade WM orchestration layer.
 
 ---
 
-## Phase 2 - Contextual smart reactions
+## Phase 2 - Control contracts and safe manual/LLM reactions
+
+### Goal
+Make reactions controllable through a narrow registry that both humans and LLMs can use safely.
+
+### Deliverables
+- keep `control/` as the one place for event/action/recipe/policy contracts
+- make manual proposals the first-class test lane for every future LLM action
+- keep direct apply to one registered action per observed event in v1
+- persist proposal validation, dry-run, apply, and reject audit state
+- only enable LLM-authored apply behind `WM_LLM_DIRECT_APPLY=1`
+
+### Exit criteria
+- a human can inspect an event, generate a proposal, validate it, dry-run it, and apply it without an LLM
+- future LLM proposals use the exact same JSON schema and coordinator path
+- unregistered actions, wrong player scope, stale events, duplicate applies, and high-risk mutations are rejected
+
+---
+
+## Phase 3 - Contextual smart reactions
+
+### Native bridge action bus note
+Before adding more live gameplay behavior, WM should prove the native action bus in the lab with non-mutating `debug_ping`/`debug_echo`, then harden one narrow mutation at a time. The queue and policy schema are broad by design, but most native action kinds stay disabled or `not_implemented` until their C++ body has a dedicated lab test.
 
 ### Goal
 Make reactions context-aware instead of merely structurally valid.
 
 ### Deliverables
-- context shaping that consumes resolver output and journal summaries directly
+- context shaping that consumes resolver output, journal summaries, and control perception packs directly
 - event-to-reaction heuristics that use recent player history
 - deterministic opportunity detection with optional LLM content shaping layered on top
 - richer follow-up quest, reward, passive, and announcement payload generation
-- duplicate/repetition controls using recent reaction history
-- improve reactive bounty flavor once the direct-grant kill-burst loop is proven reliable
+- duplicate/repetition controls using recent reaction and proposal history
 
 ### Exit criteria
 - reactions use world facts instead of raw IDs
@@ -131,7 +159,7 @@ Make reactions context-aware instead of merely structurally valid.
 
 ---
 
-## Phase 3 - Registry and lifecycle governance
+## Phase 4 - Registry and lifecycle governance
 
 ### Goal
 Manage WM-created artifacts as first-class objects with provenance and lifecycle.
@@ -140,10 +168,7 @@ Manage WM-created artifacts as first-class objects with provenance and lifecycle
 - stronger artifact registry conventions
 - staged -> active -> retired/archived lifecycle discipline
 - cache-risk and reused-ID tracking
-- provenance in publish logs:
-  - source prompt or generator kind
-  - target context
-  - operator action
+- provenance in publish logs and control proposal audit state
 
 ### Exit criteria
 - every generated artifact can be traced to its source and lifecycle state
@@ -152,31 +177,10 @@ Manage WM-created artifacts as first-class objects with provenance and lifecycle
 
 ---
 
-## Phase 4 - Broader adapter surface
+## Phase 5 - Broader perception and content breadth
 
 ### Goal
-Expand perception without changing the event contract.
-
-### Deliverables
-- additional ingestion adapters:
-  - richer hidden-addon event coverage beyond `HELLO` / `KILL`
-  - richer combat-log coverage beyond `PARTY_KILL`
-  - manual/operator triggers
-  - bridge-fed events if a compile path exists later
-- stronger anti-spam, replay, and checkpoint controls
-- better event enrichment before planning
-- keep downstream planning/execution unchanged while adapters evolve
-
-### Exit criteria
-- multiple adapters can feed the same canonical event bus
-- adapter swapping does not force planner or executor rewrites
-
----
-
-## Phase 5 - Content breadth expansion
-
-### Goal
-Expand what WM can safely create once the event spine is trustworthy.
+Expand what WM can sense and create once control contracts are trustworthy.
 
 ### Deliverables
 - more quest archetypes beyond bounty:
@@ -187,24 +191,10 @@ Expand what WM can safely create once the event spine is trustworthy.
 - broader managed item use
 - broader managed spell/passive use
 - eventual creature/NPC authoring only if a chosen demo requires it
+- on-demand nearby context snapshots from the native bridge
 
 ### Exit criteria
 - WM can compose richer multi-artifact scenarios without breaking slot governance
-
----
-
-## Phase 6 - Thin bridge exploration
-
-### Goal
-Improve live-awareness only after the external platform is strong enough to deserve a bridge.
-
-### Deliverables
-- investigate a minimal AzerothCore-side bridge only if a compile-capable source path is available
-- structured event emission to the external WM service
-- no migration of WM decision-making into the core itself
-
-### Exit criteria
-- transient world events can be emitted cleanly to the external WM without changing the core project philosophy
 
 ---
 

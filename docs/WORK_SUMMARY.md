@@ -24,6 +24,32 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - addon-log adapter reading AzerothCore addon-message logging as the current working live source
 - `combat_log` retained only as fallback/debug
 
+### Native bridge rollout
+
+- repo-owned `mod-wm-bridge` native module
+- append-only `wm_bridge_event` raw event table
+- `native_bridge` WM adapter maps raw rows into canonical events
+- module is inert by default through empty `WmBridge.PlayerGuidAllowList`
+- WM helper can update the allowlist and reload config without a worldserver restart
+- DB-backed player scope through `wm_bridge_player_scope` can be enabled for live allowlist control after bootstrap SQL is present
+- native action bus foundation through `wm_bridge_action_request`, `wm_bridge_action_policy`, and `wm_bridge_runtime_status`
+- broad native action vocabulary is registered, but only `debug_ping`, `debug_echo`, `debug_fail`, and `context_snapshot_request` execute in the first safe C++ slice
+
+### Control contract workbench
+
+- repo-owned `control/` registry for events, actions, recipes, policies, examples, schemas, and runtime checks
+- `native_bridge_action` contract lets humans and later LLMs submit one fixed native action kind through the same proposal gates
+- Pydantic `ControlProposal` contract is shared by manual proposals and future LLM proposals
+- manual inspect/new/validate/apply commands exercise the same coordinator path as LLM proposals
+- live apply is one registered action per proposal, with player scope, source event checks, dry-run, idempotency, and audit state
+- LLM-authored live apply is blocked unless `WM_LLM_DIRECT_APPLY=1`
+
+### Runtime DLL guard
+
+- build now records a `runtime-dlls.lock.json` hash inventory for MySQL/OpenSSL runtime DLLs
+- rebuilt launcher can fail fast before `authserver.exe` or `worldserver.exe` starts with mismatched DLLs
+- this directly targets the previous `legacy.dll` / `libcrypto` entry-point breakage
+
 ### Shared internal refs
 
 - typed refs for players, creatures, NPCs, quests, items, and spells
@@ -35,6 +61,7 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - large module set cloned from upstream/community repos
 - compatibility overlay for loader/API drift
 - launcher/rebuild helpers for native WM module work
+- isolated bridge lab wrappers keep native rebuild experiments in `D:\WOW\WM_BridgeLab` instead of the working rebuild
 
 ### IPP cleanup work
 
@@ -48,6 +75,7 @@ This repository is now a real WM platform baseline, not just an idea pile.
 For the portable workflow, the repo now owns:
 
 - WM SQL bootstrap and overrides
+- WM control contracts and proposal examples
 - addon bridge source
 - portable source/dependency manifest
 - bootstrap/build scripts
@@ -59,6 +87,7 @@ For the portable workflow, the repo now owns:
 - some repack-specific/custom NPC or world content still drifts because newer module trees do not perfectly match the historical pack
 - WeatherVibe is loaded but still needs meaningful zone/profile data
 - optional IPP extras are intentionally excluded from the default portable bootstrap path
+- most native mutation action kinds are intentionally disabled/not implemented until their C++ bodies pass lab tests
 
 ## Recommended workflow
 
@@ -67,4 +96,7 @@ For the portable workflow, the repo now owns:
 3. run `build-wm.bat`
 4. edit `.wm-bootstrap\run\configs\worldserver.conf` and `.wm-bootstrap\run\configs\authserver.conf`
 5. apply `sql\bootstrap\wm_bootstrap.sql`
-6. continue WM feature work from the repo, not from machine-local rebuild leftovers
+6. use `python -m wm.control.inspect/new/validate/apply` for manual control tests
+7. continue WM feature work from the repo, not from machine-local rebuild leftovers
+
+For native bridge action work, use `setup-bridge-lab.bat` and `build-bridge-lab.bat`, then run a `debug_ping` queue test before promoting anything back to a working realm.

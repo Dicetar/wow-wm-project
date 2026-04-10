@@ -58,6 +58,16 @@ Invoke-Step "Cloning or updating module sources into $($paths.moduleRoot)" {
     }
 }
 
+Invoke-Step "Syncing repo-owned local modules into $($paths.moduleRoot)" {
+    Sync-LocalModules -RepoRoot $repoRoot -WorkspaceRoot $paths.root -CoreRoot $paths.coreRoot -Manifest $manifest
+}
+
+Invoke-Step "Disabling IPP optional SQL updates in the workspace" {
+    $ippModuleRoot = Join-Path $paths.moduleRoot "mod-individual-progression"
+    $moved = Disable-IppOptionalSql -ModuleRoot $ippModuleRoot
+    Write-Host "ipp_optional_sql_disabled=$moved"
+}
+
 Invoke-Step "Fetching and staging local build dependencies into $($paths.depsRoot)" {
     $dependencyState = @()
     foreach ($dependency in $manifest.dependencies) {
@@ -80,7 +90,18 @@ Invoke-Step "Recording setup state into $($paths.stateRoot)" {
         $targetDir = Resolve-PortablePath -BasePath $paths.root -CandidatePath $module.target_path
         [pscustomobject]@{
             key = $module.key
+            kind = "git"
             repo_url = $module.repo_url
+            target_path = $targetDir
+            exists = Test-Path $targetDir
+        }
+    }
+    $moduleState += foreach ($module in @($manifest.local_modules)) {
+        $targetDir = Resolve-PortablePath -BasePath $paths.root -CandidatePath $module.target_path
+        [pscustomobject]@{
+            key = $module.key
+            kind = "local"
+            source = Resolve-PortablePath -BasePath $repoRoot -CandidatePath $module.source
             target_path = $targetDir
             exists = Test-Path $targetDir
         }
@@ -92,7 +113,7 @@ Invoke-Step "Recording setup state into $($paths.stateRoot)" {
         module_root = $paths.moduleRoot
         dependency_root = $paths.depsRoot
         run_root = $paths.runRoot
-        module_count = @($manifest.modules).Count
+        module_count = @($manifest.modules).Count + @($manifest.local_modules).Count
         dependency_count = @($manifest.dependencies).Count
         what_if = [bool]$WhatIf
     })

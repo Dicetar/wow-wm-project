@@ -30,6 +30,8 @@ from wm.spells.models import ManagedSpellDraft
 from wm.spells.models import ManagedSpellLink
 from wm.spells.models import ManagedSpellProcRule
 from wm.spells.publish import SpellPublisher
+from wm.sources.native_bridge.action_kinds import NATIVE_ACTION_KIND_BY_ID
+from wm.sources.native_bridge.actions import NativeBridgeActionClient
 
 
 class ReactionExecutor:
@@ -55,6 +57,7 @@ class ReactionExecutor:
         self.quest_publisher = QuestPublisher(client=client, settings=settings)
         self.item_publisher = ItemPublisher(client=client, settings=settings)
         self.spell_publisher = SpellPublisher(client=client, settings=settings)
+        self.native_bridge_actions = NativeBridgeActionClient(client=client, settings=settings)
 
     def execute(self, *, plan: ReactionPlan, mode: str) -> ExecutionResult:
         if mode not in {"dry-run", "apply"}:
@@ -135,6 +138,38 @@ class ReactionExecutor:
                 self._emit_action_event(plan=plan, event_type="announcement_sent", event_value=payload.get("text"))
                 return ExecutionStepResult(kind="announcement", status="applied", details=payload)
             return ExecutionStepResult(kind="announcement", status="dry-run", details=payload)
+
+        if action_kind == "native_bridge_action":
+            native_action_kind = str(payload.get("native_action_kind") or "")
+            if native_action_kind not in NATIVE_ACTION_KIND_BY_ID:
+                raise ValueError(f"Unsupported native bridge action kind: {native_action_kind}")
+            native_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+            details = {
+                "native_action_kind": native_action_kind,
+                "payload": native_payload,
+                "implemented": bool(NATIVE_ACTION_KIND_BY_ID[native_action_kind].implemented),
+                "dry_run_ready": True,
+                "dry_run_notes": [
+                    "Dry-run validates the native action contract only; the C++ bridge executes queued rows after apply."
+                ],
+            }
+            if mode == "apply":
+                request = self.native_bridge_actions.submit(
+                    idempotency_key=f"{plan.plan_key}:native:{native_action_kind}",
+                    player_guid=int(payload.get("player_guid") or plan.player_guid),
+                    action_kind=native_action_kind,
+                    payload=native_payload,
+                    created_by=str(payload.get("created_by") or "wm.control"),
+                    risk_level=str(payload.get("risk_level") or NATIVE_ACTION_KIND_BY_ID[native_action_kind].default_risk),
+                    expires_seconds=int(payload.get("expires_seconds") or 60),
+                )
+                final_request = self.native_bridge_actions.wait(request_id=request.request_id)
+                details["request"] = final_request.to_dict()
+                if final_request.status == "done":
+                    self._emit_action_event(plan=plan, event_type="native_bridge_action_done", event_value=native_action_kind)
+                    return ExecutionStepResult(kind="native_bridge_action", status="applied", details=details)
+                return ExecutionStepResult(kind="native_bridge_action", status="failed", details=details)
+            return ExecutionStepResult(kind="native_bridge_action", status="dry-run", details=details)
 
         if action_kind == "quest_grant":
             quest_ref = quest_ref_from_value(payload.get("quest"))

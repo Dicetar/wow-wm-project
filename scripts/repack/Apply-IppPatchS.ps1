@@ -2,7 +2,8 @@ param(
     [string]$OptionalRoot = "D:\WOW\wm-project\optional",
     [string]$RepackDbcRoot = "D:\WOW\Azerothcore_WoTLK_Repack\data\dbc",
     [string]$RebuildDbcRoot = "D:\WOW\Azerothcore_WoTLK_Rebuild\run\data\dbc",
-    [string]$ClientDataRoot = "D:\WOW\world of warcraft 3.3.5a hd\data"
+    [string]$ClientDataRoot = "D:\WOW\world of warcraft 3.3.5a hd\data",
+    [switch]$OverwriteClientPatchS
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,6 +49,15 @@ function Write-HashSummary {
     Write-Host ("{0}: {1} [{2}] {3}" -f $Label, $item.FullName, $item.Length, $hash.Hash)
 }
 
+function Get-FileHashString {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $null
+    }
+
+    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+}
+
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 
 $repackBackup = Join-Path $RepackDbcRoot "_backup_ipp_patchs_$stamp"
@@ -73,19 +83,29 @@ Copy-WithBackup -SourcePath $patchSSpell -DestinationPath (Join-Path $RebuildDbc
 $clientPatchS = Join-Path $ClientDataRoot "patch-S.mpq"
 $clientPatchLowerS = Join-Path $ClientDataRoot "patch-s.mpq"
 $clientPatchV = Join-Path $ClientDataRoot "patch-V.mpq"
+$sourcePatchS = Join-Path $OptionalRoot "patch-S\patch-S.mpq"
 
 Backup-IfExists -SourcePath $clientPatchS -BackupDirectory $clientBackup
 Backup-IfExists -SourcePath $clientPatchLowerS -BackupDirectory $clientBackup
 Backup-IfExists -SourcePath $clientPatchV -BackupDirectory $clientBackup
 
-if (Test-Path -LiteralPath $clientPatchLowerS) {
-    Remove-Item -LiteralPath $clientPatchLowerS -Force
-}
-if (Test-Path -LiteralPath $clientPatchV) {
-    Remove-Item -LiteralPath $clientPatchV -Force
-}
+$clientPatchSHash = Get-FileHashString -Path $clientPatchS
+$sourcePatchSHash = Get-FileHashString -Path $sourcePatchS
+$clientHasDifferentPatchS = $clientPatchSHash -and $sourcePatchSHash -and ($clientPatchSHash -ne $sourcePatchSHash)
 
-Copy-Item -LiteralPath (Join-Path $OptionalRoot "patch-S\patch-S.mpq") -Destination $clientPatchS -Force
+if ($clientHasDifferentPatchS -and -not $OverwriteClientPatchS) {
+    Write-Warning "Skipping client patch-S.mpq because an existing different patch-S.mpq is present."
+    Write-Warning "On HD clients this file may contain model/animation assets. Use -OverwriteClientPatchS only if you intentionally want to replace it."
+} else {
+    if (Test-Path -LiteralPath $clientPatchLowerS) {
+        Remove-Item -LiteralPath $clientPatchLowerS -Force
+    }
+    if (Test-Path -LiteralPath $clientPatchV) {
+        Remove-Item -LiteralPath $clientPatchV -Force
+    }
+
+    Copy-Item -LiteralPath $sourcePatchS -Destination $clientPatchS -Force
+}
 
 Write-Host "Applied IPP optional Patch-S payload with backups:"
 Write-Host "  Repack backup:  $repackBackup"
@@ -94,4 +114,6 @@ Write-Host "  Client backup:  $clientBackup"
 Write-Host ""
 Write-HashSummary -Label "Repack Spell.dbc" -Path (Join-Path $RepackDbcRoot "Spell.dbc")
 Write-HashSummary -Label "Rebuild Spell.dbc" -Path (Join-Path $RebuildDbcRoot "Spell.dbc")
-Write-HashSummary -Label "Client patch-S.mpq" -Path $clientPatchS
+if (Test-Path -LiteralPath $clientPatchS) {
+    Write-HashSummary -Label "Client patch-S.mpq" -Path $clientPatchS
+}

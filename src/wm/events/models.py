@@ -10,6 +10,7 @@ EVENT_CLASSES = {"observed", "derived", "action"}
 OBSERVED_EVENT_TYPES = {
     "kill",
     "talk",
+    "gossip_select",
     "quest_accept",
     "quest_complete",
     "quest_granted",
@@ -17,6 +18,10 @@ OBSERVED_EVENT_TYPES = {
     "quest_rewarded",
     "loot_item",
     "item_use",
+    "spell_cast",
+    "aura_applied",
+    "aura_removed",
+    "weather_changed",
     "enter_area",
 }
 
@@ -35,6 +40,7 @@ ACTION_EVENT_TYPES = {
     "item_published",
     "spell_published",
     "announcement_sent",
+    "native_bridge_action_done",
 }
 
 

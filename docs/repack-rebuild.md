@@ -45,6 +45,7 @@ It then:
 - configures CMake against `.wm-bootstrap\src\azerothcore`
 - builds into `.wm-bootstrap\build`
 - stages runtime DLLs and config templates
+- records a runtime DLL lock under `.wm-bootstrap\state\runtime-dlls.lock.json`
 - copies a runnable layout into `.wm-bootstrap\run`
 
 Primary outputs after build:
@@ -52,6 +53,9 @@ Primary outputs after build:
 - `.wm-bootstrap\run\bin`
 - `.wm-bootstrap\run\configs`
 - `.wm-bootstrap\run\logs`
+- `.wm-bootstrap\state\runtime-dlls.lock.json`
+
+The runtime DLL lock records hashes for `libmysql.dll`, `libcrypto-3-x64.dll`, `libssl-3-x64.dll`, and `legacy.dll`. The rebuilt launcher runs the guard when the helper exists, so mixed OpenSSL/MySQL DLLs fail before the server opens mystery Windows entry-point dialogs.
 
 ## Source of truth
 
@@ -103,7 +107,9 @@ It is not a full DB import/migration lane and it is not a promise of gameplay pa
 ## Related repo assets
 
 - WM bootstrap SQL: `sql/bootstrap`
+- WM control registry: `control`
 - repack/world overrides: `sql/repack`
 - addon bridge: `wow_addons/WMBridge`
+- runtime DLL guard: `scripts/bootstrap/Test-RuntimeDllGuard.ps1`
 - compatibility overlay: `scripts/repack/Apply-RepackCompatibilityOverlay.ps1`
 - work summary: `docs/WORK_SUMMARY.md`

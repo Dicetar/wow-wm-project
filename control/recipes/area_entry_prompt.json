@@ -1,0 +1,16 @@
+{
+  "id": "area_entry_prompt",
+  "schema_version": "control.recipe.v1",
+  "enabled": true,
+  "description": "React to a player entering a meaningful area.",
+  "trigger_event_types": ["enter_area"],
+  "allowed_actions": ["announcement", "noop"],
+  "default_action": {
+    "kind": "noop",
+    "payload": {
+      "reason": "Area-entry prompts are inspect-only in v1."
+    }
+  },
+  "max_risk": "low",
+  "live_enabled": false
+}

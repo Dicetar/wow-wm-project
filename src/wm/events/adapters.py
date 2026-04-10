@@ -12,9 +12,10 @@ from wm.events.store import EventStore
 from wm.reactive.store import ReactiveQuestStore
 from wm.sources.addon_log import AddonLogTailAdapter
 from wm.sources.combat_log import CombatLogTailAdapter
+from wm.sources.native_bridge import NativeBridgeAdapter
 
 
-ADAPTER_CHOICES = ("db", "addon_log", "combat_log")
+ADAPTER_CHOICES = ("db", "addon_log", "combat_log", "native_bridge")
 
 
 class EventAdapter(Protocol):
@@ -134,6 +135,14 @@ def build_event_adapter(
             store=store,
             reactive_store=reactive_store,
             batch_size=(int(batch_size) if batch_size is not None else int(settings.combat_log_batch_size)),
+            player_guid_filter=player_guid_filter,
+        )
+    if adapter_name == "native_bridge":
+        return NativeBridgeAdapter(
+            client=client,
+            settings=settings,
+            store=store,
+            batch_size=(int(batch_size) if batch_size is not None else int(settings.native_bridge_batch_size)),
             player_guid_filter=player_guid_filter,
         )
     raise ValueError(f"Unsupported adapter: {adapter_name}")

@@ -1,0 +1,12 @@
+{
+  "id": "noop",
+  "schema_version": "control.action.v1",
+  "enabled": true,
+  "executor_kind": "noop",
+  "risk": "low",
+  "description": "Perform no mutation while recording why no action was taken.",
+  "required_payload_fields": ["reason"],
+  "default_payload": {
+    "reason": ""
+  }
+}

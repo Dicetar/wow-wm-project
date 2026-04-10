@@ -87,6 +87,9 @@
     { "key": "transmog", "repo_url": "https://github.com/azerothcore/mod-transmog.git", "branch": null, "commit": null, "target_path": "src/modules/transmog" },
     { "key": "who-logged", "repo_url": "https://github.com/azerothcore/mod-who-logged.git", "branch": null, "commit": null, "target_path": "src/modules/who-logged" }
   ],
+  "local_modules": [
+    { "key": "mod-wm-bridge", "source": "native_modules/mod-wm-bridge", "target_path": "src/modules/mod-wm-bridge" }
+  ],
   "dependencies": [
     {
       "key": "boost",
@@ -134,6 +137,7 @@
     { "source": "sql/repack", "target": "run/sql/repack", "kind": "directory" },
     { "source": ".env.example", "target": "run/configs/.env.example", "kind": "file" },
     { "source": "bootstrap/templates/README.txt", "target": "run/configs/README.txt", "kind": "file" },
+    { "source": "scripts/bootstrap/Test-RuntimeDllGuard.ps1", "target": "run/helpers/Test-RuntimeDllGuard.ps1", "kind": "file" },
     { "source": "scripts/repack/Apply-RepackCompatibilityOverlay.ps1", "target": "run/helpers/Apply-RepackCompatibilityOverlay.ps1", "kind": "file" }
   ],
   "sql_overrides": [

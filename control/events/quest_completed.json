@@ -1,0 +1,9 @@
+{
+  "id": "quest_completed",
+  "schema_version": "control.event.v1",
+  "enabled": true,
+  "event_type": "quest_completed",
+  "description": "A player completed quest objectives.",
+  "required_fields": ["event_id", "player_guid", "subject_entry"],
+  "preferred_source": "native_bridge"
+}

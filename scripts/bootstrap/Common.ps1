@@ -163,6 +163,86 @@ function Clone-Or-UpdateGitRepo {
     Invoke-Native -FilePath $GitPath -Arguments @("-C", $TargetDir, "checkout", "FETCH_HEAD")
 }
 
+function Sync-LocalModule {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        $Module,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot
+    )
+
+    $sourceDir = Resolve-PortablePath -BasePath $RepoRoot -CandidatePath $Module.source
+    $targetDir = Resolve-PortablePath -BasePath $WorkspaceRoot -CandidatePath $Module.target_path
+    if (-not (Test-Path $sourceDir)) {
+        throw "Local module source not found: $sourceDir"
+    }
+
+    Ensure-Directory -Path (Split-Path -Parent $targetDir)
+    if (Test-Path $targetDir) {
+        Remove-Item -LiteralPath $targetDir -Recurse -Force
+    }
+    Ensure-Directory -Path $targetDir
+
+    foreach ($child in Get-ChildItem -LiteralPath $sourceDir -Force) {
+        Copy-Item -LiteralPath $child.FullName -Destination (Join-Path $targetDir $child.Name) -Recurse -Force
+    }
+
+    return $targetDir
+}
+
+function Sync-LocalModules {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$CoreRoot,
+        [Parameter(Mandatory = $true)]
+        $Manifest
+    )
+
+    Ensure-Directory -Path (Join-Path $CoreRoot "modules")
+    foreach ($module in @($Manifest.local_modules)) {
+        $targetDir = Sync-LocalModule -RepoRoot $RepoRoot -Module $module -WorkspaceRoot $WorkspaceRoot
+        $junctionPath = Join-Path (Join-Path $CoreRoot "modules") $module.key
+        Ensure-DirectoryJunction -Path $junctionPath -Target $targetDir
+    }
+}
+
+function Disable-IppOptionalSql {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ModuleRoot
+    )
+
+    if (-not (Test-Path $ModuleRoot)) {
+        return 0
+    }
+
+    $worldSqlRoot = Join-Path $ModuleRoot "data\sql\world"
+    if (-not (Test-Path $worldSqlRoot)) {
+        return 0
+    }
+
+    $disabledRoot = Join-Path $ModuleRoot "_wm_disabled_optional_sql"
+    Ensure-Directory -Path $disabledRoot
+
+    $moved = 0
+    foreach ($file in Get-ChildItem -Path $worldSqlRoot -Recurse -File -Filter "zz_optional_*.sql" -ErrorAction SilentlyContinue) {
+        $destination = Join-Path $disabledRoot $file.Name
+        if (Test-Path $destination) {
+            Remove-Item -LiteralPath $destination -Force
+        }
+        Move-Item -LiteralPath $file.FullName -Destination $destination
+        $moved += 1
+    }
+
+    return $moved
+}
+
 function Ensure-DirectoryJunction {
     param(
         [Parameter(Mandatory = $true)]
@@ -571,6 +651,83 @@ function Stage-RuntimeDependencies {
     foreach ($sourcePath in $copies | Sort-Object -Unique) {
         Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $BinRoot ([System.IO.Path]::GetFileName($sourcePath))) -Force
     }
+}
+
+function Get-RuntimeDllInventory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BinRoot
+    )
+
+    $requiredNames = @("libmysql.dll", "libcrypto-3-x64.dll", "libssl-3-x64.dll", "legacy.dll")
+    $files = @()
+    foreach ($name in $requiredNames) {
+        $path = Join-Path $BinRoot $name
+        if (-not (Test-Path $path)) {
+            throw "Required runtime DLL is missing: $path"
+        }
+        $item = Get-Item -LiteralPath $path
+        $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($item.FullName)
+        $files += [pscustomobject]@{
+            name = $name
+            path = $item.FullName
+            length = $item.Length
+            sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            file_version = $versionInfo.FileVersion
+            product_version = $versionInfo.ProductVersion
+        }
+    }
+    return $files
+}
+
+function Write-RuntimeDllLock {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BinRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$StateRoot
+    )
+
+    Ensure-Directory -Path $StateRoot
+    $lockPath = Join-Path $StateRoot "runtime-dlls.lock.json"
+    $payload = [pscustomobject]@{
+        schema_version = "wm.runtime_dlls.v1"
+        bin_root = (Resolve-Path $BinRoot).Path
+        generated_at = (Get-Date).ToUniversalTime().ToString("o")
+        files = @(Get-RuntimeDllInventory -BinRoot $BinRoot)
+    }
+    Save-JsonFile -Path $lockPath -Value $payload
+    return $lockPath
+}
+
+function Test-RuntimeDllLock {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BinRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$LockPath
+    )
+
+    if (-not (Test-Path $LockPath)) {
+        throw "Runtime DLL lock is missing: $LockPath. Re-run build-wm.bat to restage dependencies."
+    }
+
+    $lock = Get-Content -Path $LockPath -Raw | ConvertFrom-Json
+    $actualByName = @{}
+    foreach ($entry in @(Get-RuntimeDllInventory -BinRoot $BinRoot)) {
+        $actualByName[$entry.name] = $entry
+    }
+
+    foreach ($expected in @($lock.files)) {
+        $actual = $actualByName[$expected.name]
+        if (-not $actual) {
+            throw "Runtime DLL is missing from inventory: $($expected.name)"
+        }
+        if ($actual.sha256 -ne $expected.sha256 -or [int64]$actual.length -ne [int64]$expected.length) {
+            throw "Runtime DLL mismatch for $($expected.name). Re-run build-wm.bat before starting the rebuilt server."
+        }
+    }
+    return $true
 }
 
 function Repair-WorldserverResourceProject {

@@ -1,0 +1,12 @@
+{
+  "id": "runtime_dll_guard",
+  "schema_version": "control.runtime.v1",
+  "description": "Runtime DLLs that must stay internally consistent for rebuilt authserver/worldserver.",
+  "required_files": [
+    "libmysql.dll",
+    "libcrypto-3-x64.dll",
+    "libssl-3-x64.dll",
+    "legacy.dll"
+  ],
+  "lockfile": ".wm-bootstrap/state/runtime-dlls.lock.json"
+}

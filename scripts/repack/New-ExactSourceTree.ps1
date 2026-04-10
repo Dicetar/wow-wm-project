@@ -369,6 +369,70 @@ function Stage-RepoSqlOverrides {
     }
 }
 
+function Sync-RepoNativeModules {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$ModuleRoot
+    )
+
+    $nativeRoot = Join-Path $RepoRoot "native_modules"
+    if (-not (Test-Path $nativeRoot)) {
+        return @()
+    }
+
+    New-Item -ItemType Directory -Force -Path $ModuleRoot | Out-Null
+    $synced = @()
+    foreach ($sourceDir in Get-ChildItem -LiteralPath $nativeRoot -Directory -ErrorAction SilentlyContinue) {
+        $targetDir = Join-Path $ModuleRoot $sourceDir.Name
+        $resolvedModuleRoot = (Resolve-Path $ModuleRoot).Path
+        $resolvedTargetParent = (Resolve-Path (Split-Path $targetDir -Parent)).Path
+        if (-not $resolvedTargetParent.StartsWith($resolvedModuleRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to sync native module outside module root: $targetDir"
+        }
+
+        if (Test-Path $targetDir) {
+            Remove-Item -LiteralPath $targetDir -Recurse -Force
+        }
+        Copy-Item -LiteralPath $sourceDir.FullName -Destination $targetDir -Recurse -Force
+        $synced += $sourceDir.Name
+    }
+
+    return $synced
+}
+
+function Disable-IppOptionalSql {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ModuleRoot
+    )
+
+    if (-not (Test-Path $ModuleRoot)) {
+        return 0
+    }
+
+    $worldSqlRoot = Join-Path $ModuleRoot "data\sql\world"
+    if (-not (Test-Path $worldSqlRoot)) {
+        return 0
+    }
+
+    $disabledRoot = Join-Path $ModuleRoot "_wm_disabled_optional_sql"
+    New-Item -ItemType Directory -Force -Path $disabledRoot | Out-Null
+
+    $moved = 0
+    foreach ($file in Get-ChildItem -Path $worldSqlRoot -Recurse -File -Filter "zz_optional_*.sql" -ErrorAction SilentlyContinue) {
+        $destination = Join-Path $disabledRoot $file.Name
+        if (Test-Path $destination) {
+            Remove-Item -LiteralPath $destination -Force
+        }
+        Move-Item -LiteralPath $file.FullName -Destination $destination
+        $moved += 1
+    }
+
+    return $moved
+}
+
 function Ensure-WorkspaceAlias {
     param(
         [Parameter(Mandatory = $true)]
@@ -438,6 +502,31 @@ function Repair-WorldserverResourceProject {
 
     $projectXml.Save($projectPath)
     return $true
+}
+
+function Sync-BuildConfigsToRun {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BuildBinRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$RunConfigRoot
+    )
+
+    $buildConfigRoot = Join-Path $BuildBinRoot "configs"
+    if (-not (Test-Path $buildConfigRoot)) {
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path $RunConfigRoot | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $RunConfigRoot "modules") | Out-Null
+    Copy-Item -Path (Join-Path $buildConfigRoot "*") -Destination $RunConfigRoot -Recurse -Force
+
+    foreach ($distPath in Get-ChildItem -Path $RunConfigRoot -Recurse -Filter "*.conf.dist" -File -ErrorAction SilentlyContinue) {
+        $targetPath = $distPath.FullName.Substring(0, $distPath.FullName.Length - 5)
+        if (-not (Test-Path $targetPath)) {
+            Copy-Item -LiteralPath $distPath.FullName -Destination $targetPath -Force
+        }
+    }
 }
 
 if (-not [System.IO.Path]::IsPathRooted($ManifestPath)) {
@@ -670,6 +759,11 @@ if (-not $BuildOnly) {
     }
 }
 
+Invoke-Step "Syncing repo-owned native modules into $moduleRoot" {
+    $syncedNativeModules = Sync-RepoNativeModules -RepoRoot $repoRoot -ModuleRoot $moduleRoot
+    Write-Host "native_modules_synced=$($syncedNativeModules -join ',')"
+}
+
 $candidateCount = @($manifest.modules | Where-Object { $_.status -eq "candidate" }).Count
 $unresolvedCount = @($manifest.modules | Where-Object { $_.status -eq "unresolved" }).Count
 Write-Host "verified_modules=$(@($manifest.modules | Where-Object { $_.status -eq 'verified' }).Count) candidate_modules=$candidateCount unresolved_modules=$unresolvedCount"
@@ -705,6 +799,12 @@ if (Test-Path $compatibilityOverlayScript) {
             throw "Compatibility overlay script failed."
         }
     }
+}
+
+Invoke-Step "Disabling IPP optional SQL updates in the reconstructed source tree" {
+    $ippModuleRoot = Join-Path $moduleRoot "mod-individual-progression"
+    $moved = Disable-IppOptionalSql -ModuleRoot $ippModuleRoot
+    Write-Host "ipp_optional_sql_disabled=$moved"
 }
 
 if ($Build) {
@@ -758,6 +858,9 @@ if ($Build) {
             throw "Expected build output directory was not found: $binOutputRoot"
         }
         Stage-RuntimeDependencies -BinRoot $binOutputRoot -MySQLRoot $mysqlRoot -OpenSSLRoot $openSslRoot
+    }
+    Invoke-Step "Syncing generated config files into $runConfigRoot" {
+        Sync-BuildConfigsToRun -BuildBinRoot $binOutputRoot -RunConfigRoot $runConfigRoot
     }
 }
 

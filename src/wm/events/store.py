@@ -89,6 +89,30 @@ class EventStore:
             return None
         return int(rows[0]["EventID"])
 
+    def get_event(self, *, event_id: int) -> WMEvent | None:
+        rows = self._query_world(
+            "SELECT EventID, EventClass, EventType, Source, SourceEventKey, OccurredAt, PlayerGUID, SubjectType, "
+            "SubjectEntry, MapID, ZoneID, AreaID, EventValue, MetadataJSON "
+            "FROM wm_event_log "
+            f"WHERE EventID = {int(event_id)} "
+            "LIMIT 1"
+        )
+        if not rows:
+            return None
+        return self._row_to_event(rows[0])
+
+    def get_event_by_source_key(self, *, source: str, source_event_key: str) -> WMEvent | None:
+        rows = self._query_world(
+            "SELECT EventID, EventClass, EventType, Source, SourceEventKey, OccurredAt, PlayerGUID, SubjectType, "
+            "SubjectEntry, MapID, ZoneID, AreaID, EventValue, MetadataJSON "
+            "FROM wm_event_log "
+            f"WHERE Source = {_sql_string(source)} AND SourceEventKey = {_sql_string(source_event_key)} "
+            "LIMIT 1"
+        )
+        if not rows:
+            return None
+        return self._row_to_event(rows[0])
+
     def list_unprojected_observed_events(self, *, limit: int = 100) -> list[WMEvent]:
         rows = self._query_world(
             "SELECT EventID, EventClass, EventType, Source, SourceEventKey, OccurredAt, PlayerGUID, SubjectType, "
@@ -326,6 +350,8 @@ class EventStore:
 
     def resolve_subject_id(self, *, subject_type: str, subject_entry: int) -> int | None:
         entry_column = _subject_entry_column(subject_type)
+        if entry_column is None:
+            return None
         rows = self._query_world(
             "SELECT SubjectID FROM wm_subject_definition "
             f"WHERE SubjectType = {_sql_string(subject_type)} "
@@ -449,10 +475,10 @@ class EventStore:
             raise MysqlCliError(completed.stderr.strip() or completed.stdout.strip() or "mysql execute failed")
 
 
-def _subject_entry_column(subject_type: str) -> str:
+def _subject_entry_column(subject_type: str) -> str | None:
     if subject_type == "creature":
         return "CreatureEntry"
-    raise ValueError(f"Unsupported subject type: {subject_type}")
+    return None
 
 
 def _sql_string(value: str) -> str:

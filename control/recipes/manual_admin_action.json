@@ -1,0 +1,16 @@
+{
+  "id": "manual_admin_action",
+  "schema_version": "control.recipe.v1",
+  "enabled": true,
+  "description": "Controlled one-off manual action for admin testing without an event-bound trigger.",
+  "trigger_event_types": [],
+  "allowed_actions": ["quest_grant", "announcement", "noop", "native_bridge_action"],
+  "default_action": {
+    "kind": "noop",
+    "payload": {
+      "reason": "Manual admin no-op."
+    }
+  },
+  "max_risk": "medium",
+  "live_enabled": true
+}

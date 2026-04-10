@@ -1,0 +1,33 @@
+{
+  "schema_version": "control.proposal.v1",
+  "source_event": null,
+  "player": {
+    "guid": 5406,
+    "name": "Jecia"
+  },
+  "selected_recipe": "manual_admin_action",
+  "action": {
+    "kind": "native_bridge_action",
+    "payload": {
+      "native_action_kind": "debug_ping",
+      "payload": {},
+      "created_by": "manual",
+      "risk_level": "low",
+      "expires_seconds": 60
+    }
+  },
+  "rationale": "Manual native bridge action bus smoke test.",
+  "risk": {
+    "level": "low",
+    "irreversible": false,
+    "notes": ["debug_ping is non-mutating and only verifies the native action queue."]
+  },
+  "idempotency_key": "manual-example:native-debug-ping:5406",
+  "expected_effect": "The native bridge marks one debug_ping action request as done.",
+  "author": {
+    "kind": "manual_admin",
+    "name": "example",
+    "manual_reason": "Lab smoke test for the native bridge action queue."
+  },
+  "metadata": {}
+}

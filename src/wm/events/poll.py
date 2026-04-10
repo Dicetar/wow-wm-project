@@ -24,6 +24,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    _validate_poll_arguments(args)
     settings = Settings.from_env()
     client = MysqlCliClient()
     store = EventStore(client=client, settings=settings)
@@ -56,6 +57,19 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _validate_poll_arguments(args: argparse.Namespace) -> None:
+    if args.adapter not in {"addon_log", "combat_log", "native_bridge"}:
+        return
+    if args.player_guid is not None:
+        return
+    label = {
+        "addon_log": "Addon log",
+        "combat_log": "Combat log",
+        "native_bridge": "Native bridge",
+    }[args.adapter]
+    raise SystemExit(f"{label} polls require --player-guid to scope live ingestion.")
+
+
 def _emit_output(*, payload: dict[str, object], summary: bool, output_json: Path | None) -> None:
     raw = json.dumps(payload, indent=2, ensure_ascii=False)
     if output_json is not None:
@@ -75,6 +89,8 @@ def _resolve_batch_size(*, adapter_name: str, requested_batch_size: int | None, 
         return int(requested_batch_size)
     if adapter_name == "addon_log":
         return int(settings.addon_log_batch_size)
+    if adapter_name == "native_bridge":
+        return int(settings.native_bridge_batch_size)
     if adapter_name == "combat_log":
         return int(settings.combat_log_batch_size)
     return 100

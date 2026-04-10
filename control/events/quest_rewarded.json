@@ -1,0 +1,9 @@
+{
+  "id": "quest_rewarded",
+  "schema_version": "control.event.v1",
+  "enabled": true,
+  "event_type": "quest_rewarded",
+  "description": "A player accepted quest rewards and the quest moved into rewarded state.",
+  "required_fields": ["event_id", "player_guid", "subject_entry"],
+  "preferred_source": "native_bridge"
+}

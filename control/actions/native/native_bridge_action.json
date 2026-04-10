@@ -1,0 +1,22 @@
+{
+  "id": "native_bridge_action",
+  "schema_version": "control.action.v1",
+  "enabled": true,
+  "executor_kind": "native_bridge_action",
+  "risk": "medium",
+  "description": "Submit one registered action kind to the native mod-wm-bridge action queue. The native action kind is selected in payload.native_action_kind and must be one of the fixed server-side verbs.",
+  "required_payload_fields": ["native_action_kind", "payload"],
+  "default_payload": {
+    "native_action_kind": "debug_ping",
+    "payload": {},
+    "created_by": "manual",
+    "risk_level": "low",
+    "expires_seconds": 60
+  },
+  "native_action_kind_source": "src/wm/sources/native_bridge/action_kinds.py",
+  "guardrails": [
+    "No arbitrary SQL, shell command, GM command, or file edit payloads are accepted.",
+    "The C++ module validates player scope and DB policy again before executing.",
+    "Most mutation verbs are policy-disabled and/or not implemented until hardened in the lab."
+  ]
+}

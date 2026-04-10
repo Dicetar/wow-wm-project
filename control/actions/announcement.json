@@ -1,0 +1,12 @@
+{
+  "id": "announcement",
+  "schema_version": "control.action.v1",
+  "enabled": true,
+  "executor_kind": "announcement",
+  "risk": "low",
+  "description": "Record a WM announcement action event.",
+  "required_payload_fields": ["text"],
+  "default_payload": {
+    "text": ""
+  }
+}

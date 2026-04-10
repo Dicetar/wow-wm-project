@@ -1,0 +1,316 @@
+CREATE TABLE IF NOT EXISTS wm_bridge_event (
+    BridgeEventID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    OccurredAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    EventFamily VARCHAR(32) NOT NULL,
+    EventType VARCHAR(64) NOT NULL,
+    Source VARCHAR(64) NOT NULL DEFAULT 'native_bridge',
+    PlayerGUID INT NULL,
+    AccountID INT NULL,
+    SubjectType VARCHAR(32) NULL,
+    SubjectGUID VARCHAR(128) NULL,
+    SubjectEntry INT NULL,
+    ObjectType VARCHAR(32) NULL,
+    ObjectGUID VARCHAR(128) NULL,
+    ObjectEntry INT NULL,
+    MapID INT NULL,
+    ZoneID INT NULL,
+    AreaID INT NULL,
+    PayloadJSON LONGTEXT NULL,
+    KEY idx_wm_bridge_event_family_type (EventFamily, EventType),
+    KEY idx_wm_bridge_event_player (PlayerGUID, BridgeEventID),
+    KEY idx_wm_bridge_event_occurred (OccurredAt)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_context_request (
+    RequestID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    RequestedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PlayerGUID INT NOT NULL,
+    ContextKind VARCHAR(64) NOT NULL,
+    Radius INT NOT NULL DEFAULT 40,
+    Status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    RequestedBy VARCHAR(64) NULL,
+    MetadataJSON LONGTEXT NULL,
+    ProcessedAt TIMESTAMP NULL DEFAULT NULL,
+    KEY idx_wm_bridge_context_request_status (Status, RequestedAt),
+    KEY idx_wm_bridge_context_request_player (PlayerGUID, RequestedAt)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_context_snapshot (
+    SnapshotID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    RequestID BIGINT NULL,
+    OccurredAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PlayerGUID INT NOT NULL,
+    ContextKind VARCHAR(64) NOT NULL,
+    Radius INT NOT NULL DEFAULT 40,
+    MapID INT NULL,
+    ZoneID INT NULL,
+    AreaID INT NULL,
+    Source VARCHAR(64) NOT NULL DEFAULT 'native_bridge',
+    PayloadJSON LONGTEXT NOT NULL,
+    KEY idx_wm_bridge_context_snapshot_player (PlayerGUID, OccurredAt),
+    KEY idx_wm_bridge_context_snapshot_request (RequestID)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_player_scope (
+    PlayerGUID INT NOT NULL,
+    Profile VARCHAR(64) NOT NULL DEFAULT 'default',
+    Enabled TINYINT(1) NOT NULL DEFAULT 0,
+    Reason VARCHAR(255) NULL,
+    ExpiresAt TIMESTAMP NULL DEFAULT NULL,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (PlayerGUID, Profile),
+    KEY idx_wm_bridge_player_scope_enabled (Enabled, ExpiresAt)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_action_policy (
+    ActionKind VARCHAR(96) NOT NULL,
+    Profile VARCHAR(64) NOT NULL DEFAULT 'default',
+    Enabled TINYINT(1) NOT NULL DEFAULT 0,
+    MaxRiskLevel VARCHAR(16) NOT NULL DEFAULT 'low',
+    CooldownMS INT NULL,
+    BurstLimit INT NULL,
+    AdminOnly TINYINT(1) NOT NULL DEFAULT 0,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (ActionKind, Profile),
+    KEY idx_wm_bridge_action_policy_enabled (Profile, Enabled)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_action_request (
+    RequestID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    IdempotencyKey VARCHAR(255) NOT NULL,
+    PlayerGUID INT NOT NULL,
+    ActionKind VARCHAR(96) NOT NULL,
+    PayloadJSON LONGTEXT NULL,
+    Status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    ClaimedAt TIMESTAMP NULL DEFAULT NULL,
+    ProcessedAt TIMESTAMP NULL DEFAULT NULL,
+    ResultJSON LONGTEXT NULL,
+    ErrorText TEXT NULL,
+    CreatedBy VARCHAR(64) NOT NULL DEFAULT 'wm',
+    RiskLevel VARCHAR(16) NOT NULL DEFAULT 'low',
+    ExpiresAt TIMESTAMP NULL DEFAULT NULL,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_wm_bridge_action_request_idem (IdempotencyKey),
+    KEY idx_wm_bridge_action_request_status (Status, RequestID),
+    KEY idx_wm_bridge_action_request_player (PlayerGUID, RequestID),
+    KEY idx_wm_bridge_action_request_kind (ActionKind, Status)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_world_object (
+    ObjectID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ObjectType VARCHAR(32) NOT NULL,
+    OwnerPlayerGUID INT NULL,
+    ArcKey VARCHAR(128) NULL,
+    TemplateEntry INT NULL,
+    LiveGUID VARCHAR(128) NULL,
+    MapID INT NULL,
+    PositionX FLOAT NULL,
+    PositionY FLOAT NULL,
+    PositionZ FLOAT NULL,
+    Orientation FLOAT NULL,
+    PhaseMask INT NULL,
+    DespawnPolicy VARCHAR(64) NOT NULL DEFAULT 'manual',
+    MetadataJSON LONGTEXT NULL,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_wm_bridge_world_object_owner (OwnerPlayerGUID, ObjectType),
+    KEY idx_wm_bridge_world_object_live (LiveGUID),
+    KEY idx_wm_bridge_world_object_arc (ArcKey)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_companion (
+    CompanionID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    PlayerGUID INT NOT NULL,
+    CompanionKey VARCHAR(128) NOT NULL,
+    State VARCHAR(64) NOT NULL DEFAULT 'inactive',
+    FollowMode VARCHAR(64) NULL,
+    ActiveCreatureGUID VARCHAR(128) NULL,
+    AppearanceJSON LONGTEXT NULL,
+    ProfileJSON LONGTEXT NULL,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_wm_bridge_companion_player_key (PlayerGUID, CompanionKey),
+    KEY idx_wm_bridge_companion_active (ActiveCreatureGUID)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_gossip_override (
+    OverrideID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    PlayerGUID INT NOT NULL,
+    ContextType VARCHAR(32) NOT NULL,
+    ContextEntry INT NULL,
+    ContextGUID VARCHAR(128) NULL,
+    ArcKey VARCHAR(128) NULL,
+    OptionsJSON LONGTEXT NOT NULL,
+    ExpiresAt TIMESTAMP NULL DEFAULT NULL,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_wm_bridge_gossip_override_player (PlayerGUID, ContextType, ContextEntry),
+    KEY idx_wm_bridge_gossip_override_expiry (ExpiresAt)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_item_script (
+    ItemEntry INT NOT NULL,
+    PlayerGUID INT NULL,
+    HookKind VARCHAR(64) NOT NULL,
+    ActionJSON LONGTEXT NOT NULL,
+    Enabled TINYINT(1) NOT NULL DEFAULT 0,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (ItemEntry, HookKind),
+    KEY idx_wm_bridge_item_script_player (PlayerGUID, Enabled)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_spell_intercept (
+    SpellID INT NOT NULL,
+    PlayerGUID INT NULL,
+    InterceptKind VARCHAR(64) NOT NULL,
+    Enabled TINYINT(1) NOT NULL DEFAULT 0,
+    MetadataJSON LONGTEXT NULL,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (SpellID, InterceptKind),
+    KEY idx_wm_bridge_spell_intercept_player (PlayerGUID, Enabled)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_spell_script (
+    SpellID INT NOT NULL,
+    ScriptKind VARCHAR(64) NOT NULL,
+    MetadataJSON LONGTEXT NOT NULL,
+    Enabled TINYINT(1) NOT NULL DEFAULT 0,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (SpellID, ScriptKind),
+    KEY idx_wm_bridge_spell_script_enabled (Enabled)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_counter (
+    PlayerGUID INT NOT NULL,
+    CounterKey VARCHAR(128) NOT NULL,
+    CounterValue INT NOT NULL DEFAULT 0,
+    ArcKey VARCHAR(128) NULL,
+    MetadataJSON LONGTEXT NULL,
+    ExpiresAt TIMESTAMP NULL DEFAULT NULL,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (PlayerGUID, CounterKey),
+    KEY idx_wm_bridge_counter_arc (ArcKey),
+    KEY idx_wm_bridge_counter_expiry (ExpiresAt)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_chat_keyword (
+    KeywordID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    PlayerGUID INT NULL,
+    Keyword VARCHAR(128) NOT NULL,
+    MatchMode VARCHAR(32) NOT NULL DEFAULT 'exact',
+    ActionJSON LONGTEXT NULL,
+    Enabled TINYINT(1) NOT NULL DEFAULT 0,
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_wm_bridge_chat_keyword_scope (PlayerGUID, Enabled)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_runtime_status (
+    StatusKey VARCHAR(96) NOT NULL PRIMARY KEY,
+    StatusValue VARCHAR(255) NULL,
+    PayloadJSON LONGTEXT NULL,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+INSERT INTO wm_bridge_action_policy (ActionKind, Profile, Enabled, MaxRiskLevel, CooldownMS, BurstLimit, AdminOnly) VALUES
+('debug_ping', 'default', 1, 'low', 1000, 10, 1),
+('debug_echo', 'default', 1, 'low', 1000, 10, 1),
+('debug_fail', 'default', 1, 'low', 1000, 10, 1),
+('context_snapshot_request', 'default', 1, 'low', 1000, 10, 0),
+('player_apply_aura', 'default', 0, 'medium', 1000, 5, 0),
+('player_remove_aura', 'default', 0, 'medium', 1000, 5, 0),
+('player_cast_spell', 'default', 0, 'medium', 1000, 5, 0),
+('player_learn_spell', 'default', 0, 'medium', 1000, 5, 0),
+('player_unlearn_spell', 'default', 0, 'medium', 1000, 5, 0),
+('player_add_xp', 'default', 0, 'medium', 1000, 5, 0),
+('player_add_money', 'default', 0, 'medium', 1000, 5, 0),
+('player_remove_money', 'default', 0, 'medium', 1000, 5, 0),
+('player_add_reputation', 'default', 0, 'medium', 1000, 5, 0),
+('player_set_phase', 'default', 0, 'medium', 1000, 5, 0),
+('player_clear_phase', 'default', 0, 'medium', 1000, 5, 0),
+('player_teleport', 'default', 0, 'high', 1000, 2, 0),
+('player_summon_to_location', 'default', 0, 'high', 1000, 2, 0),
+('player_resurrect', 'default', 0, 'medium', 1000, 5, 0),
+('player_restore_health_power', 'default', 0, 'low', 1000, 5, 0),
+('player_set_speed', 'default', 0, 'medium', 1000, 5, 0),
+('player_add_item', 'default', 0, 'medium', 1000, 5, 0),
+('player_remove_item', 'default', 0, 'medium', 1000, 5, 0),
+('player_equip_item', 'default', 0, 'medium', 1000, 5, 0),
+('player_create_bound_item', 'default', 0, 'medium', 1000, 5, 0),
+('player_send_mail', 'default', 0, 'medium', 1000, 5, 0),
+('player_send_mail_with_items', 'default', 0, 'medium', 1000, 5, 0),
+('player_add_title', 'default', 0, 'low', 1000, 5, 0),
+('player_remove_title', 'default', 0, 'low', 1000, 5, 0),
+('player_add_achievement_credit', 'default', 0, 'medium', 1000, 5, 0),
+('quest_add', 'default', 0, 'medium', 1000, 5, 0),
+('quest_remove', 'default', 0, 'medium', 1000, 5, 0),
+('quest_complete_objective', 'default', 0, 'medium', 1000, 5, 0),
+('quest_fail', 'default', 0, 'medium', 1000, 5, 0),
+('quest_reward', 'default', 0, 'high', 1000, 2, 0),
+('quest_set_explored', 'default', 0, 'medium', 1000, 5, 0),
+('wm_counter_set', 'default', 0, 'low', 1000, 10, 0),
+('wm_counter_increment', 'default', 0, 'low', 1000, 10, 0),
+('wm_counter_clear', 'default', 0, 'low', 1000, 10, 0),
+('creature_spawn', 'default', 0, 'medium', 1000, 5, 0),
+('creature_despawn', 'default', 0, 'medium', 1000, 5, 0),
+('creature_set_name', 'default', 0, 'medium', 1000, 5, 0),
+('creature_set_subname', 'default', 0, 'medium', 1000, 5, 0),
+('creature_set_faction', 'default', 0, 'medium', 1000, 5, 0),
+('creature_set_npc_flags', 'default', 0, 'medium', 1000, 5, 0),
+('creature_set_phase', 'default', 0, 'medium', 1000, 5, 0),
+('creature_move_to', 'default', 0, 'medium', 1000, 5, 0),
+('creature_follow_player', 'default', 0, 'medium', 1000, 5, 0),
+('creature_stop_movement', 'default', 0, 'low', 1000, 5, 0),
+('creature_set_waypoints', 'default', 0, 'medium', 1000, 5, 0),
+('creature_say', 'default', 0, 'low', 1000, 5, 0),
+('creature_yell', 'default', 0, 'low', 1000, 5, 0),
+('creature_whisper_player', 'default', 0, 'low', 1000, 5, 0),
+('creature_emote', 'default', 0, 'low', 1000, 5, 0),
+('creature_cast_spell', 'default', 0, 'medium', 1000, 5, 0),
+('creature_attack_target', 'default', 0, 'high', 1000, 2, 0),
+('creature_evade', 'default', 0, 'medium', 1000, 5, 0),
+('creature_set_react_state', 'default', 0, 'medium', 1000, 5, 0),
+('gameobject_spawn', 'default', 0, 'medium', 1000, 5, 0),
+('gameobject_despawn', 'default', 0, 'medium', 1000, 5, 0),
+('gameobject_set_state', 'default', 0, 'medium', 1000, 5, 0),
+('gossip_override_set', 'default', 0, 'medium', 1000, 5, 0),
+('gossip_override_clear', 'default', 0, 'low', 1000, 5, 0),
+('gossip_option_add', 'default', 0, 'medium', 1000, 5, 0),
+('gossip_option_remove', 'default', 0, 'low', 1000, 5, 0),
+('npc_text_override_set', 'default', 0, 'medium', 1000, 5, 0),
+('npc_text_override_clear', 'default', 0, 'low', 1000, 5, 0),
+('player_show_menu', 'default', 0, 'medium', 1000, 5, 0),
+('player_close_gossip', 'default', 0, 'low', 1000, 5, 0),
+('companion_spawn', 'default', 0, 'medium', 1000, 5, 0),
+('companion_despawn', 'default', 0, 'medium', 1000, 5, 0),
+('companion_set_state', 'default', 0, 'low', 1000, 5, 0),
+('companion_follow', 'default', 0, 'low', 1000, 5, 0),
+('companion_wait', 'default', 0, 'low', 1000, 5, 0),
+('companion_move_to', 'default', 0, 'medium', 1000, 5, 0),
+('companion_say', 'default', 0, 'low', 1000, 5, 0),
+('companion_whisper', 'default', 0, 'low', 1000, 5, 0),
+('companion_emote', 'default', 0, 'low', 1000, 5, 0),
+('companion_set_gossip', 'default', 0, 'medium', 1000, 5, 0),
+('zone_set_weather', 'default', 0, 'medium', 1000, 5, 0),
+('zone_clear_weather_override', 'default', 0, 'low', 1000, 5, 0),
+('world_announce_to_player', 'default', 0, 'low', 1000, 5, 0),
+('area_trigger_marker_set', 'default', 0, 'medium', 1000, 5, 0),
+('area_trigger_marker_clear', 'default', 0, 'low', 1000, 5, 0),
+('group_invite_player', 'default', 0, 'medium', 1000, 5, 0),
+('group_remove_player', 'default', 0, 'medium', 1000, 5, 0),
+('duel_request_hint', 'default', 0, 'low', 1000, 5, 0),
+('guild_message_to_player', 'default', 0, 'low', 1000, 5, 0),
+('debug_snapshot_player', 'default', 0, 'low', 1000, 5, 1),
+('debug_policy_reload', 'default', 0, 'low', 1000, 5, 1)
+ON DUPLICATE KEY UPDATE
+    MaxRiskLevel = VALUES(MaxRiskLevel),
+    CooldownMS = VALUES(CooldownMS),
+    BurstLimit = VALUES(BurstLimit),
+    AdminOnly = VALUES(AdminOnly);

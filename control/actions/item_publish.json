@@ -1,0 +1,10 @@
+{
+  "id": "item_publish",
+  "schema_version": "control.action.v1",
+  "enabled": true,
+  "executor_kind": "item_publish",
+  "risk": "high",
+  "description": "Publish a managed item draft into reserved WM item rows.",
+  "required_payload_fields": ["item_entry", "name"],
+  "default_payload": {}
+}

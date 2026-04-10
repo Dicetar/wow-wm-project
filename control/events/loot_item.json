@@ -1,0 +1,9 @@
+{
+  "id": "loot_item",
+  "schema_version": "control.event.v1",
+  "enabled": true,
+  "event_type": "loot_item",
+  "description": "A player looted an item.",
+  "required_fields": ["event_id", "player_guid"],
+  "preferred_source": "native_bridge"
+}

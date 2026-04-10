@@ -9,6 +9,8 @@ venv/
 *.log
 .pytest_cache/
 .mypy_cache/
+.tmp/
+.pytest-tmp/
 .wm-bootstrap/
 artifacts/
 data/repack/

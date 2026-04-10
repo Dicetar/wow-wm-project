@@ -1,0 +1,13 @@
+{
+  "id": "direct_apply",
+  "schema_version": "control.policy.v1",
+  "max_actions_per_proposal": 1,
+  "max_live_risk": "medium",
+  "llm_requires_env": "WM_LLM_DIRECT_APPLY",
+  "all_apply_requires_confirm": true,
+  "manual_admin_requires_reason": true,
+  "allow_arbitrary_sql": false,
+  "allow_arbitrary_file_writes": false,
+  "allow_config_edits": false,
+  "allow_shell_commands": false
+}

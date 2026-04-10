@@ -1,0 +1,9 @@
+{
+  "id": "quest_granted",
+  "schema_version": "control.event.v1",
+  "enabled": true,
+  "event_type": "quest_granted",
+  "description": "A quest was granted to a player by WM or another runtime path.",
+  "required_fields": ["event_id", "player_guid", "subject_entry"],
+  "preferred_source": "native_bridge"
+}

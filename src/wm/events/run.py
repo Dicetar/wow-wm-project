@@ -170,8 +170,12 @@ def _apply_settings_overrides(*, args: argparse.Namespace, settings: Settings) -
 
 def _validate_run_arguments(*, args: argparse.Namespace, settings: Settings) -> None:
     adapter_name = getattr(args, "adapter", "db")
-    if adapter_name in {"combat_log", "addon_log"} and args.player_guid is None:
-        label = "Combat log" if adapter_name == "combat_log" else "Addon log"
+    if adapter_name in {"combat_log", "addon_log", "native_bridge"} and args.player_guid is None:
+        label = {
+            "addon_log": "Addon log",
+            "combat_log": "Combat log",
+            "native_bridge": "Native bridge",
+        }[adapter_name]
         raise SystemExit(f"{label} runs require --player-guid to resolve the source player.")
     if args.mode != "apply":
         return
@@ -195,6 +199,8 @@ def _resolve_batch_size(*, adapter_name: str, requested_batch_size: int | None, 
         return int(requested_batch_size)
     if adapter_name == "addon_log":
         return int(settings.addon_log_batch_size)
+    if adapter_name == "native_bridge":
+        return int(settings.native_bridge_batch_size)
     if adapter_name == "combat_log":
         return int(settings.combat_log_batch_size)
     return 100

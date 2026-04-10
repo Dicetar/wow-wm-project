@@ -60,6 +60,12 @@ class Settings:
     addon_log_batch_size: int = 200
     addon_channel_name: str = "WMBridgePrivate"
     addon_prefix: str = "WMBRIDGE"
+    native_bridge_batch_size: int = 200
+    native_bridge_action_wait_seconds: float = 5.0
+    native_bridge_action_poll_seconds: float = 0.25
+    wm_bridge_config_path: str = _default_bootstrap_path("run", "configs", "modules", "mod_wm_bridge.conf")
+    control_root: str = str(_repo_root().joinpath("control"))
+    control_proposal_state_path: str = _default_bootstrap_path("state", "control-proposals")
     combat_log_path: str = _default_bootstrap_path("run", "logs", "WoWCombatLog.txt")
     combat_log_batch_size: int = 200
     combat_log_player_name: str | None = None
@@ -100,6 +106,18 @@ class Settings:
             addon_log_batch_size=int(os.getenv("WM_ADDON_LOG_BATCH_SIZE", "200")),
             addon_channel_name=os.getenv("WM_ADDON_CHANNEL_NAME", "WMBridgePrivate"),
             addon_prefix=os.getenv("WM_ADDON_PREFIX", "WMBRIDGE"),
+            native_bridge_batch_size=int(os.getenv("WM_NATIVE_BRIDGE_BATCH_SIZE", "200")),
+            native_bridge_action_wait_seconds=float(os.getenv("WM_NATIVE_BRIDGE_ACTION_WAIT_SECONDS", "5.0")),
+            native_bridge_action_poll_seconds=float(os.getenv("WM_NATIVE_BRIDGE_ACTION_POLL_SECONDS", "0.25")),
+            wm_bridge_config_path=os.getenv(
+                "WM_BRIDGE_CONFIG_PATH",
+                _default_bootstrap_path("run", "configs", "modules", "mod_wm_bridge.conf"),
+            ),
+            control_root=os.getenv("WM_CONTROL_ROOT", str(_repo_root().joinpath("control"))),
+            control_proposal_state_path=os.getenv(
+                "WM_CONTROL_PROPOSAL_STATE_PATH",
+                _default_bootstrap_path("state", "control-proposals"),
+            ),
             combat_log_path=os.getenv(
                 "WM_COMBAT_LOG_PATH",
                 _default_bootstrap_path("run", "logs", "WoWCombatLog.txt"),

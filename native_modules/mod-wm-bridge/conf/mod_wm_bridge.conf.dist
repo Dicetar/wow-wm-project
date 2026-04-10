@@ -1,0 +1,56 @@
+[worldserver]
+
+#
+# WM native bridge
+# Thin native sensor module. Emits raw server-truth rows into wm_bridge_event.
+#
+
+#
+#    WmBridge.Enable
+#        Master switch for the native bridge module.
+#
+#        Default: 1
+#
+WmBridge.Enable = 1
+
+#
+#    WmBridge.PlayerGuidAllowList
+#        Comma-separated low player GUIDs that WM may observe.
+#        Empty means disabled for every player. Use "*" only for short debug runs,
+#        because it allows full-server bridge emission.
+#
+#        Examples:
+#            WmBridge.PlayerGuidAllowList = "5406"
+#            WmBridge.PlayerGuidAllowList = "5406,8123"
+#
+#        Default: ""
+#
+WmBridge.PlayerGuidAllowList = ""
+
+WmBridge.Emit.Kill = 1
+WmBridge.Emit.Quest = 1
+WmBridge.Emit.Loot = 0
+WmBridge.Emit.Gossip = 1
+WmBridge.Emit.Area = 1
+
+#
+#    WmBridge.DbControl.Enable
+#        When enabled, the bridge also reads wm_bridge_player_scope every
+#        WmBridge.DbControl.RefreshIntervalMS. This lets WM enable or disable
+#        a player live from DB without editing this file.
+#
+#        Default: 0
+#
+WmBridge.DbControl.Enable = 0
+WmBridge.DbControl.RefreshIntervalMS = 5000
+
+#
+#    WmBridge.ActionQueue.Enable
+#        Poll wm_bridge_action_request and execute registered native actions.
+#        Keep disabled until the lab DB has wm_bridge_* action tables and a
+#        single player is scoped in wm_bridge_player_scope.
+#
+#        Default: 0
+#
+WmBridge.ActionQueue.Enable = 0
+WmBridge.ActionQueue.PollIntervalMS = 1000

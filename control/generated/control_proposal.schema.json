@@ -1,0 +1,251 @@
+{
+  "$defs": {
+    "ControlAction": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ControlAction",
+      "type": "object"
+    },
+    "ControlAuthor": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "default": "manual",
+          "enum": [
+            "manual",
+            "manual_admin",
+            "llm"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "manual_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manual Reason"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        }
+      },
+      "title": "ControlAuthor",
+      "type": "object"
+    },
+    "ControlPlayer": {
+      "additionalProperties": false,
+      "properties": {
+        "guid": {
+          "title": "Guid",
+          "type": "integer"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        }
+      },
+      "required": [
+        "guid"
+      ],
+      "title": "ControlPlayer",
+      "type": "object"
+    },
+    "ControlRisk": {
+      "additionalProperties": false,
+      "properties": {
+        "irreversible": {
+          "default": false,
+          "title": "Irreversible",
+          "type": "boolean"
+        },
+        "level": {
+          "default": "low",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "title": "ControlRisk",
+      "type": "object"
+    },
+    "ControlSourceEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Id"
+        },
+        "event_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Type"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "source_event_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Event Key"
+        }
+      },
+      "title": "ControlSourceEvent",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/ControlAction"
+    },
+    "author": {
+      "$ref": "#/$defs/ControlAuthor"
+    },
+    "expected_effect": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Effect"
+    },
+    "idempotency_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Idempotency Key"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    },
+    "player": {
+      "$ref": "#/$defs/ControlPlayer"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "risk": {
+      "$ref": "#/$defs/ControlRisk"
+    },
+    "schema_version": {
+      "const": "control.proposal.v1",
+      "default": "control.proposal.v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "selected_recipe": {
+      "title": "Selected Recipe",
+      "type": "string"
+    },
+    "source_event": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ControlSourceEvent"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "player",
+    "selected_recipe",
+    "action",
+    "rationale"
+  ],
+  "title": "ControlProposal",
+  "type": "object"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "quest_accept",
+  "schema_version": "control.event.v1",
+  "enabled": true,
+  "event_type": "quest_accept",
+  "description": "A player accepted a quest.",
+  "required_fields": ["event_id", "player_guid", "subject_entry"],
+  "preferred_source": "native_bridge"
+}

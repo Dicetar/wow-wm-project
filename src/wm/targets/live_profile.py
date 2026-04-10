@@ -134,7 +134,7 @@ def derive_tags(
         tags.append("trainer")
     if "GOSSIP" in service_roles:
         tags.append("interactive")
-    if not service_roles and not quest_starter_ids and not quest_ender_ids:
+    if not service_roles and not subname and vendor_item_count == 0 and trainer_spell_count == 0:
         tags.append("wild_encounter")
 
     if any(context.zone_id == 40 for context in spawn_contexts):

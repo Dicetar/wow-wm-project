@@ -1,0 +1,36 @@
+{
+  "schema_version": "control.proposal.v1",
+  "source_event": {
+    "event_id": 1,
+    "source": "native_bridge",
+    "source_event_key": "native_bridge:1",
+    "event_type": "kill"
+  },
+  "player": {
+    "guid": 5406,
+    "name": "Jecia"
+  },
+  "selected_recipe": "kill_burst_bounty",
+  "action": {
+    "kind": "quest_grant",
+    "payload": {
+      "quest_id": 910000,
+      "player_guid": 5406,
+      "rule_key": "reactive_bounty:kobold_vermin",
+      "turn_in_npc_entry": 197
+    }
+  },
+  "rationale": "Manual test proposal for the Kobold Vermin bounty.",
+  "risk": {
+    "level": "medium",
+    "irreversible": false,
+    "notes": ["Quest grant uses the SOAP runtime path and can be verified by dry-run first."]
+  },
+  "idempotency_key": "manual-example:kill-burst-bounty:1",
+  "expected_effect": "Quest 910000 is granted to Jecia if runtime checks pass.",
+  "author": {
+    "kind": "manual",
+    "name": "example"
+  },
+  "metadata": {}
+}

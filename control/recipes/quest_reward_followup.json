@@ -1,0 +1,16 @@
+{
+  "id": "quest_reward_followup",
+  "schema_version": "control.recipe.v1",
+  "enabled": true,
+  "description": "Prepare a follow-up reaction after a quest reward event.",
+  "trigger_event_types": ["quest_rewarded"],
+  "allowed_actions": ["quest_publish", "item_publish", "announcement", "noop"],
+  "default_action": {
+    "kind": "noop",
+    "payload": {
+      "reason": "Follow-up recipe is registered but not live-enabled in v1."
+    }
+  },
+  "max_risk": "high",
+  "live_enabled": false
+}

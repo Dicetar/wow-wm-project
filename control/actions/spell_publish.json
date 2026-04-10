@@ -1,0 +1,10 @@
+{
+  "id": "spell_publish",
+  "schema_version": "control.action.v1",
+  "enabled": true,
+  "executor_kind": "spell_publish",
+  "risk": "high",
+  "description": "Publish a managed spell draft into reserved WM spell rows.",
+  "required_payload_fields": ["spell_entry", "name"],
+  "default_payload": {}
+}

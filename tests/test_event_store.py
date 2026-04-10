@@ -30,6 +30,17 @@ class MemoryEventStore(EventStore):
                 return []
             return [{"EventID": row["EventID"]}]
 
+        if "FROM wm_event_log" in sql and "WHERE EventID =" in sql:
+            event_id = int(_extract_int(sql, "WHERE EventID = "))
+            rows = [row for row in self._events.values() if row["EventID"] == event_id]
+            return rows[:1]
+
+        if "FROM wm_event_log" in sql and "Source =" in sql and "SourceEventKey =" in sql and "LIMIT 1" in sql:
+            source = _extract_single_quoted(sql, "Source = ")
+            source_event_key = _extract_single_quoted(sql, "SourceEventKey = ")
+            row = self._events.get((source, source_event_key))
+            return [row] if row is not None else []
+
         if "FROM wm_event_cursor" in sql:
             adapter_name = _extract_single_quoted(sql, "AdapterName = ")
             cursor_key = _extract_single_quoted(sql, "CursorKey = ")
@@ -157,6 +168,28 @@ class EventStoreTests(unittest.TestCase):
         self.assertIsNotNone(cursor)
         self.assertEqual(cursor.cursor_value, "15")
 
+    def test_get_event_by_id_and_source_key(self) -> None:
+        store = MemoryEventStore()
+        event = WMEvent(
+            event_class="observed",
+            event_type="kill",
+            source="native_bridge",
+            source_event_key="native_bridge:44",
+            occurred_at="2026-04-08 12:00:00",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=6,
+        )
+        store.record([event])
+
+        by_id = store.get_event(event_id=event.event_id or 0)
+        by_key = store.get_event_by_source_key(source="native_bridge", source_event_key="native_bridge:44")
+
+        self.assertIsNotNone(by_id)
+        self.assertIsNotNone(by_key)
+        self.assertEqual(by_id.event_type, "kill")
+        self.assertEqual(by_key.player_guid, 5406)
+
     def test_list_recent_events_filters_by_class_and_player(self) -> None:
         store = MemoryEventStore()
         store.record(
@@ -269,6 +302,11 @@ class EventStoreTests(unittest.TestCase):
 
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].source_event_key, "kill-1")
+
+    def test_non_creature_subject_lookup_short_circuits(self) -> None:
+        store = MemoryEventStore()
+
+        self.assertIsNone(store.resolve_subject_id(subject_type="area", subject_entry=40))
 
 
 def _extract_single_quoted(sql: str, marker: str) -> str:

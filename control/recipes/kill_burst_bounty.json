@@ -1,0 +1,18 @@
+{
+  "id": "kill_burst_bounty",
+  "schema_version": "control.recipe.v1",
+  "enabled": true,
+  "description": "Grant the existing Kobold Vermin bounty after the deterministic kill-burst rule fires.",
+  "trigger_event_types": ["kill", "kill_burst_detected"],
+  "allowed_actions": ["quest_grant", "noop"],
+  "default_action": {
+    "kind": "quest_grant",
+    "payload": {
+      "quest_id": 910000,
+      "rule_key": "reactive_bounty:kobold_vermin",
+      "turn_in_npc_entry": 197
+    }
+  },
+  "max_risk": "medium",
+  "live_enabled": true
+}

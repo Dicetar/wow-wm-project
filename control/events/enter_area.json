@@ -1,0 +1,9 @@
+{
+  "id": "enter_area",
+  "schema_version": "control.event.v1",
+  "enabled": true,
+  "event_type": "enter_area",
+  "description": "A player entered an area.",
+  "required_fields": ["event_id", "player_guid", "area_id"],
+  "preferred_source": "native_bridge"
+}

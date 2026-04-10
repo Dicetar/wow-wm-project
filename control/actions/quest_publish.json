@@ -1,0 +1,10 @@
+{
+  "id": "quest_publish",
+  "schema_version": "control.action.v1",
+  "enabled": true,
+  "executor_kind": "quest_publish",
+  "risk": "high",
+  "description": "Publish a managed quest draft into reserved WM quest rows.",
+  "required_payload_fields": ["quest_id", "title", "objective", "reward"],
+  "default_payload": {}
+}

@@ -1,7 +1,9 @@
 import unittest
+from argparse import Namespace
 
 from wm.config import Settings
 from wm.events.adapters import DBPollingAdapter
+from wm.events.poll import _validate_poll_arguments
 
 
 class FakeStore:
@@ -48,6 +50,14 @@ class DBPollingAdapterTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertIn("AND e.PlayerGUID = 5406", client.sql_calls[0])
         self.assertEqual(events[0].player_guid, 5406)
+
+    def test_native_bridge_poll_requires_player_guid(self) -> None:
+        args = Namespace(adapter="native_bridge", player_guid=None)
+
+        with self.assertRaises(SystemExit) as ctx:
+            _validate_poll_arguments(args)
+
+        self.assertIn("Native bridge polls require --player-guid", str(ctx.exception))
 
 
 if __name__ == "__main__":

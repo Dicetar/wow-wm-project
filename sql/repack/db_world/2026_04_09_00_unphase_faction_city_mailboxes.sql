@@ -10,7 +10,9 @@
  */
 
 UPDATE `gameobject`
-SET `ScriptName` = ''
+SET
+    `ScriptName` = '',
+    `phaseMask` = 1
 WHERE `guid` IN (
     49832,
     121573, 121574, 121575,
@@ -19,4 +21,7 @@ WHERE `guid` IN (
     150747, 150748, 150749, 150750, 150751, 150752, 150753, 150755,
     100500, 100501, 100502, 100503, 268683
 )
-AND `ScriptName` IN ('gobject_ipp_tbc', 'gobject_ipp_wotlk');
+AND (
+    `ScriptName` IN ('gobject_ipp_tbc', 'gobject_ipp_wotlk')
+    OR `phaseMask` <> 1
+);

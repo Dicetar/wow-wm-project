@@ -1,0 +1,15 @@
+{
+  "schema_version": "control.registry.v1",
+  "description": "WM capability registry for human and LLM control proposals.",
+  "events_dir": "events",
+  "actions_dir": "actions",
+  "recipes_dir": "recipes",
+  "policies_dir": "policies",
+  "runtime_dir": "runtime",
+  "generated_dir": "generated",
+  "enabled_recipe_ids": [
+    "kill_burst_bounty",
+    "manual_admin_action"
+  ],
+  "default_policy": "direct_apply"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "kill",
+  "schema_version": "control.event.v1",
+  "enabled": true,
+  "event_type": "kill",
+  "description": "A player killed a creature or kill credit was attributed to the player.",
+  "required_fields": ["event_id", "player_guid", "subject_type", "subject_entry"],
+  "preferred_source": "native_bridge"
+}

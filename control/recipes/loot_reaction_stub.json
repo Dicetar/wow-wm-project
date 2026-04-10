@@ -1,0 +1,16 @@
+{
+  "id": "loot_reaction_stub",
+  "schema_version": "control.recipe.v1",
+  "enabled": true,
+  "description": "Placeholder for later loot-driven reactions.",
+  "trigger_event_types": ["loot_item"],
+  "allowed_actions": ["item_publish", "announcement", "noop"],
+  "default_action": {
+    "kind": "noop",
+    "payload": {
+      "reason": "Loot reactions are registered but not live-enabled in v1."
+    }
+  },
+  "max_risk": "high",
+  "live_enabled": false
+}

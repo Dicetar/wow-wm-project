@@ -10,6 +10,8 @@ set "BIN_DIR=%ROOT_DIR%\build\bin\RelWithDebInfo"
 set "MYSQL_EXE=%RUN_DIR%\mysql\bin\mysqld.exe"
 set "AUTH_EXE=%BIN_DIR%\authserver.exe"
 set "WORLD_EXE=%BIN_DIR%\worldserver.exe"
+set "RUNTIME_GUARD=%RUN_DIR%\helpers\Test-RuntimeDllGuard.ps1"
+set "DLL_LOCK=%ROOT_DIR%\state\runtime-dlls.lock.json"
 
 if not exist "%RUN_DIR%\configs\worldserver.conf" (
   echo Missing run config at "%RUN_DIR%\configs\worldserver.conf"
@@ -27,6 +29,15 @@ if not exist "%WORLD_EXE%" (
   echo Missing worldserver at "%WORLD_EXE%"
   pause
   exit /b 1
+)
+
+if exist "%RUNTIME_GUARD%" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%RUNTIME_GUARD%" -BinRoot "%BIN_DIR%" -LockPath "%DLL_LOCK%"
+  if errorlevel 1 (
+    echo Runtime DLL guard failed. Re-run build-wm.bat or rebuild the server before launching.
+    pause
+    exit /b 1
+  )
 )
 
 :MENU
