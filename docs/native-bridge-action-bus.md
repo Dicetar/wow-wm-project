@@ -52,11 +52,33 @@ Create and build an isolated bridge lab instead of touching the working rebuild:
 .\build-bridge-lab.bat
 ```
 
-Create a DB copy for lab testing only when you explicitly want it:
+The full build path regenerates CMake and resets the lab build directory. Use it for the first build or when source layout/CMake inputs changed. For normal native bridge C++ edits, use the incremental path instead:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\bridge_lab\New-BridgeLabDbCopy.ps1 -ConfirmCreateLabDbCopy
+.\incremental-bridge-lab.bat
 ```
+
+`incremental-bridge-lab.bat` builds the existing generated solution target `worldserver` and then stages runtime DLLs/output. If you only need to restage after a successful manual MSBuild run:
+
+```powershell
+.\stage-bridge-lab-runtime.bat
+```
+
+The current proven lab dependency layout uses a copied MySQL data directory under `D:\WOW\WM_BridgeLab\deps\mysql`. Start it on an isolated port and point lab configs at it:
+
+```powershell
+.\start-bridge-lab-mysql.bat
+.\configure-bridge-lab.bat
+```
+
+Defaults:
+
+- lab MySQL: `127.0.0.1:33307`
+- lab worldserver port: `8095`
+- lab SOAP port: `7879`
+- lab data files: `D:\WOW\Azerothcore_WoTLK_Rebuild\run\data` as a read-only data source
+
+The lab MySQL path avoids needing root permissions on the working MySQL instance and keeps queue/action tests away from the live `acore_*` databases. `New-BridgeLabDbCopy.ps1` remains available for admin-credential dump/import flows, but the preferred local path is the copied lab MySQL runtime.
 
 Promotion is intentionally gated:
 
@@ -101,7 +123,7 @@ Expected result:
 Submit an echo:
 
 ```powershell
-python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --action-kind debug_echo --idempotency-key lab-debug-echo-1 --payload-json '{\"text\":\"hello\"}' --wait --summary
+python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --action-kind debug_echo --idempotency-key lab-debug-echo-1 --wait --summary
 ```
 
 Submit an intentional failure:
@@ -111,6 +133,22 @@ python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --actio
 ```
 
 Expected result for `debug_fail`: status `failed`, with structured error text.
+
+Lab verification on 2026-04-10:
+
+- isolated incremental `worldserver` target built successfully in `D:\WOW\WM_BridgeLab`
+- lab runtime staging wrote `D:\WOW\WM_BridgeLab\state\runtime-dlls.lock.json`
+- lab MySQL ran from `D:\WOW\WM_BridgeLab\deps\mysql` on port `33307`
+- lab worldserver started on the lab DB/config
+- `debug_ping` reached `done`
+- `debug_echo` reached `done`
+- `debug_fail` reached expected `failed`
+- duplicate `debug_ping` idempotency key reused the same request row
+
+Two build compatibility fixes are now part of the repo:
+
+- `mod-wm-bridge` includes the DB query result header required by current AzerothCore headers
+- the compatibility overlay disables Boost.Asio coroutine/concept support for the old Playerbots command server translation unit when building against Boost 1.87
 
 ## Manual Control Proposal Path
 

@@ -1,6 +1,7 @@
 #include "wm_bridge_action_queue.h"
 
 #include "DatabaseEnv.h"
+#include "QueryResult.h"
 #include "wm_bridge_common.h"
 
 #include <algorithm>

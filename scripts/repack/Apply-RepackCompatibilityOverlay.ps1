@@ -23,6 +23,13 @@ function Replace-InFile {
     if ($content.Contains($NewValue)) {
         return
     }
+    $oldValueLf = $OldValue.Replace("`r`n", "`n")
+    $newValueLf = $NewValue.Replace("`r`n", "`n")
+    if ($content.Contains($oldValueLf)) {
+        $updated = $content.Replace($oldValueLf, $newValueLf)
+        Set-Content -Path $Path -Value $updated
+        return
+    }
     if (-not $content.Contains($OldValue)) {
         throw "Expected text was not found in $Path"
     }
@@ -181,6 +188,24 @@ Replace-InFile `
     -Path $deadMeansDeadPath `
     -OldValue "    void OnLogin(Player* player) override" `
     -NewValue "    void OnPlayerLogin(Player* player) override"
+
+$playerbotCommandServerPath = Join-Path $sourceRoot "modules\mod-playerbots\src\Bot\Cmd\PlayerbotCommandServer.cpp"
+$playerbotCommandServerOriginal = "#include ""PlayerbotCommandServer.h""`r`n`r`n#include <boost/asio.hpp>"
+$playerbotCommandServerConceptOnly = "#include ""PlayerbotCommandServer.h""`r`n`r`n#ifndef BOOST_ASIO_DISABLE_CONCEPTS`r`n#define BOOST_ASIO_DISABLE_CONCEPTS`r`n#endif`r`n#include <boost/asio.hpp>"
+$playerbotCommandServerBoost187Safe = "#include ""PlayerbotCommandServer.h""`r`n`r`n#ifndef BOOST_ASIO_DISABLE_CONCEPTS`r`n#define BOOST_ASIO_DISABLE_CONCEPTS`r`n#endif`r`n#ifndef BOOST_ASIO_DISABLE_CO_AWAIT`r`n#define BOOST_ASIO_DISABLE_CO_AWAIT`r`n#endif`r`n#ifndef BOOST_ASIO_DISABLE_STD_COROUTINE`r`n#define BOOST_ASIO_DISABLE_STD_COROUTINE`r`n#endif`r`n#include <boost/asio.hpp>"
+
+$playerbotCommandServerContent = Get-Content -Path $playerbotCommandServerPath -Raw
+if ($playerbotCommandServerContent.Contains($playerbotCommandServerConceptOnly) -or $playerbotCommandServerContent.Contains($playerbotCommandServerConceptOnly.Replace("`r`n", "`n"))) {
+    Replace-InFile `
+        -Path $playerbotCommandServerPath `
+        -OldValue $playerbotCommandServerConceptOnly `
+        -NewValue $playerbotCommandServerBoost187Safe
+} else {
+    Replace-InFile `
+        -Path $playerbotCommandServerPath `
+        -OldValue $playerbotCommandServerOriginal `
+        -NewValue $playerbotCommandServerBoost187Safe
+}
 
 $loaderSymbolOverrides = @{
     "1v1arena" = "Addmod_1v1_arenaScripts"

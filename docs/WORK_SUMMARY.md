@@ -62,6 +62,8 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - compatibility overlay for loader/API drift
 - launcher/rebuild helpers for native WM module work
 - isolated bridge lab wrappers keep native rebuild experiments in `D:\WOW\WM_BridgeLab` instead of the working rebuild
+- incremental bridge lab build/stage wrappers avoid full rebuilds after the first generated solution exists
+- isolated lab MySQL can run from the copied lab data directory on port `33307`, keeping bridge queue tests off the working DB
 
 ### IPP cleanup work
 
@@ -99,4 +101,4 @@ For the portable workflow, the repo now owns:
 6. use `python -m wm.control.inspect/new/validate/apply` for manual control tests
 7. continue WM feature work from the repo, not from machine-local rebuild leftovers
 
-For native bridge action work, use `setup-bridge-lab.bat` and `build-bridge-lab.bat`, then run a `debug_ping` queue test before promoting anything back to a working realm.
+For native bridge action work, use `setup-bridge-lab.bat` and `build-bridge-lab.bat` once, then use `incremental-bridge-lab.bat` for normal C++ edits. Runtime tests should start `start-bridge-lab-mysql.bat`, run `configure-bridge-lab.bat`, and prove `debug_ping`/`debug_echo`/`debug_fail` before promoting anything back to a working realm.

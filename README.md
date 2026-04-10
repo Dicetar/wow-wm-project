@@ -182,7 +182,21 @@ For bridge work, use the isolated lab wrappers instead of touching the working r
 .\build-bridge-lab.bat
 ```
 
-If you need a DB lab copy, use `scripts\bridge_lab\New-BridgeLabDbCopy.ps1 -ConfirmCreateLabDbCopy`. Promotion back to the working rebuild is intentionally gated by `scripts\bridge_lab\Promote-BridgeBuild.ps1 -ConfirmPromoteToWorkingRebuild`.
+After the first full lab build, use the incremental path for normal native module edits:
+
+```powershell
+.\incremental-bridge-lab.bat
+.\stage-bridge-lab-runtime.bat
+```
+
+For runtime smoke tests, use the copied lab MySQL data on port `33307` and configure the lab worldserver on non-conflicting ports:
+
+```powershell
+.\start-bridge-lab-mysql.bat
+.\configure-bridge-lab.bat
+```
+
+This points only the lab configs at the lab MySQL copy. The working rebuild remains on its own MySQL/runtime tree. Promotion back to the working rebuild is intentionally gated by `scripts\bridge_lab\Promote-BridgeBuild.ps1 -ConfirmPromoteToWorkingRebuild`.
 
 ## Repo layout
 
@@ -193,7 +207,7 @@ If you need a DB lab copy, use `scripts\bridge_lab\New-BridgeLabDbCopy.ps1 -Conf
 - `scripts/repack/`
   - older/latest-baseline rebuild helpers and compatibility tools
 - `scripts/bridge_lab/`
-  - isolated native bridge setup/build/DB-copy/promotion helpers
+  - isolated native bridge setup/build/incremental/runtime/promotion helpers
 - `sql/bootstrap/`
   - WM-owned schema bootstrap SQL
 - `control/`

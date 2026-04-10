@@ -140,7 +140,7 @@ Make reactions controllable through a narrow registry that both humans and LLMs 
 ## Phase 3 - Contextual smart reactions
 
 ### Native bridge action bus note
-Before adding more live gameplay behavior, WM should prove the native action bus in the lab with non-mutating `debug_ping`/`debug_echo`, then harden one narrow mutation at a time. The queue and policy schema are broad by design, but most native action kinds stay disabled or `not_implemented` until their C++ body has a dedicated lab test.
+The native action bus has a proven isolated lab path: full build once, then `incremental-bridge-lab.bat` for C++ edits, lab MySQL on port `33307`, and `debug_ping`/`debug_echo`/`debug_fail` queue smoke tests before promotion. Before adding more live gameplay behavior, harden one narrow mutation at a time. The queue and policy schema are broad by design, but most native action kinds stay disabled or `not_implemented` until their C++ body has a dedicated lab test.
 
 ### Goal
 Make reactions context-aware instead of merely structurally valid.

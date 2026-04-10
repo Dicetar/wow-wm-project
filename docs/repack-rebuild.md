@@ -57,6 +57,30 @@ Primary outputs after build:
 
 The runtime DLL lock records hashes for `libmysql.dll`, `libcrypto-3-x64.dll`, `libssl-3-x64.dll`, and `legacy.dll`. The rebuilt launcher runs the guard when the helper exists, so mixed OpenSSL/MySQL DLLs fail before the server opens mystery Windows entry-point dialogs.
 
+## Bridge lab lane
+
+Native bridge work should use the isolated lab, not the working rebuild:
+
+```powershell
+.\setup-bridge-lab.bat
+.\build-bridge-lab.bat
+```
+
+After that first full configure/build, use the incremental path:
+
+```powershell
+.\incremental-bridge-lab.bat
+```
+
+Useful lab runtime helpers:
+
+- `start-bridge-lab-mysql.bat` starts the copied lab MySQL data tree on port `33307`.
+- `configure-bridge-lab.bat` points lab configs at port `33307`, sets lab world port `8095`, sets lab SOAP port `7879`, and enables DB-controlled bridge scope/action queue.
+- `stage-bridge-lab-runtime.bat` restages successful build outputs and rewrites the runtime DLL lock.
+- `stop-bridge-lab-mysql.bat` stops only the lab MySQL process.
+
+The lab lane is for destructive/repeatable native bridge testing. Promotion back to the working rebuild is gated separately by `scripts\bridge_lab\Promote-BridgeBuild.ps1 -ConfirmPromoteToWorkingRebuild`.
+
 ## Source of truth
 
 The canonical bootstrap manifest is:
