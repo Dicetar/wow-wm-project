@@ -230,6 +230,16 @@ class NativeBridgeActionClient:
             "Enabled = VALUES(Enabled), Reason = VALUES(Reason), ExpiresAt = VALUES(ExpiresAt), UpdatedAt = CURRENT_TIMESTAMP"
         )
 
+    def is_player_scoped(self, *, player_guid: int, profile: str = "default") -> bool:
+        rows = self._query_world(
+            "SELECT PlayerGUID FROM wm_bridge_player_scope "
+            f"WHERE PlayerGUID = {int(player_guid)} "
+            f"AND Profile = {_sql_string(profile)} "
+            "AND Enabled = 1 AND (ExpiresAt IS NULL OR ExpiresAt > NOW()) "
+            "LIMIT 1"
+        )
+        return bool(rows)
+
     def set_action_policy(
         self,
         *,
@@ -259,6 +269,26 @@ class NativeBridgeActionClient:
             "Enabled = VALUES(Enabled), MaxRiskLevel = VALUES(MaxRiskLevel), CooldownMS = VALUES(CooldownMS), "
             "BurstLimit = VALUES(BurstLimit), AdminOnly = VALUES(AdminOnly), UpdatedAt = CURRENT_TIMESTAMP"
         )
+
+    def get_action_policy(self, *, action_kind: str, profile: str = "default") -> dict[str, Any] | None:
+        rows = self._query_world(
+            "SELECT ActionKind, Profile, Enabled, MaxRiskLevel, CooldownMS, BurstLimit, AdminOnly "
+            "FROM wm_bridge_action_policy "
+            f"WHERE ActionKind = {_sql_string(action_kind)} AND Profile = {_sql_string(profile)} "
+            "LIMIT 1"
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        return {
+            "action_kind": str(row.get("ActionKind") or action_kind),
+            "profile": str(row.get("Profile") or profile),
+            "enabled": _bool_from_db(row.get("Enabled")),
+            "max_risk_level": _str_or_none(row.get("MaxRiskLevel")),
+            "cooldown_ms": _int_or_none(row.get("CooldownMS")),
+            "burst_limit": _int_or_none(row.get("BurstLimit")),
+            "admin_only": _bool_from_db(row.get("AdminOnly")),
+        }
 
     def _query_world(self, sql: str) -> list[dict[str, Any]]:
         return self.client.query(

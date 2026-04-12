@@ -8,6 +8,8 @@ from wm.reactive.models import ReactiveQuestRule
 class _DummyClient:
     def query(self, *, host: str, port: int, user: str, password: str, database: str, sql: str):
         del host, port, user, password
+        if database == "acore_world" and sql.lstrip().upper().startswith(("INSERT ", "UPDATE ", "DELETE ")):
+            return []
         if database == "acore_world" and "FROM quest_template" in sql:
             return []
         if database == "acore_world" and "FROM creature_queststarter" in sql:
@@ -16,6 +18,22 @@ class _DummyClient:
             return []
         if database == "acore_world" and "FROM quest_template_addon" in sql:
             return []
+        raise AssertionError(f"Unexpected SQL in {database}: {sql}")
+
+
+class _ExistingQuestClient(_DummyClient):
+    def query(self, *, host: str, port: int, user: str, password: str, database: str, sql: str):
+        del host, port, user, password
+        if database == "acore_world" and sql.lstrip().upper().startswith(("INSERT ", "UPDATE ", "DELETE ")):
+            return []
+        if database == "acore_world" and "FROM quest_template WHERE ID = 910000" in sql:
+            return [{"ID": "910000", "LogTitle": "Bounty: Kobold Vermin"}]
+        if database == "acore_world" and "FROM creature_queststarter" in sql:
+            return []
+        if database == "acore_world" and "FROM creature_questender" in sql:
+            return [{"id": "197"}]
+        if database == "acore_world" and "FROM quest_template_addon" in sql:
+            return [{"ID": "910000", "SpecialFlags": "1"}]
         raise AssertionError(f"Unexpected SQL in {database}: {sql}")
 
 
@@ -50,6 +68,39 @@ class FakeQuestPublisher:
         return Result()
 
 
+class FakeQuestPublisherActiveSlot:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def publish(self, *, draft, mode: str):
+        self.calls.append((draft, mode))
+        class Result:
+            applied = False
+            def to_dict(self_nonlocal):
+                return {
+                    "applied": False,
+                    "draft": draft.to_dict(),
+                    "preflight": {
+                        "ok": False,
+                        "issues": [
+                            {
+                                "path": "reserved_slot.status",
+                                "message": "Quest slot 910000 is already active. Use `wm.quests.edit_live` for in-place changes, or rollback / retire the old quest before publishing a new draft into this slot.",
+                                "severity": "error",
+                            }
+                        ],
+                    },
+                    "sql_plan": {
+                        "statements": [
+                            "-- refresh active quest",
+                            "DELETE FROM quest_template WHERE ID = 910000;",
+                            "INSERT INTO quest_template (ID, LogTitle) VALUES (910000, 'Bounty: Defias Bandit');",
+                        ]
+                    },
+                }
+        return Result()
+
+
 class FakeResolveResult:
     def __init__(self, *, entry: int, name: str, profile) -> None:
         self.entry = entry
@@ -65,6 +116,18 @@ class FakeResolver:
                 entry=197,
                 name="Marshal McBride",
                 profile=type("Profile", (), {"entry": 197, "name": "Marshal McBride", "level_max": 5, "mechanical_type": "HUMANOID", "family": None})(),
+            )
+        if entry == 240:
+            return FakeResolveResult(
+                entry=240,
+                name="Marshal Dughan",
+                profile=type("Profile", (), {"entry": 240, "name": "Marshal Dughan", "level_max": 10, "mechanical_type": "HUMANOID", "family": None})(),
+            )
+        if entry == 116:
+            return FakeResolveResult(
+                entry=116,
+                name="Defias Bandit",
+                profile=type("Profile", (), {"entry": 116, "name": "Defias Bandit", "level_max": 9, "mechanical_type": "HUMANOID", "family": None})(),
             )
         return FakeResolveResult(
             entry=6,
@@ -112,6 +175,37 @@ class ReactiveInstallTests(unittest.TestCase):
         self.assertIsNone(draft.start_npc_entry)
         self.assertEqual(draft.end_npc_entry, 197)
         self.assertEqual(int(draft.template_defaults["SpecialFlags"]), 1)
+
+    def test_install_refreshes_active_slot_in_place_when_publish_preflight_blocks(self) -> None:
+        installer = ReactiveBountyInstaller(
+            client=_ExistingQuestClient(),  # type: ignore[arg-type]
+            settings=Settings(),
+            reactive_store=FakeReactiveStore(),  # type: ignore[arg-type]
+            slot_allocator=FakeSlotAllocator(),  # type: ignore[arg-type]
+            quest_publisher=FakeQuestPublisherActiveSlot(),  # type: ignore[arg-type]
+            resolver=FakeResolver(),  # type: ignore[arg-type]
+        )
+        rule = ReactiveQuestRule(
+            rule_key="reactive_bounty:auto:defias_bandit",
+            is_active=True,
+            player_guid_scope=5406,
+            subject_type="creature",
+            subject_entry=116,
+            trigger_event_type="kill",
+            kill_threshold=4,
+            window_seconds=120,
+            quest_id=910000,
+            turn_in_npc_entry=240,
+            grant_mode="direct_quest_add",
+            post_reward_cooldown_seconds=60,
+            metadata={},
+            notes=[],
+        )
+
+        result = installer.install(rule=rule, mode="apply")
+
+        self.assertTrue(result.quest_publish["applied"])
+        self.assertTrue(result.quest_publish["live_refresh_applied"])
 
 
 if __name__ == "__main__":

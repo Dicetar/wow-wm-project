@@ -44,6 +44,9 @@ $authConfig = Join-Path $configRoot "authserver.conf"
 $worldConfig = Join-Path $configRoot "worldserver.conf"
 $playerbotsConfig = Join-Path $moduleConfigRoot "playerbots.conf"
 $bridgeConfig = Join-Path $moduleConfigRoot "mod_wm_bridge.conf"
+$spellsConfig = Join-Path $moduleConfigRoot "mod_wm_spells.conf"
+$prototypeConfig = Join-Path $moduleConfigRoot "mod_wm_prototypes.conf"
+$weatherVibeConfig = Join-Path $moduleConfigRoot "mod_weather_vibe.conf"
 
 if (-not (Test-Path $DataDir)) {
     throw "DataDir was not found: $DataDir"
@@ -70,5 +73,25 @@ Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.Enable" -Value "1"
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.PlayerGuidAllowList" -Value """"""
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.DbControl.Enable" -Value "1"
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.ActionQueue.Enable" -Value "1"
+
+if (Test-Path $spellsConfig) {
+    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.Enable" -Value "1"
+    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """"""
+    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.LabOnlyDebugInvokeEnable" -Value "1"
+    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.Enable" -Value "1"
+    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value """940000"""
+}
+
+if (Test-Path $prototypeConfig) {
+    Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.Enable" -Value "0"
+    Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.PlayerGuidAllowList" -Value """"""
+    Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.TwinSkeleton.Enable" -Value "0"
+    Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.SkeletalPet.Enable" -Value "0"
+    Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.SkeletalPet.ShellSpellIds" -Value """"""
+}
+
+if (Test-Path $weatherVibeConfig) {
+    Set-ConfigValue -Path $weatherVibeConfig -Key "WeatherVibe.Debug" -Value "0"
+}
 
 Write-Host "bridge_lab_configured=true workspace=$WorkspaceRoot mysql_port=$LabMySqlPort world_port=$WorldServerPort soap_port=$SoapPort data_dir=$DataDir"

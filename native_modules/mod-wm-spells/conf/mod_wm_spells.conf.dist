@@ -1,0 +1,39 @@
+[worldserver]
+
+#
+# WM native spell behavior module
+# Stable spell-shell / behavior runtime for WM-owned abilities.
+#
+
+WmSpells.Enable = 1
+WmSpells.PlayerGuidAllowList = ""
+WmSpells.LabOnlyDebugInvokeEnable = 0
+WmSpells.DebugPollIntervalMs = 1000
+
+#
+# Bonebound Servant v1
+# One stable WM-owned true pet using a generic demon-style summon backend with skeleton visuals.
+#
+WmSpells.BoneboundServant.Enable = 1
+WmSpells.BoneboundServant.ShellSpellIds = "940000"
+WmSpells.BoneboundServant.RequireCorpse = 1
+WmSpells.BoneboundServant.CreatureEntry = 1860
+WmSpells.BoneboundServant.Name = "Bonebound Servant"
+WmSpells.BoneboundServant.DisplayId = 734
+WmSpells.BoneboundServant.VirtualItem1 = 1897
+WmSpells.BoneboundServant.VirtualItem2 = 0
+WmSpells.BoneboundServant.VirtualItem3 = 0
+WmSpells.BoneboundServant.AttackTimeMs = 2000
+WmSpells.BoneboundServant.ScaleBase = 1.0
+WmSpells.BoneboundServant.ScalePerLevel = 0.005
+WmSpells.BoneboundServant.ScalePerIntellect = 0.001
+WmSpells.BoneboundServant.ScalePerShadowPower = 0.0007
+WmSpells.BoneboundServant.BaseHealth = 140
+WmSpells.BoneboundServant.HealthPerLevel = 24
+WmSpells.BoneboundServant.HealthPerIntellect = 5
+WmSpells.BoneboundServant.HealthPerShadowPower = 2
+WmSpells.BoneboundServant.BaseMinDamage = 7
+WmSpells.BoneboundServant.BaseMaxDamage = 11
+WmSpells.BoneboundServant.DamagePerLevelPct = 125
+WmSpells.BoneboundServant.DamagePerIntellectPct = 8
+WmSpells.BoneboundServant.DamagePerShadowPowerPct = 16

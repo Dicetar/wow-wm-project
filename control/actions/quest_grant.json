@@ -4,7 +4,7 @@
   "enabled": true,
   "executor_kind": "quest_grant",
   "risk": "medium",
-  "description": "Grant an existing quest to a single player through the live SOAP quest command path.",
+  "description": "Grant an existing quest to a single player through the live quest-grant transport, preferring native bridge when ready and falling back to SOAP otherwise.",
   "required_payload_fields": ["quest_id", "player_guid"],
   "default_payload": {}
 }

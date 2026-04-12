@@ -8,6 +8,7 @@ from wm.sources.native_bridge.adapter import NativeBridgeAdapter
 from wm.sources.native_bridge.adapter import _build_gossip_session_expired_events
 from wm.sources.native_bridge.adapter import _record_to_event
 from wm.sources.native_bridge.arm import arm_native_bridge_cursor
+from wm.sources.native_bridge.configure import parse_bridge_runtime_config
 from wm.sources.native_bridge.configure import parse_allowlist
 from wm.sources.native_bridge.configure import set_allowlist
 from wm.sources.native_bridge.models import NativeBridgeRecord
@@ -321,6 +322,27 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertIn('WmBridge.PlayerGuidAllowList = ""', cleared)
         self.assertEqual(parse_allowlist(cleared), [])
 
+    def test_bridge_runtime_config_snapshot_parses_flags_and_wildcard_allowlist(self) -> None:
+        snapshot = parse_bridge_runtime_config(
+            "\n".join(
+                [
+                    "[worldserver]",
+                    "WmBridge.Enable = 1",
+                    "WmBridge.ActionQueue.Enable = 1",
+                    "WmBridge.DbControl.Enable = 0",
+                    'WmBridge.PlayerGuidAllowList = "*"',
+                    "",
+                ]
+            )
+        )
+
+        self.assertTrue(snapshot.enabled)
+        self.assertTrue(snapshot.action_queue_enabled)
+        self.assertFalse(snapshot.db_control_enabled)
+        self.assertTrue(snapshot.allow_all_players)
+        self.assertEqual(snapshot.player_guid_allowlist, [])
+        self.assertTrue(snapshot.allows_player(5406))
+
     def test_native_module_has_action_queue_scaffold(self) -> None:
         root = Path("native_modules/mod-wm-bridge/src")
         expected_files = {
@@ -345,6 +367,10 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertIn("ClaimExpiresAt", source)
         self.assertIn("sequence_prior_failed", source)
         self.assertIn("ORDER BY req.Priority ASC", source)
+        self.assertIn("quest_add", source)
+        self.assertIn("AddQuestAndCheckCompletion", source)
+        self.assertIn('MakePlayerScopedEvent(player, "quest", "granted")', source)
+        self.assertIn("grant_source", source)
         self.assertIn("world_announce_to_player", source)
         self.assertNotIn("HandleCommand", source)
         self.assertNotIn("ChatHandler", source)

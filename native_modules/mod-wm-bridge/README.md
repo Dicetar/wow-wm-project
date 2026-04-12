@@ -47,7 +47,8 @@ Native action bus:
 - policy gates: `wm_bridge_action_policy`
 - runtime heartbeat/status: `wm_bridge_runtime_status`
 - queue robustness: request expiry, stale-claim recovery, max attempts, priority, and simple ordered sequences
-- implemented native actions in this foundation pass: `debug_ping`, `debug_echo`, `debug_fail`, `context_snapshot_request`, `world_announce_to_player`
+- implemented native actions in this foundation pass: `debug_ping`, `debug_echo`, `debug_fail`, `context_snapshot_request`, `quest_add`, `world_announce_to_player`
+- successful `quest_add` requests also emit a native `quest/granted` bridge event so WM perception stays aligned with native mutation
 - broad mutation verbs are registered in WM Python/control contracts but remain policy-disabled and return `not_implemented` in C++ until each body has a lab test
 
 Bridge lab build note:

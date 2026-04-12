@@ -1,0 +1,138 @@
+{
+  "schema_version": "wm.spell_shell_bank.v1",
+  "description": "Prepared client-visible spell shell families for true custom WM abilities on a patched 3.3.5 client.",
+  "client_patch_required": true,
+  "patch": {
+    "artifact_version": "wm_spell_shell_bank.v1",
+    "workspace": "client_patches/wm_spell_shell_bank",
+    "target_client": "WoW 3.3.5a"
+  },
+  "notes": [
+    "These shells are a planning/control contract until a matching client patch ships.",
+    "Stock 3.3.5 clients cannot display truly new spellbook abilities without pre-seeded client spell definitions.",
+    "Do not reuse stock live spell IDs for WM abilities once a shell exists in this bank."
+  ],
+  "families": [
+    {
+      "family_id": "summon_pet",
+      "label": "Permanent Pet Summon",
+      "slot_range_start": 940000,
+      "slot_count": 16,
+      "targeting": "self_cast",
+      "cooldown_family": "warlock_pet",
+      "supports_true_pet": true,
+      "supports_multi_pet": false,
+      "behavior_kinds": [
+        "warlock_pet_skeleton",
+        "warlock_pet_void",
+        "warlock_pet_fel"
+      ]
+    },
+    {
+      "family_id": "summon_companion",
+      "label": "Companion Or Guardian Summon",
+      "slot_range_start": 940100,
+      "slot_count": 16,
+      "targeting": "self_cast",
+      "cooldown_family": "summon_companion",
+      "supports_true_pet": false,
+      "supports_multi_pet": true,
+      "behavior_kinds": [
+        "guardian_skeleton_pair",
+        "companion_follow",
+        "scene_companion_spawn"
+      ]
+    },
+    {
+      "family_id": "self_buff",
+      "label": "Self Buff",
+      "slot_range_start": 940200,
+      "slot_count": 16,
+      "targeting": "self_cast",
+      "cooldown_family": "self_buff",
+      "supports_true_pet": false,
+      "supports_multi_pet": false,
+      "behavior_kinds": [
+        "scaled_aura",
+        "burst_haste",
+        "shield_override"
+      ]
+    },
+    {
+      "family_id": "offensive_bolt",
+      "label": "Offensive Bolt",
+      "slot_range_start": 940300,
+      "slot_count": 16,
+      "targeting": "unit_enemy",
+      "cooldown_family": "offensive_bolt",
+      "supports_true_pet": false,
+      "supports_multi_pet": false,
+      "behavior_kinds": [
+        "scaled_projectile",
+        "drain_life_variant",
+        "shadow_burst"
+      ]
+    },
+    {
+      "family_id": "passive_aura",
+      "label": "Passive Aura",
+      "slot_range_start": 940400,
+      "slot_count": 16,
+      "targeting": "passive",
+      "cooldown_family": "passive",
+      "supports_true_pet": false,
+      "supports_multi_pet": false,
+      "behavior_kinds": [
+        "passive_stat_bonus",
+        "passive_proc",
+        "conditional_aura"
+      ]
+    },
+    {
+      "family_id": "pet_active",
+      "label": "Pet Active",
+      "slot_range_start": 940500,
+      "slot_count": 16,
+      "targeting": "pet_action",
+      "cooldown_family": "pet_active",
+      "supports_true_pet": true,
+      "supports_multi_pet": false,
+      "behavior_kinds": [
+        "bonebound_pet_active_v1"
+      ]
+    }
+  ],
+  "shells": [
+    {
+      "shell_key": "bonebound_servant_v1",
+      "spell_id": 940000,
+      "family_id": "summon_pet",
+      "label": "Bonebound Servant",
+      "behavior_kind": "summon_bonebound_servant_v1",
+      "targeting": "corpse_required",
+      "required_level": 1,
+      "icon_hint": "Spell_Shadow_AnimateDead",
+      "tooltip": "Raise a Bonebound Servant from a nearby corpse.",
+      "patch_state": "planned",
+      "notes": [
+        "This shell must be a WM-only dummy/script summon shell.",
+        "Behavior is executed by mod-wm-spells, not by a copied stock summon spell."
+      ]
+    },
+    {
+      "shell_key": "bonebound_servant_slash_v1",
+      "spell_id": 940500,
+      "family_id": "pet_active",
+      "label": "Bonebound Slash",
+      "behavior_kind": "bonebound_pet_active_v1",
+      "targeting": "pet_action",
+      "required_level": 1,
+      "icon_hint": "Ability_CriticalStrike",
+      "tooltip": "Order your Bonebound Servant to use its WM-owned pet action.",
+      "patch_state": "planned",
+      "notes": [
+        "Reserved for later. Keep disabled until the base servant lifecycle is stable."
+      ]
+    }
+  ]
+}

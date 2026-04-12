@@ -37,6 +37,20 @@ class FakeMysqlClient:
             return [{"Failed": "2"}]
         if "SELECT ROW_COUNT() AS Deleted" in sql:
             return [{"Deleted": "3"}]
+        if "FROM wm_bridge_player_scope" in sql:
+            return [{"PlayerGUID": "5406"}]
+        if "FROM wm_bridge_action_policy" in sql:
+            return [
+                {
+                    "ActionKind": "quest_add",
+                    "Profile": "default",
+                    "Enabled": "1",
+                    "MaxRiskLevel": "medium",
+                    "CooldownMS": "1000",
+                    "BurstLimit": "5",
+                    "AdminOnly": "0",
+                }
+            ]
         if "FROM wm_bridge_action_request" in sql and "WHERE RequestID = 42" in sql:
             return [
                 {
@@ -80,6 +94,7 @@ class NativeBridgeActionTests(unittest.TestCase):
 
         self.assertTrue(expected.issubset(set(native_action_kind_ids())))
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["debug_ping"].implemented)
+        self.assertTrue(NATIVE_ACTION_KIND_BY_ID["quest_add"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["world_announce_to_player"].implemented)
         self.assertFalse(NATIVE_ACTION_KIND_BY_ID["player_teleport"].default_enabled)
 
@@ -137,6 +152,19 @@ class NativeBridgeActionTests(unittest.TestCase):
         joined = "\n".join(client.sql)
         self.assertIn("wm_bridge_player_scope", joined)
         self.assertIn("wm_bridge_action_policy", joined)
+
+    def test_client_can_read_scope_and_policy(self) -> None:
+        client = FakeMysqlClient()
+        bridge = NativeBridgeActionClient(client=client, settings=Settings())  # type: ignore[arg-type]
+
+        scoped = bridge.is_player_scoped(player_guid=5406)
+        policy = bridge.get_action_policy(action_kind="quest_add")
+
+        self.assertTrue(scoped)
+        self.assertIsNotNone(policy)
+        assert policy is not None
+        self.assertTrue(policy["enabled"])
+        self.assertEqual(policy["max_risk_level"], "medium")
 
     def test_reaction_executor_dry_runs_native_bridge_action(self) -> None:
         executor = ReactionExecutor(client=FakeMysqlClient(), settings=Settings(), store=object())  # type: ignore[arg-type]

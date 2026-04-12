@@ -15,6 +15,7 @@ from wm.events.models import WMEvent
 from wm.events.store import EventStore
 from wm.journal.reader import SubjectJournalBundle
 from wm.journal.reader import load_subject_journal_for_creature
+from wm.reactive.auto_bounty import ReactiveAutoBountyManager
 from wm.reactive.models import PlayerQuestRuntimeState
 from wm.reactive.models import ReactiveQuestRule
 from wm.reactive.store import ReactiveQuestStore
@@ -32,6 +33,7 @@ class DeterministicRuleEngine:
         familiar_talk_threshold: int = 3,
         area_pressure_threshold: int = 5,
         default_cooldown_seconds: int = 3600,
+        auto_bounty: ReactiveAutoBountyManager | None = None,
     ) -> None:
         self.client = client
         self.settings = settings
@@ -43,6 +45,13 @@ class DeterministicRuleEngine:
         self.reactive_store = reactive_store
         if self.reactive_store is None and settings is not None:
             self.reactive_store = ReactiveQuestStore(client=client, settings=settings)
+        self.auto_bounty = auto_bounty
+        if self.auto_bounty is None and self.reactive_store is not None and settings is not None:
+            self.auto_bounty = ReactiveAutoBountyManager(
+                client=client,
+                settings=settings,
+                reactive_store=self.reactive_store,
+            )
 
     def evaluate(self, event: WMEvent, *, preview: bool = False) -> RuleEvaluationResult:
         return self._evaluate(event, preview=preview, mark_evaluated=(not preview))
@@ -66,7 +75,7 @@ class DeterministicRuleEngine:
             return result
 
         if event.event_type == "kill":
-            reactive_rules_present = self._evaluate_reactive_kill_burst(event=event, result=result)
+            reactive_rules_present = self._evaluate_reactive_kill_burst(event=event, result=result, preview=preview)
             if not reactive_rules_present:
                 journal = load_subject_journal_for_creature(
                     client=self.client,
@@ -88,32 +97,51 @@ class DeterministicRuleEngine:
             self.store.mark_evaluated(event_id=event.event_id)
         return result
 
-    def _evaluate_reactive_kill_burst(self, *, event: WMEvent, result: RuleEvaluationResult) -> bool:
+    def _evaluate_reactive_kill_burst(
+        self,
+        *,
+        event: WMEvent,
+        result: RuleEvaluationResult,
+        preview: bool,
+    ) -> bool:
         if self.reactive_store is None:
             return False
 
         rules = self.reactive_store.list_active_rules(
             subject_type=event.subject_type,
-            subject_entry=event.subject_entry,
             trigger_event_type=event.event_type,
+            player_guid=event.player_guid,
         )
+        rules = [rule for rule in rules if _rule_matches_event(rule=rule, event=event)]
+        if not rules and not preview and self.auto_bounty is not None:
+            auto_rule = self.auto_bounty.ensure_rule_for_event(event)
+            if auto_rule is not None:
+                rules = self.reactive_store.list_active_rules(
+                    subject_type=event.subject_type,
+                    trigger_event_type=event.event_type,
+                    player_guid=event.player_guid,
+                )
+                rules = [rule for rule in rules if _rule_matches_event(rule=rule, event=event)]
         if not rules:
             return False
 
-        recent_kills = self.store.list_subject_events(
-            player_guid=int(event.player_guid or 0),
-            subject_type=event.subject_type or "creature",
-            subject_entry=int(event.subject_entry or 0),
-            event_type=event.event_type,
+        recent_observed_events = self.store.list_recent_events(
             event_class="observed",
-            limit=200,
+            player_guid=int(event.player_guid or 0),
+            limit=400,
             newest_first=False,
         )
         for rule in rules:
             self._evaluate_reactive_rule(
                 event=event,
                 rule=rule,
-                recent_kills=recent_kills,
+                recent_kills=[
+                    candidate
+                    for candidate in recent_observed_events
+                    if candidate.event_type == event.event_type
+                    and candidate.subject_type == event.subject_type
+                    and _rule_matches_event(rule=rule, event=candidate)
+                ],
                 result=result,
             )
         return True
@@ -383,7 +411,22 @@ def _subject_name_from_event(event: WMEvent) -> str | None:
         raw_value = event.metadata.get(key)
         if isinstance(raw_value, str) and raw_value.strip():
             return raw_value.strip()
+    payload = event.metadata.get("payload")
+    if isinstance(payload, dict):
+        raw_value = payload.get("subject_name")
+        if isinstance(raw_value, str) and raw_value.strip():
+            return raw_value.strip()
     return None
+
+
+def _rule_matches_event(*, rule: ReactiveQuestRule, event: WMEvent) -> bool:
+    if rule.subject_type != (event.subject_type or ""):
+        return False
+    name_prefix = rule.metadata.get("auto_bounty_name_prefix")
+    if isinstance(name_prefix, str) and name_prefix.strip():
+        subject_name = _subject_name_from_event(event)
+        return isinstance(subject_name, str) and subject_name.lower().startswith(name_prefix.strip().lower())
+    return int(rule.subject_entry) == int(event.subject_entry or 0)
 
 
 def _kill_burst_window(

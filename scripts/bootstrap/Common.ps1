@@ -170,23 +170,103 @@ function Sync-LocalModule {
         [Parameter(Mandatory = $true)]
         $Module,
         [Parameter(Mandatory = $true)]
-        [string]$WorkspaceRoot
+        [string]$WorkspaceRoot,
+        [string]$TargetDirOverride,
+        [string]$StateKeySuffix = "workspace"
     )
 
     $sourceDir = Resolve-PortablePath -BasePath $RepoRoot -CandidatePath $Module.source
-    $targetDir = Resolve-PortablePath -BasePath $WorkspaceRoot -CandidatePath $Module.target_path
+    $targetDir = if ($TargetDirOverride) {
+        $TargetDirOverride
+    }
+    else {
+        Resolve-PortablePath -BasePath $WorkspaceRoot -CandidatePath $Module.target_path
+    }
     if (-not (Test-Path $sourceDir)) {
         throw "Local module source not found: $sourceDir"
     }
 
     Ensure-Directory -Path (Split-Path -Parent $targetDir)
-    if (Test-Path $targetDir) {
-        Remove-Item -LiteralPath $targetDir -Recurse -Force
-    }
     Ensure-Directory -Path $targetDir
 
-    foreach ($child in Get-ChildItem -LiteralPath $sourceDir -Force) {
-        Copy-Item -LiteralPath $child.FullName -Destination (Join-Path $targetDir $child.Name) -Recurse -Force
+    $manifestPath = $null
+    $stateDir = Join-Path $WorkspaceRoot "state\local-module-sync"
+    try {
+        Ensure-Directory -Path $stateDir
+        $manifestPath = Join-Path $stateDir "$($Module.key).$StateKeySuffix.json"
+    }
+    catch {
+        Write-Host "local_module_sync_state_warning=true module=$($Module.key) message=$($_.Exception.Message)"
+    }
+    $previousPaths = @()
+    if ($manifestPath -and (Test-Path $manifestPath)) {
+        $manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
+        if ($manifest.paths) {
+            $previousPaths = @($manifest.paths)
+        }
+    }
+
+    $currentPaths = New-Object System.Collections.Generic.List[string]
+    foreach ($directory in Get-ChildItem -LiteralPath $sourceDir -Recurse -Directory | Sort-Object FullName) {
+        $relativePath = $directory.FullName.Substring($sourceDir.Length).TrimStart('\', '/')
+        if (-not $relativePath) {
+            continue
+        }
+        $currentPaths.Add($relativePath)
+        Ensure-Directory -Path (Join-Path $targetDir $relativePath)
+    }
+
+    foreach ($file in Get-ChildItem -LiteralPath $sourceDir -Recurse -File | Sort-Object FullName) {
+        $relativePath = $file.FullName.Substring($sourceDir.Length).TrimStart('\', '/')
+        $currentPaths.Add($relativePath)
+        $destination = Join-Path $targetDir $relativePath
+        Ensure-Directory -Path (Split-Path -Parent $destination)
+        try {
+            Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
+        }
+        catch {
+            if (Test-Path $destination) {
+                Write-Host "local_module_copy_warning=true module=$($Module.key) path=$relativePath message=$($_.Exception.Message)"
+                continue
+            }
+            throw
+        }
+    }
+
+    $currentSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($path in $currentPaths) {
+        $currentSet.Add([string]$path) | Out-Null
+    }
+
+    $staleFiles = @()
+    $staleDirectories = @()
+    foreach ($previousPath in $previousPaths) {
+        if (-not $currentSet.Contains([string]$previousPath)) {
+            $fullPath = Join-Path $targetDir $previousPath
+            if (-not (Test-Path $fullPath)) {
+                continue
+            }
+            $item = Get-Item -LiteralPath $fullPath -Force
+            if ($item.PSIsContainer) {
+                $staleDirectories += $fullPath
+            }
+            else {
+                $staleFiles += $fullPath
+            }
+        }
+    }
+
+    foreach ($staleFile in $staleFiles | Sort-Object) {
+        Remove-Item -LiteralPath $staleFile -Force
+    }
+    foreach ($staleDirectory in $staleDirectories | Sort-Object Length -Descending) {
+        Remove-Item -LiteralPath $staleDirectory -Recurse -Force
+    }
+
+    if ($manifestPath) {
+        Save-JsonFile -Path $manifestPath -Value ([pscustomobject]@{
+            paths = @($currentPaths | Sort-Object -Unique)
+        })
     }
 
     return $targetDir
@@ -206,9 +286,54 @@ function Sync-LocalModules {
 
     Ensure-Directory -Path (Join-Path $CoreRoot "modules")
     foreach ($module in @($Manifest.local_modules)) {
-        $targetDir = Sync-LocalModule -RepoRoot $RepoRoot -Module $module -WorkspaceRoot $WorkspaceRoot
         $junctionPath = Join-Path (Join-Path $CoreRoot "modules") $module.key
+        $targetDir = Sync-LocalModule -RepoRoot $RepoRoot -Module $module -WorkspaceRoot $WorkspaceRoot
         Ensure-DirectoryJunction -Path $junctionPath -Target $targetDir
+    }
+}
+
+function Link-LocalModulesDirectly {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$CoreRoot,
+        [Parameter(Mandatory = $true)]
+        $Manifest
+    )
+
+    Ensure-Directory -Path (Join-Path $CoreRoot "modules")
+    foreach ($module in @($Manifest.local_modules)) {
+        $sourceDir = Resolve-PortablePath -BasePath $RepoRoot -CandidatePath $module.source
+        if (-not (Test-Path $sourceDir)) {
+            throw "Local module source not found for direct link: $sourceDir"
+        }
+        $junctionPath = Join-Path (Join-Path $CoreRoot "modules") $module.key
+        Ensure-DirectoryJunction -Path $junctionPath -Target $sourceDir
+    }
+}
+
+function Sync-LocalModulesIntoCore {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$CoreRoot,
+        [Parameter(Mandatory = $true)]
+        $Manifest
+    )
+
+    Ensure-Directory -Path (Join-Path $CoreRoot "modules")
+    foreach ($module in @($Manifest.local_modules)) {
+        $targetDir = Join-Path (Join-Path $CoreRoot "modules") $module.key
+        Sync-LocalModule `
+            -RepoRoot $RepoRoot `
+            -Module $module `
+            -WorkspaceRoot $WorkspaceRoot `
+            -TargetDirOverride $targetDir `
+            -StateKeySuffix "core" | Out-Null
     }
 }
 
@@ -254,8 +379,8 @@ function Ensure-DirectoryJunction {
     Ensure-Directory -Path (Split-Path -Parent $Path)
     $resolvedTarget = (Resolve-Path $Target).Path
 
-    if (Test-Path $Path) {
-        $existingItem = Get-Item -LiteralPath $Path -Force
+    $existingItem = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    if ($existingItem) {
         if ($existingItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
             $resolvedExisting = (Resolve-Path $Path).Path
             if ($resolvedExisting -eq $resolvedTarget) {
@@ -265,7 +390,16 @@ function Ensure-DirectoryJunction {
         Remove-Item -LiteralPath $Path -Recurse -Force
     }
 
-    New-Item -ItemType Junction -Path $Path -Target $resolvedTarget | Out-Null
+    try {
+        New-Item -ItemType Junction -Path $Path -Target $resolvedTarget | Out-Null
+    }
+    catch {
+        $mklinkOutput = & cmd.exe /c "mklink /J `"$Path`" `"$resolvedTarget`""
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $Path)) {
+            throw
+        }
+        $null = $mklinkOutput
+    }
 }
 
 function Copy-RepoAsset {
@@ -473,6 +607,198 @@ function Get-DependencyInstallRoot {
         }
     }
     throw "Dependency '$Key' was not found in the manifest."
+}
+
+function Get-LocalModuleBuildFingerprint {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        $Manifest
+    )
+
+    $records = New-Object System.Collections.Generic.List[string]
+    $fileCount = 0
+    foreach ($module in @($Manifest.local_modules)) {
+        $sourceDir = Resolve-PortablePath -BasePath $RepoRoot -CandidatePath $module.source
+        if (-not (Test-Path $sourceDir)) {
+            throw "Local module source not found while computing build fingerprint: $sourceDir"
+        }
+
+        $records.Add("module|$($module.key)|$($module.source)|$($module.target_path)")
+        $files = Get-ChildItem -LiteralPath $sourceDir -Recurse -File | Sort-Object FullName
+        foreach ($file in $files) {
+            $relativePath = $file.FullName.Substring($sourceDir.Length).TrimStart('\', '/')
+            $records.Add("file|$($module.key)|$relativePath|$($file.Length)|$($file.LastWriteTimeUtc.Ticks)")
+            $fileCount += 1
+        }
+    }
+
+    $payload = [string]::Join("`n", $records)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($payload))
+    }
+    finally {
+        $sha.Dispose()
+    }
+
+    return [pscustomobject]@{
+        hash = ([System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLowerInvariant())
+        module_count = @($Manifest.local_modules).Count
+        file_count = $fileCount
+    }
+}
+
+function Get-CMakeConfigureStatePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BuildRoot
+    )
+
+    return (Join-Path $BuildRoot "wm-cmake-configure-state.json")
+}
+
+function Save-CMakeConfigureState {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BuildRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        $Manifest,
+        [Parameter(Mandatory = $true)]
+        [string]$CoreRoot
+    )
+
+    $fingerprint = Get-LocalModuleBuildFingerprint -RepoRoot $RepoRoot -Manifest $Manifest
+    Save-JsonFile -Path (Get-CMakeConfigureStatePath -BuildRoot $BuildRoot) -Value ([pscustomobject]@{
+        local_module_hash = $fingerprint.hash
+        local_module_count = $fingerprint.module_count
+        local_module_file_count = $fingerprint.file_count
+        core_root = $CoreRoot
+        generator_arch = $Manifest.build.generator_arch
+        build_shared_libs = [bool]$Manifest.build.build_shared_libs
+    })
+    return $fingerprint
+}
+
+function Test-CMakeReconfigureRequired {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BuildRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+        [Parameter(Mandatory = $true)]
+        $Manifest,
+        [Parameter(Mandatory = $true)]
+        [string]$CoreRoot
+    )
+
+    $solutionPath = Join-Path $BuildRoot "AzerothCore.sln"
+    $statePath = Get-CMakeConfigureStatePath -BuildRoot $BuildRoot
+    $fingerprint = Get-LocalModuleBuildFingerprint -RepoRoot $RepoRoot -Manifest $Manifest
+
+    if (-not (Test-Path $solutionPath)) {
+        return [pscustomobject]@{
+            required = $true
+            reason = "solution_missing"
+            fingerprint = $fingerprint
+        }
+    }
+
+    if (-not (Test-Path $statePath)) {
+        return [pscustomobject]@{
+            required = $true
+            reason = "configure_state_missing"
+            fingerprint = $fingerprint
+        }
+    }
+
+    $state = Get-Content -Path $statePath -Raw | ConvertFrom-Json
+    if ($state.local_module_hash -ne $fingerprint.hash) {
+        return [pscustomobject]@{
+            required = $true
+            reason = "local_module_hash_changed"
+            fingerprint = $fingerprint
+        }
+    }
+
+    if ([string]$state.core_root -ne [string]$CoreRoot) {
+        return [pscustomobject]@{
+            required = $true
+            reason = "core_root_changed"
+            fingerprint = $fingerprint
+        }
+    }
+
+    if ([string]$state.generator_arch -ne [string]$Manifest.build.generator_arch) {
+        return [pscustomobject]@{
+            required = $true
+            reason = "generator_arch_changed"
+            fingerprint = $fingerprint
+        }
+    }
+
+    if ([bool]$state.build_shared_libs -ne [bool]$Manifest.build.build_shared_libs) {
+        return [pscustomobject]@{
+            required = $true
+            reason = "build_shared_libs_changed"
+            fingerprint = $fingerprint
+        }
+    }
+
+    return [pscustomobject]@{
+        required = $false
+        reason = "up_to_date"
+        fingerprint = $fingerprint
+    }
+}
+
+function Invoke-WorkspaceCMakeConfigure {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CMakePath,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot,
+        [Parameter(Mandatory = $true)]
+        $Manifest,
+        [Parameter(Mandatory = $true)]
+        [string]$CoreRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$BuildRoot
+    )
+
+    $boostRoot = Get-DependencyInstallRoot -Manifest $Manifest -WorkspaceRoot $WorkspaceRoot -Key "boost"
+    $mysqlRoot = Get-DependencyInstallRoot -Manifest $Manifest -WorkspaceRoot $WorkspaceRoot -Key "mysql"
+    $openSslRoot = Get-DependencyInstallRoot -Manifest $Manifest -WorkspaceRoot $WorkspaceRoot -Key "openssl"
+    $cmakeArgs = @(
+        "-S", $CoreRoot,
+        "-B", $BuildRoot,
+        "-A", $Manifest.build.generator_arch,
+        "-DBUILD_SHARED_LIBS=" + ($(if ($Manifest.build.build_shared_libs) { "ON" } else { "OFF" })),
+        "-DBoost_ROOT=$boostRoot",
+        "-DMYSQL_ROOT_DIR=$mysqlRoot"
+    )
+
+    $mysqlLib = Get-MySQLLibraryCandidate -Root $mysqlRoot -WorkspaceRoot $WorkspaceRoot
+    if ($mysqlLib) {
+        $cmakeArgs += "-DMYSQL_LIBRARY=$mysqlLib"
+    }
+
+    $openSslLayout = Get-OpenSSLLayout -Root $openSslRoot
+    if (-not $openSslLayout) {
+        throw "OpenSSL root '$openSslRoot' does not expose the expected include/lib layout."
+    }
+
+    $cmakeArgs += @(
+        "-DOPENSSL_ROOT_DIR=$($openSslLayout.Root)",
+        "-DOPENSSL_INCLUDE_DIR=$($openSslLayout.IncludeDir)",
+        "-DOPENSSL_CRYPTO_LIBRARY=$($openSslLayout.ReleaseCrypto)",
+        "-DOPENSSL_SSL_LIBRARY=$($openSslLayout.ReleaseSsl)"
+    )
+
+    Invoke-Native -FilePath $CMakePath -Arguments $cmakeArgs
 }
 
 function Get-OpenSSLLayout {

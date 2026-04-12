@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: WMQuestieCompat
+## Notes: Suppresses Questie tracker spam for WM custom quests.
+## Author: OpenAI Codex
+## Version: 0.1.0
+## OptionalDeps: Questie-335
+
+WMQuestieCompat.lua

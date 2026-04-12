@@ -28,6 +28,20 @@ class BridgeConfigUpdateResult:
         return asdict(self)
 
 
+@dataclass(slots=True)
+class BridgeRuntimeConfigSnapshot:
+    enabled: bool
+    action_queue_enabled: bool
+    db_control_enabled: bool
+    allow_all_players: bool
+    player_guid_allowlist: list[int]
+
+    def allows_player(self, player_guid: int) -> bool:
+        if not self.enabled:
+            return False
+        return self.allow_all_players or int(player_guid) in set(self.player_guid_allowlist)
+
+
 def update_bridge_player_allowlist(
     *,
     config_path: Path,
@@ -69,18 +83,30 @@ def parse_allowlist(config_text: str) -> list[int]:
         match = ALLOWLIST_RE.match(line)
         if not match:
             continue
-        raw_value = _strip_config_quotes(match.group("value").strip())
-        values: list[int] = []
-        for token in raw_value.split(","):
-            token = token.strip()
-            if not token or token == "*":
-                continue
-            try:
-                values.append(int(token))
-            except ValueError:
-                continue
-        return sorted(set(values))
+        _allow_all_players, values = _parse_allowlist_value(match.group("value").strip())
+        return values
     return []
+
+
+def load_bridge_runtime_config(config_path: Path) -> BridgeRuntimeConfigSnapshot:
+    if not config_path.exists():
+        raise FileNotFoundError(f"Bridge config file not found: {config_path}")
+    return parse_bridge_runtime_config(config_path.read_text(encoding="utf-8"))
+
+
+def parse_bridge_runtime_config(config_text: str) -> BridgeRuntimeConfigSnapshot:
+    allow_all_players = False
+    allowlist = parse_allowlist(config_text)
+    raw_allowlist = _get_config_value(config_text, ALLOWLIST_KEY)
+    if raw_allowlist is not None:
+        allow_all_players, allowlist = _parse_allowlist_value(raw_allowlist)
+    return BridgeRuntimeConfigSnapshot(
+        enabled=_parse_bool_option(config_text, "WmBridge.Enable", default=True),
+        action_queue_enabled=_parse_bool_option(config_text, "WmBridge.ActionQueue.Enable", default=False),
+        db_control_enabled=_parse_bool_option(config_text, "WmBridge.DbControl.Enable", default=False),
+        allow_all_players=allow_all_players,
+        player_guid_allowlist=allowlist,
+    )
 
 
 def set_allowlist(config_text: str, player_guids: list[int]) -> str:
@@ -107,6 +133,46 @@ def _strip_config_quotes(value: str) -> str:
     if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
         return value[1:-1]
     return value
+
+
+def _get_config_value(config_text: str, key: str) -> str | None:
+    pattern = re.compile(rf"^\s*{re.escape(key)}\s*=\s*(?P<value>.*?)\s*$")
+    for line in config_text.splitlines():
+        match = pattern.match(line)
+        if match:
+            return match.group("value")
+    return None
+
+
+def _parse_bool_option(config_text: str, key: str, *, default: bool) -> bool:
+    raw = _get_config_value(config_text, key)
+    if raw is None:
+        return default
+    normalized = _strip_config_quotes(raw.strip()).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _parse_allowlist_value(raw_value: str) -> tuple[bool, list[int]]:
+    stripped = _strip_config_quotes(raw_value.strip())
+    values: list[int] = []
+    allow_all_players = False
+    for token in stripped.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if token == "*":
+            allow_all_players = True
+            values.clear()
+            break
+        try:
+            values.append(int(token))
+        except ValueError:
+            continue
+    return allow_all_players, sorted(set(values))
 
 
 def _build_parser() -> argparse.ArgumentParser:

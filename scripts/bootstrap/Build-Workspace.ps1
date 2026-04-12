@@ -37,7 +37,6 @@ if (-not $WhatIf) {
 
 $cmake = Get-CMakePath
 $msbuild = Get-MSBuildPath
-$boostRoot = Get-DependencyInstallRoot -Manifest $manifest -WorkspaceRoot $paths.root -Key "boost"
 $mysqlRoot = Get-DependencyInstallRoot -Manifest $manifest -WorkspaceRoot $paths.root -Key "mysql"
 $openSslRoot = Get-DependencyInstallRoot -Manifest $manifest -WorkspaceRoot $paths.root -Key "openssl"
 $compatibilityOverlayScript = Join-Path $repoRoot "scripts\repack\Apply-RepackCompatibilityOverlay.ps1"
@@ -66,33 +65,18 @@ Invoke-Step "Applying module compatibility overlay patches" {
 
 Invoke-Step "Generating Visual Studio build files in $($paths.buildRoot)" {
     Reset-BuildDirectory -BuildRoot $paths.buildRoot
-    $cmakeArgs = @(
-        "-S", $paths.coreRoot,
-        "-B", $paths.buildRoot,
-        "-A", $manifest.build.generator_arch,
-        "-DBUILD_SHARED_LIBS=" + ($(if ($manifest.build.build_shared_libs) { "ON" } else { "OFF" })),
-        "-DBoost_ROOT=$boostRoot",
-        "-DMYSQL_ROOT_DIR=$mysqlRoot"
-    )
-
-    $mysqlLib = Get-MySQLLibraryCandidate -Root $mysqlRoot -WorkspaceRoot $paths.root
-    if ($mysqlLib) {
-        $cmakeArgs += "-DMYSQL_LIBRARY=$mysqlLib"
-    }
-
-    $openSslLayout = Get-OpenSSLLayout -Root $openSslRoot
-    if (-not $openSslLayout) {
-        throw "OpenSSL root '$openSslRoot' does not expose the expected include/lib layout."
-    }
-
-    $cmakeArgs += @(
-        "-DOPENSSL_ROOT_DIR=$($openSslLayout.Root)",
-        "-DOPENSSL_INCLUDE_DIR=$($openSslLayout.IncludeDir)",
-        "-DOPENSSL_CRYPTO_LIBRARY=$($openSslLayout.ReleaseCrypto)",
-        "-DOPENSSL_SSL_LIBRARY=$($openSslLayout.ReleaseSsl)"
-    )
-
-    Invoke-Native -FilePath $cmake -Arguments $cmakeArgs
+    Invoke-WorkspaceCMakeConfigure `
+        -CMakePath $cmake `
+        -WorkspaceRoot $paths.root `
+        -Manifest $manifest `
+        -CoreRoot $paths.coreRoot `
+        -BuildRoot $paths.buildRoot
+    $configureFingerprint = Save-CMakeConfigureState `
+        -BuildRoot $paths.buildRoot `
+        -RepoRoot $repoRoot `
+        -Manifest $manifest `
+        -CoreRoot $paths.coreRoot
+    Write-Host "cmake_local_module_hash=$($configureFingerprint.hash) files=$($configureFingerprint.file_count)"
 }
 
 Invoke-Step "Trimming worldserver resource include paths for the generated project" {

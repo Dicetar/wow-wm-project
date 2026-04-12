@@ -11,6 +11,7 @@ World Master for AzerothCore 3.3.5a: an external-first content and reaction plat
 - ingests live kill events through the proven hidden addon-log bridge (`addon_log`)
 - includes a native AzerothCore sensor bridge rollout path (`native_bridge`)
 - includes a native WM action queue contract for scoped, policy-gated server actions
+- includes a WM spell shell bank contract plus native spell behavior runtime (`mod-wm-spells`)
 - exposes a repo-owned control contract registry for manual and future LLM-driven actions
 - keeps a latest-source AzerothCore baseline available for native WM module work
 
@@ -128,6 +129,10 @@ python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --actio
 
 The broad native action vocabulary is already registered in Python/control contracts, but mutation verbs stay disabled and C++ returns `not_implemented` until each verb body is hardened in `D:\WOW\WM_BridgeLab`.
 
+Spell learn / unlearn now also have native queue implementations, and the content workbench prefers them with SOAP fallback. The new summon/ability lane is `shell bank -> mod-wm-spells behavior -> grant shell to player`, not stock spell hijacking.
+
+`quest_grant` now prefers the native bridge `quest_add` path when `mod-wm-bridge` is enabled, the action queue is on, the player is scoped, and the `quest_add` policy is enabled. If native is not ready, WM falls back to the existing SOAP quest path. Override only if needed with `WM_QUEST_GRANT_TRANSPORT=soap` or `WM_QUEST_GRANT_TRANSPORT=native`.
+
 Full action-bus notes and lab commands live in [Native Bridge Action Bus](docs/native-bridge-action-bus.md).
 
 ### Control workbench
@@ -173,7 +178,7 @@ Important current truth:
 - it is suitable for native WM module development
 - it is not yet guaranteed gameplay parity with the old repack
 - some repack-specific custom NPC/world behavior still drifts from the historical setup
-- WeatherVibe still needs real in-world profile content
+- WeatherVibe still needs real in-world profile content, but the lab configurator now forces `WeatherVibe.Debug = 0` so debug spam stays off by default
 
 For bridge work, use the isolated lab wrappers instead of touching the working rebuild:
 
@@ -181,6 +186,14 @@ For bridge work, use the isolated lab wrappers instead of touching the working r
 .\setup-bridge-lab.bat
 .\build-bridge-lab.bat
 ```
+
+For day-to-day lab runtime use, the repo also includes:
+
+```powershell
+.\start-bridge-lab-server.bat
+```
+
+This starts lab MySQL, syncs the auth realmlist to the lab world port, and gives you a menu with a graceful-first worldserver restart path.
 
 After the first full lab build, use the incremental path for normal native module edits:
 
@@ -196,7 +209,9 @@ For runtime smoke tests, use the copied lab MySQL data on port `33307` and confi
 .\configure-bridge-lab.bat
 ```
 
-This points only the lab configs at the lab MySQL copy. The working rebuild remains on its own MySQL/runtime tree. Promotion back to the working rebuild is intentionally gated by `scripts\bridge_lab\Promote-BridgeBuild.ps1 -ConfirmPromoteToWorkingRebuild`.
+This points only the lab configs at the lab MySQL copy. `configure-bridge-lab.bat` also forces `mod_weather_vibe.conf` to `WeatherVibe.Debug = 0`. The working rebuild remains on its own MySQL/runtime tree. Promotion back to the working rebuild is intentionally gated by `scripts\bridge_lab\Promote-BridgeBuild.ps1 -ConfirmPromoteToWorkingRebuild`.
+
+If you use Questie-335 while testing WM custom quests like `910000`, copy `wow_addons\WMQuestieCompat` into your client `Interface\AddOns\` folder and `/reload`. It suppresses Questie tracker spam for WM-owned quest ids that do not exist in the upstream Questie database.
 
 ## Repo layout
 
@@ -222,7 +237,10 @@ This points only the lab configs at the lab MySQL copy. The working rebuild rema
 ## Docs
 
 - [Work Summary](docs/WORK_SUMMARY.md)
+- [Summon and Spell Platform Status](docs/SUMMON_SPELL_PLATFORM_STATUS.md)
 - [Native Bridge Action Bus](docs/native-bridge-action-bus.md)
+- [Content Workbench V1](docs/CONTENT_WORKBENCH_V1.md)
+- [On-The-Fly Spells V1](docs/ON_THE_FLY_SPELLS_V1.md)
 - [Portable Rebuild Notes](docs/repack-rebuild.md)
 - [Roadmap](docs/ROADMAP.md)
 - archived bootstrap-era docs remain under `docs/archive/`

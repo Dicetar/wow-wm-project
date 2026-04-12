@@ -12,6 +12,8 @@ from wm.db.mysql_cli import MysqlCliClient
 from wm.quests.bounty import build_bounty_quest_draft
 from wm.quests.generate_bounty import LiveCreatureResolver
 from wm.quests.publish import QuestPublisher
+from wm.runtime_sync import SoapRuntimeClient
+from wm.runtime_sync import build_default_quest_reload_commands
 from wm.refs import CreatureRef
 from wm.refs import NpcRef
 from wm.refs import PlayerRef
@@ -70,12 +72,12 @@ class ReactiveBountyInstaller:
 
         if quest_exists and quest_matches:
             notes.append(f"Quest {rule.quest_id} already exists with no starter row and ender {rule.turn_in_npc_entry}.")
-        elif quest_exists and not quest_matches:
-            notes.append(
-                f"Quest {rule.quest_id} already exists but does not match the reactive direct-grant shape; leaving it unchanged."
-            )
         else:
             draft = self._build_reactive_draft(rule)
+            if quest_exists and not quest_matches:
+                notes.append(
+                    f"Quest {rule.quest_id} already exists but does not match the reactive target; refreshing it."
+                )
             if mode == "apply":
                 prepared = self.slot_allocator.ensure_slot_prepared(
                     entity_type="quest",
@@ -94,6 +96,18 @@ class ReactiveBountyInstaller:
                     )
                 publish_result = self.quest_publisher.publish(draft=draft, mode="apply")
                 publish_payload = publish_result.to_dict()
+                if (
+                    not publish_result.applied
+                    and quest_exists
+                    and not quest_matches
+                    and self._active_slot_refresh_needed(publish_payload)
+                ):
+                    self._apply_sql_plan(publish_payload.get("sql_plan"))
+                    self._sync_reserved_slot(rule=rule)
+                    self._reload_runtime_for_quest(rule=rule)
+                    publish_payload["applied"] = True
+                    publish_payload["live_refresh_applied"] = True
+                    notes.append(f"Refreshed active reactive quest {rule.quest_id} in place.")
                 notes.append(f"Published reusable reactive quest {rule.quest_id}.")
             else:
                 publish_result = self.quest_publisher.publish(draft=draft, mode="dry-run")
@@ -137,7 +151,7 @@ class ReactiveBountyInstaller:
         )
         draft.offer_reward_text = (
             f"{turn_in_result.name} nods as you report in. "
-            f"The kobold pressure eases for now, but stay ready."
+            f"The pressure from {target_result.name} eases for now, but stay ready."
         )
         return draft
 
@@ -193,6 +207,74 @@ class ReactiveBountyInstaller:
                 and repeatable
             ),
         }
+
+    def _active_slot_refresh_needed(self, publish_payload: dict[str, Any] | None) -> bool:
+        if not isinstance(publish_payload, dict):
+            return False
+        preflight = publish_payload.get("preflight")
+        if not isinstance(preflight, dict):
+            return False
+        issues = preflight.get("issues")
+        if not isinstance(issues, list):
+            return False
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            if str(issue.get("path") or "") != "reserved_slot.status":
+                continue
+            if "already active" in str(issue.get("message") or ""):
+                return True
+        return False
+
+    def _apply_sql_plan(self, sql_plan: dict[str, Any] | None) -> None:
+        if not isinstance(sql_plan, dict):
+            raise RuntimeError("Quest publish fallback did not include an SQL plan.")
+        statements = sql_plan.get("statements")
+        if not isinstance(statements, list):
+            raise RuntimeError("Quest publish fallback SQL plan is missing statements.")
+        for statement in statements:
+            sql = str(statement or "").strip()
+            if not sql or sql.startswith("--"):
+                continue
+            self._execute_world(sql)
+
+    def _sync_reserved_slot(self, *, rule: ReactiveQuestRule) -> None:
+        notes_json = json.dumps(
+            [
+                f"reactive_rule:{rule.rule_key}",
+                f"grant_mode:{rule.grant_mode}",
+            ],
+            ensure_ascii=False,
+        ).replace("'", "''")
+        rule_key = str(rule.rule_key).replace("'", "''")
+        sql = (
+            "UPDATE wm_reserved_slot SET "
+            "SlotStatus = 'active', "
+            f"ArcKey = '{rule_key}', "
+            f"CharacterGUID = {int(rule.player_guid_scope or 0)}, "
+            f"SourceQuestID = {int(rule.quest_id)}, "
+            f"NotesJSON = '{notes_json}' "
+            "WHERE EntityType = 'quest' "
+            f"AND ReservedID = {int(rule.quest_id)}"
+        )
+        self._execute_world(sql)
+
+    def _reload_runtime_for_quest(self, *, rule: ReactiveQuestRule) -> None:
+        if not self.settings.soap_enabled or not self.settings.soap_user or not self.settings.soap_password:
+            return
+        client = SoapRuntimeClient(settings=self.settings)
+        for command in build_default_quest_reload_commands(questgiver_entry=int(rule.turn_in_npc_entry)):
+            client.execute_command(command)
+
+    def _execute_world(self, sql: str) -> None:
+        self.client.query(
+            host=self.settings.world_db_host,
+            port=self.settings.world_db_port,
+            user=self.settings.world_db_user,
+            password=self.settings.world_db_password,
+            database=self.settings.world_db_name,
+            sql=sql,
+        )
 
 
 def _build_parser() -> argparse.ArgumentParser:

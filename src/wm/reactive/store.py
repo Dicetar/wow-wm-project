@@ -143,6 +143,25 @@ class ReactiveQuestStore:
             return None
         return self._row_to_rule(rows[0])
 
+    def get_rule_by_key(self, *, rule_key: str) -> ReactiveQuestRule | None:
+        rows = self.client.query(
+            host=self.settings.world_db_host,
+            port=self.settings.world_db_port,
+            user=self.settings.world_db_user,
+            password=self.settings.world_db_password,
+            database=self.settings.world_db_name,
+            sql=(
+                "SELECT RuleKey, IsActive, PlayerGUIDScope, SubjectType, SubjectEntry, TriggerEventType, KillThreshold, "
+                "WindowSeconds, QuestID, TurnInNpcEntry, GrantMode, PostRewardCooldownSeconds, MetadataJSON, NotesJSON "
+                "FROM wm_reactive_quest_rule "
+                f"WHERE RuleKey = {_sql_string(rule_key)} "
+                "LIMIT 1"
+            ),
+        )
+        if not rows:
+            return None
+        return self._row_to_rule(rows[0])
+
     def list_active_quest_ids(self) -> set[int]:
         rows = self.client.query(
             host=self.settings.world_db_host,
@@ -157,6 +176,45 @@ class ReactiveQuestStore:
             for row in rows
             if row.get("QuestID") not in (None, "")
         }
+
+    def deactivate_player_quest_rules(
+        self,
+        *,
+        player_guid: int,
+        quest_id: int,
+        except_rule_key: str | None = None,
+    ) -> None:
+        predicates = [
+            f"PlayerGUIDScope = {int(player_guid)}",
+            f"QuestID = {int(quest_id)}",
+        ]
+        if except_rule_key not in (None, ""):
+            predicates.append(f"RuleKey <> {_sql_string(str(except_rule_key))}")
+        sql = (
+            "UPDATE wm_reactive_quest_rule "
+            "SET IsActive = 0, UpdatedAt = CURRENT_TIMESTAMP "
+            f"WHERE {' AND '.join(predicates)}"
+        )
+        self._execute_world(sql)
+
+    def deactivate_player_bounty_rules(
+        self,
+        *,
+        player_guid: int,
+        except_rule_key: str | None = None,
+    ) -> None:
+        predicates = [
+            f"PlayerGUIDScope = {int(player_guid)}",
+            "RuleKey LIKE 'reactive_bounty:%'",
+        ]
+        if except_rule_key not in (None, ""):
+            predicates.append(f"RuleKey <> {_sql_string(str(except_rule_key))}")
+        sql = (
+            "UPDATE wm_reactive_quest_rule "
+            "SET IsActive = 0, UpdatedAt = CURRENT_TIMESTAMP "
+            f"WHERE {' AND '.join(predicates)}"
+        )
+        self._execute_world(sql)
 
     def get_player_quest_runtime_state(self, *, player_guid: int, quest_id: int) -> PlayerQuestRuntimeState | None:
         rows = self.client.query(

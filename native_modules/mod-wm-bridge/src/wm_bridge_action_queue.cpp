@@ -2,13 +2,17 @@
 
 #include "DatabaseEnv.h"
 #include "ObjectAccessor.h"
+#include "ObjectMgr.h"
 #include "Player.h"
 #include "QueryResult.h"
+#include "SpellMgr.h"
 #include "WorldSession.h"
 #include "wm_bridge_common.h"
 
 #include <algorithm>
 #include <cctype>
+#include <exception>
+#include <limits>
 #include <string>
 
 namespace
@@ -138,6 +142,32 @@ namespace
         return value;
     }
 
+    bool TryExtractJsonUInt32Field(std::string const& json, std::string const& key, uint32& value)
+    {
+        std::string rawValue = ExtractJsonStringField(json, key);
+        if (rawValue.empty())
+        {
+            return false;
+        }
+
+        try
+        {
+            size_t consumed = 0;
+            unsigned long parsed = std::stoul(rawValue, &consumed, 10);
+            if (consumed != rawValue.size() || parsed > std::numeric_limits<uint32>::max())
+            {
+                return false;
+            }
+
+            value = static_cast<uint32>(parsed);
+            return true;
+        }
+        catch (std::exception const&)
+        {
+            return false;
+        }
+    }
+
     int RiskRank(std::string risk)
     {
         std::transform(risk.begin(), risk.end(), risk.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
@@ -167,6 +197,30 @@ namespace
         }
         result += "}";
         return result;
+    }
+
+    void EmitQuestGrantedEvent(Player* player, Quest const* quest)
+    {
+        if (!player || !quest || !WmBridge::GetConfig().emitQuest || !WmBridge::IsPlayerAllowed(player))
+        {
+            return;
+        }
+
+        auto row = WmBridge::MakePlayerScopedEvent(player, "quest", "granted");
+        row.objectType = "quest";
+        row.objectEntry = quest->GetQuestId();
+
+        std::string payload;
+        bool firstField = true;
+        WmBridge::JsonBegin(payload, firstField);
+        WmBridge::JsonAppendNumber(payload, firstField, "quest_id", static_cast<long long>(quest->GetQuestId()));
+        WmBridge::JsonAppendString(payload, firstField, "quest_title", quest->GetTitle());
+        WmBridge::JsonAppendString(payload, firstField, "player_name", player->GetName());
+        WmBridge::JsonAppendString(payload, firstField, "grant_source", "native_action_queue");
+        WmBridge::JsonEnd(payload);
+        row.payloadJson = payload;
+
+        WmBridge::EmitEvent(row);
     }
 
     void CompleteAction(uint64 requestId, std::string const& status, std::string const& actionKind, std::string const& resultJson, std::string const& errorText = "")
@@ -345,6 +399,110 @@ namespace
 
             player->GetSession()->SendAreaTriggerMessage(message);
             CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "message_sent"));
+            return;
+        }
+
+        if (actionKind == "quest_add")
+        {
+            Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
+            if (!player)
+            {
+                CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
+                return;
+            }
+
+            uint32 questId = 0;
+            if (!TryExtractJsonUInt32Field(payloadJson, "quest_id", questId) &&
+                !TryExtractJsonUInt32Field(payloadJson, "questId", questId))
+            {
+                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_quest_id"), "missing_quest_id");
+                return;
+            }
+
+            Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+            if (!quest)
+            {
+                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "invalid_quest"), "invalid_quest");
+                return;
+            }
+
+            if (!player->CanTakeQuest(quest, false))
+            {
+                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "cannot_take_quest"), "cannot_take_quest");
+                return;
+            }
+
+            if (!player->CanAddQuest(quest, false))
+            {
+                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "cannot_add_quest"), "cannot_add_quest");
+                return;
+            }
+
+            player->AddQuestAndCheckCompletion(quest, nullptr);
+            EmitQuestGrantedEvent(player, quest);
+            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "quest_added"));
+            return;
+        }
+
+        if (actionKind == "player_learn_spell")
+        {
+            Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
+            if (!player)
+            {
+                CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
+                return;
+            }
+
+            uint32 spellId = 0;
+            if (!TryExtractJsonUInt32Field(payloadJson, "spell_id", spellId) &&
+                !TryExtractJsonUInt32Field(payloadJson, "spellId", spellId))
+            {
+                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_spell_id"), "missing_spell_id");
+                return;
+            }
+
+            if (!sSpellMgr->GetSpellInfo(spellId))
+            {
+                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "invalid_spell"), "invalid_spell");
+                return;
+            }
+
+            if (player->HasSpell(spellId))
+            {
+                CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "already_known"));
+                return;
+            }
+
+            player->learnSpell(spellId, false, false);
+            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "spell_learned"));
+            return;
+        }
+
+        if (actionKind == "player_unlearn_spell")
+        {
+            Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
+            if (!player)
+            {
+                CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
+                return;
+            }
+
+            uint32 spellId = 0;
+            if (!TryExtractJsonUInt32Field(payloadJson, "spell_id", spellId) &&
+                !TryExtractJsonUInt32Field(payloadJson, "spellId", spellId))
+            {
+                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_spell_id"), "missing_spell_id");
+                return;
+            }
+
+            if (!player->HasSpell(spellId))
+            {
+                CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "already_absent"));
+                return;
+            }
+
+            player->removeSpell(spellId, SPEC_MASK_ALL, false);
+            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "spell_unlearned"));
             return;
         }
 

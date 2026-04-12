@@ -1,210 +1,235 @@
-# Roadmap (current)
+# WM Roadmap
 
-This file reflects the current implementation state of the repository.
+WM is now a platform project, not a bootstrap experiment.
 
-The original bootstrap-era roadmap has been preserved at:
+The direction is native-first:
 
-- `docs/archive/ROADMAP.bootstrap.md`
+- WM stays the external brain
+- AzerothCore stays the runtime body
+- `native_bridge + control` becomes the main substrate
+- workaround perception paths stay available only as fallback until native parity is proven
 
-## Project principles
+Current fallback policy:
 
-Use a retrieval-first external service with a translation layer in front of any LLM work.
+- primary target architecture: `native_bridge`
+- current proven live fallback: `addon_log`
+- debug-only fallback: `combat_log`
 
-The WM should not begin by generating prose. It should begin by understanding the world deterministically, then publishing live content through controlled, reversible operations.
+## Working principles
 
-Hard rules:
+- C++ senses facts and executes registered typed actions
+- WM Python normalizes, plans, validates, dry-runs, audits, and applies
+- the LLM does not get freeform mutation powers
+- manual control remains the first-class reference lane
+- all risky native work is proven in `D:\WOW\WM_BridgeLab` before any promotion
 
-- the LLM never writes directly to the game
-- every live publishable artifact must be validated first
-- every live publishable artifact must be reversible
-- managed ID ranges beat improvised IDs
-- runtime sync is a real step, not a footnote
-- prototype event ingestion must remain replaceable later
-
----
-
-## Current implemented baseline
-
-### Lookup and translation
-
-Implemented:
-- local config via `.env`
-- bootstrap SQL for WM-owned tables
-- target resolver and live target profile utilities
-- candidate lookup / ranking helpers
-- enum/ID translation files and lookup notes
-
-### Quest, item, and spell platform baseline
-
-Implemented:
-- live DB bounty quest generation
-- schema-aware quest validator and SQL compiler
-- quest publish preflight against the live schema
-- rollback snapshots and publish logs
-- live publish with SOAP runtime reload commands
-- live quest edit for title / reward changes
-- quest inspection / comparison tools
-- rollback command restoring from latest snapshot
-- managed item slot publish flow
-- managed spell slot publish flow
-- quest reward flow that can attach managed items
-- reserved-slot seeding and managed-slot enforcement across quest/item/spell ranges
-- duplicate-title guard for the same questgiver
-
-### Event spine baseline
-
-Implemented on the event-spine track:
-- canonical WM event contract and storage
-- DB-first polling adapter against existing WM-owned journal events
-- hidden addon-log tail adapter against `WMOps.log`
-- client combat-log tail adapter against `WoWCombatLog.txt` as fallback/debug
-- projection from canonical observed events into compact journal counters
-- deterministic rule evaluation with cooldown guards
-- reaction planning and execution through existing quest/item/spell publishers
-- read-only inspect and preview commands for operator trust
-- reusable reactive bounty rule storage
-- direct quest-grant execution through SOAP for reusable reactive quests
-- player quest runtime-state snapshots plus observed `quest_granted` / `quest_completed` / `quest_rewarded` transitions
-- kill-burst gating for a stable repeatable quest with turn-in-only NPC linkage
-- shared player/creature/NPC/quest/item/spell ref models for internal schemas
-- native bridge adapter for server-truth kill, quest, loot, gossip, area, spell, item, aura, and weather events
-- control contract registry for manual and future LLM action proposals
-- Pydantic `ControlProposal` schema shared by humans and LLMs
-- manual inspect/new/validate/apply workbench over the same executor gates
-- native bridge action queue contract with scoped player DB control, policy gates, request/audit rows, and a broad fixed action vocabulary
-
-This means the repo is already beyond bootstrap-only status and is moving toward an event-driven WM core.
-
-### Rebuilt development baseline
-
-Implemented:
-- latest-baseline AzerothCore + module reconstruction tooling for native WM module work
-- portable repo-relative `setup-wm.bat` -> `build-wm.bat` bootstrap flow under `.wm-bootstrap\`
-- side-by-side build/run workflow instead of in-place repack mutation
-- launcher and rebuild helper scripts for the rebuilt tree
-- runtime DLL guard for MySQL/OpenSSL dependency mismatch detection
-- isolated `D:\WOW\WM_BridgeLab` helper scripts for bridge rebuild/testing before promotion
-
-Current truth:
-- the rebuilt baseline is for WM development first
-- it is not yet a gameplay-parity replacement for the original repack
-- Individual Progression currently has known script/code drift
-- some custom NPC/service content still depends on missing older module SQL/code pairings
-- WeatherVibe loads but is not yet meaningfully configured in-world
-
----
-
-## Phase 1 - Event spine hardening
+## Phase 0: Stabilize the current bridge-lab delta
 
 ### Goal
-Turn the event spine into a reliable operator-grade WM orchestration layer.
+
+Turn the current lab spike into a clean checkpoint we can safely build on.
 
 ### Deliverables
-- unify canonical publish paths so event execution has one safe target per artifact type
-- harden canonical event storage, cursor handling, and replay safety
-- tighten projection/evaluation bookkeeping and anti-spam behavior
-- make dry-run/apply reporting clearer across reaction planning and execution
-- add a true read-only operator layer so previewing does not mutate WM-owned audit state
-- update docs to reflect the event-driven direction
+
+- lab launcher plus auth realmlist sync helper
+- graceful-first lab worldserver restart path
+- native `quest_add` implementation
+- native `quest/granted` emission after successful `quest_add`
+- Questie compat addon for WM custom quest ids
+- docs updated to reflect the actual lab workflow
+- lab runtime config helper keeps `WeatherVibe.Debug = 0`
 
 ### Exit criteria
-- one adapter can ingest world activity into canonical events
-- a live hidden addon-channel source can feed the same event contract without server rebuilds
-- the same event is never projected twice
-- deterministic rules can emit reaction opportunities safely
-- reaction execution can call the quest/item/spell publishers through one coherent path
-- cooldowns suppress repeated firehose reactions
-- reusable reactive quests cannot be accidentally purged or rolled back without explicit override
 
----
+- the lab boots from repo helpers
+- `quest_add` places the quest directly into Jecia's journal and the quest is turn-in capable
+- successful `quest_add` also yields a native quest event visible to WM
+- WeatherVibe debug spam is off in the lab
+- Questie no longer spams tracker errors for WM custom quest ids
+- the repo is push-ready again
 
-## Phase 2 - Control contracts and safe manual/LLM reactions
+## Phase 1: Native parity for the current bounty loop
 
 ### Goal
-Make reactions controllable through a narrow registry that both humans and LLMs can use safely.
+
+Make the existing reactive bounty loop work fully through native perception and native-preferred action execution.
 
 ### Deliverables
-- keep `control/` as the one place for event/action/recipe/policy contracts
-- make manual proposals the first-class test lane for every future LLM action
-- keep direct apply to one registered action per observed event in v1
-- persist proposal validation, dry-run, apply, and reject audit state
-- only enable LLM-authored apply behind `WM_LLM_DIRECT_APPLY=1`
+
+- native `kill`
+- native `quest_granted`
+- native `quest_completed`
+- native `quest_rewarded`
+- cooldown and suppression remain in WM
+- `quest_grant` prefers native `quest_add` and falls back to SOAP only when native is unavailable
+- runtime quest-state polling remains as reconciliation, not primary truth
 
 ### Exit criteria
-- a human can inspect an event, generate a proposal, validate it, dry-run it, and apply it without an LLM
-- future LLM proposals use the exact same JSON schema and coordinator path
-- unregistered actions, wrong player scope, stale events, duplicate applies, and high-risk mutations are rejected
 
----
+- 4 `Kobold Vermin` kills in 120 seconds grant quest `910000` through native action
+- turning in to `Marshal McBride` emits usable native reward-state facts
+- immediate retrigger is suppressed while the quest is active or complete-but-not-rewarded
+- post-reward cooldown works
+- after cooldown, the same burst grants again
+- `addon_log` still works if native is disabled
 
-## Phase 3 - Contextual smart reactions
-
-### Native bridge action bus note
-The native action bus has a proven isolated lab path: full build once, then `incremental-bridge-lab.bat` for C++ edits, lab MySQL on port `33307`, and `debug_ping`/`debug_echo`/`debug_fail` queue smoke tests before promotion. Before adding more live gameplay behavior, harden one narrow mutation at a time. The queue and policy schema are broad by design, but most native action kinds stay disabled or `not_implemented` until their C++ body has a dedicated lab test.
+## Phase 2: Control-native convergence
 
 ### Goal
-Make reactions context-aware instead of merely structurally valid.
+
+Make manual control the normal operator lane for native actions and keep it identical to future LLM contracts.
 
 ### Deliverables
-- context shaping that consumes resolver output, journal summaries, and control perception packs directly
-- event-to-reaction heuristics that use recent player history
-- deterministic opportunity detection with optional LLM content shaping layered on top
-- richer follow-up quest, reward, passive, and announcement payload generation
-- duplicate/repetition controls using recent reaction and proposal history
+
+- event inspect
+- proposal build
+- validate
+- dry-run
+- apply
+- audit
+- capability-aware action selection:
+  - native when implemented and policy-allowed
+  - fallback only where native is not yet proven
+- `control/` remains the single place for:
+  - event contracts
+  - action contracts
+  - recipe registry
+  - runtime safety checks
+  - policy defaults
+  - manual examples
 
 ### Exit criteria
-- reactions use world facts instead of raw IDs
-- repeated reactions for the same area or subject become meaningfully different without becoming random garbage
-- recent history changes what WM chooses to do next
 
----
+- a human can reproduce the bounty grant and small native tests entirely through the control workbench
+- proposal audit links source event -> proposal -> native request -> result
+- policy, idempotency, stale-event, and wrong-player rejections are visible and explainable
 
-## Phase 4 - Registry and lifecycle governance
+## Phase 3: Context and perception packs
 
 ### Goal
-Manage WM-created artifacts as first-class objects with provenance and lifecycle.
+
+Expose nearby context as snapshots and package deterministic world state for operators and later LLM use.
 
 ### Deliverables
-- stronger artifact registry conventions
-- staged -> active -> retired/archived lifecycle discipline
-- cache-risk and reused-ID tracking
-- provenance in publish logs and control proposal audit state
+
+- `context_snapshot_request`
+- `wm_bridge_context_snapshot`
+- WM perception packs built from:
+  - recent canonical events
+  - quest runtime state
+  - player refs and location
+  - nearby entities and objects
+  - current area and weather
+- snapshot requests start as operator/manual tools first
 
 ### Exit criteria
-- every generated artifact can be traced to its source and lifecycle state
-- slot reuse is intentional and visible
-- rollback and retirement semantics are explicit instead of implied
 
----
+- WM can request a scoped nearby snapshot for one player and consume it deterministically
+- control inspect can show recent events plus nearby context together
+- no continuous nearby-entity spam lane is introduced
 
-## Phase 5 - Broader perception and content breadth
+## Phase 4: Broaden native action primitives
 
 ### Goal
-Expand what WM can sense and create once control contracts are trustworthy.
+
+Front-load reusable typed verbs so later WM features do not require constant full rebuild churn.
+
+### Native action order
+
+1. `world_announce_to_player`
+2. quest verbs:
+   - `quest_add`
+   - `quest_complete`
+   - objective and counter helpers
+3. low-risk player verbs:
+   - `player_apply_aura`
+   - `player_remove_aura`
+   - `player_restore_health_power`
+4. reward verbs:
+   - `player_add_item`
+   - `player_add_money`
+   - `player_add_reputation`
+5. interaction verbs:
+   - `gossip_override_set`
+   - `gossip_override_clear`
+   - `player_show_menu`
+6. WM-owned scene verbs:
+   - `creature_spawn`
+   - `creature_despawn`
+   - `creature_say`
+   - `creature_emote`
+   - `creature_follow_player`
+7. environment verbs:
+   - `zone_set_weather`
+   - `zone_clear_weather_override`
+
+### Rules
+
+- no generic GM-command action
+- no arbitrary SQL action
+- no mutation of non-WM-owned creatures or gameobjects except explicit admin-only lab tools
+- every verb needs:
+  - policy default
+  - payload schema
+  - manual proposal example
+  - lab proof
+  - clear result and error JSON
+
+## Phase 5: Artifact governance and scene composition
+
+### Goal
+
+Treat WM-created artifacts and WM-owned spawned objects as first-class lifecycle-managed objects.
 
 ### Deliverables
-- more quest archetypes beyond bounty:
-  - delivery
-  - investigate
-  - report
-  - collection
-- broader managed item use
-- broader managed spell/passive use
-- eventual creature/NPC authoring only if a chosen demo requires it
-- on-demand nearby context snapshots from the native bridge
+
+- staged -> active -> retired -> archived lifecycle model
+- provenance links from:
+  - source event
+  - control proposal
+  - native action request
+  - publish log / rollback state
+- WM-owned scene composition:
+  - temporary NPCs
+  - temporary gameobjects
+  - companion flows
+  - injected gossip and menu interactions
 
 ### Exit criteria
-- WM can compose richer multi-artifact scenarios without breaking slot governance
 
----
+- WM can compose small multi-part scenes without losing provenance or rollback clarity
+- slot ownership and WM-owned object ownership are explicit
+
+## Phase 6: LLM layer on top of locked contracts
+
+### Goal
+
+Let the LLM choose and fill registered controls only after the native/manual foundation is boringly reliable.
+
+### Deliverables
+
+- LLM input includes:
+  - perception pack
+  - eligible recipes
+  - allowed action contracts
+  - current policy gates
+- manual stays the reference lane
+- direct live apply stays off by default
+
+### Exit criteria
+
+- LLM proposals use the same schema as manual proposals
+- no freeform config edits, shell commands, SQL, or file mutations are exposed
+- direct apply remains gated and explainable
 
 ## What is intentionally not first
 
 Not first:
-- Eluna dependency
-- combat overhaul
-- deep item generation without slot governance
-- direct freeform LLM-to-SQL content mutation
-- giant UI/admin surface area
 
-Those are all real possibilities later, but they are not the shortest path to a stable World Master platform.
+- more addon transport sophistication
+- more combat-log work
+- Eluna or ALE as the main WM runtime
+- freeform LLM-to-game mutation
+- broad autonomous story logic before native perception and action are stable
+
+Those may still matter later, but they are not the shortest path to a stable World Master platform.

@@ -1,0 +1,56 @@
+{
+  "schema_version": "wm.client_patch_shell_bank.v1",
+  "source_contract": "../../control/runtime/spell_shell_bank.json",
+  "artifact_version": "wm_spell_shell_bank.v1",
+  "target_client": "WoW 3.3.5a",
+  "artifact_status": "planned",
+  "artifact_kind": "client_patch_package",
+  "default_package_name": "patch-z.mpq",
+  "default_install_path": "D:\\WOW\\world of warcraft 3.3.5a hd\\Data\\patch-z.mpq",
+  "artifact_commit_policy": "local_only_do_not_commit",
+  "notes": [
+    "Shell rows must be WM-only client identities.",
+    "Do not copy stock summon spell rows for WM abilities.",
+    "If server-side DBC rows are required, stage matching files into D:\\WOW\\WM_BridgeLab\\run\\data\\dbc\\ before testing."
+  ],
+  "shells": [
+    {
+      "shell_key": "bonebound_servant_v1",
+      "spell_id": 940000,
+      "family_id": "summon_pet",
+      "label": "Bonebound Servant",
+      "behavior_kind": "summon_bonebound_servant_v1",
+      "tooltip": "Raise a Bonebound Servant from a nearby corpse.",
+      "icon_hint": "Spell_Shadow_AnimateDead",
+      "shell_row_requirements": {
+        "effect_model": "dummy_script",
+        "allow_class_restriction": false,
+        "allow_reagents": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Use a WM-only shell row, not a copied stock summon spell.",
+        "Configure the shell as a dummy/script summon shell so the server owns the full pet behavior.",
+        "Bind the server-side behavior through mod-wm-spells using createdBySpellId 940000."
+      ]
+    },
+    {
+      "shell_key": "bonebound_servant_slash_v1",
+      "spell_id": 940500,
+      "family_id": "pet_active",
+      "label": "Bonebound Slash",
+      "behavior_kind": "bonebound_pet_active_v1",
+      "tooltip": "Order your Bonebound Servant to use its WM-owned pet action.",
+      "icon_hint": "Ability_CriticalStrike",
+      "shell_row_requirements": {
+        "effect_model": "reserved_disabled",
+        "always_castable": true
+      },
+      "implementation_notes": [
+        "Reserved for later. Do not ship until the base servant lifecycle is stable."
+      ]
+    }
+  ]
+}

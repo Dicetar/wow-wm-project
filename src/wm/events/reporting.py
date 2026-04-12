@@ -87,18 +87,25 @@ def _render_step_summary_lines(execution: dict[str, object]) -> list[str]:
                 lines.append(f"  note {note}")
         elif kind == "quest_grant":
             runtime_result = details.get("runtime_result") if isinstance(details.get("runtime_result"), dict) else {}
+            native_request = details.get("native_request") if isinstance(details.get("native_request"), dict) else {}
             lines.append(
                 f"  step quest_grant status={status} quest_id={details.get('quest_id')} "
                 f"player={details.get('player_name') or details.get('player_guid')}"
             )
             lines.append(
                 f"  step quest_grant dry_run_ready={details.get('dry_run_ready')} "
-                f"command={details.get('command_preview')}"
+                f"transport={details.get('selected_transport')} command={details.get('command_preview')}"
             )
             if runtime_result:
                 lines.append(
                     f"  step quest_grant runtime_ok={runtime_result.get('ok')} "
                     f"fault={runtime_result.get('fault_string') or runtime_result.get('fault_code') or ''}"
+                )
+            if native_request:
+                lines.append(
+                    f"  step quest_grant native_status={native_request.get('status')} "
+                    f"request_id={native_request.get('request_id')} "
+                    f"error={native_request.get('error_text') or ''}"
                 )
         elif kind in {"item_publish", "spell_publish"}:
             lines.append(f"  step {kind} status={status}")

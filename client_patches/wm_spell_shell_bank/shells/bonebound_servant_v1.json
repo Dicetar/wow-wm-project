@@ -1,0 +1,26 @@
+{
+  "shell_key": "bonebound_servant_v1",
+  "spell_id": 940000,
+  "family_id": "summon_pet",
+  "label": "Bonebound Servant",
+  "behavior_kind": "summon_bonebound_servant_v1",
+  "targeting": "corpse_required",
+  "required_level": 1,
+  "icon_hint": "Spell_Shadow_AnimateDead",
+  "tooltip": "Raise a Bonebound Servant from a nearby corpse.",
+  "patch_package": "patch-z.mpq",
+  "install_path": "D:\\WOW\\world of warcraft 3.3.5a hd\\Data\\patch-z.mpq",
+  "shell_row_requirements": {
+    "effect_model": "dummy_script",
+    "always_castable": true,
+    "allow_class_restriction": false,
+    "allow_reagents": false,
+    "allow_talent_requirement": false,
+    "cooldown_family": "wm_owned"
+  },
+  "runtime_notes": [
+    "Server behavior is executed by mod-wm-spells.",
+    "Keep this shell isolated from stock warlock or DK summon spells.",
+    "Use createdBySpellId 940000 on the server so reload and persistence stay on the WM shell."
+  ]
+}

@@ -222,7 +222,7 @@ class DeterministicContentFactory:
                 "kill_threshold": int(reactive_rule.get("kill_threshold") or 0),
                 "window_seconds": int(reactive_rule.get("window_seconds") or 0),
             },
-            description="Grant a reusable reactive bounty directly to the player through SOAP.",
+            description="Grant a reusable reactive bounty directly to the player through the preferred live quest-grant transport.",
         )
         return (
             [action],

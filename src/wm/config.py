@@ -64,7 +64,10 @@ class Settings:
     native_bridge_action_wait_seconds: float = 5.0
     native_bridge_action_poll_seconds: float = 0.25
     native_bridge_gossip_session_timeout_seconds: int = 45
+    quest_grant_transport: str = "auto"
     wm_bridge_config_path: str = _default_bootstrap_path("run", "configs", "modules", "mod_wm_bridge.conf")
+    wm_prototypes_config_path: str = _default_bootstrap_path("run", "configs", "modules", "mod_wm_prototypes.conf")
+    wm_spells_config_path: str = _default_bootstrap_path("run", "configs", "modules", "mod_wm_spells.conf")
     control_root: str = str(_repo_root().joinpath("control"))
     control_proposal_state_path: str = _default_bootstrap_path("state", "control-proposals")
     combat_log_path: str = _default_bootstrap_path("run", "logs", "WoWCombatLog.txt")
@@ -111,9 +114,18 @@ class Settings:
             native_bridge_action_wait_seconds=float(os.getenv("WM_NATIVE_BRIDGE_ACTION_WAIT_SECONDS", "5.0")),
             native_bridge_action_poll_seconds=float(os.getenv("WM_NATIVE_BRIDGE_ACTION_POLL_SECONDS", "0.25")),
             native_bridge_gossip_session_timeout_seconds=int(os.getenv("WM_NATIVE_BRIDGE_GOSSIP_SESSION_TIMEOUT_SECONDS", "45")),
+            quest_grant_transport=os.getenv("WM_QUEST_GRANT_TRANSPORT", "auto"),
             wm_bridge_config_path=os.getenv(
                 "WM_BRIDGE_CONFIG_PATH",
                 _default_bootstrap_path("run", "configs", "modules", "mod_wm_bridge.conf"),
+            ),
+            wm_prototypes_config_path=os.getenv(
+                "WM_PROTOTYPES_CONFIG_PATH",
+                _default_bootstrap_path("run", "configs", "modules", "mod_wm_prototypes.conf"),
+            ),
+            wm_spells_config_path=os.getenv(
+                "WM_SPELLS_CONFIG_PATH",
+                _default_bootstrap_path("run", "configs", "modules", "mod_wm_spells.conf"),
             ),
             control_root=os.getenv("WM_CONTROL_ROOT", str(_repo_root().joinpath("control"))),
             control_proposal_state_path=os.getenv(

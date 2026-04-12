@@ -24,7 +24,7 @@
   "risk": {
     "level": "medium",
     "irreversible": false,
-    "notes": ["Quest grant uses the SOAP runtime path and can be verified by dry-run first."]
+    "notes": ["Quest grant prefers the native bridge path when it is ready for the player and falls back to SOAP otherwise."]
   },
   "idempotency_key": "manual-example:kill-burst-bounty:1",
   "expected_effect": "Quest 910000 is granted to Jecia if runtime checks pass.",

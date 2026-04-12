@@ -56,6 +56,24 @@ class FakeRuleStore:
             rows = [event for event in rows if event.event_type == event_type]
         return rows
 
+    def list_recent_events(
+        self,
+        *,
+        event_class: str | None = None,
+        player_guid: int | None = None,
+        limit: int = 20,
+        newest_first: bool = True,
+    ):
+        del limit
+        rows = list(self.subject_events)
+        if event_class is not None:
+            rows = [event for event in rows if event.event_class == event_class]
+        if player_guid is not None:
+            rows = [event for event in rows if event.player_guid == player_guid]
+        if newest_first:
+            rows = list(reversed(rows))
+        return rows
+
 
 class FakeReactiveStore:
     def __init__(self) -> None:
@@ -63,9 +81,17 @@ class FakeReactiveStore:
         self.runtime_state = "none"
         self.snapshot = None
 
-    def list_active_rules(self, *, subject_type=None, subject_entry=None, trigger_event_type=None):
-        del subject_type, subject_entry, trigger_event_type
-        return list(self.rules)
+    def list_active_rules(self, *, subject_type=None, subject_entry=None, trigger_event_type=None, player_guid=None):
+        rows = list(self.rules)
+        if subject_type is not None:
+            rows = [rule for rule in rows if rule.subject_type == subject_type]
+        if subject_entry is not None:
+            rows = [rule for rule in rows if rule.subject_entry == subject_entry]
+        if trigger_event_type is not None:
+            rows = [rule for rule in rows if rule.trigger_event_type == trigger_event_type]
+        if player_guid is not None:
+            rows = [rule for rule in rows if rule.player_guid_scope in (None, player_guid)]
+        return rows
 
     def fetch_character_quest_status(self, *, player_guid: int, quest_id: int) -> str:
         del player_guid, quest_id
@@ -74,6 +100,19 @@ class FakeReactiveStore:
     def get_player_quest_runtime_state(self, *, player_guid: int, quest_id: int):
         del player_guid, quest_id
         return self.snapshot
+
+
+class FakeAutoBountyManager:
+    def __init__(self, reactive_store: FakeReactiveStore, rule: ReactiveQuestRule | None) -> None:
+        self.reactive_store = reactive_store
+        self.rule = rule
+        self.calls: list[WMEvent] = []
+
+    def ensure_rule_for_event(self, event: WMEvent) -> ReactiveQuestRule | None:
+        self.calls.append(event)
+        if self.rule is not None:
+            self.reactive_store.rules = [self.rule]
+        return self.rule
 
 
 class DeterministicRuleEngineTests(unittest.TestCase):
@@ -379,6 +418,169 @@ class DeterministicRuleEngineTests(unittest.TestCase):
 
         self.assertEqual(len(result.derived_events), 1)
         self.assertLessEqual(len(result.derived_events[0].source_event_key), 120)
+
+    def test_auto_bounty_rule_is_attached_on_first_matching_kill(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key=f"native_bridge:{index}",
+                occurred_at=f"2026-04-08 12:00:0{index}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=116,
+            )
+            for index in range(1, 5)
+        ]
+        reactive_store = FakeReactiveStore()
+        auto_rule = ReactiveQuestRule(
+            rule_key="reactive_bounty:auto:defias_bandit",
+            is_active=True,
+            player_guid_scope=5406,
+            subject_type="creature",
+            subject_entry=116,
+            trigger_event_type="kill",
+            kill_threshold=4,
+            window_seconds=120,
+            quest_id=910000,
+            turn_in_npc_entry=240,
+            grant_mode="direct_quest_add",
+            post_reward_cooldown_seconds=60,
+            metadata={"auto_bounty": True},
+            notes=["auto_bounty"],
+        )
+        auto_bounty = FakeAutoBountyManager(reactive_store=reactive_store, rule=auto_rule)
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+            auto_bounty=auto_bounty,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1])
+
+        self.assertEqual(len(auto_bounty.calls), 1)
+        self.assertEqual(result.opportunities[0].metadata["quest_id"], 910000)
+        self.assertEqual(result.opportunities[0].metadata["turn_in_npc_entry"], 240)
+
+    def test_defias_cutpurse_rule_triggers_from_exact_kills(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key=f"native_bridge:defias-cutpurse:{index}",
+                occurred_at=f"2026-04-08 12:00:0{index}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=94,
+                metadata={"payload": {"subject_name": "Defias Cutpurse"}},
+            )
+            for index in range(1, 5)
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:auto:defias:94",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=94,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=120,
+                quest_id=910001,
+                turn_in_npc_entry=240,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={"auto_bounty": True, "auto_bounty_source_name_prefix": "Defias "},
+                notes=["auto_bounty"],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1])
+
+        self.assertEqual(len(result.opportunities), 1)
+        self.assertEqual(result.opportunities[0].metadata["quest_id"], 910001)
+
+    def test_auto_bounty_can_replace_non_matching_exact_rule_with_defias_cutpurse_rule(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key=f"native_bridge:defias-cutpurse:{index}",
+                occurred_at=f"2026-04-08 12:00:0{index}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=94,
+                metadata={"payload": {"subject_name": "Defias Cutpurse"}},
+            )
+            for index in range(1, 5)
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:auto:defias_bandit",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=116,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=120,
+                quest_id=910000,
+                turn_in_npc_entry=240,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={},
+                notes=["auto_bounty"],
+            )
+        ]
+        family_rule = ReactiveQuestRule(
+            rule_key="reactive_bounty:auto:defias:94",
+            is_active=True,
+            player_guid_scope=5406,
+            subject_type="creature",
+            subject_entry=94,
+            trigger_event_type="kill",
+            kill_threshold=4,
+            window_seconds=120,
+            quest_id=910002,
+            turn_in_npc_entry=240,
+            grant_mode="direct_quest_add",
+            post_reward_cooldown_seconds=60,
+            metadata={"auto_bounty": True, "auto_bounty_source_name_prefix": "Defias "},
+            notes=["auto_bounty"],
+        )
+        auto_bounty = FakeAutoBountyManager(reactive_store=reactive_store, rule=family_rule)
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+            auto_bounty=auto_bounty,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1])
+
+        self.assertEqual(len(auto_bounty.calls), 1)
+        self.assertEqual(len(result.opportunities), 1)
+        self.assertEqual(result.opportunities[0].metadata["quest_id"], 910002)
 
 
 if __name__ == "__main__":

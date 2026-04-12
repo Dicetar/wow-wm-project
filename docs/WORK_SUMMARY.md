@@ -33,7 +33,9 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - WM helper can update the allowlist and reload config without a worldserver restart
 - DB-backed player scope through `wm_bridge_player_scope` can be enabled for live allowlist control after bootstrap SQL is present
 - native action bus foundation through `wm_bridge_action_request`, `wm_bridge_action_policy`, and `wm_bridge_runtime_status`
-- broad native action vocabulary is registered, but only `debug_ping`, `debug_echo`, `debug_fail`, and `context_snapshot_request` execute in the first safe C++ slice
+- broad native action vocabulary is registered, with `debug_ping`, `debug_echo`, `debug_fail`, `context_snapshot_request`, `world_announce_to_player`, and `quest_add` proven in the first safe slice
+- successful native `quest_add` now emits a native `quest/granted` bridge event so perception stays aligned with mutation
+- `quest_grant` remains the public WM action, but now prefers native bridge when the player/policy/config path is ready and falls back to SOAP otherwise
 
 ### Control contract workbench
 
@@ -61,9 +63,13 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - large module set cloned from upstream/community repos
 - compatibility overlay for loader/API drift
 - launcher/rebuild helpers for native WM module work
+- repo-owned lab launcher and realmlist sync helpers for `D:\WOW\WM_BridgeLab`
 - isolated bridge lab wrappers keep native rebuild experiments in `D:\WOW\WM_BridgeLab` instead of the working rebuild
 - incremental bridge lab build/stage wrappers avoid full rebuilds after the first generated solution exists
 - isolated lab MySQL can run from the copied lab data directory on port `33307`, keeping bridge queue tests off the working DB
+- graceful-first lab worldserver restart helper falls back to force only if the process hangs
+- bridge lab runtime configuration forces `WeatherVibe.Debug = 0` so weather debugging does not spam the client during WM tests
+- summon/spell platform status is documented separately in `docs/SUMMON_SPELL_PLATFORM_STATUS.md`, including retired stock-carrier paths and the current shell-bank direction
 
 ### IPP cleanup work
 
@@ -90,6 +96,7 @@ For the portable workflow, the repo now owns:
 - WeatherVibe is loaded but still needs meaningful zone/profile data
 - optional IPP extras are intentionally excluded from the default portable bootstrap path
 - most native mutation action kinds are intentionally disabled/not implemented until their C++ bodies pass lab tests
+- Questie needs a tiny compat shim for WM custom quest ids because upstream Questie-335 does not know repo-owned quest ids like `910000`
 
 ## Recommended workflow
 

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+DB_WORLD_UPDATES_PATHS+=(
+    "$MOD_WM_PROTOTYPES_ROOT/data/sql/world/updates/"
+)

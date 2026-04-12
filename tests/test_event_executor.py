@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from wm.config import Settings
 from wm.events.executor import ReactionExecutor
@@ -131,6 +132,48 @@ class FakeQuestRuntimeManager:
                     "fault_string": None,
                 }
         return Result()
+
+
+class FakeNativeRequest:
+    def __init__(self, *, request_id: int, status: str = "done") -> None:
+        self.request_id = request_id
+        self.status = status
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "request_id": self.request_id,
+            "status": self.status,
+            "error_text": None,
+            "result": {"ok": self.status == "done", "message": "quest_added"},
+        }
+
+
+class FakeNativeBridgeActions:
+    def __init__(self) -> None:
+        self.submissions = []
+
+    def is_player_scoped(self, *, player_guid: int, profile: str = "default") -> bool:
+        return player_guid == 5406 and profile == "default"
+
+    def get_action_policy(self, *, action_kind: str, profile: str = "default") -> dict[str, object] | None:
+        if action_kind != "quest_add" or profile != "default":
+            return None
+        return {
+            "action_kind": "quest_add",
+            "profile": "default",
+            "enabled": True,
+            "max_risk_level": "medium",
+            "cooldown_ms": 1000,
+            "burst_limit": 5,
+            "admin_only": False,
+        }
+
+    def submit(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.submissions.append(kwargs)
+        return FakeNativeRequest(request_id=99)
+
+    def wait(self, *, request_id: int):
+        return FakeNativeRequest(request_id=request_id, status="done")
 
 
 class ReactionExecutorTests(unittest.TestCase):
@@ -271,6 +314,7 @@ class ReactionExecutorTests(unittest.TestCase):
 
         self.assertEqual(preview.steps[0].kind, "quest_grant")
         self.assertTrue(preview.steps[0].details["dry_run_ready"])
+        self.assertEqual(preview.steps[0].details["selected_transport"], "soap")
         self.assertEqual(applied.steps[0].status, "applied")
         self.assertEqual(
             [event.event_type for event in store.recorded_events],
@@ -278,6 +322,61 @@ class ReactionExecutorTests(unittest.TestCase):
         )
         self.assertEqual(runtime_manager.preview_calls[0], (5406, "Qraaglock", 910000))
         self.assertEqual(runtime_manager.grant_calls[0], (5406, "Qraaglock", 910000))
+
+    def test_reactive_quest_grant_prefers_native_bridge_when_ready(self) -> None:
+        store = FakeExecutionStore()
+        runtime_manager = FakeQuestRuntimeManager()
+        native_actions = FakeNativeBridgeActions()
+        config_path = Path("artifacts") / "test-bridge-config.conf"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "[worldserver]",
+                        "WmBridge.Enable = 1",
+                        "WmBridge.ActionQueue.Enable = 1",
+                        "WmBridge.DbControl.Enable = 1",
+                        'WmBridge.PlayerGuidAllowList = ""',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            executor = ReactionExecutor(
+                client=_DummyClient(),
+                settings=Settings(wm_bridge_config_path=str(config_path), quest_grant_transport="auto"),
+                store=store,
+                reactive_store=FakeReactiveStore(),  # type: ignore[arg-type]
+                reactive_runtime=runtime_manager,  # type: ignore[arg-type]
+                native_bridge_actions=native_actions,  # type: ignore[arg-type]
+            )
+            plan = ReactionPlan(
+                plan_key="reactive_bounty:kobold_vermin:5406:creature:6",
+                opportunity_type="reactive_bounty_grant",
+                rule_type="reactive_bounty:kobold_vermin",
+                player_guid=5406,
+                subject=SubjectRef(subject_type="creature", subject_entry=6),
+                actions=[
+                    PlannedAction(
+                        kind="quest_grant",
+                        payload={"quest_id": 910000, "player_guid": 5406, "rule_key": "reactive_bounty:kobold_vermin"},
+                    )
+                ],
+            )
+
+            preview = executor.preview(plan=plan)
+            applied = executor.execute(plan=plan, mode="apply")
+        finally:
+            if config_path.exists():
+                config_path.unlink()
+
+        self.assertEqual(preview.steps[0].details["selected_transport"], "native_bridge")
+        self.assertEqual(applied.steps[0].details["selected_transport"], "native_bridge")
+        self.assertEqual(applied.steps[0].status, "applied")
+        self.assertEqual(runtime_manager.grant_calls, [])
+        self.assertEqual(native_actions.submissions[0]["action_kind"], "quest_add")
+        self.assertEqual(native_actions.submissions[0]["payload"]["quest_id"], 910000)
 
     def test_structured_ref_payloads_are_accepted(self) -> None:
         store = FakeExecutionStore()

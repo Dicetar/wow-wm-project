@@ -1,0 +1,57 @@
+[worldserver]
+
+#
+# WM prototype gameplay module
+# Legacy WM prototype incubator.
+# Broken summon-carrier experiments stay here only for postmortem/debug reference.
+#
+
+WmPrototypes.Enable = 0
+WmPrototypes.PlayerGuidAllowList = ""
+
+#
+# Twin Skeleton summon shell
+# Legacy broken path. Do not use as the default WM summon implementation.
+#
+WmPrototypes.TwinSkeleton.Enable = 0
+WmPrototypes.TwinSkeleton.ShellSpellIds = "688,697,691,712,30146"
+WmPrototypes.TwinSkeleton.PrimaryCreatureEntry = 1890
+WmPrototypes.TwinSkeleton.SecondaryCreatureEntry = 201
+WmPrototypes.TwinSkeleton.DurationMs = 45000
+WmPrototypes.TwinSkeleton.SpawnDistance = 1.8
+WmPrototypes.TwinSkeleton.BaseHealth = 90
+WmPrototypes.TwinSkeleton.HealthPerLevel = 18
+WmPrototypes.TwinSkeleton.HealthPerIntellect = 3
+WmPrototypes.TwinSkeleton.HealthPerShadowSpellPower = 1
+WmPrototypes.TwinSkeleton.BaseMinDamage = 4
+WmPrototypes.TwinSkeleton.BaseMaxDamage = 8
+WmPrototypes.TwinSkeleton.DamagePerLevelPct = 100
+WmPrototypes.TwinSkeleton.DamagePerIntellectPct = 5
+WmPrototypes.TwinSkeleton.DamagePerShadowSpellPowerPct = 12
+
+#
+# Skeletal Pet shell
+# Legacy broken path. Replaced by mod-wm-spells + shell bank.
+#
+WmPrototypes.SkeletalPet.Enable = 0
+WmPrototypes.SkeletalPet.ShellSpellIds = ""
+WmPrototypes.SkeletalPet.Entry = 6412
+WmPrototypes.SkeletalPet.Name = "Bonebound Servant"
+WmPrototypes.SkeletalPet.Scale = 1.02
+WmPrototypes.SkeletalPet.BaseHealth = 180
+WmPrototypes.SkeletalPet.HealthPerLevel = 28
+WmPrototypes.SkeletalPet.HealthPerIntellect = 6
+WmPrototypes.SkeletalPet.HealthPerShadowSpellPower = 3
+WmPrototypes.SkeletalPet.BaseMinDamage = 8
+WmPrototypes.SkeletalPet.BaseMaxDamage = 13
+WmPrototypes.SkeletalPet.DamagePerLevelPct = 145
+WmPrototypes.SkeletalPet.DamagePerIntellectPct = 12
+WmPrototypes.SkeletalPet.DamagePerShadowSpellPowerPct = 24
+WmPrototypes.SkeletalPet.AppearanceDisplayId = 734
+WmPrototypes.SkeletalPet.VirtualItem1 = 1897
+WmPrototypes.SkeletalPet.VirtualItem2 = 0
+WmPrototypes.SkeletalPet.VirtualItem3 = 0
+WmPrototypes.SkeletalPet.AttackTimeMs = 1850
+WmPrototypes.SkeletalPet.PassiveSpellIds = "32233"
+WmPrototypes.SkeletalPet.AutoSpellIds = "47480"
+WmPrototypes.SkeletalPet.ManualSpellIds = ""

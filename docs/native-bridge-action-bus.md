@@ -22,9 +22,13 @@ Implemented native actions in the first safe slice:
 - `debug_echo`
 - `debug_fail`
 - `context_snapshot_request`
+- `quest_add`
 - `world_announce_to_player`
 
 Everything risky should be proven in `D:\WOW\WM_BridgeLab` before promotion.
+
+`quest_add` now emits a native bridge `quest/granted` row on success so WM can observe the grant through the same event spine instead of relying only on the action result.
+The higher-level WM `quest_grant` action now prefers native `quest_add` when bridge config, player scope, and policy are ready, and falls back to SOAP only when native is not currently available.
 
 ## Tables
 
@@ -84,6 +88,15 @@ The current proven lab dependency layout uses a copied MySQL data directory unde
 .\start-bridge-lab-mysql.bat
 .\configure-bridge-lab.bat
 ```
+
+For normal runtime use after the lab has been built and staged:
+
+```powershell
+.\start-bridge-lab-server.bat
+```
+
+This launcher starts lab MySQL, syncs the auth realmlist to the lab world port, and uses a graceful-first worldserver restart helper instead of force-killing the process immediately.
+`configure-bridge-lab.bat` also forces `mod_weather_vibe.conf` to `WeatherVibe.Debug = 0`, so WeatherVibe debug pushes do not pollute bridge/action tests by default.
 
 Defaults:
 
@@ -169,7 +182,7 @@ python -m wm.sources.native_bridge.actions_cli policy --action-kind world_announ
 python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --action-kind world_announce_to_player --payload-json '{"message":"WM bridge lab ping"}' --idempotency-key lab-announce-1 --wait --summary
 ```
 
-Lab verification on 2026-04-10:
+Lab verification on 2026-04-11:
 
 - isolated incremental `worldserver` target built successfully in `D:\WOW\WM_BridgeLab`
 - lab runtime staging wrote `D:\WOW\WM_BridgeLab\state\runtime-dlls.lock.json`
@@ -179,6 +192,10 @@ Lab verification on 2026-04-10:
 - `debug_echo` reached `done`
 - `debug_fail` reached expected `failed`
 - duplicate `debug_ping` idempotency key reused the same request row
+- `world_announce_to_player` reached `done` and produced an in-game player-visible message
+- `quest_add` placed quest `910000` directly into Jecia's quest journal and the quest was turn-in capable
+
+If you use Questie-335 while testing WM custom quests, install the repo addon under `wow_addons/WMQuestieCompat` into the client `Interface\AddOns\` folder. It suppresses Questie tracker spam for WM-owned quest ids like `910000`.
 
 Two build compatibility fixes are now part of the repo:
 
@@ -236,10 +253,9 @@ This keeps future incremental builds smaller: most later work should be filling 
 
 Recommended order:
 
-1. Prove `debug_ping`/`debug_echo`/`debug_fail` in `D:\WOW\WM_BridgeLab`.
+1. Keep the current bounty loop stable with native `quest_add` as the preferred grant transport and SOAP as fallback.
 2. Harden `context_snapshot_request`, because it is observational and useful for debugging.
-3. Prove the already-implemented `world_announce_to_player` with a one-player lab policy enable.
-4. Add `quest_add` as the first replacement for SOAP quest grant.
-5. Add item/spell/player/object verbs only after each has a dedicated lab test and policy default.
+3. Add quest completion/reward verbs only after the native quest-granted/rewarded event chain is verified end-to-end.
+4. Add item/spell/player/object verbs only after each has a dedicated lab test and policy default.
 
 Do not enable broad mutation policy on the working realm until this sequence is green.

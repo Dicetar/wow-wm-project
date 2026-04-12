@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from wm.config import Settings
@@ -32,6 +33,7 @@ from wm.spells.models import ManagedSpellProcRule
 from wm.spells.publish import SpellPublisher
 from wm.sources.native_bridge.action_kinds import NATIVE_ACTION_KIND_BY_ID
 from wm.sources.native_bridge.actions import NativeBridgeActionClient
+from wm.sources.native_bridge.configure import load_bridge_runtime_config
 
 
 class ReactionExecutor:
@@ -44,6 +46,7 @@ class ReactionExecutor:
         slot_allocator: ReservedSlotDbAllocator | None = None,
         reactive_store: ReactiveQuestStore | None = None,
         reactive_runtime: ReactiveQuestRuntimeManager | None = None,
+        native_bridge_actions: NativeBridgeActionClient | None = None,
     ) -> None:
         self.client = client
         self.settings = settings
@@ -57,7 +60,7 @@ class ReactionExecutor:
         self.quest_publisher = QuestPublisher(client=client, settings=settings)
         self.item_publisher = ItemPublisher(client=client, settings=settings)
         self.spell_publisher = SpellPublisher(client=client, settings=settings)
-        self.native_bridge_actions = NativeBridgeActionClient(client=client, settings=settings)
+        self.native_bridge_actions = native_bridge_actions or NativeBridgeActionClient(client=client, settings=settings)
 
     def execute(self, *, plan: ReactionPlan, mode: str) -> ExecutionResult:
         if mode not in {"dry-run", "apply"}:
@@ -196,16 +199,45 @@ class ReactionExecutor:
             quest_id = int(quest_ref.id if quest_ref is not None else payload["quest_id"])
             player_guid = int(player_ref.guid if player_ref is not None else (payload.get("player_guid") or plan.player_guid))
             player_name = self.reactive_store.fetch_character_name(player_guid=player_guid)
-            preview = self.reactive_runtime.preview_grant(
+            soap_preview = self.reactive_runtime.preview_grant(
                 player_guid=player_guid,
                 player_name=player_name,
                 quest_id=quest_id,
             )
-            details = preview.to_dict()
-            details["dry_run_ready"] = bool(preview.ok)
-            details["dry_run_notes"] = [
-                "Direct quest grant uses the live SOAP quest command path and does not mutate world DB quest rows."
-            ]
+            soap_preview_dict = soap_preview.to_dict()
+            native_preview = self._preview_native_quest_grant(player_guid=player_guid, quest_id=quest_id)
+            transport_mode = _normalize_quest_grant_transport(self.settings.quest_grant_transport)
+            selected_transport = self._select_quest_grant_transport(
+                transport_mode=transport_mode,
+                native_preview=native_preview,
+                soap_preview_ok=bool(soap_preview_dict.get("ok", False)),
+            )
+            details = {
+                "quest_id": quest_id,
+                "player_guid": player_guid,
+                "player_name": player_name,
+                "transport_mode": transport_mode,
+                "selected_transport": selected_transport,
+                "native_preview": native_preview,
+                "soap_preview": soap_preview_dict,
+                "dry_run_ready": bool(
+                    native_preview.get("ok")
+                    if selected_transport == "native_bridge"
+                    else soap_preview_dict.get("ok", False)
+                    if selected_transport == "soap"
+                    else False
+                ),
+                "dry_run_notes": list(
+                    native_preview.get("notes", [])
+                    if selected_transport == "native_bridge"
+                    else soap_preview_dict.get("notes", [])
+                    if selected_transport == "soap"
+                    else [
+                        "No quest grant transport is currently ready. Enable native bridge scope/policy or configure SOAP fallback."
+                    ]
+                ),
+                "command_preview": soap_preview_dict.get("command_preview") if selected_transport == "soap" else None,
+            }
             details["rule_key"] = payload.get("rule_key")
             details["turn_in_npc_entry"] = int(
                 turn_in_npc.entry if turn_in_npc is not None else (payload.get("turn_in_npc_entry") or 0)
@@ -215,15 +247,33 @@ class ReactionExecutor:
             if turn_in_npc is not None:
                 details["turn_in_npc"] = turn_in_npc.to_dict()
             if mode == "apply":
-                result = self.reactive_runtime.grant_quest(
-                    player_guid=player_guid,
-                    player_name=player_name,
-                    quest_id=quest_id,
-                )
-                details["runtime_result"] = result.to_dict()
-                if result.ok:
-                    self._emit_action_event(plan=plan, event_type="quest_grant_issued", event_value=str(quest_id))
-                    return ExecutionStepResult(kind="quest_grant", status="applied", details=details)
+                if selected_transport == "native_bridge":
+                    request = self.native_bridge_actions.submit(
+                        idempotency_key=f"{plan.plan_key}:native:quest_add:{quest_id}",
+                        player_guid=player_guid,
+                        action_kind="quest_add",
+                        payload={"quest_id": quest_id},
+                        created_by="wm.quest_grant",
+                        risk_level="medium",
+                        expires_seconds=60,
+                    )
+                    final_request = self.native_bridge_actions.wait(request_id=request.request_id)
+                    details["native_request"] = final_request.to_dict()
+                    if final_request.status == "done":
+                        self._emit_action_event(plan=plan, event_type="quest_grant_issued", event_value=str(quest_id))
+                        return ExecutionStepResult(kind="quest_grant", status="applied", details=details)
+                    return ExecutionStepResult(kind="quest_grant", status="failed", details=details)
+                if selected_transport == "soap":
+                    result = self.reactive_runtime.grant_quest(
+                        player_guid=player_guid,
+                        player_name=player_name,
+                        quest_id=quest_id,
+                    )
+                    details["runtime_result"] = result.to_dict()
+                    if result.ok:
+                        self._emit_action_event(plan=plan, event_type="quest_grant_issued", event_value=str(quest_id))
+                        return ExecutionStepResult(kind="quest_grant", status="applied", details=details)
+                    return ExecutionStepResult(kind="quest_grant", status="failed", details=details)
                 return ExecutionStepResult(kind="quest_grant", status="failed", details=details)
             return ExecutionStepResult(kind="quest_grant", status="dry-run", details=details)
 
@@ -325,6 +375,148 @@ class ReactionExecutor:
             source_quest_id=source_quest_id,
             notes=[str(note) for note in slot_payload.get("notes", [])] if isinstance(slot_payload.get("notes"), list) else None,
         )
+
+    def _select_quest_grant_transport(
+        self,
+        *,
+        transport_mode: str,
+        native_preview: dict[str, Any],
+        soap_preview_ok: bool,
+    ) -> str | None:
+        if transport_mode == "native":
+            return "native_bridge"
+        if transport_mode == "soap":
+            return "soap"
+        if bool(native_preview.get("ok")):
+            return "native_bridge"
+        if soap_preview_ok:
+            return "soap"
+        return None
+
+    def _preview_native_quest_grant(self, *, player_guid: int, quest_id: int) -> dict[str, Any]:
+        issues: list[dict[str, str]] = []
+        notes: list[str] = [
+            "Native quest grant uses wm_bridge_action_request with action kind quest_add.",
+            "Native quest_add requires the player to be online when the action request is processed.",
+        ]
+        config_snapshot = None
+        config_payload: dict[str, Any] | None = None
+        try:
+            config_snapshot = load_bridge_runtime_config(Path(self.settings.wm_bridge_config_path))
+            config_payload = {
+                "enabled": config_snapshot.enabled,
+                "action_queue_enabled": config_snapshot.action_queue_enabled,
+                "db_control_enabled": config_snapshot.db_control_enabled,
+                "allow_all_players": config_snapshot.allow_all_players,
+                "player_guid_allowlist": list(config_snapshot.player_guid_allowlist),
+            }
+            if not config_snapshot.enabled:
+                issues.append(
+                    {
+                        "path": "wm_bridge_config.enabled",
+                        "message": "mod-wm-bridge is disabled in the bridge config.",
+                        "severity": "error",
+                    }
+                )
+            if not config_snapshot.action_queue_enabled:
+                issues.append(
+                    {
+                        "path": "wm_bridge_config.action_queue_enabled",
+                        "message": "WmBridge.ActionQueue.Enable is off, so native quest_add cannot execute.",
+                        "severity": "error",
+                    }
+                )
+        except Exception as exc:
+            issues.append(
+                {
+                    "path": "wm_bridge_config_path",
+                    "message": f"Could not read native bridge config: {exc}",
+                    "severity": "error",
+                }
+            )
+
+        if not NATIVE_ACTION_KIND_BY_ID["quest_add"].implemented:
+            issues.append(
+                {
+                    "path": "native_action_kind.quest_add",
+                    "message": "quest_add is not implemented in the native bridge action bus yet.",
+                    "severity": "error",
+                }
+            )
+
+        player_allowed = False
+        if config_snapshot is not None:
+            player_allowed = config_snapshot.allow_all_players or int(player_guid) in set(config_snapshot.player_guid_allowlist)
+            if config_snapshot.db_control_enabled:
+                try:
+                    player_allowed = player_allowed or self.native_bridge_actions.is_player_scoped(player_guid=player_guid)
+                except Exception as exc:
+                    issues.append(
+                        {
+                            "path": "wm_bridge_player_scope",
+                            "message": f"Could not read wm_bridge_player_scope: {exc}",
+                            "severity": "error",
+                        }
+                    )
+            if not player_allowed:
+                issues.append(
+                    {
+                        "path": "player_guid",
+                        "message": f"Player GUID {player_guid} is not currently allowed by mod-wm-bridge scope.",
+                        "severity": "error",
+                    }
+                )
+
+        policy_payload: dict[str, Any] | None = None
+        try:
+            policy = self.native_bridge_actions.get_action_policy(action_kind="quest_add")
+            if policy is None:
+                issues.append(
+                    {
+                        "path": "wm_bridge_action_policy.quest_add",
+                        "message": "No wm_bridge_action_policy row exists for quest_add.",
+                        "severity": "error",
+                    }
+                )
+            else:
+                policy_payload = policy
+                if not bool(policy.get("enabled")):
+                    issues.append(
+                        {
+                            "path": "wm_bridge_action_policy.quest_add.enabled",
+                            "message": "quest_add is disabled in wm_bridge_action_policy.",
+                            "severity": "error",
+                        }
+                    )
+                if _risk_rank("medium") > _risk_rank(str(policy.get("max_risk_level") or "low")):
+                    issues.append(
+                        {
+                            "path": "wm_bridge_action_policy.quest_add.max_risk_level",
+                            "message": "quest_add policy max risk is lower than the required medium risk.",
+                            "severity": "error",
+                        }
+                    )
+        except Exception as exc:
+            issues.append(
+                {
+                    "path": "wm_bridge_action_policy.quest_add",
+                    "message": f"Could not read wm_bridge_action_policy for quest_add: {exc}",
+                    "severity": "error",
+                }
+            )
+
+        ok = not any(issue["severity"] == "error" for issue in issues)
+        return {
+            "ok": ok,
+            "player_guid": int(player_guid),
+            "quest_id": int(quest_id),
+            "action_kind": "quest_add",
+            "bridge_config": config_payload,
+            "player_allowed": player_allowed,
+            "policy": policy_payload,
+            "issues": issues,
+            "notes": notes,
+        }
 
 
 def _build_quest_draft(payload: dict[str, Any]) -> BountyQuestDraft:
@@ -503,6 +695,26 @@ def _str_or_none(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
+
+
+def _normalize_quest_grant_transport(value: Any) -> str:
+    normalized = str(value or "auto").strip().lower()
+    if normalized in {"native", "native_bridge"}:
+        return "native"
+    if normalized == "soap":
+        return "soap"
+    return "auto"
+
+
+def _risk_rank(value: str) -> int:
+    normalized = str(value or "").strip().lower()
+    if normalized == "low":
+        return 0
+    if normalized == "medium":
+        return 1
+    if normalized == "high":
+        return 2
+    return 99
 
 
 def _strip_internal_payload_fields(payload: dict[str, Any]) -> dict[str, Any]:

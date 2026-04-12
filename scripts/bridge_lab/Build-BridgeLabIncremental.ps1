@@ -23,6 +23,36 @@ if ($localModuleCount -gt 0) {
     Write-Host "bridge_lab_local_modules_resynced=true count=$localModuleCount"
 }
 
+$cmake = Get-CMakePath
+$reconfigure = Test-CMakeReconfigureRequired `
+    -BuildRoot $paths.buildRoot `
+    -RepoRoot $repoRoot `
+    -Manifest $manifest `
+    -CoreRoot $paths.coreRoot
+if ($reconfigure.required) {
+    Invoke-WorkspaceCMakeConfigure `
+        -CMakePath $cmake `
+        -WorkspaceRoot $paths.root `
+        -Manifest $manifest `
+        -CoreRoot $paths.coreRoot `
+        -BuildRoot $paths.buildRoot
+    $patched = Repair-WorldserverResourceProject -BuildRoot $paths.buildRoot -SourceRoot $paths.coreRoot
+    if (-not $patched) {
+        throw "worldserver.vcxproj was not found under $($paths.buildRoot)"
+    }
+    $fingerprint = Save-CMakeConfigureState `
+        -BuildRoot $paths.buildRoot `
+        -RepoRoot $repoRoot `
+        -Manifest $manifest `
+        -CoreRoot $paths.coreRoot
+    Write-Host "bridge_lab_cmake_reconfigured=true reason=$($reconfigure.reason) hash=$($fingerprint.hash) files=$($fingerprint.file_count)"
+}
+
+$patched = Repair-WorldserverResourceProject -BuildRoot $paths.buildRoot -SourceRoot $paths.coreRoot
+if ($Target -ieq "worldserver" -and -not $patched) {
+    throw "worldserver.vcxproj was not found under $($paths.buildRoot)"
+}
+
 $msbuild = Get-MSBuildPath
 Invoke-Native -FilePath $msbuild -Arguments @(
     $solutionPath,
