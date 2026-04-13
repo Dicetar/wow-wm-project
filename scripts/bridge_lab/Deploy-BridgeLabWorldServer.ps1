@@ -37,6 +37,28 @@ function Set-ConfigValue {
     [System.IO.File]::WriteAllText($Path, $content, $utf8NoBom)
 }
 
+function Ensure-ConfigFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [string]$FallbackDistPath = ""
+    )
+
+    if (Test-Path -LiteralPath $Path) {
+        return
+    }
+
+    $distPath = $Path + ".dist"
+    if ((-not (Test-Path -LiteralPath $distPath)) -and $FallbackDistPath -and (Test-Path -LiteralPath $FallbackDistPath)) {
+        Copy-Item -LiteralPath $FallbackDistPath -Destination $distPath -Force
+    }
+    if (-not (Test-Path -LiteralPath $distPath)) {
+        throw "Config file was not found and no .dist template exists: $Path"
+    }
+
+    Copy-Item -LiteralPath $distPath -Destination $Path -Force
+}
+
 function Get-LabWorldProcess {
     param([string]$ExecutablePath)
 
@@ -49,6 +71,9 @@ $buildExe = Join-Path $WorkspaceRoot ("build\bin\" + $Configuration + "\worldser
 $runRoot = Join-Path $WorkspaceRoot "run"
 $runExe = Join-Path $runRoot "bin\worldserver.exe"
 $spellsConfig = Join-Path $runRoot "configs\modules\mod_wm_spells.conf"
+$buildSpellsDist = Join-Path $WorkspaceRoot ("build\bin\" + $Configuration + "\configs\modules\mod_wm_spells.conf.dist")
+
+Ensure-ConfigFile -Path $spellsConfig -FallbackDistPath $buildSpellsDist
 
 foreach ($required in @($buildExe, $runExe, $spellsConfig)) {
     if (-not (Test-Path -LiteralPath $required)) {
@@ -57,8 +82,8 @@ foreach ($required in @($buildExe, $runExe, $spellsConfig)) {
 }
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.Enable" -Value "1"
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.Enable" -Value "1"
-Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value '"940000"'
-Write-Host "bridge_lab_shell_module=mod-wm-spells shell_spell_ids=940000"
+Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value '"940000,940001,49126"'
+Write-Host "bridge_lab_shell_module=mod-wm-spells shell_spell_ids=940000,940001,49126"
 
 $existing = Get-LabWorldProcess -ExecutablePath $runExe
 if ($null -ne $existing) {

@@ -54,9 +54,27 @@ CREATE TABLE IF NOT EXISTS wm_spell_debug_request (
     KEY idx_wm_spell_debug_request_status (Status, RequestID)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS wm_spell_trigger (
+    TriggerID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    TriggerKey VARCHAR(64) NOT NULL,
+    TriggerKind VARCHAR(32) NOT NULL,
+    SourceKind VARCHAR(32) NOT NULL,
+    SourceRef VARCHAR(128) NOT NULL,
+    ShellSpellID INT NOT NULL,
+    BehaviorKind VARCHAR(64) DEFAULT NULL,
+    ConfigJSON LONGTEXT DEFAULT NULL,
+    Status VARCHAR(32) NOT NULL DEFAULT 'active',
+    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (TriggerID),
+    UNIQUE KEY uq_wm_spell_trigger_key (TriggerKey),
+    KEY idx_wm_spell_trigger_source (SourceKind, SourceRef, Status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 INSERT INTO wm_spell_shell (ShellSpellID, ShellKey, FamilyID, Label, State, ClientPatchVersion, OwnershipKey, ProvenanceJSON) VALUES
 (940000, 'bonebound_servant_v1', 'summon_pet', 'Bonebound Servant', 'planned', 'wm_spell_shell_bank.v1', 'wm.spell_shell:bonebound_servant_v1', '{}'),
-(940500, 'bonebound_servant_slash_v1', 'pet_active', 'Bonebound Slash', 'planned', 'wm_spell_shell_bank.v1', 'wm.spell_shell:bonebound_servant_slash_v1', '{}')
+(940001, 'bonebound_twins_v1', 'summon_pet', 'Bonebound Twins', 'planned', 'wm_spell_shell_bank.v1', 'wm.spell_shell:bonebound_twins_v1', '{}'),
+(945000, 'bonebound_servant_slash_v1', 'pet_active', 'Bonebound Slash', 'planned', 'wm_spell_shell_bank.v1', 'wm.spell_shell:bonebound_servant_slash_v1', '{}')
 ON DUPLICATE KEY UPDATE
     FamilyID = VALUES(FamilyID),
     Label = VALUES(Label),
@@ -67,14 +85,16 @@ ON DUPLICATE KEY UPDATE
     UpdatedAt = CURRENT_TIMESTAMP;
 
 INSERT INTO wm_spell_behavior (ShellSpellID, BehaviorKind, ConfigJSON, Status) VALUES
-(940000, 'summon_bonebound_servant_v1', '{"creature_entry":1860,"display_id":734,"name":"Bonebound Servant","require_corpse":true,"persist_pet":true,"virtual_item_1":1897,"virtual_item_2":0,"virtual_item_3":0}', 'planned'),
-(940500, 'bonebound_pet_active_v1', '{}', 'planned')
+(940000, 'summon_bonebound_servant_v1', '{"creature_entry":1860,"display_id":734,"name":"Bonebound Servant","require_corpse":true,"persist_pet":true,"owner_intellect_to_all_stats":true,"owner_shadow_power_to_attack_power":true,"virtual_item_1":1897,"virtual_item_2":0,"virtual_item_3":0}', 'planned'),
+(940001, 'summon_bonebound_twin_v2', '{"creature_entry":1860,"display_id":734,"name":"Bonebound Alpha","require_corpse":false,"persist_pet":true,"spawn_omega":true,"preserve_base_stats":true,"owner_intellect_to_all_stats":true,"owner_shadow_power_to_attack_power":true,"virtual_item_1":1897,"virtual_item_2":0,"virtual_item_3":0,"omega_creature_entry":1860,"omega_name":"Bonebound Omega","omega_display_id":734,"omega_virtual_item_1":1897,"omega_virtual_item_2":0,"omega_virtual_item_3":0,"omega_follow_distance":2.2,"omega_follow_angle":-1.5708,"omega_scale_multiplier":1.0,"omega_health_pct":100,"omega_damage_pct":100}', 'planned'),
+(945000, 'bonebound_pet_active_v1', '{}', 'planned')
 ON DUPLICATE KEY UPDATE
     BehaviorKind = VALUES(BehaviorKind),
     ConfigJSON = VALUES(ConfigJSON),
     Status = VALUES(Status),
     UpdatedAt = CURRENT_TIMESTAMP;
 
-DELETE FROM spell_script_names WHERE spell_id = 940000;
+DELETE FROM spell_script_names WHERE spell_id IN (940000, 940001);
 INSERT INTO spell_script_names (spell_id, ScriptName) VALUES
-(940000, 'spell_wm_bonebound_servant_shell');
+(940000, 'spell_wm_shell_dispatch'),
+(940001, 'spell_wm_shell_dispatch');

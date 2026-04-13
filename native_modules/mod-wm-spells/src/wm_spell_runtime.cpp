@@ -1,12 +1,18 @@
 #include "wm_spell_runtime.h"
 
 #include "Config.h"
+#include "Creature.h"
+#include "CreatureAI.h"
 #include "DatabaseEnv.h"
+#include "MotionMaster.h"
 #include "ObjectAccessor.h"
 #include "PetDefines.h"
+#include "TemporarySummon.h"
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
+#include <regex>
 #include <string>
 
 namespace
@@ -15,6 +21,7 @@ namespace
 
     WmSpells::RuntimeConfig gConfig;
     uint32 gDebugPollTimer = 0;
+    std::unordered_map<uint32, ObjectGuid> gBoneboundOmegaByPlayer;
 
     void ParseUIntSet(std::string const& raw, std::unordered_set<uint32>& target)
     {
@@ -51,37 +58,297 @@ namespace
         return target;
     }
 
-    uint32 BuildHealth(Player* player)
+    uint32 BuildHealth(Player* player, WmSpells::BoneboundBehaviorConfig const& config)
     {
         float intellect = player->GetTotalStatValue(STAT_INTELLECT);
         int32 shadowPower = player->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_SHADOW);
-        float health = static_cast<float>(gConfig.boneboundBaseHealth)
-            + static_cast<float>(gConfig.boneboundHealthPerLevel * player->GetLevel())
-            + static_cast<float>(gConfig.boneboundHealthPerIntellect) * intellect
-            + static_cast<float>(gConfig.boneboundHealthPerShadowPower) * std::max<int32>(0, shadowPower);
+        float health = static_cast<float>(config.baseHealth)
+            + static_cast<float>(config.healthPerLevel * player->GetLevel())
+            + static_cast<float>(config.healthPerIntellect) * intellect
+            + static_cast<float>(config.healthPerShadowPower) * std::max<int32>(0, shadowPower);
         return std::max<uint32>(1u, static_cast<uint32>(std::round(health)));
     }
 
-    float BuildDamage(Player* player, uint32 baseValue)
+    float BuildDamage(Player* player, uint32 baseValue, WmSpells::BoneboundBehaviorConfig const& config)
     {
         float intellect = player->GetTotalStatValue(STAT_INTELLECT);
         int32 shadowPower = player->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_SHADOW);
         float damage = static_cast<float>(baseValue)
-            + static_cast<float>(player->GetLevel()) * (static_cast<float>(gConfig.boneboundDamagePerLevelPct) / 100.0f)
-            + intellect * (static_cast<float>(gConfig.boneboundDamagePerIntellectPct) / 100.0f)
-            + static_cast<float>(std::max<int32>(0, shadowPower)) * (static_cast<float>(gConfig.boneboundDamagePerShadowPowerPct) / 100.0f);
+            + static_cast<float>(player->GetLevel()) * (static_cast<float>(config.damagePerLevelPct) / 100.0f)
+            + intellect * (static_cast<float>(config.damagePerIntellectPct) / 100.0f)
+            + static_cast<float>(std::max<int32>(0, shadowPower)) * (static_cast<float>(config.damagePerShadowPowerPct) / 100.0f);
         return std::max(1.0f, damage);
     }
 
-    float BuildScale(Player* player)
+    float BuildScale(Player* player, WmSpells::BoneboundBehaviorConfig const& config)
     {
         float intellect = player->GetTotalStatValue(STAT_INTELLECT);
         int32 shadowPower = player->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_SHADOW);
-        float scale = gConfig.boneboundScaleBase
-            + static_cast<float>(player->GetLevel()) * gConfig.boneboundScalePerLevel
-            + intellect * gConfig.boneboundScalePerIntellect
-            + static_cast<float>(std::max<int32>(0, shadowPower)) * gConfig.boneboundScalePerShadowPower;
+        float scale = config.scaleBase
+            + static_cast<float>(player->GetLevel()) * config.scalePerLevel
+            + intellect * config.scalePerIntellect
+            + static_cast<float>(std::max<int32>(0, shadowPower)) * config.scalePerShadowPower;
         return std::clamp(scale, 0.9f, 1.45f);
+    }
+
+    float ResolveAlphaVisualScale(Player* owner, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (config.preserveBaseStats)
+            return std::max(0.1f, config.scaleBase);
+
+        return BuildScale(owner, config);
+    }
+
+    float ResolveOmegaVisualScale(Player* owner, Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        float baseScale = alphaPet ? alphaPet->GetObjectScale() : ResolveAlphaVisualScale(owner, config);
+        if (config.preserveBaseStats)
+            baseScale = ResolveAlphaVisualScale(owner, config);
+
+        float multiplier = std::max(0.1f, config.omegaScaleMultiplier);
+        return std::clamp(baseScale * multiplier, 0.1f, 5.0f);
+    }
+
+    void ApplyBoneboundCreatureAppearance(
+        Creature* creature,
+        std::string const& name,
+        uint32 displayId,
+        uint32 virtualItem1,
+        uint32 virtualItem2,
+        uint32 virtualItem3,
+        float scale)
+    {
+        if (!creature)
+            return;
+
+        creature->SetName(name);
+        if (displayId != 0)
+        {
+            creature->SetDisplayId(displayId);
+            creature->SetNativeDisplayId(displayId);
+        }
+
+        creature->SetVirtualItem(0, virtualItem1);
+        creature->SetVirtualItem(1, virtualItem2);
+        creature->SetVirtualItem(2, virtualItem3);
+        creature->SetObjectScale(scale);
+    }
+
+    void ApplyOwnerTransferBonuses(Unit* summon, Player* owner, WmSpells::BoneboundBehaviorConfig const& config, bool refillHealth)
+    {
+        if (!summon || !owner)
+            return;
+
+        float statBonus = 0.0f;
+        if (config.ownerIntellectToAllStats)
+            statBonus = owner->GetTotalStatValue(STAT_INTELLECT) * config.ownerIntellectToAllStatsScale;
+
+        for (uint8 stat = 0; stat < MAX_STATS; ++stat)
+            summon->SetStatFlatModifier(UnitMods(UNIT_MOD_STAT_START + stat), TOTAL_VALUE, statBonus);
+
+        float attackPowerBonus = 0.0f;
+        if (config.ownerShadowPowerToAttackPower)
+            attackPowerBonus = static_cast<float>(std::max<int32>(0, owner->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_SHADOW))) * config.ownerShadowPowerToAttackPowerScale;
+
+        summon->SetStatFlatModifier(UNIT_MOD_ATTACK_POWER, TOTAL_VALUE, attackPowerBonus);
+        summon->UpdateAllStats();
+        summon->UpdateAttackPowerAndDamage();
+
+        if (refillHealth)
+            summon->SetHealth(summon->GetMaxHealth());
+        else if (summon->GetHealth() > summon->GetMaxHealth())
+            summon->SetHealth(summon->GetMaxHealth());
+    }
+
+    void MirrorMeleeAttackPower(Unit* source, Unit* target)
+    {
+        if (!source || !target)
+            return;
+
+        target->SetStatFlatModifier(UNIT_MOD_ATTACK_POWER, BASE_VALUE, source->GetFlatModifierValue(UNIT_MOD_ATTACK_POWER, BASE_VALUE));
+        target->SetStatFlatModifier(UNIT_MOD_ATTACK_POWER, TOTAL_VALUE, source->GetFlatModifierValue(UNIT_MOD_ATTACK_POWER, TOTAL_VALUE));
+        target->SetStatPctModifier(UNIT_MOD_ATTACK_POWER, BASE_PCT, source->GetPctModifierValue(UNIT_MOD_ATTACK_POWER, BASE_PCT));
+        target->SetStatPctModifier(UNIT_MOD_ATTACK_POWER, TOTAL_PCT, source->GetPctModifierValue(UNIT_MOD_ATTACK_POWER, TOTAL_PCT));
+    }
+
+    WmSpells::BoneboundBehaviorConfig DefaultBoneboundBehaviorConfig(uint32 shellSpellId, bool persistPet)
+    {
+        WmSpells::BoneboundBehaviorConfig config;
+        config.shellSpellId = shellSpellId;
+        config.persistPet = persistPet;
+        config.requireCorpse = gConfig.boneboundRequireCorpse;
+        config.creatureEntry = gConfig.boneboundCreatureEntry;
+        config.name = gConfig.boneboundName;
+        config.displayId = gConfig.boneboundDisplayId;
+        config.virtualItem1 = gConfig.boneboundVirtualItem1;
+        config.virtualItem2 = gConfig.boneboundVirtualItem2;
+        config.virtualItem3 = gConfig.boneboundVirtualItem3;
+        config.attackTimeMs = gConfig.boneboundAttackTimeMs;
+        config.scaleBase = gConfig.boneboundScaleBase;
+        config.scalePerLevel = gConfig.boneboundScalePerLevel;
+        config.scalePerIntellect = gConfig.boneboundScalePerIntellect;
+        config.scalePerShadowPower = gConfig.boneboundScalePerShadowPower;
+        config.baseHealth = gConfig.boneboundBaseHealth;
+        config.healthPerLevel = gConfig.boneboundHealthPerLevel;
+        config.healthPerIntellect = gConfig.boneboundHealthPerIntellect;
+        config.healthPerShadowPower = gConfig.boneboundHealthPerShadowPower;
+        config.baseMinDamage = gConfig.boneboundBaseMinDamage;
+        config.baseMaxDamage = gConfig.boneboundBaseMaxDamage;
+        config.damagePerLevelPct = gConfig.boneboundDamagePerLevelPct;
+        config.damagePerIntellectPct = gConfig.boneboundDamagePerIntellectPct;
+        config.damagePerShadowPowerPct = gConfig.boneboundDamagePerShadowPowerPct;
+        config.omegaCreatureEntry = gConfig.boneboundCreatureEntry;
+        config.omegaDisplayId = gConfig.boneboundDisplayId;
+        config.omegaVirtualItem1 = gConfig.boneboundVirtualItem1;
+        config.omegaVirtualItem2 = gConfig.boneboundVirtualItem2;
+        config.omegaVirtualItem3 = gConfig.boneboundVirtualItem3;
+        return config;
+    }
+
+    bool IsBoneboundBehaviorKind(std::string const& behaviorKind)
+    {
+        return behaviorKind == "summon_bonebound_servant_v1" || behaviorKind == "summon_bonebound_twin_v2";
+    }
+
+    std::optional<std::string> ExtractJsonString(std::string const& json, std::string const& key)
+    {
+        std::regex pattern("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");
+        std::smatch match;
+        if (std::regex_search(json, match, pattern) && match.size() > 1)
+            return match[1].str();
+        return std::nullopt;
+    }
+
+    std::optional<uint32> ExtractJsonUInt(std::string const& json, std::string const& key)
+    {
+        std::regex pattern("\"" + key + "\"\\s*:\\s*(-?\\d+)");
+        std::smatch match;
+        if (std::regex_search(json, match, pattern) && match.size() > 1)
+        {
+            long long value = std::stoll(match[1].str());
+            if (value < 0)
+                return 0u;
+            return static_cast<uint32>(value);
+        }
+        return std::nullopt;
+    }
+
+    std::optional<float> ExtractJsonFloat(std::string const& json, std::string const& key)
+    {
+        std::regex pattern("\"" + key + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)");
+        std::smatch match;
+        if (std::regex_search(json, match, pattern) && match.size() > 1)
+            return std::stof(match[1].str());
+        return std::nullopt;
+    }
+
+    std::optional<bool> ExtractJsonBool(std::string const& json, std::string const& key)
+    {
+        std::regex pattern("\"" + key + "\"\\s*:\\s*(true|false)");
+        std::smatch match;
+        if (std::regex_search(json, match, pattern) && match.size() > 1)
+            return match[1].str() == "true";
+        return std::nullopt;
+    }
+
+    std::optional<WmSpells::BoneboundBehaviorConfig> BuildBoneboundBehaviorConfig(
+        WmSpells::BehaviorRecord const& record,
+        bool persistPetFallback)
+    {
+        if (!IsBoneboundBehaviorKind(record.behaviorKind))
+            return std::nullopt;
+
+        WmSpells::BoneboundBehaviorConfig config = DefaultBoneboundBehaviorConfig(record.shellSpellId, persistPetFallback);
+        if (record.behaviorKind == "summon_bonebound_twin_v2")
+        {
+            config.spawnOmega = true;
+            config.preserveBaseStats = true;
+        }
+
+        if (record.status == "disabled")
+            return std::nullopt;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "name"))
+            config.name = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "creature_entry"))
+            config.creatureEntry = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "display_id"))
+            config.displayId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "virtual_item_1"))
+            config.virtualItem1 = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "virtual_item_2"))
+            config.virtualItem2 = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "virtual_item_3"))
+            config.virtualItem3 = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "attack_time_ms"))
+            config.attackTimeMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "base_health"))
+            config.baseHealth = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "health_per_level"))
+            config.healthPerLevel = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "health_per_intellect"))
+            config.healthPerIntellect = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "health_per_shadow_power"))
+            config.healthPerShadowPower = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "base_min_damage"))
+            config.baseMinDamage = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "base_max_damage"))
+            config.baseMaxDamage = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "damage_per_level_pct"))
+            config.damagePerLevelPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "damage_per_intellect_pct"))
+            config.damagePerIntellectPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "damage_per_shadow_power_pct"))
+            config.damagePerShadowPowerPct = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "owner_intellect_to_all_stats"))
+            config.ownerIntellectToAllStats = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "owner_shadow_power_to_attack_power"))
+            config.ownerShadowPowerToAttackPower = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "owner_intellect_to_all_stats_scale"))
+            config.ownerIntellectToAllStatsScale = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "owner_shadow_power_to_attack_power_scale"))
+            config.ownerShadowPowerToAttackPowerScale = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "scale_base"))
+            config.scaleBase = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "scale_per_level"))
+            config.scalePerLevel = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "scale_per_intellect"))
+            config.scalePerIntellect = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "scale_per_shadow_power"))
+            config.scalePerShadowPower = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "require_corpse"))
+            config.requireCorpse = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "persist_pet"))
+            config.persistPet = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "spawn_omega"))
+            config.spawnOmega = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "preserve_base_stats"))
+            config.preserveBaseStats = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "omega_creature_entry"))
+            config.omegaCreatureEntry = *value;
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "omega_name"))
+            config.omegaName = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "omega_display_id"))
+            config.omegaDisplayId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "omega_virtual_item_1"))
+            config.omegaVirtualItem1 = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "omega_virtual_item_2"))
+            config.omegaVirtualItem2 = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "omega_virtual_item_3"))
+            config.omegaVirtualItem3 = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "omega_scale_multiplier"))
+            config.omegaScaleMultiplier = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "omega_health_pct"))
+            config.omegaHealthPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "omega_damage_pct"))
+            config.omegaDamagePct = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "omega_follow_distance"))
+            config.omegaFollowDistance = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "omega_follow_angle"))
+            config.omegaFollowAngle = *value;
+
+        return config;
     }
 
     bool IsBoneboundPet(Pet* pet)
@@ -89,45 +356,179 @@ namespace
         if (!pet)
             return false;
 
-        if (pet->GetEntry() != gConfig.boneboundCreatureEntry)
-            return false;
-
-        if (gConfig.boneboundDisplayId != 0 && pet->GetDisplayId() == gConfig.boneboundDisplayId)
+        uint32 createdBySpellId = pet->GetUInt32Value(UNIT_CREATED_BY_SPELL);
+        if (createdBySpellId != 0 && gConfig.boneboundShellSpellIds.find(createdBySpellId) != gConfig.boneboundShellSpellIds.end())
             return true;
 
-        return pet->GetUInt32Value(UNIT_CREATED_BY_SPELL) != 0
-            && gConfig.boneboundShellSpellIds.find(pet->GetUInt32Value(UNIT_CREATED_BY_SPELL)) != gConfig.boneboundShellSpellIds.end();
+        if (pet->GetEntry() == gConfig.boneboundCreatureEntry && gConfig.boneboundDisplayId != 0 && pet->GetDisplayId() == gConfig.boneboundDisplayId)
+            return true;
+
+        return false;
     }
 
-    void ApplyBoneboundOverlay(Player* owner, Pet* pet, uint32 createdBySpellId, bool persistPet)
+    void ApplyBoneboundOverlay(Player* owner, Pet* pet, WmSpells::BoneboundBehaviorConfig const& config)
     {
         if (!owner || !pet)
             return;
 
-        if (createdBySpellId != 0)
-            pet->SetUInt32Value(UNIT_CREATED_BY_SPELL, createdBySpellId);
+        if (config.shellSpellId != 0)
+            pet->SetUInt32Value(UNIT_CREATED_BY_SPELL, config.shellSpellId);
 
-        pet->SetName(gConfig.boneboundName);
-        if (gConfig.boneboundDisplayId != 0)
+        float desiredScale = ResolveAlphaVisualScale(owner, config);
+        ApplyBoneboundCreatureAppearance(
+            pet,
+            config.name,
+            config.displayId,
+            config.virtualItem1,
+            config.virtualItem2,
+            config.virtualItem3,
+            desiredScale);
+        if (config.preserveBaseStats)
         {
-            pet->SetDisplayId(gConfig.boneboundDisplayId);
-            pet->SetNativeDisplayId(gConfig.boneboundDisplayId);
+        }
+        else
+        {
+            pet->SetMaxHealth(BuildHealth(owner, config));
+            pet->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, BuildDamage(owner, config.baseMinDamage, config));
+            pet->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, BuildDamage(owner, config.baseMaxDamage, config));
+            pet->SetAttackTime(BASE_ATTACK, config.attackTimeMs);
+            pet->UpdateDamagePhysical(BASE_ATTACK);
         }
 
-        pet->SetVirtualItem(0, gConfig.boneboundVirtualItem1);
-        pet->SetVirtualItem(1, gConfig.boneboundVirtualItem2);
-        pet->SetVirtualItem(2, gConfig.boneboundVirtualItem3);
-        pet->SetObjectScale(BuildScale(owner));
-        pet->SetMaxHealth(BuildHealth(owner));
-        pet->SetHealth(pet->GetMaxHealth());
-        pet->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, BuildDamage(owner, gConfig.boneboundBaseMinDamage));
-        pet->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, BuildDamage(owner, gConfig.boneboundBaseMaxDamage));
-        pet->SetAttackTime(BASE_ATTACK, gConfig.boneboundAttackTimeMs);
-        pet->UpdateDamagePhysical(BASE_ATTACK);
+        ApplyOwnerTransferBonuses(pet, owner, config, true);
 
         owner->PetSpellInitialize();
-        if (persistPet)
+        if (config.persistPet)
             pet->SavePetToDB(PET_SAVE_AS_CURRENT);
+    }
+
+    void RemoveBoneboundOmega(Player* owner)
+    {
+        if (!owner)
+            return;
+
+        uint32 ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+        auto it = gBoneboundOmegaByPlayer.find(ownerGuid);
+        if (it == gBoneboundOmegaByPlayer.end())
+            return;
+
+        if (Creature* omega = ObjectAccessor::GetCreature(*owner, it->second))
+            omega->DespawnOrUnsummon();
+
+        gBoneboundOmegaByPlayer.erase(it);
+    }
+
+    TempSummon* EnsureBoneboundOmega(Player* owner, Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!owner || !alphaPet || !config.spawnOmega)
+            return nullptr;
+
+        uint32 ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+        if (auto it = gBoneboundOmegaByPlayer.find(ownerGuid); it != gBoneboundOmegaByPlayer.end())
+        {
+            if (Creature* existing = ObjectAccessor::GetCreature(*owner, it->second))
+                return existing->ToTempSummon();
+            gBoneboundOmegaByPlayer.erase(it);
+        }
+
+        Position pos;
+        owner->GetClosePoint(pos.m_positionX, pos.m_positionY, pos.m_positionZ, 1.0f, config.omegaFollowDistance);
+        TempSummon* omega = owner->SummonCreature(
+            config.omegaCreatureEntry,
+            pos.m_positionX,
+            pos.m_positionY,
+            pos.m_positionZ,
+            owner->GetOrientation(),
+            TEMPSUMMON_MANUAL_DESPAWN,
+            0);
+        if (!omega)
+            return nullptr;
+
+        omega->SetCreatorGUID(owner->GetGUID());
+        omega->SetOwnerGUID(owner->GetGUID());
+        omega->SetFaction(owner->GetFaction());
+        ApplyBoneboundCreatureAppearance(
+            omega,
+            config.omegaName,
+            config.omegaDisplayId,
+            config.omegaVirtualItem1,
+            config.omegaVirtualItem2,
+            config.omegaVirtualItem3,
+            ResolveOmegaVisualScale(owner, alphaPet, config));
+        omega->SetLevel(alphaPet->GetLevel());
+        uint32 maxHealth = alphaPet->GetMaxHealth();
+        if (!config.preserveBaseStats)
+            maxHealth = std::max<uint32>(1u, (alphaPet->GetMaxHealth() * std::max<uint32>(1u, config.omegaHealthPct)) / 100u);
+        omega->SetMaxHealth(maxHealth);
+        omega->SetHealth(maxHealth);
+        float minDamage = alphaPet->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE);
+        float maxDamage = alphaPet->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE);
+        if (!config.preserveBaseStats)
+        {
+            float damageScale = static_cast<float>(std::max<uint32>(1u, config.omegaDamagePct)) / 100.0f;
+            minDamage *= damageScale;
+            maxDamage *= damageScale;
+        }
+        omega->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, minDamage);
+        omega->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, maxDamage);
+        omega->SetAttackTime(BASE_ATTACK, alphaPet->GetAttackTime(BASE_ATTACK));
+        ApplyOwnerTransferBonuses(omega, owner, config, false);
+        MirrorMeleeAttackPower(alphaPet, omega);
+        omega->UpdateDamagePhysical(BASE_ATTACK);
+        omega->SetReactState(REACT_DEFENSIVE);
+        omega->GetMotionMaster()->MoveFollow(owner, config.omegaFollowDistance, config.omegaFollowAngle);
+
+        gBoneboundOmegaByPlayer[ownerGuid] = omega->GetGUID();
+        return omega;
+    }
+
+    void SyncBoneboundOmega(Player* owner, Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!owner)
+            return;
+
+        if (!alphaPet || !config.spawnOmega)
+        {
+            RemoveBoneboundOmega(owner);
+            return;
+        }
+
+        TempSummon* omega = EnsureBoneboundOmega(owner, alphaPet, config);
+        if (!omega)
+            return;
+
+        omega->SetFaction(owner->GetFaction());
+        ApplyBoneboundCreatureAppearance(
+            omega,
+            config.omegaName,
+            config.omegaDisplayId,
+            config.omegaVirtualItem1,
+            config.omegaVirtualItem2,
+            config.omegaVirtualItem3,
+            ResolveOmegaVisualScale(owner, alphaPet, config));
+        omega->SetLevel(alphaPet->GetLevel());
+        omega->SetMaxHealth(alphaPet->GetMaxHealth());
+        if (omega->GetHealth() > omega->GetMaxHealth())
+            omega->SetHealth(omega->GetMaxHealth());
+        omega->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, alphaPet->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE));
+        omega->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, alphaPet->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE));
+        omega->SetAttackTime(BASE_ATTACK, alphaPet->GetAttackTime(BASE_ATTACK));
+        ApplyOwnerTransferBonuses(omega, owner, config, false);
+        MirrorMeleeAttackPower(alphaPet, omega);
+        omega->UpdateDamagePhysical(BASE_ATTACK);
+
+        if (Unit* victim = alphaPet->GetVictim())
+        {
+            if (omega->AI())
+                omega->AI()->AttackStart(victim);
+        }
+        else
+        {
+            if (omega->IsInCombat())
+                omega->CombatStop(true);
+            omega->SetWalk(false);
+            omega->GetMotionMaster()->MoveFollow(owner, config.omegaFollowDistance, config.omegaFollowAngle);
+        }
     }
 
     std::string EscapeForSql(std::string value)
@@ -141,12 +542,14 @@ namespace
         return "'" + EscapeForSql(value) + "'";
     }
 
-    std::string JsonResult(bool ok, std::string const& behaviorKind, std::string const& message)
+    std::string JsonResult(bool ok, std::string const& behaviorKind, std::string const& message, uint32 shellSpellId = 0)
     {
         std::string payload = "{\"ok\":";
         payload += ok ? "true" : "false";
         payload += ",\"behavior_kind\":\"" + behaviorKind + "\"";
         payload += ",\"message\":\"" + message + "\"}";
+        if (shellSpellId != 0)
+            payload.insert(payload.size() - 1, ",\"shell_spell_id\":" + std::to_string(shellSpellId));
         return payload;
     }
 
@@ -216,7 +619,33 @@ namespace WmSpells
             && gConfig.boneboundShellSpellIds.find(spellId) != gConfig.boneboundShellSpellIds.end();
     }
 
-    SpellCastResult CheckBoneboundCorpseTarget(Player* player)
+    bool IsSupportedBehaviorKind(std::string const& behaviorKind)
+    {
+        return IsBoneboundBehaviorKind(behaviorKind);
+    }
+
+    std::optional<BehaviorRecord> LoadBehaviorRecord(uint32 shellSpellId)
+    {
+        if (shellSpellId == 0)
+            return std::nullopt;
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT BehaviorKind, ConfigJSON, Status FROM wm_spell_behavior WHERE ShellSpellID = {} LIMIT 1",
+            shellSpellId);
+
+        if (!result)
+            return std::nullopt;
+
+        Field* fields = result->Fetch();
+        BehaviorRecord record;
+        record.shellSpellId = shellSpellId;
+        record.behaviorKind = fields[0].Get<std::string>();
+        record.configJson = fields[1].Get<std::string>();
+        record.status = fields[2].Get<std::string>();
+        return record;
+    }
+
+    SpellCastResult CheckBoneboundCorpseTarget(Player* player, uint32 shellSpellId)
     {
         if (!player)
             return SPELL_FAILED_CASTER_DEAD;
@@ -224,7 +653,14 @@ namespace WmSpells
         if (!IsPlayerAllowed(player) || !gConfig.boneboundServantEnabled)
             return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
 
-        if (!gConfig.boneboundRequireCorpse)
+        std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(shellSpellId);
+        if (!behaviorRecord.has_value())
+            return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+        std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, true);
+        if (!runtimeConfig.has_value())
+            return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+        if (!runtimeConfig->requireCorpse)
             return SPELL_CAST_OK;
 
         return GetCorpseTarget(player) ? SPELL_CAST_OK : SPELL_FAILED_BAD_TARGETS;
@@ -241,31 +677,120 @@ namespace WmSpells
         if (!gConfig.boneboundServantEnabled)
             return {false, "bonebound_disabled"};
 
-        if (gConfig.boneboundRequireCorpse && !GetCorpseTarget(player))
+        std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(createdBySpellId);
+        if (!behaviorRecord.has_value())
+            return {false, "shell_behavior_missing"};
+        std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, persistPet);
+        if (!runtimeConfig.has_value())
+            return {false, "shell_behavior_disabled"};
+
+        BoneboundBehaviorConfig const& config = *runtimeConfig;
+
+        if (config.requireCorpse && !GetCorpseTarget(player))
             return {false, "corpse_required"};
 
+        RemoveBoneboundOmega(player);
         if (Pet* currentPet = player->GetPet())
             player->RemovePet(currentPet, PET_SAVE_AS_DELETED);
+        else
+            player->RemovePet(nullptr, PET_SAVE_AS_DELETED);
 
         Position pos;
         player->GetClosePoint(pos.m_positionX, pos.m_positionY, pos.m_positionZ, 1.0f, 2.0f);
 
         Pet* pet = player->SummonPet(
-            gConfig.boneboundCreatureEntry,
+            config.creatureEntry,
             pos.m_positionX,
             pos.m_positionY,
             pos.m_positionZ,
             player->GetOrientation(),
             SUMMON_PET,
             0ms,
-            createdBySpellId
+            config.shellSpellId
         );
 
         if (!pet)
-            return {false, "summon_failed"};
+        {
+            pet = player->GetPet();
+            if (!pet)
+                return {false, "summon_failed"};
+        }
 
-        ApplyBoneboundOverlay(player, pet, createdBySpellId, persistPet);
+        ApplyBoneboundOverlay(player, pet, config);
+        if (config.spawnOmega)
+            SyncBoneboundOmega(player, pet, config);
         return {true, "bonebound_servant_summoned"};
+    }
+
+    BehaviorExecutionResult ExecuteShellBehavior(Player* player, uint32 shellSpellId, bool persistPetFallback)
+    {
+        std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(shellSpellId);
+        if (!behaviorRecord.has_value())
+            return {false, "shell_behavior_missing"};
+
+        std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, persistPetFallback);
+        if (!runtimeConfig.has_value())
+            return {false, "shell_behavior_disabled"};
+
+        if (IsSupportedBehaviorKind(behaviorRecord->behaviorKind))
+            return ExecuteBoneboundServant(player, shellSpellId, runtimeConfig->persistPet);
+
+        return {false, "unsupported_shell_spell"};
+    }
+
+    void UpdateTrackedCompanions(uint32 /*diff*/)
+    {
+        if (gBoneboundOmegaByPlayer.empty())
+            return;
+
+        std::vector<uint32> staleOwners;
+        for (auto const& [ownerGuid, omegaGuid] : gBoneboundOmegaByPlayer)
+        {
+            Player* owner = ObjectAccessor::FindPlayerByLowGUID(ownerGuid);
+            if (!owner || !IsPlayerAllowed(owner))
+            {
+                staleOwners.push_back(ownerGuid);
+                continue;
+            }
+
+            Pet* alphaPet = owner->GetPet();
+            if (!alphaPet || !IsBoneboundPet(alphaPet))
+            {
+                RemoveBoneboundOmega(owner);
+                continue;
+            }
+
+            std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL));
+            if (!behaviorRecord.has_value())
+            {
+                RemoveBoneboundOmega(owner);
+                continue;
+            }
+
+            std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, false);
+            if (!runtimeConfig.has_value() || !runtimeConfig->spawnOmega)
+            {
+                RemoveBoneboundOmega(owner);
+                continue;
+            }
+
+            if (alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL) != runtimeConfig->shellSpellId)
+                alphaPet->SetUInt32Value(UNIT_CREATED_BY_SPELL, runtimeConfig->shellSpellId);
+
+              ApplyBoneboundCreatureAppearance(
+                  alphaPet,
+                  runtimeConfig->name,
+                  runtimeConfig->displayId,
+                  runtimeConfig->virtualItem1,
+                  runtimeConfig->virtualItem2,
+                  runtimeConfig->virtualItem3,
+                  ResolveAlphaVisualScale(owner, *runtimeConfig));
+            ApplyOwnerTransferBonuses(alphaPet, owner, *runtimeConfig, false);
+            SyncBoneboundOmega(owner, alphaPet, *runtimeConfig);
+        }
+
+        for (uint32 ownerGuid : staleOwners)
+            gBoneboundOmegaByPlayer.erase(ownerGuid);
     }
 
     void ReapplyBoneboundOverlay(Pet* pet)
@@ -277,7 +802,16 @@ namespace WmSpells
         if (!IsPlayerAllowed(owner) || !IsBoneboundPet(pet))
             return;
 
-        ApplyBoneboundOverlay(owner, pet, pet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
+        std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(pet->GetUInt32Value(UNIT_CREATED_BY_SPELL));
+        if (!behaviorRecord.has_value())
+            return;
+        std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, false);
+        if (!runtimeConfig.has_value())
+            return;
+
+        ApplyBoneboundOverlay(owner, pet, *runtimeConfig);
+        if (runtimeConfig->spawnOmega)
+            SyncBoneboundOmega(owner, pet, *runtimeConfig);
     }
 
     void PollDebugRequests(uint32 diff)
@@ -294,7 +828,7 @@ namespace WmSpells
         gDebugPollTimer = gConfig.debugPollIntervalMs;
 
         QueryResult result = WorldDatabase.Query(
-            "SELECT RequestID, PlayerGUID, BehaviorKind FROM wm_spell_debug_request "
+            "SELECT RequestID, PlayerGUID, BehaviorKind, PayloadJSON FROM wm_spell_debug_request "
             "WHERE Status = 'pending' ORDER BY RequestID ASC LIMIT 1");
 
         if (!result)
@@ -304,6 +838,8 @@ namespace WmSpells
         uint64 requestId = fields[0].Get<uint64>();
         uint32 playerGuid = fields[1].Get<uint32>();
         std::string behaviorKind = fields[2].Get<std::string>();
+        std::string payloadJson = fields[3].Get<std::string>();
+        uint32 shellSpellId = ExtractJsonUInt(payloadJson, "shell_spell_id").value_or(0u);
 
         WorldDatabase.Execute(
             "UPDATE wm_spell_debug_request SET Status = 'claimed', UpdatedAt = CURRENT_TIMESTAMP "
@@ -311,20 +847,20 @@ namespace WmSpells
             requestId);
 
         Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
-        if (behaviorKind == "summon_bonebound_servant_v1")
+        if (IsSupportedBehaviorKind(behaviorKind))
         {
-            BehaviorExecutionResult exec = ExecuteBoneboundServant(player, 0, false);
+            BehaviorExecutionResult exec = ExecuteShellBehavior(player, shellSpellId, false);
             if (exec.ok)
             {
-                CompleteDebugRequest(requestId, "done", JsonResult(true, behaviorKind, exec.message));
+                CompleteDebugRequest(requestId, "done", JsonResult(true, behaviorKind, exec.message, shellSpellId));
             }
             else
             {
-                CompleteDebugRequest(requestId, "failed", JsonResult(false, behaviorKind, exec.message), exec.message);
+                CompleteDebugRequest(requestId, "failed", JsonResult(false, behaviorKind, exec.message, shellSpellId), exec.message);
             }
             return;
         }
 
-        CompleteDebugRequest(requestId, "failed", JsonResult(false, behaviorKind, "unknown_behavior_kind"), "unknown_behavior_kind");
+        CompleteDebugRequest(requestId, "failed", JsonResult(false, behaviorKind, "unknown_behavior_kind", shellSpellId), "unknown_behavior_kind");
     }
 }

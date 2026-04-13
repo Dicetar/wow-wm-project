@@ -15,6 +15,7 @@ public:
 
     void OnUpdate(uint32 diff) override
     {
+        WmSpells::UpdateTrackedCompanions(diff);
         WmSpells::PollDebugRequests(diff);
     }
 };

@@ -5,7 +5,9 @@
   "patch": {
     "artifact_version": "wm_spell_shell_bank.v1",
     "workspace": "client_patches/wm_spell_shell_bank",
-    "target_client": "WoW 3.3.5a"
+    "target_client": "WoW 3.3.5a",
+    "generation_mode": "range_driven",
+    "slots_per_family": 1000
   },
   "notes": [
     "These shells are a planning/control contract until a matching client patch ships.",
@@ -17,11 +19,12 @@
       "family_id": "summon_pet",
       "label": "Permanent Pet Summon",
       "slot_range_start": 940000,
-      "slot_count": 16,
+      "slot_count": 1000,
       "targeting": "self_cast",
       "cooldown_family": "warlock_pet",
       "supports_true_pet": true,
       "supports_multi_pet": false,
+      "patch_seed_template": "wm_summon_pet",
       "behavior_kinds": [
         "warlock_pet_skeleton",
         "warlock_pet_void",
@@ -31,12 +34,13 @@
     {
       "family_id": "summon_companion",
       "label": "Companion Or Guardian Summon",
-      "slot_range_start": 940100,
-      "slot_count": 16,
+      "slot_range_start": 941000,
+      "slot_count": 1000,
       "targeting": "self_cast",
       "cooldown_family": "summon_companion",
       "supports_true_pet": false,
       "supports_multi_pet": true,
+      "patch_seed_template": "wm_summon_companion",
       "behavior_kinds": [
         "guardian_skeleton_pair",
         "companion_follow",
@@ -46,12 +50,13 @@
     {
       "family_id": "self_buff",
       "label": "Self Buff",
-      "slot_range_start": 940200,
-      "slot_count": 16,
+      "slot_range_start": 942000,
+      "slot_count": 1000,
       "targeting": "self_cast",
       "cooldown_family": "self_buff",
       "supports_true_pet": false,
       "supports_multi_pet": false,
+      "patch_seed_template": "wm_self_buff",
       "behavior_kinds": [
         "scaled_aura",
         "burst_haste",
@@ -61,12 +66,13 @@
     {
       "family_id": "offensive_bolt",
       "label": "Offensive Bolt",
-      "slot_range_start": 940300,
-      "slot_count": 16,
+      "slot_range_start": 943000,
+      "slot_count": 1000,
       "targeting": "unit_enemy",
       "cooldown_family": "offensive_bolt",
       "supports_true_pet": false,
       "supports_multi_pet": false,
+      "patch_seed_template": "wm_offensive_bolt",
       "behavior_kinds": [
         "scaled_projectile",
         "drain_life_variant",
@@ -76,12 +82,13 @@
     {
       "family_id": "passive_aura",
       "label": "Passive Aura",
-      "slot_range_start": 940400,
-      "slot_count": 16,
+      "slot_range_start": 944000,
+      "slot_count": 1000,
       "targeting": "passive",
       "cooldown_family": "passive",
       "supports_true_pet": false,
       "supports_multi_pet": false,
+      "patch_seed_template": "wm_passive_aura",
       "behavior_kinds": [
         "passive_stat_bonus",
         "passive_proc",
@@ -91,12 +98,13 @@
     {
       "family_id": "pet_active",
       "label": "Pet Active",
-      "slot_range_start": 940500,
-      "slot_count": 16,
+      "slot_range_start": 945000,
+      "slot_count": 1000,
       "targeting": "pet_action",
       "cooldown_family": "pet_active",
       "supports_true_pet": true,
       "supports_multi_pet": false,
+      "patch_seed_template": "wm_pet_active",
       "behavior_kinds": [
         "bonebound_pet_active_v1"
       ]
@@ -120,8 +128,24 @@
       ]
     },
     {
+      "shell_key": "bonebound_twins_v1",
+      "spell_id": 940001,
+      "family_id": "summon_pet",
+      "label": "Bonebound Twins",
+      "behavior_kind": "summon_bonebound_twin_v2",
+      "targeting": "self_cast",
+      "required_level": 1,
+      "icon_hint": "Spell_Shadow_AnimateDead",
+      "tooltip": "Raise Bonebound Alpha and Bonebound Omega under WM control.",
+      "patch_state": "planned",
+      "notes": [
+        "Alpha is the one true pet. Omega is a synced guardian companion.",
+        "This shell is intended as the broad dual-summon reference path for future WM spell ideas."
+      ]
+    },
+    {
       "shell_key": "bonebound_servant_slash_v1",
-      "spell_id": 940500,
+      "spell_id": 945000,
       "family_id": "pet_active",
       "label": "Bonebound Slash",
       "behavior_kind": "bonebound_pet_active_v1",

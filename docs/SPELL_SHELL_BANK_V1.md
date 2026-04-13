@@ -64,9 +64,24 @@ This defines reserved visible shell families like:
 - `self_buff`
 - `offensive_bolt`
 - `passive_aura`
+- `pet_active`
+
+Current bank sizing default:
+
+- 1000 slots per family
+- 6 families
+- 6000 pre-seeded shell ids in one client patch generation pass
+
+That means we do not patch the client once per spell. We patch the client with a large shell bank once, then spend those ids server-side for a long time.
 
 These are not live client assets yet.
 They are the repo-owned contract that the future client patch must match.
+
+The repo now also provides a range-driven patch-plan export:
+
+- `python -m wm.spells.export_patch_plan --summary`
+
+That export expands all 6000 shell ids from the family ranges and then overlays named shells like `940000` and `945000` with their WM-specific metadata.
 
 ### 2. Native behavior kinds
 

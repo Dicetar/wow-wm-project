@@ -1,0 +1,16 @@
+{
+  "shell_key": "bonebound_twins_v1",
+  "spell_id": 940001,
+  "family_id": "summon_pet",
+  "label": "Bonebound Twins",
+  "behavior_kind": "summon_bonebound_twin_v2",
+  "targeting": "self_cast",
+  "required_level": 1,
+  "tooltip": "Raise Bonebound Alpha and Bonebound Omega under WM control.",
+  "icon_hint": "Spell_Shadow_AnimateDead",
+  "patch_state": "planned",
+  "notes": [
+    "Lives inside the 1000-slot summon_pet block starting at 940000.",
+    "This is the first dual-summon shell built on the broad WM spell runtime instead of stock carrier hijacks."
+  ]
+}

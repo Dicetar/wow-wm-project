@@ -21,6 +21,7 @@
   "runtime_notes": [
     "Server behavior is executed by mod-wm-spells.",
     "Keep this shell isolated from stock warlock or DK summon spells.",
-    "Use createdBySpellId 940000 on the server so reload and persistence stay on the WM shell."
+    "Use createdBySpellId 940000 on the server so reload and persistence stay on the WM shell.",
+    "This shell lives inside the 1000-slot summon_pet family block that starts at 940000."
   ]
 }

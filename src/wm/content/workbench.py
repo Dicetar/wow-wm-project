@@ -816,6 +816,18 @@ def main(argv: list[str] | None = None) -> int:
                 player_guid=args.give_to_player_guid,
                 player_name=args.give_to_player_name,
             )
+            wait_notes: list[str] = []
+            player_ref, wait_notes = _maybe_wait_for_player_online(
+                client=client,
+                settings=settings,
+                player_ref=player_ref,
+                player_guid=args.give_to_player_guid,
+                player_name=args.give_to_player_name,
+                mode=args.mode,
+                wait_for_player_online=bool(args.wait_for_player_online),
+                wait_timeout_seconds=args.wait_timeout_seconds,
+                wait_poll_seconds=args.wait_poll_seconds,
+            )
             runtime_result = execute_item_delivery_command(
                 settings=settings,
                 player_ref=player_ref,
@@ -826,6 +838,8 @@ def main(argv: list[str] | None = None) -> int:
                 mail_body=args.mail_body,
                 mode=args.mode,
             )
+            if wait_notes:
+                runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         return _print_publish_summary(
             publish_result=publish_result.to_dict(),
             runtime_result=None if runtime_result is None else runtime_result.to_dict(),
@@ -860,6 +874,18 @@ def main(argv: list[str] | None = None) -> int:
                 player_guid=args.learn_to_player_guid,
                 player_name=args.learn_to_player_name,
             )
+            wait_notes: list[str] = []
+            player_ref, wait_notes = _maybe_wait_for_player_online(
+                client=client,
+                settings=settings,
+                player_ref=player_ref,
+                player_guid=args.learn_to_player_guid,
+                player_name=args.learn_to_player_name,
+                mode=args.mode,
+                wait_for_player_online=bool(args.wait_for_player_online),
+                wait_timeout_seconds=args.wait_timeout_seconds,
+                wait_poll_seconds=args.wait_poll_seconds,
+            )
             runtime_result = execute_spell_runtime_action(
                 client=client,
                 settings=settings,
@@ -869,6 +895,8 @@ def main(argv: list[str] | None = None) -> int:
                 all_ranks=bool(args.all_ranks),
                 mode=args.mode,
             )
+            if wait_notes:
+                runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         return _print_publish_summary(
             publish_result=publish_result.to_dict(),
             runtime_result=None if runtime_result is None else runtime_result.to_dict(),
@@ -882,6 +910,18 @@ def main(argv: list[str] | None = None) -> int:
             player_guid=args.player_guid,
             player_name=args.player_name,
         )
+        wait_notes: list[str] = []
+        player_ref, wait_notes = _maybe_wait_for_player_online(
+            client=client,
+            settings=settings,
+            player_ref=player_ref,
+            player_guid=args.player_guid,
+            player_name=args.player_name,
+            mode=args.mode,
+            wait_for_player_online=bool(args.wait_for_player_online),
+            wait_timeout_seconds=args.wait_timeout_seconds,
+            wait_poll_seconds=args.wait_poll_seconds,
+        )
         runtime_result = execute_item_delivery_command(
             settings=settings,
             player_ref=player_ref,
@@ -892,6 +932,8 @@ def main(argv: list[str] | None = None) -> int:
             mail_body=args.mail_body,
             mode=args.mode,
         )
+        if wait_notes:
+            runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         return _print_runtime_summary(runtime_result, output_json=args.output_json)
 
     if args.command == "learn-spell":
@@ -900,6 +942,18 @@ def main(argv: list[str] | None = None) -> int:
             settings=settings,
             player_guid=args.player_guid,
             player_name=args.player_name,
+        )
+        wait_notes: list[str] = []
+        player_ref, wait_notes = _maybe_wait_for_player_online(
+            client=client,
+            settings=settings,
+            player_ref=player_ref,
+            player_guid=args.player_guid,
+            player_name=args.player_name,
+            mode=args.mode,
+            wait_for_player_online=bool(args.wait_for_player_online),
+            wait_timeout_seconds=args.wait_timeout_seconds,
+            wait_poll_seconds=args.wait_poll_seconds,
         )
         runtime_result = execute_spell_runtime_action(
             client=client,
@@ -910,6 +964,8 @@ def main(argv: list[str] | None = None) -> int:
             all_ranks=bool(args.all_ranks),
             mode=args.mode,
         )
+        if wait_notes:
+            runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         return _print_runtime_summary(runtime_result, output_json=args.output_json)
 
     if args.command == "unlearn-spell":
@@ -918,6 +974,18 @@ def main(argv: list[str] | None = None) -> int:
             settings=settings,
             player_guid=args.player_guid,
             player_name=args.player_name,
+        )
+        wait_notes: list[str] = []
+        player_ref, wait_notes = _maybe_wait_for_player_online(
+            client=client,
+            settings=settings,
+            player_ref=player_ref,
+            player_guid=args.player_guid,
+            player_name=args.player_name,
+            mode=args.mode,
+            wait_for_player_online=bool(args.wait_for_player_online),
+            wait_timeout_seconds=args.wait_timeout_seconds,
+            wait_poll_seconds=args.wait_poll_seconds,
         )
         runtime_result = execute_spell_runtime_action(
             client=client,
@@ -928,6 +996,8 @@ def main(argv: list[str] | None = None) -> int:
             all_ranks=bool(args.all_ranks),
             mode=args.mode,
         )
+        if wait_notes:
+            runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         return _print_runtime_summary(runtime_result, output_json=args.output_json)
 
     if args.command == "grant-shell":
@@ -936,6 +1006,18 @@ def main(argv: list[str] | None = None) -> int:
             settings=settings,
             player_guid=args.player_guid,
             player_name=args.player_name,
+        )
+        wait_notes: list[str] = []
+        player_ref, wait_notes = _maybe_wait_for_player_online(
+            client=client,
+            settings=settings,
+            player_ref=player_ref,
+            player_guid=args.player_guid,
+            player_name=args.player_name,
+            mode=args.mode,
+            wait_for_player_online=bool(args.wait_for_player_online),
+            wait_timeout_seconds=args.wait_timeout_seconds,
+            wait_poll_seconds=args.wait_poll_seconds,
         )
         shell_target = resolve_shell_target(draft_json=args.draft_json, shell_key=args.shell_key, spell_id=args.spell_id)
         config_result = configure_bonebound_servant_runtime(
@@ -956,6 +1038,8 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.mode,
             created_by="wm_spell_shell_grant",
         )
+        if wait_notes:
+            runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         grant_record = None
         if args.mode == "apply" and runtime_result.ok:
             grant_record = record_shell_grant_state(
@@ -987,6 +1071,18 @@ def main(argv: list[str] | None = None) -> int:
             player_guid=args.player_guid,
             player_name=args.player_name,
         )
+        wait_notes: list[str] = []
+        player_ref, wait_notes = _maybe_wait_for_player_online(
+            client=client,
+            settings=settings,
+            player_ref=player_ref,
+            player_guid=args.player_guid,
+            player_name=args.player_name,
+            mode=args.mode,
+            wait_for_player_online=bool(args.wait_for_player_online),
+            wait_timeout_seconds=args.wait_timeout_seconds,
+            wait_poll_seconds=args.wait_poll_seconds,
+        )
         shell_target = resolve_shell_target(draft_json=args.draft_json, shell_key=args.shell_key, spell_id=args.spell_id)
         runtime_result = execute_spell_runtime_action(
             client=client,
@@ -997,6 +1093,8 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.mode,
             created_by="wm_spell_shell_revoke",
         )
+        if wait_notes:
+            runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         grant_record = None
         if args.mode == "apply" and runtime_result.ok:
             grant_record = record_shell_grant_state(
@@ -1025,6 +1123,18 @@ def main(argv: list[str] | None = None) -> int:
             player_guid=args.player_guid,
             player_name=args.player_name,
         )
+        wait_notes: list[str] = []
+        player_ref, wait_notes = _maybe_wait_for_player_online(
+            client=client,
+            settings=settings,
+            player_ref=player_ref,
+            player_guid=args.player_guid,
+            player_name=args.player_name,
+            mode=args.mode,
+            wait_for_player_online=bool(args.wait_for_player_online),
+            wait_timeout_seconds=args.wait_timeout_seconds,
+            wait_poll_seconds=args.wait_poll_seconds,
+        )
         shell_target = resolve_shell_target(draft_json=args.draft_json, shell_key=args.shell_key, spell_id=args.spell_id)
         payload: dict[str, Any] = {"shell_spell_id": int(shell_target["spell_id"])}
         if args.payload_json is not None:
@@ -1041,6 +1151,8 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.mode,
             timeout_seconds=args.timeout_seconds,
         )
+        if wait_notes:
+            runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         return _print_runtime_summary(runtime_result, output_json=args.output_json)
 
     if args.command == "learn-twin-skeleton":
@@ -1049,6 +1161,18 @@ def main(argv: list[str] | None = None) -> int:
             settings=settings,
             player_guid=args.player_guid,
             player_name=args.player_name,
+        )
+        wait_notes: list[str] = []
+        player_ref, wait_notes = _maybe_wait_for_player_online(
+            client=client,
+            settings=settings,
+            player_ref=player_ref,
+            player_guid=args.player_guid,
+            player_name=args.player_name,
+            mode=args.mode,
+            wait_for_player_online=bool(args.wait_for_player_online),
+            wait_timeout_seconds=args.wait_timeout_seconds,
+            wait_poll_seconds=args.wait_poll_seconds,
         )
         config_result = configure_twin_skeleton_runtime(
             settings=settings,
@@ -1065,6 +1189,8 @@ def main(argv: list[str] | None = None) -> int:
             all_ranks=bool(args.all_ranks),
         )
         runtime_result = execute_runtime_command(settings=settings, command=command, mode=args.mode)
+        if wait_notes:
+            runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         return _print_twin_skeleton_summary(
             player_ref=player_ref,
             shell_spell_id=args.shell_spell_id,
@@ -1131,6 +1257,7 @@ def _build_parser() -> argparse.ArgumentParser:
     publish_item.add_argument("--count", type=int, default=1)
     publish_item.add_argument("--mail-subject", default="WM Content")
     publish_item.add_argument("--mail-body", default="Prototype item delivery.")
+    _add_wait_for_player_online_args(publish_item)
     publish_item.add_argument("--output-json", type=Path)
 
     publish_spell = subparsers.add_parser("publish-spell", help="Publish a managed spell draft and optionally learn it on a player.")
@@ -1139,6 +1266,7 @@ def _build_parser() -> argparse.ArgumentParser:
     publish_spell.add_argument("--learn-to-player-guid", type=int)
     publish_spell.add_argument("--learn-to-player-name")
     publish_spell.add_argument("--all-ranks", action="store_true")
+    _add_wait_for_player_online_args(publish_spell)
     publish_spell.add_argument("--output-json", type=Path)
 
     publish_shell = subparsers.add_parser("publish-shell", help="Publish a WM spell shell draft into wm_spell_shell / wm_spell_behavior.")
@@ -1155,6 +1283,7 @@ def _build_parser() -> argparse.ArgumentParser:
     give_item.add_argument("--mail-subject", default="WM Content")
     give_item.add_argument("--mail-body", default="Prototype item delivery.")
     give_item.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
+    _add_wait_for_player_online_args(give_item)
     give_item.add_argument("--output-json", type=Path)
 
     learn_spell = subparsers.add_parser("learn-spell", help="Teach a spell directly to a player over SOAP.")
@@ -1163,6 +1292,7 @@ def _build_parser() -> argparse.ArgumentParser:
     learn_spell.add_argument("--player-name")
     learn_spell.add_argument("--all-ranks", action="store_true")
     learn_spell.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
+    _add_wait_for_player_online_args(learn_spell)
     learn_spell.add_argument("--output-json", type=Path)
 
     unlearn_spell = subparsers.add_parser("unlearn-spell", help="Remove a spell directly from a player over SOAP.")
@@ -1171,6 +1301,7 @@ def _build_parser() -> argparse.ArgumentParser:
     unlearn_spell.add_argument("--player-name")
     unlearn_spell.add_argument("--all-ranks", action="store_true")
     unlearn_spell.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
+    _add_wait_for_player_online_args(unlearn_spell)
     unlearn_spell.add_argument("--output-json", type=Path)
 
     grant_shell = subparsers.add_parser("grant-shell", help="Scope the WM spell module for a player and learn a WM shell spell.")
@@ -1184,6 +1315,7 @@ def _build_parser() -> argparse.ArgumentParser:
     grant_shell.add_argument("--reload-via-soap", action="store_true")
     grant_shell.add_argument("--reload-command", default=".reload config")
     grant_shell.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
+    _add_wait_for_player_online_args(grant_shell)
     grant_shell.add_argument("--output-json", type=Path)
 
     ungrant_shell = subparsers.add_parser("ungrant-shell", help="Remove a WM shell spell from a player.")
@@ -1193,6 +1325,7 @@ def _build_parser() -> argparse.ArgumentParser:
     ungrant_shell.add_argument("--player-guid", type=int)
     ungrant_shell.add_argument("--player-name")
     ungrant_shell.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
+    _add_wait_for_player_online_args(ungrant_shell)
     ungrant_shell.add_argument("--output-json", type=Path)
 
     invoke_shell = subparsers.add_parser("invoke-shell-behavior", help="Invoke a WM spell behavior through the lab-only debug lane.")
@@ -1205,6 +1338,7 @@ def _build_parser() -> argparse.ArgumentParser:
     invoke_shell.add_argument("--player-name")
     invoke_shell.add_argument("--timeout-seconds", type=float)
     invoke_shell.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
+    _add_wait_for_player_online_args(invoke_shell)
     invoke_shell.add_argument("--output-json", type=Path)
 
     learn_twin_skeleton = subparsers.add_parser(
@@ -1219,6 +1353,7 @@ def _build_parser() -> argparse.ArgumentParser:
     learn_twin_skeleton.add_argument("--reload-via-soap", action="store_true")
     learn_twin_skeleton.add_argument("--reload-command", default=".reload config")
     learn_twin_skeleton.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
+    _add_wait_for_player_online_args(learn_twin_skeleton)
     learn_twin_skeleton.add_argument("--output-json", type=Path)
 
     return parser
@@ -1255,28 +1390,105 @@ def _resolve_player_reference(
     player_guid: int | None,
     player_name: str | None,
 ) -> dict[str, Any]:
-    if player_guid not in (None, 0) and player_name not in (None, ""):
+    if player_guid not in (None, 0) and player_name not in (None, "") and client is None and settings is None:
         return {
             "player_guid": int(player_guid),
             "player_name": str(player_name),
             "command_player": str(player_name),
         }
-    if player_name not in (None, ""):
-        return {"player_guid": player_guid, "player_name": str(player_name), "command_player": str(player_name)}
-    if player_guid in (None, 0):
+    if player_guid in (None, 0) and player_name in (None, ""):
         raise ValueError("Provide --player-name or --player-guid.")
+
+    sql: str
+    if player_guid not in (None, 0):
+        sql = f"SELECT guid, name, online FROM characters WHERE guid = {int(player_guid)} LIMIT 1"
+    else:
+        sql = f"SELECT guid, name, online FROM characters WHERE name = {_sql_string(str(player_name))} LIMIT 1"
+
     rows = client.query(
         host=settings.char_db_host,
         port=settings.char_db_port,
         user=settings.char_db_user,
         password=settings.char_db_password,
         database=settings.char_db_name,
-        sql=f"SELECT guid, name FROM characters WHERE guid = {int(player_guid)} LIMIT 1",
+        sql=sql,
     )
     if not rows:
-        raise ValueError(f"Could not resolve player GUID {int(player_guid)} in characters DB.")
+        if player_guid not in (None, 0):
+            raise ValueError(f"Could not resolve player GUID {int(player_guid)} in characters DB.")
+        raise ValueError(f"Could not resolve player name `{player_name}` in characters DB.")
     resolved_name = str(rows[0]["name"])
-    return {"player_guid": int(rows[0]["guid"]), "player_name": resolved_name, "command_player": str(int(rows[0]["guid"]))}
+    resolved_guid = int(rows[0]["guid"])
+    online = bool(int(rows[0]["online"] or 0))
+    command_player = str(player_name) if player_name not in (None, "") else str(resolved_guid)
+    return {
+        "player_guid": resolved_guid,
+        "player_name": resolved_name,
+        "command_player": command_player,
+        "online": online,
+    }
+
+
+def _maybe_wait_for_player_online(
+    *,
+    client: MysqlCliClient,
+    settings: Settings,
+    player_ref: dict[str, Any],
+    player_guid: int | None,
+    player_name: str | None,
+    mode: str,
+    wait_for_player_online: bool,
+    wait_timeout_seconds: float,
+    wait_poll_seconds: float,
+) -> tuple[dict[str, Any], list[str]]:
+    if mode != "apply" or not wait_for_player_online:
+        return player_ref, []
+    if bool(player_ref.get("online", False)):
+        return player_ref, [f"player_online=true player={player_ref.get('player_name')}"]
+    return _wait_for_player_online(
+        client=client,
+        settings=settings,
+        player_guid=player_guid if player_guid not in (None, 0) else _int_or_none(player_ref.get("player_guid")),
+        player_name=player_name if player_name not in (None, "") else _str_or_none(player_ref.get("player_name")),
+        timeout_seconds=wait_timeout_seconds,
+        poll_seconds=wait_poll_seconds,
+    )
+
+
+def _wait_for_player_online(
+    *,
+    client: MysqlCliClient,
+    settings: Settings,
+    player_guid: int | None,
+    player_name: str | None,
+    timeout_seconds: float,
+    poll_seconds: float,
+) -> tuple[dict[str, Any], list[str]]:
+    deadline = time.time() + max(float(timeout_seconds), 1.0)
+    interval = max(float(poll_seconds), 0.2)
+    while True:
+        player_ref = _resolve_player_reference(
+            client=client,
+            settings=settings,
+            player_guid=player_guid,
+            player_name=player_name,
+        )
+        if bool(player_ref.get("online", False)):
+            return player_ref, [
+                f"waited_for_player_online=true player={player_ref.get('player_name')}",
+                f"player_guid={player_ref.get('player_guid')}",
+            ]
+        if time.time() >= deadline:
+            raise ValueError(
+                f"Timed out waiting for player `{player_ref.get('player_name')}` ({player_ref.get('player_guid')}) to come online."
+            )
+        time.sleep(interval)
+
+
+def _add_wait_for_player_online_args(subparser: argparse.ArgumentParser) -> None:
+    subparser.add_argument("--wait-for-player-online", action="store_true")
+    subparser.add_argument("--wait-timeout-seconds", type=float, default=600.0)
+    subparser.add_argument("--wait-poll-seconds", type=float, default=2.0)
 
 
 def _default_draft_path(*, kind: str, reserved_id: int, name: str) -> Path:
@@ -1318,6 +1530,8 @@ def _print_publish_summary(
             f"executed={str(bool(runtime_result.get('executed', False))).lower()} "
             f"command={runtime_result.get('command')}"
         )
+        for note in runtime_result.get("notes", []) or []:
+            print(f"note={note}")
     if output_json is not None:
         print(f"output_json={output_json}")
     return 0 if validation_ok and preflight_ok and (runtime_result is None or bool(runtime_result.get("ok", False))) else 1
@@ -1333,6 +1547,8 @@ def _print_runtime_summary(result: WorkbenchRuntimeResult, *, output_json: Path 
     )
     if result.fault_string not in (None, ""):
         print(f"fault={result.fault_string}")
+    for note in result.notes or []:
+        print(f"note={note}")
     if output_json is not None:
         print(f"output_json={output_json}")
     return 0 if result.ok else 1
@@ -1398,6 +1614,8 @@ def _print_shell_grant_summary(
         f"config_changed={str(bool(config_result.get('changed', False)) if isinstance(config_result, dict) else False).lower()} "
         f"runtime_ok={str(bool(runtime_result.ok)).lower()} reload_ok={str(bool(reload_ok)).lower()}"
     )
+    for note in runtime_result.notes or []:
+        print(f"note={note}")
     if grant_record is not None:
         print(f"grant_recorded=true revoked={str(bool(grant_record.get('revoked', False))).lower()}")
     if output_json is not None:

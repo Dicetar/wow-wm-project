@@ -8,10 +8,51 @@
   "default_package_name": "patch-z.mpq",
   "default_install_path": "D:\\WOW\\world of warcraft 3.3.5a hd\\Data\\patch-z.mpq",
   "artifact_commit_policy": "local_only_do_not_commit",
+  "generation_mode": "range_driven",
+  "slots_per_family": 1000,
   "notes": [
     "Shell rows must be WM-only client identities.",
     "Do not copy stock summon spell rows for WM abilities.",
-    "If server-side DBC rows are required, stage matching files into D:\\WOW\\WM_BridgeLab\\run\\data\\dbc\\ before testing."
+    "If server-side DBC rows are required, stage matching files into D:\\WOW\\WM_BridgeLab\\run\\data\\dbc\\ before testing.",
+    "The client patch should generate shell rows from family ranges instead of hand-maintaining thousands of explicit entries."
+  ],
+  "family_generation": [
+    {
+      "family_id": "summon_pet",
+      "slot_range_start": 940000,
+      "slot_count": 1000,
+      "seed_template": "wm_summon_pet"
+    },
+    {
+      "family_id": "summon_companion",
+      "slot_range_start": 941000,
+      "slot_count": 1000,
+      "seed_template": "wm_summon_companion"
+    },
+    {
+      "family_id": "self_buff",
+      "slot_range_start": 942000,
+      "slot_count": 1000,
+      "seed_template": "wm_self_buff"
+    },
+    {
+      "family_id": "offensive_bolt",
+      "slot_range_start": 943000,
+      "slot_count": 1000,
+      "seed_template": "wm_offensive_bolt"
+    },
+    {
+      "family_id": "passive_aura",
+      "slot_range_start": 944000,
+      "slot_count": 1000,
+      "seed_template": "wm_passive_aura"
+    },
+    {
+      "family_id": "pet_active",
+      "slot_range_start": 945000,
+      "slot_count": 1000,
+      "seed_template": "wm_pet_active"
+    }
   ],
   "shells": [
     {
@@ -37,8 +78,29 @@
       ]
     },
     {
+      "shell_key": "bonebound_twins_v1",
+      "spell_id": 940001,
+      "family_id": "summon_pet",
+      "label": "Bonebound Twins",
+      "behavior_kind": "summon_bonebound_twin_v2",
+      "tooltip": "Raise Bonebound Alpha and Bonebound Omega under WM control.",
+      "icon_hint": "Spell_Shadow_AnimateDead",
+      "shell_row_requirements": {
+        "effect_model": "dummy_script",
+        "allow_class_restriction": false,
+        "allow_reagents": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Use the same generic WM shell dispatch as 940000.",
+        "Server-side behavior owns Alpha pet creation and Omega guardian sync."
+      ]
+    },
+    {
       "shell_key": "bonebound_servant_slash_v1",
-      "spell_id": 940500,
+      "spell_id": 945000,
       "family_id": "pet_active",
       "label": "Bonebound Slash",
       "behavior_kind": "bonebound_pet_active_v1",

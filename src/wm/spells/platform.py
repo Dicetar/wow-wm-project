@@ -379,6 +379,8 @@ def _default_behavior_config(shell: SpellShellDefinition) -> dict[str, Any]:
             "name": "Bonebound Servant",
             "require_corpse": True,
             "persist_pet": True,
+            "owner_intellect_to_all_stats": True,
+            "owner_shadow_power_to_attack_power": True,
             "virtual_item_1": 1897,
             "virtual_item_2": 0,
             "virtual_item_3": 0,
@@ -396,6 +398,32 @@ def _default_behavior_config(shell: SpellShellDefinition) -> dict[str, Any]:
             "scale_per_intellect": 0.001,
             "scale_per_shadow_power": 0.0007,
             "attack_time_ms": 2000,
+        }
+    if shell.behavior_kind == "summon_bonebound_twin_v2":
+        return {
+            "creature_entry": 1860,
+            "display_id": 734,
+            "name": "Bonebound Alpha",
+            "require_corpse": False,
+            "persist_pet": True,
+            "spawn_omega": True,
+            "preserve_base_stats": True,
+            "owner_intellect_to_all_stats": True,
+            "owner_shadow_power_to_attack_power": True,
+            "virtual_item_1": 1897,
+            "virtual_item_2": 0,
+            "virtual_item_3": 0,
+            "omega_creature_entry": 1860,
+            "omega_name": "Bonebound Omega",
+            "omega_display_id": 734,
+            "omega_virtual_item_1": 1897,
+            "omega_virtual_item_2": 0,
+            "omega_virtual_item_3": 0,
+            "omega_scale_multiplier": 1.0,
+            "omega_health_pct": 100,
+            "omega_damage_pct": 100,
+            "omega_follow_distance": 2.2,
+            "omega_follow_angle": -1.5708,
         }
     return {}
 

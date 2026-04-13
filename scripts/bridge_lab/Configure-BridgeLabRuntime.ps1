@@ -38,6 +38,24 @@ function Set-ConfigValue {
     [System.IO.File]::WriteAllText($Path, $content, $utf8NoBom)
 }
 
+function Ensure-ConfigFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (Test-Path -LiteralPath $Path) {
+        return
+    }
+
+    $distPath = $Path + ".dist"
+    if (-not (Test-Path -LiteralPath $distPath)) {
+        throw "Config file was not found and no .dist template exists: $Path"
+    }
+
+    Copy-Item -LiteralPath $distPath -Destination $Path -Force
+}
+
 $configRoot = Join-Path $WorkspaceRoot "run\configs"
 $moduleConfigRoot = Join-Path $configRoot "modules"
 $authConfig = Join-Path $configRoot "authserver.conf"
@@ -56,6 +74,10 @@ $loginDb = """127.0.0.1;$LabMySqlPort;acore;acore;acore_auth"""
 $worldDb = """127.0.0.1;$LabMySqlPort;acore;acore;acore_world"""
 $charactersDb = """127.0.0.1;$LabMySqlPort;acore;acore;acore_characters"""
 $playerbotsDb = """127.0.0.1;$LabMySqlPort;acore;acore;acore_playerbots"""
+
+foreach ($moduleConfig in @($bridgeConfig, $spellsConfig, $prototypeConfig, $weatherVibeConfig)) {
+    Ensure-ConfigFile -Path $moduleConfig
+}
 
 Set-ConfigValue -Path $authConfig -Key "LoginDatabaseInfo" -Value $loginDb
 Set-ConfigValue -Path $worldConfig -Key "LoginDatabaseInfo" -Value $loginDb
@@ -79,7 +101,7 @@ if (Test-Path $spellsConfig) {
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """"""
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.LabOnlyDebugInvokeEnable" -Value "1"
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.Enable" -Value "1"
-    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value """940000"""
+    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value """940000,940001,49126"""
 }
 
 if (Test-Path $prototypeConfig) {

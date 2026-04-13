@@ -23,6 +23,7 @@ The shell bank solves one specific problem: stock 3.3.5 clients do not know abou
 - manifest: `client_patches/wm_spell_shell_bank/manifest.json`
 - shell definitions: `client_patches/wm_spell_shell_bank/shells/*.json`
 - source contract: `control/runtime/spell_shell_bank.json`
+- family generation model: 6 families x 1000 slots each = 6000 pre-seeded WM shells
 
 ## First install target
 
@@ -40,6 +41,12 @@ If `patch-z.mpq` is already occupied on a specific client, pick the next free pa
 - behavior kind: `summon_bonebound_servant_v1`
 - server config hook: `WmSpells.BoneboundServant.ShellSpellIds = "940000"`
 
+Reserved future pet-active shell:
+
+- shell key: `bonebound_servant_slash_v1`
+- spell ID: `945000`
+- family: `pet_active`
+
 ## Shell requirements for `940000`
 
 - WM-only spell row, no copied stock summon row
@@ -56,11 +63,15 @@ If `patch-z.mpq` is already occupied on a specific client, pick the next free pa
 
 ## Local build/install workflow
 
-1. Build or export the `940000` shell row into the local patch package defined by `manifest.json`.
-2. Install the generated package to `D:\WOW\world of warcraft 3.3.5a hd\Data\patch-z.mpq`.
-3. If the shell requires matching server-side DBC data, stage that copy into the lab runtime DBC tree before boot:
+1. Export the generated patch plan:
+   - `python -m wm.spells.export_patch_plan --summary`
+   - default output: `.wm-bootstrap\state\client-patches\wm_spell_shell_bank\patch-plan.json`
+2. Build or export the `940000` shell row into the local patch package defined by `manifest.json`.
+   The intended patch workflow is range-driven: generate 1000 pre-seeded rows per family from the family ranges in the manifest, then override named shells like `940000` and `945000` with WM-specific metadata from the generated patch plan.
+3. Install the generated package to `D:\WOW\world of warcraft 3.3.5a hd\Data\patch-z.mpq`.
+4. If the shell requires matching server-side DBC data, stage that copy into the lab runtime DBC tree before boot:
    - `D:\WOW\WM_BridgeLab\run\data\dbc\`
-4. Restart the client after installing the patch.
+5. Restart the client after installing the patch.
 
 This repo does not commit the binary patch output. It commits the shell contract, install target, and build notes only.
 

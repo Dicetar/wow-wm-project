@@ -1,4 +1,16 @@
+Status: DESIGN_ONLY
+Last verified: 2026-04-13
+Verified by: Codex
+Doc type: design
+
 # WM Roadmap
+
+This file is the intended direction, not the current truth source.
+
+Read these first if you need current state:
+
+- [WM Platform Handoff](WM_PLATFORM_HANDOFF.md)
+- [Summon and Spell Platform Status](SUMMON_SPELL_PLATFORM_STATUS.md)
 
 WM is now a platform project, not a bootstrap experiment.
 

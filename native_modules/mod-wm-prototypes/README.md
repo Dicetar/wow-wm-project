@@ -1,3 +1,8 @@
+Status: BROKEN
+Last verified: 2026-04-13
+Verified by: Codex
+Doc type: reference
+
 # mod-wm-prototypes
 
 Legacy WM prototype incubator.
@@ -50,3 +55,4 @@ Treat them as historical context, not as an implementation recipe.
 For the current success/failure map of the summon lane, see:
 
 - [D:/WOW/wm-project/docs/SUMMON_SPELL_PLATFORM_STATUS.md](D:/WOW/wm-project/docs/SUMMON_SPELL_PLATFORM_STATUS.md)
+- [D:/WOW/wm-project/docs/SUMMON_FAILURE_POSTMORTEM.md](D:/WOW/wm-project/docs/SUMMON_FAILURE_POSTMORTEM.md)

@@ -236,8 +236,12 @@ If you use Questie-335 while testing WM custom quests like `910000`, copy `wow_a
 
 ## Docs
 
+- [Documentation Index / Start Here](docs/README_OPERATIONS_INDEX.md)
+- [WM Platform Handoff](docs/WM_PLATFORM_HANDOFF.md)
+- [Codex Working Rules](docs/CODEX_WORKING_RULES.md)
 - [Work Summary](docs/WORK_SUMMARY.md)
 - [Summon and Spell Platform Status](docs/SUMMON_SPELL_PLATFORM_STATUS.md)
+- [Summon Failure Postmortem](docs/SUMMON_FAILURE_POSTMORTEM.md)
 - [Native Bridge Action Bus](docs/native-bridge-action-bus.md)
 - [Content Workbench V1](docs/CONTENT_WORKBENCH_V1.md)
 - [On-The-Fly Spells V1](docs/ON_THE_FLY_SPELLS_V1.md)

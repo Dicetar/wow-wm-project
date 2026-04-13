@@ -18,6 +18,7 @@ from wm.content.workbench import create_passive_draft
 from wm.content.workbench import create_trigger_spell_draft
 from wm.content.workbench import create_visible_spell_draft
 from wm.content.workbench import resolve_shell_target
+from wm.content.workbench import _maybe_wait_for_player_online
 from wm.content.workbench import _resolve_player_reference
 from wm.content.workbench import WorkbenchRuntimeResult
 from wm.reserved.models import ReservedSlot
@@ -316,6 +317,77 @@ class ContentWorkbenchTests(unittest.TestCase):
         self.assertEqual(player_ref["player_guid"], 5406)
         self.assertEqual(player_ref["player_name"], "Jecia")
         self.assertEqual(player_ref["command_player"], "Jecia")
+
+    def test_resolve_player_reference_reads_online_state_from_db(self) -> None:
+        class FakeClient:
+            def query(self, **kwargs):
+                return [{"guid": "5406", "name": "Jecia", "online": "1"}]
+
+        settings = type(
+            "SettingsStub",
+            (),
+            {
+                "char_db_host": "127.0.0.1",
+                "char_db_port": 3306,
+                "char_db_user": "acore",
+                "char_db_password": "acore",
+                "char_db_name": "acore_characters",
+            },
+        )()
+
+        player_ref = _resolve_player_reference(
+            client=FakeClient(),  # type: ignore[arg-type]
+            settings=settings,  # type: ignore[arg-type]
+            player_guid=5406,
+            player_name="Jecia",
+        )
+
+        self.assertEqual(player_ref["player_guid"], 5406)
+        self.assertTrue(player_ref["online"])
+
+    def test_maybe_wait_for_player_online_polls_until_online(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def query(self, **kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    return [{"guid": "5406", "name": "Jecia", "online": "0"}]
+                return [{"guid": "5406", "name": "Jecia", "online": "1"}]
+
+        settings = type(
+            "SettingsStub",
+            (),
+            {
+                "char_db_host": "127.0.0.1",
+                "char_db_port": 3306,
+                "char_db_user": "acore",
+                "char_db_password": "acore",
+                "char_db_name": "acore_characters",
+            },
+        )()
+
+        original_sleep = _maybe_wait_for_player_online.__globals__["time"].sleep
+        _maybe_wait_for_player_online.__globals__["time"].sleep = lambda *_args, **_kwargs: None
+        try:
+            player_ref, notes = _maybe_wait_for_player_online(
+                client=FakeClient(),  # type: ignore[arg-type]
+                settings=settings,  # type: ignore[arg-type]
+                player_ref={"player_guid": 5406, "player_name": "Jecia", "command_player": "Jecia", "online": False},
+                player_guid=5406,
+                player_name="Jecia",
+                mode="apply",
+                wait_for_player_online=True,
+                wait_timeout_seconds=5.0,
+                wait_poll_seconds=0.01,
+            )
+        finally:
+            _maybe_wait_for_player_online.__globals__["time"].sleep = original_sleep
+
+        self.assertEqual(player_ref["player_guid"], 5406)
+        self.assertTrue(player_ref["online"])
+        self.assertTrue(any("waited_for_player_online=true" in note for note in notes))
 
 
 if __name__ == "__main__":

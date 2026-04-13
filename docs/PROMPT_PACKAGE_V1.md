@@ -1,4 +1,17 @@
+Status: STALE
+Last verified: 2026-04-13
+Verified by: Codex
+Doc type: reference
+
 # Prompt Package V1
+
+This file is historical prompt-package context, not the current operator or agent entrypoint.
+
+Use these first for current repo guidance:
+
+- [Documentation Index](README_OPERATIONS_INDEX.md)
+- [WM Platform Handoff](WM_PLATFORM_HANDOFF.md)
+- [Codex Working Rules](CODEX_WORKING_RULES.md)
 
 ## Architecture choice
 

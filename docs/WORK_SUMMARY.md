@@ -1,4 +1,14 @@
+Status: PARTIAL
+Last verified: 2026-04-13
+Verified by: Codex
+Doc type: handoff
+
 # Work Summary
+
+For the best current entrypoint, start with:
+
+- [Documentation Index](README_OPERATIONS_INDEX.md)
+- [WM Platform Handoff](WM_PLATFORM_HANDOFF.md)
 
 This repository is now a real WM platform baseline, not just an idea pile.
 
