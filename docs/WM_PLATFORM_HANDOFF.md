@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-13
+Last verified: 2026-04-14
 Verified by: Codex
 Doc type: handoff
 
@@ -29,6 +29,11 @@ Current architecture:
 
 - canonical WM event spine
 - manual control contract system
+- initial subject resolver slice maps target profiles into WM subject cards and exposes `python -m wm.subjects.inspect`
+- DB-backed journal reader loads WM subject definitions, enrichments, player-subject counters, and raw journal events when those tables exist; prompt demos and inspect paths now fall back to resolver-built subject cards when journal rows or live DB access are missing
+- operator journal inspection exists through `python -m wm.journal.inspect`
+- deterministic context-pack builder composes source events, character state, target profiles, subject cards, journal summaries, recent events, reactive quest runtime, control recipe/policy metadata, and latest native context snapshots into `wm.context_pack.v1`; unresolved target/event CLI requests return `UNKNOWN`
+- deterministic lab seed `sql/dev/seed_journal_context_5406_world.sql` exists for player `5406`, creature entry `46`, and one seeded `wm_event_log` smoke event
 - content workbench for WM-owned items, spells, and shell metadata
 - repo-owned bootstrap and bridge-lab workflows
 
@@ -36,8 +41,20 @@ Current architecture:
 
 - `addon_log` is the currently proven live perception path
 - `native_bridge` exists and can emit canonical WM events
+- `wm.events.watch` now survives per-iteration spine failures and flushes summary/error lines for automation logs instead of exiting silently on the first exception
+- reactive bounty installs now have a repo-owned fast path through `control/examples/reactive_bounties/` and `scripts/bridge_lab/Install-BridgeLabReactiveBounty.ps1`
+- reactive bounty templates now default to fresh `wm_reserved_slot` quest allocation instead of reusing one mutable live quest ID across iterations
+- reactive bounty dry-runs can preview the next free reserved quest slot without staging it or producing a false preflight failure
+- shared reactive bounty publishing supports richer quest reward fields when the live `quest_template` schema exposes them:
+  - money
+  - reward item
+  - `RewardXPDifficulty`
+  - `RewardSpell` / `RewardDisplaySpell`
+  - `RewardFactionID*` plus value/override slots
 - native action queue exists with DB-backed policy and player scoping
 - native spell learn and unlearn actions exist
+- `quest_grant` prefers native `quest_add` when bridge config, player scope, and policy are ready, with SOAP fallback otherwise
+- the Phase 1 reactive bounty loop has repo-level automated parity coverage and historical native bridge proof for quest `910000`
 
 ### Native spell platform
 
@@ -49,9 +66,21 @@ Current architecture:
 ## What is partial
 
 - `native_bridge` is not yet the fully proven primary live path for all current WM gameplay loops
+- the April 13, 2026 bridge-lab rerun only reached smoke level:
+  - `debug_ping` reached `done`
+  - `wm.events.watch --adapter native_bridge --arm-from-end` advanced the live high-water mark
+  - the full in-game `Kobold Vermin -> quest 910000 -> reward -> cooldown -> regrant` loop was not rerun because validation player `5406` was offline
 - broad native action vocabulary exists, but many verbs are still disabled or `not_implemented`
+- `context_snapshot_request` is `PARTIAL`: the action queues `wm_bridge_context_request`, and `python -m wm.context.snapshot` can request/wait with a bounded timeout, but tracked native code does not yet include a `wm_bridge_context_snapshot` writer
+- subject recognition is only a first slice:
+  - static lookup and live-target resolver wrapping exist
+  - DB-backed journal read helpers and resolver-card fallback exist
+  - context-pack assembly exists and includes recipe/policy metadata plus latest native snapshot rows when present
+  - repo tests are `WORKING` for the resolver, journal reader/inspect, and context-pack assembly
+  - live DB row proof, automatic subject materialization, fresh native snapshot consumption, zone mood, and full proposal-gate previews are still `PARTIAL`
 - visible shell-bank spells are not yet proven end-to-end in the client because the local patch artifact is not finalized and installed from repo instructions
 - summon/twin behavior work exists in pieces, but only the debug/native lane is currently supported for iteration
+- experimental `template_watch` / `template_publish` comparison work remains isolated in `.worktrees/template-watch-compare`; its dynamic binding idea is useful, but its standalone watcher path is not the production architecture
 
 ## What is broken or retired
 

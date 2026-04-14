@@ -22,6 +22,8 @@ class AutoBountyTarget:
     subject_entry: int | None = None
     subject_name_prefix: str | None = None
     quest_id: int | None = None
+    objective_target_name: str | None = None
+    quest_title: str | None = None
     kill_threshold: int = 4
     window_seconds: int = 120
     post_reward_cooldown_seconds: int = 60
@@ -40,7 +42,13 @@ class AutoBountyTarget:
 
 AUTO_BOUNTY_TARGETS: tuple[AutoBountyTarget, ...] = (
     AutoBountyTarget(subject_entry=6, turn_in_npc_entry=197, rule_key="reactive_bounty:auto:kobold_vermin"),
-    AutoBountyTarget(subject_name_prefix="Defias ", turn_in_npc_entry=240),
+    AutoBountyTarget(
+        subject_name_prefix="Defias ",
+        turn_in_npc_entry=261,
+        objective_target_name="Defias Bandits",
+        quest_title="Bounty: Defias Bandits",
+        window_seconds=300,
+    ),
 )
 
 
@@ -117,12 +125,14 @@ class ReactiveAutoBountyManager:
                 "auto_bounty_subject_entry": resolved_subject_entry,
                 "auto_bounty_turn_in_npc_entry": int(target.turn_in_npc_entry),
                 "auto_bounty_source_name_prefix": target.subject_name_prefix,
+                "objective_target_name": target.objective_target_name,
+                "quest_title": target.quest_title,
                 "installer": "wm.reactive.auto_bounty",
             },
             notes=["auto_bounty"],
             player_scope=PlayerRef(guid=player_guid, name=player_name),
             subject=CreatureRef(entry=subject.entry, name=subject.name),
-            quest=QuestRef(id=int(quest_id), title=f"Bounty: {subject.name}"),
+            quest=QuestRef(id=int(quest_id), title=str(target.quest_title or f"Bounty: {subject.name}")),
             turn_in_npc=NpcRef(entry=turn_in_npc.entry, name=turn_in_npc.name),
         )
         self.installer.install(rule=rule, mode="apply")

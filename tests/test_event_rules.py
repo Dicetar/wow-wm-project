@@ -371,6 +371,62 @@ class DeterministicRuleEngineTests(unittest.TestCase):
         rewarded_result = engine.evaluate(event, preview=True)
         self.assertEqual(rewarded_result.suppressed_opportunities[0].metadata["suppression_reason"], "post_reward_cooldown_active")
 
+    def test_rewarded_state_reopens_after_post_reward_cooldown_expires(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="db_poll",
+                source_event_key=str(index),
+                occurred_at=f"2026-04-08 12:00:0{index}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=6,
+            )
+            for index in range(1, 5)
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:kobold_vermin",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=6,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=120,
+                quest_id=910000,
+                turn_in_npc_entry=197,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={},
+                notes=[],
+            )
+        ]
+        reactive_store.runtime_state = "rewarded"
+        reactive_store.snapshot = PlayerQuestRuntimeState(
+            player_guid=5406,
+            quest_id=910000,
+            current_state="rewarded",
+            last_transition_at="2026-04-08 11:58:00",
+        )
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1], preview=True)
+
+        self.assertEqual({item.event_type for item in result.derived_events}, {"kill_burst_detected"})
+        self.assertEqual(len(result.suppressed_opportunities), 0)
+        self.assertEqual(len(result.opportunities), 1)
+        self.assertEqual(result.opportunities[0].metadata["runtime_state"], "rewarded")
+
     def test_derived_event_key_is_compacted_for_long_source_keys(self) -> None:
         store = FakeRuleStore()
         reactive_store = FakeReactiveStore()
@@ -446,7 +502,7 @@ class DeterministicRuleEngineTests(unittest.TestCase):
             kill_threshold=4,
             window_seconds=120,
             quest_id=910000,
-            turn_in_npc_entry=240,
+            turn_in_npc_entry=261,
             grant_mode="direct_quest_add",
             post_reward_cooldown_seconds=60,
             metadata={"auto_bounty": True},
@@ -465,7 +521,7 @@ class DeterministicRuleEngineTests(unittest.TestCase):
 
         self.assertEqual(len(auto_bounty.calls), 1)
         self.assertEqual(result.opportunities[0].metadata["quest_id"], 910000)
-        self.assertEqual(result.opportunities[0].metadata["turn_in_npc_entry"], 240)
+        self.assertEqual(result.opportunities[0].metadata["turn_in_npc_entry"], 261)
 
     def test_defias_cutpurse_rule_triggers_from_exact_kills(self) -> None:
         store = FakeRuleStore()
@@ -496,7 +552,7 @@ class DeterministicRuleEngineTests(unittest.TestCase):
                 kill_threshold=4,
                 window_seconds=120,
                 quest_id=910001,
-                turn_in_npc_entry=240,
+                turn_in_npc_entry=261,
                 grant_mode="direct_quest_add",
                 post_reward_cooldown_seconds=60,
                 metadata={"auto_bounty": True, "auto_bounty_source_name_prefix": "Defias "},
@@ -544,7 +600,7 @@ class DeterministicRuleEngineTests(unittest.TestCase):
                 kill_threshold=4,
                 window_seconds=120,
                 quest_id=910000,
-                turn_in_npc_entry=240,
+                turn_in_npc_entry=261,
                 grant_mode="direct_quest_add",
                 post_reward_cooldown_seconds=60,
                 metadata={},
@@ -561,7 +617,7 @@ class DeterministicRuleEngineTests(unittest.TestCase):
             kill_threshold=4,
             window_seconds=120,
             quest_id=910002,
-            turn_in_npc_entry=240,
+            turn_in_npc_entry=261,
             grant_mode="direct_quest_add",
             post_reward_cooldown_seconds=60,
             metadata={"auto_bounty": True, "auto_bounty_source_name_prefix": "Defias "},

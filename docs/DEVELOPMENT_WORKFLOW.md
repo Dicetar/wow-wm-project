@@ -68,6 +68,21 @@ At minimum check:
 
 Do **not** assume defaults are correct for your current machine.
 
+### Detached watcher rule on Windows
+
+If you need a long-running detached WM watcher with log files and PID tracking:
+
+- prefer the repo-owned bridge-lab watch scripts
+- if you must launch a watcher yourself, copy the `System.Diagnostics.ProcessStartInfo` pattern from `scripts/bridge_lab/Start-BridgeLabNativeWatch.ps1`
+- for long-running watchers launched through Codex shell commands, use `UseShellExecute = $true`; otherwise the child watcher can remain attached to the shell command lifetime and block the UI
+- do **not** use PowerShell `Start-Process` for this case on this host; it can fail on duplicate `Path` / `PATH` environment keys and leave behind false-positive start metadata
+
+Always verify:
+
+- the process object exists
+- the PID file is non-empty
+- the process is still alive after a short startup delay
+
 ---
 
 ## 4. Run repo-side tests first

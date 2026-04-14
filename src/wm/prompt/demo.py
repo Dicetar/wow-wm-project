@@ -8,6 +8,7 @@ from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient
 from wm.journal.reader import load_subject_journal_for_creature
 from wm.prompt.package import build_prompt_package
+from wm.subjects.resolver import build_subject_card_from_profile
 from wm.targets.resolver import LookupStore, TargetResolver
 
 
@@ -35,6 +36,7 @@ def main() -> None:
         settings=settings,
         player_guid=character_guid,
         creature_entry=target_entry,
+        resolved_subject_card=build_subject_card_from_profile(target_profile),
     )
 
     package = build_prompt_package(

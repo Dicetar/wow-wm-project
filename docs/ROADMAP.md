@@ -1,5 +1,5 @@
 Status: DESIGN_ONLY
-Last verified: 2026-04-13
+Last verified: 2026-04-14
 Verified by: Codex
 Doc type: design
 
@@ -66,6 +66,19 @@ Turn the current lab spike into a clean checkpoint we can safely build on.
 
 Make the existing reactive bounty loop work fully through native perception and native-preferred action execution.
 
+### Current checkpoint (2026-04-13)
+
+- `PARTIAL`
+- repo automated coverage now proves:
+  - burst threshold crossing
+  - native-preferred `quest_grant`
+  - SOAP fallback when native is unavailable
+  - post-reward cooldown reopening
+  - one spine-level native bridge flow with runtime reconciliation
+- historical bridge-lab evidence from April 11, 2026 shows `Bounty: Kobold Vermin` emitting native `quest_granted`, native `quest_completed`, native `quest_rewarded`, and a WM cooldown row for player `5406`
+- the April 13, 2026 bridge-lab rerun did not complete the live kill/turn-in cycle because validation player `5406` was offline, so the Phase 1 exit criteria remain open
+- April 14, 2026 comparison work kept richer reward support as a product capability and moved it into the shared bounty draft / publish path instead of a parallel template publisher; dry-run slot preview now stays non-mutating without false preflight failure; dynamic per-trigger watcher binding remains a `REWORK` item
+
 ### Deliverables
 
 - native `kill`
@@ -121,6 +134,18 @@ Make manual control the normal operator lane for native actions and keep it iden
 ### Goal
 
 Expose nearby context as snapshots and package deterministic world state for operators and later LLM use.
+
+### Current checkpoint (2026-04-14)
+
+- `PARTIAL`
+- initial subject resolver and DB-backed journal reader slices exist
+- journal reads now merge WM subject definitions, enrichments, player-subject counters, raw journal events, and optional resolver-built subject cards
+- DB-unavailable journal probes degrade to resolver-backed `PARTIAL` output instead of crashing
+- deterministic lab seed `sql/dev/seed_journal_context_5406_world.sql` exists for player `5406`, creature entry `46`, and one event-backed context smoke row
+- `wm.context_pack.v1` assembly exists for source event, character state, target profile, subject card, journal summary, recent events, related subject events, reactive quest runtime, eligible recipes, policy metadata, and latest native context snapshot rows when present
+- `python -m wm.context.snapshot` and the bridge-lab wrapper can request one bounded native snapshot proof
+- fresh live context snapshot consumption remains `PARTIAL`: tracked native code queues `wm_bridge_context_request` but no tracked writer for `wm_bridge_context_snapshot` was found
+- zone mood, non-reactive quest runtime, and full proposal-gate preview sections are still open
 
 ### Deliverables
 

@@ -37,6 +37,10 @@ class BountyQuestReward:
     reward_item_entry: int | None = None
     reward_item_name: str | None = None
     reward_item_count: int = 1
+    reward_xp_difficulty: int | None = None
+    reward_spell_id: int | None = None
+    reward_spell_display_id: int | None = None
+    reward_reputations: list[BountyQuestReputationReward] = field(default_factory=list)
     reward_item: ItemRef | None = None
 
     def __post_init__(self) -> None:
@@ -49,11 +53,40 @@ class BountyQuestReward:
             self.reward_item_entry = int(self.reward_item.entry)
             if self.reward_item.name not in (None, ""):
                 self.reward_item_name = self.reward_item.name
+        if self.reward_xp_difficulty not in (None, ""):
+            self.reward_xp_difficulty = int(self.reward_xp_difficulty)
+        if self.reward_spell_id not in (None, ""):
+            self.reward_spell_id = int(self.reward_spell_id)
+        if self.reward_spell_display_id not in (None, ""):
+            self.reward_spell_display_id = int(self.reward_spell_display_id)
+        self.reward_reputations = [
+            reward
+            if isinstance(reward, BountyQuestReputationReward)
+            else BountyQuestReputationReward(
+                faction_id=int(reward["faction_id"]),
+                value=int(reward["value"]),
+            )
+            for reward in self.reward_reputations
+        ]
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["reward_item"] = self.reward_item.to_dict() if self.reward_item is not None else None
+        payload["reward_reputations"] = [reward.to_dict() for reward in self.reward_reputations]
         return payload
+
+
+@dataclass(slots=True)
+class BountyQuestReputationReward:
+    faction_id: int
+    value: int
+
+    def __post_init__(self) -> None:
+        self.faction_id = int(self.faction_id)
+        self.value = int(self.value)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass(slots=True)

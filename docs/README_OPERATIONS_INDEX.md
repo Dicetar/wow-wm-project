@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-04-13
+Last verified: 2026-04-14
 Verified by: Codex
 Doc type: reference
 
@@ -46,12 +46,15 @@ The repo uses a Diataxis-style split:
 ## Postmortems / Retired Paths
 
 - [Summon Failure Postmortem](SUMMON_FAILURE_POSTMORTEM.md)
+- [Windows Detached Watch Launch Postmortem](WINDOWS_DETACHED_WATCH_LAUNCH_POSTMORTEM.md)
 - [mod-wm-prototypes README](../native_modules/mod-wm-prototypes/README.md)
 
 ## Reference / Contracts
 
 - [Content Workbench V1](CONTENT_WORKBENCH_V1.md)
+- [Journal Layer V1 / V2](JOURNAL_LAYER_V1.md) - current subject-memory reader and inspect status
 - [Prompt Package V1](PROMPT_PACKAGE_V1.md) - historical prompt-package reference; check status header before trusting
+- [Context Pack V1](CONTEXT_PACK_V1.md) - current deterministic context-pack reference
 - [Item Slot Pipeline V1](ITEM_SLOT_PIPELINE_V1.md)
 - [Quest Draft Pipeline V1](QUEST_DRAFT_PIPELINE_V1.md)
 

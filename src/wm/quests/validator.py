@@ -67,6 +67,8 @@ def validate_bounty_quest_draft(draft: BountyQuestDraft) -> ValidationResult:
                 message="Reward money is above the current safety cap (1000000 copper / 100 gold).",
             )
         )
+    if draft.reward.reward_xp_difficulty is not None and draft.reward.reward_xp_difficulty < 0:
+        issues.append(ValidationIssue(path="reward.reward_xp_difficulty", message="Reward XP difficulty cannot be negative."))
 
     if draft.reward.reward_item_entry is not None and draft.reward.reward_item_entry <= 0:
         issues.append(ValidationIssue(path="reward.reward_item_entry", message="Reward item entry must be positive."))
@@ -85,5 +87,37 @@ def validate_bounty_quest_draft(draft: BountyQuestDraft) -> ValidationResult:
                 message="Reward item count must be between 1 and 20.",
             )
         )
+    if draft.reward.reward_spell_id is not None and draft.reward.reward_spell_id <= 0:
+        issues.append(ValidationIssue(path="reward.reward_spell_id", message="Reward spell ID must be positive."))
+    if draft.reward.reward_spell_display_id is not None and draft.reward.reward_spell_display_id <= 0:
+        issues.append(
+            ValidationIssue(
+                path="reward.reward_spell_display_id",
+                message="Reward display spell ID must be positive.",
+            )
+        )
+    if len(draft.reward.reward_reputations) > 5:
+        issues.append(
+            ValidationIssue(
+                path="reward.reward_reputations",
+                message="No more than 5 reputation reward slots are supported by quest_template.",
+            )
+        )
+    for index, reward in enumerate(draft.reward.reward_reputations, start=1):
+        if reward.faction_id <= 0:
+            issues.append(
+                ValidationIssue(
+                    path=f"reward.reward_reputations[{index}].faction_id",
+                    message="Reputation faction ID must be positive.",
+                )
+            )
+        if reward.value == 0:
+            issues.append(
+                ValidationIssue(
+                    path=f"reward.reward_reputations[{index}].value",
+                    message="Reputation reward value should not be zero.",
+                    severity="warning",
+                )
+            )
 
     return ValidationResult(issues=issues)

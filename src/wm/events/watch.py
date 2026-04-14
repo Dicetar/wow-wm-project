@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
 
 from wm.config import Settings
@@ -61,37 +62,54 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"armed_from_end=true table_exists={arm_result.table_exists} "
                     f"player_guid={arm_result.player_guid} previous_last_seen={arm_result.previous_last_seen} "
-                    f"armed_last_seen={arm_result.armed_last_seen}"
+                    f"armed_last_seen={arm_result.armed_last_seen}",
+                    flush=True,
                 )
             else:
                 print(
                     f"armed_from_end=true file_exists={arm_result.file_exists} "
-                    f"previous_offset={arm_result.previous_offset} armed_offset={arm_result.armed_offset}"
+                    f"previous_offset={arm_result.previous_offset} armed_offset={arm_result.armed_offset}",
+                    flush=True,
                 )
 
     iteration = 0
     try:
         while True:
             iteration += 1
-            payload = execute_event_spine(
-                settings=settings,
-                adapter_name=args.adapter,
-                mode=args.mode,
-                player_guid=args.player_guid,
-                batch_size=args.batch_size,
-            )
-            payload["confirm_live_apply"] = args.confirm_live_apply
-            payload["iteration"] = iteration
+            try:
+                payload = execute_event_spine(
+                    settings=settings,
+                    adapter_name=args.adapter,
+                    mode=args.mode,
+                    player_guid=args.player_guid,
+                    batch_size=args.batch_size,
+                )
+                payload["confirm_live_apply"] = args.confirm_live_apply
+                payload["iteration"] = iteration
 
-            if args.summary and (_has_activity(payload) or args.print_idle):
-                _emit_output(payload=payload, summary=True, output_json=None)
+                if args.summary and (_has_activity(payload) or args.print_idle):
+                    _emit_output(payload=payload, summary=True, output_json=None)
+            except KeyboardInterrupt:
+                raise
+            except (Exception, SystemExit) as exc:
+                _emit_watch_iteration_error(
+                    iteration=iteration,
+                    adapter_name=args.adapter,
+                    mode=args.mode,
+                    player_guid=args.player_guid,
+                    exc=exc,
+                )
+                if args.max_iterations is not None and iteration >= int(args.max_iterations):
+                    break
+                time.sleep(max(float(args.interval_seconds), 0.1))
+                continue
 
             if args.max_iterations is not None and iteration >= int(args.max_iterations):
                 break
             time.sleep(max(float(args.interval_seconds), 0.1))
     except KeyboardInterrupt:
         if args.summary:
-            print("watch_stopped=true")
+            print("watch_stopped=true", flush=True)
         return 130
 
     return 0
@@ -110,6 +128,24 @@ def _has_activity(payload: dict[str, object]) -> bool:
         "execution_count",
     )
     return any(int(payload.get(key) or 0) > 0 for key in counters)
+
+
+def _emit_watch_iteration_error(
+    *,
+    iteration: int,
+    adapter_name: str,
+    mode: str,
+    player_guid: int | None,
+    exc: BaseException,
+) -> None:
+    message = str(exc).strip() or repr(exc)
+    message = message.replace("\r", " ").replace("\n", " ")
+    print(
+        f"watch_iteration_failed=true iteration={iteration} adapter={adapter_name} "
+        f"mode={mode} player_guid={player_guid} error_type={type(exc).__name__} error={message}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

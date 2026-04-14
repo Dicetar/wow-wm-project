@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-04-13
+Last verified: 2026-04-14
 Verified by: Codex
 Doc type: reference
 
@@ -204,6 +204,20 @@ If the foundation is not stable, do not pile tuning work on top of it.
 ### 3. Dirty labs are not neutral
 
 If the lab might be polluted by stale rows, config drift, or local overrides, treat it as dirty and reset it before trusting any result.
+
+## Windows detached process rule
+
+For long-running detached WM watchers on this Windows host:
+
+- do not use PowerShell `Start-Process` when reliable PID capture and redirected logs matter
+- use the repo-owned `System.Diagnostics.ProcessStartInfo` pattern instead
+- for long-running watchers launched from Codex shell commands, set `UseShellExecute = $true`; `UseShellExecute = $false` can keep the child watcher attached to the shell command lifetime even when stdout/stderr are redirected
+- do not report `started=true` until:
+  - the process object is non-null
+  - the PID is non-empty
+  - the process is still alive after a short startup delay
+
+If this rule is violated and the launch fails, record it in a postmortem instead of retrying the same pattern blindly.
 
 ## Creativity rules
 

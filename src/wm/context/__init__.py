@@ -1,0 +1,2 @@
+"""Deterministic context-pack assembly."""
+

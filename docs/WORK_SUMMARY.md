@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-13
+Last verified: 2026-04-14
 Verified by: Codex
 Doc type: handoff
 
@@ -18,14 +18,26 @@ This repository is now a real WM platform baseline, not just an idea pile.
 
 - canonical WM event log, cursor storage, cooldowns, and reaction history
 - inspect, preview, run, and watch flows
+- `wm.events.watch` now keeps running across iteration-level spine failures and flushes automation-facing summary/error output promptly
 - deterministic planning and execution against the existing publish pipeline
 
 ### Reactive quest pipeline
 
 - reusable reactive bounty rule storage
+- repo-owned reactive bounty templates under `control/examples/reactive_bounties/`
+- one-command bridge-lab install wrapper in `scripts/bridge_lab/Install-BridgeLabReactiveBounty.ps1`
+- reactive bounty installs now default to a fresh reserved quest slot unless an explicit `quest_id` is pinned on purpose
+- reactive bounty dry-runs can preview a free reserved slot safely and keep apply-mode slot staging strict
+- shared bounty drafts and publish SQL now carry richer reward fields:
+  - item reward
+  - spell reward / display spell
+  - XP difficulty
+  - reputation reward slots mapped to the current `quest_template` schema
 - direct quest grant through SOAP
 - runtime quest-state polling from the characters DB
 - suppression while a reactive quest is active, complete-but-not-turned-in, or cooling down after reward
+- repo automated coverage now proves the rewarded-state reopen path after the post-reward cooldown expires
+- repo automated coverage now also proves one native-bridge spine pass end-to-end with runtime reconciliation recorded separately from the grant action
 
 ### Hidden addon bridge
 
@@ -46,6 +58,8 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - broad native action vocabulary is registered, with `debug_ping`, `debug_echo`, `debug_fail`, `context_snapshot_request`, `world_announce_to_player`, and `quest_add` proven in the first safe slice
 - successful native `quest_add` now emits a native `quest/granted` bridge event so perception stays aligned with mutation
 - `quest_grant` remains the public WM action, but now prefers native bridge when the player/policy/config path is ready and falls back to SOAP otherwise
+- historical bridge-lab evidence from April 11, 2026 shows `Bounty: Kobold Vermin` running through native `quest_granted`, native `quest_completed`, native `quest_rewarded`, and the WM post-reward cooldown row for player `5406`
+- April 13, 2026 smoke reran successfully against `D:\WOW\WM_BridgeLab` for `debug_ping` and `wm.events.watch --adapter native_bridge --arm-from-end`, but the full live bounty loop was not rerun because player `5406` was offline
 
 ### Control contract workbench
 
@@ -66,6 +80,19 @@ This repository is now a real WM platform baseline, not just an idea pile.
 
 - typed refs for players, creatures, NPCs, quests, items, and spells
 - internal schemas now carry structured refs instead of leaking anonymous integers everywhere
+
+### Subject recognition
+
+- initial `wm.subjects` slice maps existing target profiles into WM subject cards
+- `python -m wm.subjects.inspect` can inspect a creature entry from static lookup JSON or the live runtime resolver
+- `SubjectJournalReader` now checks for WM journal tables, loads subject definitions/enrichments/counters/raw events when present, and can merge resolver-built subject cards when DB subject rows or live DB access are absent
+- `python -m wm.journal.inspect` can inspect one player and one creature subject and render the loaded journal status/counters/events
+- prompt demo callers now pass the resolved target profile into the journal reader, preventing missing WM subject rows from collapsing the journal package to `null`
+- deterministic lab seed `sql/dev/seed_journal_context_5406_world.sql` now upserts one creature subject for entry `46`, resets only player `5406`'s seeded rows for that subject, and inserts one `wm_event_log` smoke event
+- `wm.context_pack.v1` assembly now packages source event, character state, target profile, subject card, journal summary, recent events, related subject events, reactive quest runtime, control recipe/policy metadata, and latest native snapshot rows when present
+- `python -m wm.context.snapshot` and `scripts/bridge_lab/Request-BridgeLabContextSnapshot.ps1` provide a bounded one-shot request/wait path for native context snapshot proof
+- repo status is `WORKING` for resolver, journal reader/inspect, context pack assembly, and bounded snapshot command tests
+- live status is `PARTIAL`: local smoke on 2026-04-14 could not connect to default MySQL on `127.0.0.1:3306`, and tracked native code still lacks the snapshot writer that would turn queued `wm_bridge_context_request` rows into `wm_bridge_context_snapshot` rows
 
 ### Rebuilt latest-source baseline
 
@@ -107,6 +134,9 @@ For the portable workflow, the repo now owns:
 - optional IPP extras are intentionally excluded from the default portable bootstrap path
 - most native mutation action kinds are intentionally disabled/not implemented until their C++ bodies pass lab tests
 - Questie needs a tiny compat shim for WM custom quest ids because upstream Questie-335 does not know repo-owned quest ids like `910000`
+- Phase 1 native bounty parity remains `PARTIAL` until the full in-game loop is rerun end-to-end on the current bridge lab
+- dynamic per-trigger template watching remains experimental; the keepable pieces are being folded into the shared reactive/publish path instead of promoting a second watcher architecture
+- subject recognition and memory remain `PARTIAL` at live/lab level until subject cards can be materialized automatically, seeded rows are proven against the lab DB, fresh native snapshots are consumed, and full proposal-gate previews exist
 
 ## Recommended workflow
 

@@ -114,13 +114,13 @@ def execute_event_spine(
         opportunities.extend(evaluation.opportunities)
     if derived_events:
         store.record(derived_events)
-    for event in evaluation_events:
-        if event.event_id is not None:
-            store.mark_evaluated(event_id=event.event_id)
 
     plans = [planner.plan(opportunity) for opportunity in opportunities]
     _validate_apply_plan_scope(mode=mode, plans=plans)
     execution_results = [executor.execute(plan=plan, mode=mode) for plan in plans]
+    for event in evaluation_events:
+        if event.event_id is not None:
+            store.mark_evaluated(event_id=event.event_id)
 
     return {
         "adapter": adapter.name,
@@ -153,14 +153,15 @@ def _emit_output(*, payload: dict[str, object], summary: bool, output_json: Path
             f"runtime_recorded={payload.get('runtime_state_recorded_count', 0)} "
             f"projected={payload['projected_count']} "
             f"derived={payload['derived_event_count']} opportunities={payload['opportunity_count']} "
-            f"plans={payload['plan_count']} executions={payload['execution_count']}"
+            f"plans={payload['plan_count']} executions={payload['execution_count']}",
+            flush=True,
         )
         executions = payload.get("executions")
         if isinstance(executions, list):
             for line in build_execution_summary_lines(executions):
-                print(line)
+                print(line, flush=True)
     else:
-        print(raw)
+        print(raw, flush=True)
 
 
 def _apply_settings_overrides(*, args: argparse.Namespace, settings: Settings) -> None:

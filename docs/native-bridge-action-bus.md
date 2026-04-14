@@ -1,3 +1,8 @@
+Status: PARTIAL
+Last verified: 2026-04-14
+Verified by: Codex
+Doc type: reference
+
 # Native Bridge Action Bus
 
 The native action bus is the next WM bridge layer after native perception.
@@ -21,7 +26,7 @@ Implemented native actions in the first safe slice:
 - `debug_ping`
 - `debug_echo`
 - `debug_fail`
-- `context_snapshot_request`
+- `context_snapshot_request` queues `wm_bridge_context_request`; snapshot row production is still `PARTIAL`
 - `quest_add`
 - `world_announce_to_player`
 
@@ -161,6 +166,20 @@ python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --actio
 
 Expected result for `debug_fail`: status `failed`, with structured error text.
 
+Request one bounded context snapshot proof:
+
+```powershell
+python -m wm.context.snapshot --player-guid 5406 --timeout-seconds 10 --summary
+.\scripts\bridge_lab\Request-BridgeLabContextSnapshot.ps1 -PlayerGuid 5406 -TimeoutSeconds 10 -Summary
+```
+
+Current status:
+
+- `WORKING`: action row reaches `done` and a newer `wm_bridge_context_snapshot` row appears for the scoped player.
+- `PARTIAL`: action row reaches `done` but no snapshot row appears. This is the expected status with the tracked native code as of 2026-04-14 because `context_snapshot_request` only inserts `wm_bridge_context_request`.
+- `BROKEN`: action row fails, rejects, expires, or bridge/action tables are unavailable.
+- `UNKNOWN`: not used for this operator command.
+
 Submit a small ordered sequence:
 
 ```powershell
@@ -194,6 +213,25 @@ Lab verification on 2026-04-11:
 - duplicate `debug_ping` idempotency key reused the same request row
 - `world_announce_to_player` reached `done` and produced an in-game player-visible message
 - `quest_add` placed quest `910000` directly into Jecia's quest journal and the quest was turn-in capable
+
+Phase 1 parity evidence as of 2026-04-13:
+
+- repo automated coverage now includes:
+  - native kill-burst threshold crossing exactly once
+  - native-preferred `quest_grant`
+  - SOAP fallback when native prerequisites are not ready
+  - post-reward cooldown reopen after expiry
+  - one `execute_event_spine` integration pass with runtime reconciliation events recorded separately from the grant action
+- historical bridge-lab evidence for player `5406` includes:
+  - `wm_bridge_action_request` `quest_add` rows reaching `done`
+  - native `quest_granted` for `Bounty: Kobold Vermin`
+  - native `quest_completed` for `Bounty: Kobold Vermin`
+  - native `quest_rewarded` for `Bounty: Kobold Vermin`
+  - WM cooldown state for `reactive_bounty:kobold_vermin`
+- April 13, 2026 smoke rerun status:
+  - `debug_ping` request reached `done`
+  - `wm.events.watch --adapter native_bridge --arm-from-end --max-iterations 1` advanced the high-water mark for player `5406`
+  - the full same-day in-game bounty rerun did not complete because player `5406` was offline
 
 If you use Questie-335 while testing WM custom quests, install the repo addon under `wow_addons/WMQuestieCompat` into the client `Interface\AddOns\` folder. It suppresses Questie tracker spam for WM-owned quest ids like `910000`.
 

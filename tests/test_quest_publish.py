@@ -6,16 +6,25 @@ import unittest
 
 from wm.config import Settings
 from wm.quests.bounty import build_bounty_quest_draft
+from wm.quests.models import BountyQuestReputationReward
 from wm.quests.publish import QuestPublisher, load_bounty_quest_draft
 from wm.targets.resolver import TargetProfile
 
 
 class FakeMysqlClient:
-    def __init__(self, *, reserved_rows: list[dict[str, str]] | None = None, duplicate_rows: list[dict[str, str]] | None = None, existing_rows: list[dict[str, str]] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        reserved_rows: list[dict[str, str]] | None = None,
+        duplicate_rows: list[dict[str, str]] | None = None,
+        existing_rows: list[dict[str, str]] | None = None,
+        quest_template_columns: list[str] | None = None,
+    ) -> None:
         self.mysql_bin_path = Path("mysql")
         self.reserved_rows = reserved_rows if reserved_rows is not None else [{"EntityType": "quest", "ReservedID": "910001", "SlotStatus": "staged", "ArcKey": None, "CharacterGUID": None, "SourceQuestID": None, "NotesJSON": None}]
         self.duplicate_rows = duplicate_rows or []
         self.existing_rows = existing_rows or []
+        self.quest_template_columns = quest_template_columns
 
     def query(self, *, host: str, port: int, user: str, password: str, database: str, sql: str):
         del host, port, user, password
@@ -33,7 +42,7 @@ class FakeMysqlClient:
         if database == "information_schema" and "FROM information_schema.COLUMNS" in sql:
             if "TABLE_NAME = 'quest_template_addon'" in sql:
                 return [{"COLUMN_NAME": "ID"}, {"COLUMN_NAME": "SpecialFlags"}]
-            columns = [
+            columns = self.quest_template_columns or [
                 "ID",
                 "QuestType",
                 "QuestLevel",
@@ -48,6 +57,11 @@ class FakeMysqlClient:
                 "RewardMoney",
                 "RewardItem1",
                 "RewardAmount1",
+                "RewardXPDifficulty",
+                "RewardSpell",
+                "RewardDisplaySpell",
+                "RewardFactionID1",
+                "RewardFactionOverride1",
                 "RequiredNpcOrGo1",
                 "RequiredNpcOrGoCount1",
             ]
@@ -127,6 +141,17 @@ class QuestPublishTests(unittest.TestCase):
         self.assertFalse(report.ok)
         self.assertTrue(any(issue.path == "reserved_slot" for issue in report.issues))
 
+    def test_preflight_allows_free_slot_only_for_explicit_dry_run_preview(self) -> None:
+        reserved_rows = [{"EntityType": "quest", "ReservedID": "910001", "SlotStatus": "free", "ArcKey": None, "CharacterGUID": None, "SourceQuestID": None, "NotesJSON": None}]
+        publisher = RecordingQuestPublisher(client=FakeMysqlClient(reserved_rows=reserved_rows), settings=self._settings())
+
+        strict_report = publisher.preflight(self._draft())
+        preview_report = publisher.preflight(self._draft(), allow_free_reserved_slot_preview=True)
+
+        self.assertFalse(strict_report.ok)
+        self.assertTrue(preview_report.ok)
+        self.assertTrue(any(issue.path == "reserved_slot.status" and issue.severity == "warning" for issue in preview_report.issues))
+
     def test_preflight_blocks_duplicate_title_for_same_questgiver(self) -> None:
         duplicate_rows = [{"ID": "910099", "LogTitle": "Bounty: Murloc Forager"}]
         publisher = RecordingQuestPublisher(client=FakeMysqlClient(duplicate_rows=duplicate_rows), settings=self._settings())
@@ -154,6 +179,62 @@ class QuestPublishTests(unittest.TestCase):
         self.assertTrue(any("wm_publish_log" in statement and "success" in statement for statement in publisher.executed_statements))
         self.assertTrue(any("UPDATE wm_reserved_slot SET SlotStatus = 'active'" in statement for statement in publisher.executed_statements))
 
+    def test_publish_plan_includes_richer_reward_fields_when_supported(self) -> None:
+        publisher = RecordingQuestPublisher(client=FakeMysqlClient(), settings=self._settings())
+        draft = self._draft()
+        draft.reward.reward_xp_difficulty = 4
+        draft.reward.reward_spell_id = 22888
+        draft.reward.reward_spell_display_id = 22888
+        draft.reward.reward_reputations = [BountyQuestReputationReward(faction_id=72, value=75)]
+
+        result = publisher.publish(draft=draft, mode="apply")
+
+        self.assertTrue(result.applied)
+        insert = next(statement for statement in publisher.executed_statements if "INSERT INTO quest_template" in statement)
+        self.assertIn("RewardXPDifficulty", insert)
+        self.assertIn("RewardSpell", insert)
+        self.assertIn("RewardDisplaySpell", insert)
+        self.assertIn("RewardFactionID1", insert)
+        self.assertIn("RewardFactionOverride1", insert)
+        self.assertIn("22888", insert)
+        self.assertIn("72", insert)
+        self.assertIn("75", insert)
+
+    def test_preflight_rejects_requested_rich_rewards_when_schema_lacks_columns(self) -> None:
+        columns_without_rich_rewards = [
+            "ID",
+            "QuestType",
+            "QuestLevel",
+            "MinLevel",
+            "LogTitle",
+            "LogDescription",
+            "QuestDescription",
+            "QuestCompletionLog",
+            "ObjectiveText1",
+            "OfferRewardText",
+            "RequestItemsText",
+            "RewardMoney",
+            "RewardItem1",
+            "RewardAmount1",
+            "RequiredNpcOrGo1",
+            "RequiredNpcOrGoCount1",
+        ]
+        publisher = RecordingQuestPublisher(
+            client=FakeMysqlClient(quest_template_columns=columns_without_rich_rewards),
+            settings=self._settings(),
+        )
+        draft = self._draft()
+        draft.reward.reward_xp_difficulty = 4
+        draft.reward.reward_spell_id = 22888
+        draft.reward.reward_reputations = [BountyQuestReputationReward(faction_id=72, value=75)]
+
+        report = publisher.preflight(draft)
+
+        self.assertFalse(report.ok)
+        self.assertTrue(any(issue.path == "reward.reward_xp_difficulty" for issue in report.issues))
+        self.assertTrue(any(issue.path == "reward.reward_spell_id" for issue in report.issues))
+        self.assertTrue(any(issue.path == "reward.reward_reputations[1]" for issue in report.issues))
+
     def test_load_bounty_quest_draft_accepts_demo_envelope(self) -> None:
         draft_payload = {
             "draft": self._draft().to_dict(),
@@ -166,6 +247,23 @@ class QuestPublishTests(unittest.TestCase):
         draft = load_bounty_quest_draft(path)
         self.assertEqual(draft.quest_id, 910001)
         self.assertEqual(draft.objective.target_entry, 46)
+
+    def test_load_bounty_quest_draft_accepts_rich_reward_fields(self) -> None:
+        draft_payload = self._draft().to_dict()
+        draft_payload["reward"]["reward_xp_difficulty"] = 4
+        draft_payload["reward"]["reward_spell_id"] = 22888
+        draft_payload["reward"]["reward_reputations"] = [{"faction_id": 72, "value": 75}]
+        tmpdir = Path("artifacts") / "test_tmp"
+        tmpdir.mkdir(parents=True, exist_ok=True)
+        path = tmpdir / "rich_draft.json"
+        path.write_text(json.dumps(draft_payload), encoding="utf-8")
+
+        draft = load_bounty_quest_draft(path)
+
+        self.assertEqual(draft.reward.reward_xp_difficulty, 4)
+        self.assertEqual(draft.reward.reward_spell_id, 22888)
+        self.assertEqual(draft.reward.reward_reputations[0].faction_id, 72)
+        self.assertEqual(draft.reward.reward_reputations[0].value, 75)
 
     def test_direct_grant_preflight_allows_no_starter(self) -> None:
         publisher = RecordingQuestPublisher(client=FakeMysqlClient(), settings=self._settings())

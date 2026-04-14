@@ -1,0 +1,23 @@
+{
+  "rule_key": "reactive_bounty:auto:murloc",
+  "player_guid": 5406,
+  "subject_entry": 285,
+  "turn_in_npc_entry": 240,
+  "kill_threshold": 2,
+  "window_seconds": 120,
+  "post_reward_cooldown_seconds": 60,
+  "objective_target_name": "Murlocs",
+  "quest_title": "Bounty: Murlocs",
+  "reward_item_entry": 45574,
+  "reward_item_name": "Stormwind Tabard",
+  "reward_item_count": 1,
+  "reward_xp_difficulty": 4,
+  "reward_spell_id": 22888,
+  "reward_spell_display_id": 22888,
+  "reward_reputations": [
+    {
+      "faction_id": 72,
+      "value": 75
+    }
+  ]
+}

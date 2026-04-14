@@ -11,7 +11,7 @@ from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient, MysqlCliError
 from wm.quests.bounty import build_bounty_quest_draft
 from wm.quests.compiler import compile_bounty_quest_sql_plan
-from wm.quests.models import BountyQuestDraft, BountyQuestObjective, BountyQuestReward
+from wm.quests.models import BountyQuestDraft, BountyQuestObjective, BountyQuestReputationReward, BountyQuestReward
 from wm.quests.validator import validate_bounty_quest_draft
 from wm.targets.resolver import TargetProfile
 
@@ -84,7 +84,12 @@ class QuestPublisher:
         self.client = client
         self.settings = settings
 
-    def preflight(self, draft: BountyQuestDraft) -> QuestPreflightReport:
+    def preflight(
+        self,
+        draft: BountyQuestDraft,
+        *,
+        allow_free_reserved_slot_preview: bool = False,
+    ) -> QuestPreflightReport:
         report = QuestPreflightReport(quest_id=draft.quest_id)
 
         required_tables = {
@@ -165,6 +170,41 @@ class QuestPublisher:
                 )
             )
 
+        reward_compatibility = compatibility["reward_columns"]
+        if draft.reward.reward_xp_difficulty is not None and reward_compatibility["xp_column"] is None:
+            report.issues.append(
+                PublishIssue(
+                    path="reward.reward_xp_difficulty",
+                    message="No supported XP reward column was found in quest_template.",
+                )
+            )
+        if draft.reward.reward_spell_id is not None and "RewardSpell" not in quest_template_columns:
+            report.issues.append(
+                PublishIssue(
+                    path="reward.reward_spell_id",
+                    message="Reward spell was requested but quest_template.RewardSpell is missing.",
+                )
+            )
+        if draft.reward.reward_spell_display_id is not None and "RewardDisplaySpell" not in quest_template_columns:
+            report.issues.append(
+                PublishIssue(
+                    path="reward.reward_spell_display_id",
+                    message="Reward display spell was requested but quest_template.RewardDisplaySpell is missing.",
+                )
+            )
+        for index, _reward in enumerate(draft.reward.reward_reputations, start=1):
+            slot = reward_compatibility["reputation_slots"].get(f"slot_{index}", {})
+            if slot.get("faction_column") is None or slot.get("value_column") is None:
+                report.issues.append(
+                    PublishIssue(
+                        path=f"reward.reward_reputations[{index}]",
+                        message=(
+                            f"Reputation reward slot {index} was requested, but this quest_template schema does not "
+                            "expose compatible RewardFactionID and value/override columns."
+                        ),
+                    )
+                )
+
         if table_presence.get("quest_template", False):
             report.existing_quest_rows = self._query_world(
                 "SELECT ID, LogTitle FROM quest_template "
@@ -224,7 +264,18 @@ class QuestPublisher:
             if slot_rows:
                 report.reserved_slot = slot_rows[0]
                 slot_status = str(slot_rows[0].get("SlotStatus") or "")
-                if slot_status not in {"staged", "active"}:
+                if slot_status == "free" and allow_free_reserved_slot_preview:
+                    report.issues.append(
+                        PublishIssue(
+                            path="reserved_slot.status",
+                            message=(
+                                f"Reserved slot for quest {draft.quest_id} is free and would be staged by the "
+                                "reactive installer in apply mode."
+                            ),
+                            severity="warning",
+                        )
+                    )
+                elif slot_status not in {"staged", "active"}:
                     report.issues.append(
                         PublishIssue(
                             path="reserved_slot.status",
@@ -298,9 +349,20 @@ class QuestPublisher:
             )
         return snapshot
 
-    def publish(self, *, draft: BountyQuestDraft, mode: str) -> QuestPublishResult:
+    def publish(
+        self,
+        *,
+        draft: BountyQuestDraft,
+        mode: str,
+        allow_free_reserved_slot_preview: bool = False,
+    ) -> QuestPublishResult:
         validation = validate_bounty_quest_draft(draft)
-        preflight = self.preflight(draft)
+        preflight = self.preflight(
+            draft,
+            allow_free_reserved_slot_preview=(
+                bool(allow_free_reserved_slot_preview) and mode == "dry-run"
+            ),
+        )
         snapshot_preview = self.capture_snapshot_preview(draft)
         sql_plan = self._compile_sql_plan(draft)
 
@@ -403,6 +465,7 @@ class QuestPublisher:
             "quest_template_addon_columns": sorted(quest_template_addon_columns),
             "quest_offer_reward_columns": sorted(quest_offer_reward_columns),
             "quest_request_items_columns": sorted(quest_request_items_columns),
+            "reward_columns": _build_reward_column_compatibility(quest_template_columns),
         }
 
     def _find_duplicate_title_rows(self, draft: BountyQuestDraft) -> list[dict[str, Any]]:
@@ -506,6 +569,13 @@ def load_bounty_quest_draft(path: str | Path) -> BountyQuestDraft:
 
     objective = raw.get("objective") or {}
     reward = raw.get("reward") or {}
+    reward_reputations = [
+        BountyQuestReputationReward(
+            faction_id=int(item["faction_id"]),
+            value=int(item["value"]),
+        )
+        for item in reward.get("reputations", reward.get("reward_reputations", []))
+    ]
 
     return BountyQuestDraft(
         quest_id=int(raw["quest_id"]),
@@ -536,6 +606,22 @@ def load_bounty_quest_draft(path: str | Path) -> BountyQuestDraft:
                 else None
             ),
             reward_item_count=int(reward.get("reward_item_count", 1)),
+            reward_xp_difficulty=(
+                int(reward.get("reward_xp_difficulty", reward.get("xp_difficulty")))
+                if reward.get("reward_xp_difficulty", reward.get("xp_difficulty")) not in (None, "")
+                else None
+            ),
+            reward_spell_id=(
+                int(reward["reward_spell_id"])
+                if reward.get("reward_spell_id") not in (None, "")
+                else None
+            ),
+            reward_spell_display_id=(
+                int(reward["reward_spell_display_id"])
+                if reward.get("reward_spell_display_id") not in (None, "")
+                else None
+            ),
+            reward_reputations=reward_reputations,
         ),
         start_npc_entry=(
             int(raw["start_npc_entry"])
@@ -585,6 +671,44 @@ def _sql_string(value: str) -> str:
 
 def _sql_list(values: set[str]) -> str:
     return ", ".join(_sql_string(value) for value in sorted(values))
+
+
+def _build_reward_column_compatibility(quest_template_columns: set[str]) -> dict[str, Any]:
+    return {
+        "xp_column": _first_supported_column(
+            ("RewardXPDifficulty", "RewardXPId", "RewardXP"),
+            quest_template_columns,
+        ),
+        "reward_spell_column": "RewardSpell" if "RewardSpell" in quest_template_columns else None,
+        "reward_display_spell_column": (
+            "RewardDisplaySpell" if "RewardDisplaySpell" in quest_template_columns else None
+        ),
+        "reputation_slots": {
+            f"slot_{index}": {
+                "faction_column": _first_supported_column(
+                    (f"RewardFactionID{index}", f"RewardFactionId{index}"),
+                    quest_template_columns,
+                ),
+                "value_column": _first_supported_column(
+                    (
+                        f"RewardFactionOverride{index}",
+                        f"RewardFactionValue{index}",
+                        f"RewardFactionValueIdOverride{index}",
+                        f"RewardFactionValueId{index}",
+                    ),
+                    quest_template_columns,
+                ),
+            }
+            for index in range(1, 6)
+        },
+    }
+
+
+def _first_supported_column(candidates: tuple[str, ...], columns: set[str]) -> str | None:
+    for column in candidates:
+        if column in columns:
+            return column
+    return None
 
 
 def _build_parser() -> argparse.ArgumentParser:

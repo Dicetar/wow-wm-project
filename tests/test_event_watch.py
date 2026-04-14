@@ -237,6 +237,51 @@ class EventWatchTests(unittest.TestCase):
         self.assertEqual(result, 0)
         emit_mock.assert_called_once()
 
+    def test_watch_continues_after_iteration_error(self) -> None:
+        failure = SystemExit("Apply mode produced 2 plans. Narrow the run.")
+        payload = {
+            "adapter": "native_bridge",
+            "mode": "apply",
+            "player_guid_filter": 5406,
+            "questgiver_entry": None,
+            "polled_count": 4,
+            "recorded_count": 4,
+            "runtime_state_event_count": 0,
+            "runtime_state_recorded_count": 0,
+            "projected_count": 4,
+            "derived_event_count": 1,
+            "opportunity_count": 1,
+            "plan_count": 1,
+            "execution_count": 1,
+            "executions": [],
+        }
+
+        with (
+            patch("wm.events.watch.execute_event_spine", side_effect=[failure, payload]) as execute_mock,
+            patch("wm.events.watch._emit_output") as emit_mock,
+            patch("wm.events.watch._emit_watch_iteration_error") as error_mock,
+            patch("wm.events.watch.time.sleep"),
+        ):
+            result = main(
+                [
+                    "--adapter",
+                    "native_bridge",
+                    "--mode",
+                    "apply",
+                    "--player-guid",
+                    "5406",
+                    "--confirm-live-apply",
+                    "--summary",
+                    "--max-iterations",
+                    "2",
+                ]
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(execute_mock.call_count, 2)
+        error_mock.assert_called_once()
+        emit_mock.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

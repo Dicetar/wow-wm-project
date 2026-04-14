@@ -1,0 +1,11 @@
+{
+  "rule_key": "reactive_bounty:auto:defias_bandit",
+  "player_guid": 5406,
+  "subject_entry": 116,
+  "turn_in_npc_entry": 261,
+  "kill_threshold": 4,
+  "window_seconds": 300,
+  "post_reward_cooldown_seconds": 60,
+  "objective_target_name": "Defias Bandits",
+  "quest_title": "Bounty: Defias Bandits"
+}

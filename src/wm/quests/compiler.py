@@ -28,9 +28,24 @@ DEFAULT_QUEST_TEMPLATE_COLUMNS = {
     "RewardMoney",
     "RewardItem1",
     "RewardAmount1",
+    "RewardXPDifficulty",
+    "RewardSpell",
+    "RewardDisplaySpell",
+    "RewardFactionID1",
+    "RewardFactionOverride1",
     "RequiredNpcOrGo1",
     "RequiredNpcOrGoCount1",
 }
+
+_XP_REWARD_COLUMNS = ("RewardXPDifficulty", "RewardXPId", "RewardXP")
+_REPUTATION_SLOT_COUNT = 5
+_REPUTATION_FACTION_COLUMNS = ("RewardFactionID{index}", "RewardFactionId{index}")
+_REPUTATION_VALUE_COLUMNS = (
+    "RewardFactionOverride{index}",
+    "RewardFactionValue{index}",
+    "RewardFactionValueIdOverride{index}",
+    "RewardFactionValueId{index}",
+)
 
 _TEMPLATE_DEFAULT_COPY_COLUMNS = {
     "Method",
@@ -65,6 +80,8 @@ def compile_bounty_quest_sql_plan(
 
     reward_item_entry = draft.reward.reward_item_entry or 0
     reward_item_count = draft.reward.reward_item_count if draft.reward.reward_item_entry is not None else 0
+    reward_spell_id = draft.reward.reward_spell_id or 0
+    reward_spell_display_id = draft.reward.reward_spell_display_id or 0
 
     statements = [
         f"-- WM staged bounty quest {draft.quest_id}: {draft.title}",
@@ -155,6 +172,24 @@ def compile_bounty_quest_sql_plan(
     add_column("RewardMoney", str(draft.reward.money_copper))
     add_column("RewardItem1", str(reward_item_entry))
     add_column("RewardAmount1", str(reward_item_count))
+    if draft.reward.reward_xp_difficulty is not None:
+        xp_column = _first_available_column(_XP_REWARD_COLUMNS, quest_template_columns)
+        if xp_column is not None:
+            add_column(xp_column, str(int(draft.reward.reward_xp_difficulty)))
+    add_column("RewardSpell", str(reward_spell_id))
+    add_column("RewardDisplaySpell", str(reward_spell_display_id))
+    for index, reward in enumerate(draft.reward.reward_reputations[:_REPUTATION_SLOT_COUNT], start=1):
+        faction_column = _first_available_column(
+            tuple(template.format(index=index) for template in _REPUTATION_FACTION_COLUMNS),
+            quest_template_columns,
+        )
+        value_column = _first_available_column(
+            tuple(template.format(index=index) for template in _REPUTATION_VALUE_COLUMNS),
+            quest_template_columns,
+        )
+        if faction_column is not None and value_column is not None:
+            add_column(faction_column, str(int(reward.faction_id)))
+            add_column(value_column, str(int(reward.value)))
     add_column("RequiredNpcOrGo1", str(draft.objective.target_entry))
     add_column("RequiredNpcOrGoCount1", str(draft.objective.kill_count))
 
@@ -223,3 +258,10 @@ def _sql_literal(value: Any) -> str:
     if isinstance(value, (int, float)):
         return str(value)
     return _sql_quote(str(value))
+
+
+def _first_available_column(candidates: tuple[str, ...], available_columns: set[str]) -> str | None:
+    for column in candidates:
+        if column in available_columns:
+            return column
+    return None

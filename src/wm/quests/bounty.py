@@ -4,7 +4,7 @@ from wm.refs import CreatureRef
 from wm.refs import ItemRef
 from wm.refs import NpcRef
 from wm.refs import QuestRef
-from wm.quests.models import BountyQuestDraft, BountyQuestObjective, BountyQuestReward
+from wm.quests.models import BountyQuestDraft, BountyQuestObjective, BountyQuestReputationReward, BountyQuestReward
 from wm.targets.resolver import TargetProfile
 
 
@@ -14,6 +14,8 @@ def build_bounty_quest_draft(
     questgiver_entry: int,
     questgiver_name: str,
     target_profile: TargetProfile,
+    target_name: str | None = None,
+    title: str | None = None,
     kill_count: int = 8,
     quest_level: int | None = None,
     min_level: int | None = None,
@@ -21,6 +23,10 @@ def build_bounty_quest_draft(
     reward_item_entry: int | None = None,
     reward_item_name: str | None = None,
     reward_item_count: int = 1,
+    reward_xp_difficulty: int | None = None,
+    reward_spell_id: int | None = None,
+    reward_spell_display_id: int | None = None,
+    reward_reputations: list[BountyQuestReputationReward | dict[str, int]] | None = None,
     start_npc_entry: int | None = None,
     end_npc_entry: int | None = None,
     grant_mode: str = "npc_start",
@@ -29,19 +35,23 @@ def build_bounty_quest_draft(
     normalized_kill_count = max(1, int(kill_count))
     resolved_quest_level = int(quest_level if quest_level is not None else max(target_profile.level_max, 1))
     resolved_min_level = int(min_level if min_level is not None else max(resolved_quest_level - 2, 1))
-    target_name = target_profile.name.strip() or f"Target {target_profile.entry}"
+    resolved_target_name = (
+        str(target_name).strip()
+        if target_name not in (None, "")
+        else target_profile.name.strip() or f"Target {target_profile.entry}"
+    )
 
-    title = f"Bounty: {target_name}"
+    resolved_title = str(title).strip() if title not in (None, "") else f"Bounty: {resolved_target_name}"
     quest_description = (
-        f"{questgiver_name} has posted a bounty against {target_name}. "
+        f"{questgiver_name} has posted a bounty against {resolved_target_name}. "
         f"Reduce their numbers and report back when the work is done."
     )
-    objective_text = f"Slay {normalized_kill_count} {target_name}."
+    objective_text = f"Slay {normalized_kill_count} {resolved_target_name}."
     offer_reward_text = (
-        f"Well done. {target_name} will trouble this area less for a while. "
+        f"Well done. {resolved_target_name} will trouble this area less for a while. "
         f"Take this payment and stay ready."
     )
-    request_items_text = f"Defeat {normalized_kill_count} {target_name}, then return to {questgiver_name}."
+    request_items_text = f"Defeat {normalized_kill_count} {resolved_target_name}, then return to {questgiver_name}."
 
     tags = [
         "wm_generated",
@@ -57,24 +67,36 @@ def build_bounty_quest_draft(
         min_level=resolved_min_level,
         questgiver_entry=int(questgiver_entry),
         questgiver_name=questgiver_name,
-        quest=QuestRef(id=int(quest_id), title=title),
+        quest=QuestRef(id=int(quest_id), title=resolved_title),
         questgiver=NpcRef(entry=int(questgiver_entry), name=questgiver_name),
-        title=title,
+        title=resolved_title,
         quest_description=quest_description,
         objective_text=objective_text,
         offer_reward_text=offer_reward_text,
         request_items_text=request_items_text,
         objective=BountyQuestObjective(
             target_entry=int(target_profile.entry),
-            target_name=target_name,
+            target_name=resolved_target_name,
             kill_count=normalized_kill_count,
-            target=CreatureRef(entry=int(target_profile.entry), name=target_name),
+            target=CreatureRef(entry=int(target_profile.entry), name=resolved_target_name),
         ),
         reward=BountyQuestReward(
             money_copper=int(reward_money_copper),
             reward_item_entry=int(reward_item_entry) if reward_item_entry is not None else None,
             reward_item_name=reward_item_name,
             reward_item_count=int(reward_item_count),
+            reward_xp_difficulty=int(reward_xp_difficulty) if reward_xp_difficulty is not None else None,
+            reward_spell_id=int(reward_spell_id) if reward_spell_id is not None else None,
+            reward_spell_display_id=int(reward_spell_display_id) if reward_spell_display_id is not None else None,
+            reward_reputations=[
+                reward
+                if isinstance(reward, BountyQuestReputationReward)
+                else BountyQuestReputationReward(
+                    faction_id=int(reward["faction_id"]),
+                    value=int(reward["value"]),
+                )
+                for reward in (reward_reputations or [])
+            ],
             reward_item=(
                 ItemRef(entry=int(reward_item_entry), name=reward_item_name)
                 if reward_item_entry is not None

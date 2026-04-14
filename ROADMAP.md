@@ -770,9 +770,9 @@ A **reliable world-intelligence platform** for AzerothCore.
 
 If only one concrete sequence is chosen next, do this:
 
-1. implement the subject resolver slice
+1. continue hardening the subject resolver slice
 2. complete Journal Layer V2 against real DB rows
-3. add a context-pack builder command
+3. extend the initial context-pack builder command with character state, quest runtime state, recipes, policies, and native context snapshots
 4. finish quest publish plan + rollback path
 5. then use those four pieces to build the first truly reactive mentor/local-legend feature
 
