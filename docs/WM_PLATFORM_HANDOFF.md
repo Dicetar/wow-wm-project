@@ -71,14 +71,14 @@ Current architecture:
   - `wm.events.watch --adapter native_bridge --arm-from-end` advanced the live high-water mark
   - the full in-game `Kobold Vermin -> quest 910000 -> reward -> cooldown -> regrant` loop was not rerun because validation player `5406` was offline
 - broad native action vocabulary exists, but many verbs are still disabled or `not_implemented`
-- `context_snapshot_request` is `PARTIAL`: the action queues `wm_bridge_context_request`, and `python -m wm.context.snapshot` can request/wait with a bounded timeout, but tracked native code does not yet include a `wm_bridge_context_snapshot` writer
+- `context_snapshot_request` is `PARTIAL`: tracked native code now writes one `wm_bridge_context_snapshot` from the action queue when the scoped player is online, and the bridge-lab `worldserver` target compiles; live proof still needs player `5406` online
 - subject recognition is only a first slice:
   - static lookup and live-target resolver wrapping exist
   - DB-backed journal read helpers and resolver-card fallback exist
   - context-pack assembly exists and includes recipe/policy metadata plus latest native snapshot rows when present
   - repo tests are `WORKING` for the resolver, journal reader/inspect, and context-pack assembly
   - bridge-lab DB proof on `127.0.0.1:33307` is `WORKING` for the seeded player `5406` / creature `46` journal and event-backed context pack
-  - automatic subject materialization, fresh native snapshot consumption, zone mood, and full proposal-gate previews are still `PARTIAL`
+  - automatic subject materialization, online-player native snapshot proof, zone mood, and full proposal-gate previews are still `PARTIAL`
 - visible shell-bank spells are not yet proven end-to-end in the client because the local patch artifact is not finalized and installed from repo instructions
 - summon/twin behavior work exists in pieces, but only the debug/native lane is currently supported for iteration
 - experimental `template_watch` / `template_publish` comparison work remains isolated in `.worktrees/template-watch-compare`; its dynamic binding idea is useful, but its standalone watcher path is not the production architecture

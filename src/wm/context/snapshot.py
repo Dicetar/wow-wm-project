@@ -206,11 +206,13 @@ def _proof_status(
     if snapshot is not None:
         return "WORKING"
     if action.status in {"failed", "rejected", "expired"}:
+        if action.status == "failed" and action.error_text == "player_not_online":
+            notes.append("native_action: player_not_online; log scoped player into the bridge lab before retrying.")
+            return "PARTIAL"
         return "BROKEN"
     if action.status == "done":
         notes.append(
-            "native_action: context_snapshot_request reached done, but current native code only queues "
-            "wm_bridge_context_request unless a snapshot writer is present."
+            "native_action: context_snapshot_request reached done, but no newer wm_bridge_context_snapshot row was observed."
         )
     elif action.status not in TERMINAL_ACTION_STATUSES:
         notes.append(f"native_action: request remained {action.status} before timeout.")

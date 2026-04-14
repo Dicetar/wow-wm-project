@@ -1,6 +1,11 @@
 #include "wm_bridge_action_queue.h"
 
 #include "DatabaseEnv.h"
+#include "Cell.h"
+#include "CellImpl.h"
+#include "Creature.h"
+#include "GameObject.h"
+#include "GridNotifiers.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
@@ -12,7 +17,10 @@
 #include <algorithm>
 #include <cctype>
 #include <exception>
+#include <iomanip>
 #include <limits>
+#include <list>
+#include <sstream>
 #include <string>
 
 namespace
@@ -199,6 +207,214 @@ namespace
         return result;
     }
 
+    std::string FloatString(float value)
+    {
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(3) << value;
+        return out.str();
+    }
+
+    void JsonAppendComma(std::string& json, bool& firstField)
+    {
+        if (!firstField)
+        {
+            json += ",";
+        }
+
+        firstField = false;
+    }
+
+    void JsonAppendStringField(std::string& json, bool& firstField, std::string const& key, std::string const& value)
+    {
+        JsonAppendComma(json, firstField);
+        json += "\"" + EscapeForJson(key) + "\":\"" + EscapeForJson(value) + "\"";
+    }
+
+    void JsonAppendNumberField(std::string& json, bool& firstField, std::string const& key, long long value)
+    {
+        JsonAppendComma(json, firstField);
+        json += "\"" + EscapeForJson(key) + "\":" + std::to_string(value);
+    }
+
+    void JsonAppendFloatField(std::string& json, bool& firstField, std::string const& key, float value)
+    {
+        JsonAppendComma(json, firstField);
+        json += "\"" + EscapeForJson(key) + "\":" + FloatString(value);
+    }
+
+    void JsonAppendBoolField(std::string& json, bool& firstField, std::string const& key, bool value)
+    {
+        JsonAppendComma(json, firstField);
+        json += "\"" + EscapeForJson(key) + "\":" + (value ? "true" : "false");
+    }
+
+    void JsonAppendRawField(std::string& json, bool& firstField, std::string const& key, std::string const& rawJson)
+    {
+        JsonAppendComma(json, firstField);
+        json += "\"" + EscapeForJson(key) + "\":" + rawJson;
+    }
+
+    std::string BuildCreatureJson(Player const* player, Creature const* creature)
+    {
+        std::string json = "{";
+        bool firstField = true;
+        JsonAppendNumberField(json, firstField, "entry", creature->GetEntry());
+        JsonAppendStringField(json, firstField, "name", creature->GetName());
+        JsonAppendStringField(json, firstField, "guid", creature->GetGUID().ToString());
+        JsonAppendNumberField(json, firstField, "level", creature->GetLevel());
+        JsonAppendBoolField(json, firstField, "alive", creature->IsAlive());
+        JsonAppendFloatField(json, firstField, "distance", player->GetDistance(creature));
+        JsonAppendFloatField(json, firstField, "x", creature->GetPositionX());
+        JsonAppendFloatField(json, firstField, "y", creature->GetPositionY());
+        JsonAppendFloatField(json, firstField, "z", creature->GetPositionZ());
+        json += "}";
+        return json;
+    }
+
+    std::string BuildGameObjectJson(Player const* player, GameObject const* gameObject)
+    {
+        std::string json = "{";
+        bool firstField = true;
+        JsonAppendNumberField(json, firstField, "entry", gameObject->GetEntry());
+        JsonAppendStringField(json, firstField, "name", gameObject->GetName());
+        JsonAppendStringField(json, firstField, "guid", gameObject->GetGUID().ToString());
+        JsonAppendNumberField(json, firstField, "type", static_cast<long long>(gameObject->GetGoType()));
+        JsonAppendFloatField(json, firstField, "distance", player->GetDistance(gameObject));
+        JsonAppendFloatField(json, firstField, "x", gameObject->GetPositionX());
+        JsonAppendFloatField(json, firstField, "y", gameObject->GetPositionY());
+        JsonAppendFloatField(json, firstField, "z", gameObject->GetPositionZ());
+        json += "}";
+        return json;
+    }
+
+    std::string BuildNearbyContextSnapshotJson(Player* player, uint64 actionRequestId, std::string const& contextKind, uint32 radius)
+    {
+        std::list<WorldObject*> nearbyObjects;
+        Acore::AllWorldObjectsInRange check(player, static_cast<float>(radius));
+        Acore::WorldObjectListSearcher<Acore::AllWorldObjectsInRange> searcher(player, nearbyObjects, check);
+        Cell::VisitObjects(player, searcher, static_cast<float>(radius));
+
+        std::string creatures = "[";
+        bool firstCreature = true;
+        uint32 creatureCount = 0;
+        std::string gameObjects = "[";
+        bool firstGameObject = true;
+        uint32 gameObjectCount = 0;
+
+        for (WorldObject* object : nearbyObjects)
+        {
+            if (!object || object == player)
+            {
+                continue;
+            }
+
+            if (Creature* creature = object->ToCreature())
+            {
+                if (creatureCount >= 25)
+                {
+                    continue;
+                }
+                if (!firstCreature)
+                {
+                    creatures += ",";
+                }
+                firstCreature = false;
+                creatures += BuildCreatureJson(player, creature);
+                ++creatureCount;
+                continue;
+            }
+
+            if (GameObject* gameObject = object->ToGameObject())
+            {
+                if (gameObjectCount >= 25)
+                {
+                    continue;
+                }
+                if (!firstGameObject)
+                {
+                    gameObjects += ",";
+                }
+                firstGameObject = false;
+                gameObjects += BuildGameObjectJson(player, gameObject);
+                ++gameObjectCount;
+            }
+        }
+
+        creatures += "]";
+        gameObjects += "]";
+
+        std::string json = "{";
+        bool firstField = true;
+        JsonAppendStringField(json, firstField, "schema_version", "wm.bridge_context_snapshot.v1");
+        JsonAppendNumberField(json, firstField, "action_request_id", static_cast<long long>(actionRequestId));
+        JsonAppendStringField(json, firstField, "context_kind", contextKind);
+        JsonAppendNumberField(json, firstField, "radius", radius);
+        JsonAppendNumberField(json, firstField, "player_guid", static_cast<long long>(player->GetGUID().GetCounter()));
+        JsonAppendStringField(json, firstField, "player_name", player->GetName());
+        JsonAppendNumberField(json, firstField, "map_id", player->GetMapId());
+        JsonAppendNumberField(json, firstField, "zone_id", player->GetZoneId());
+        JsonAppendNumberField(json, firstField, "area_id", player->GetAreaId());
+        JsonAppendFloatField(json, firstField, "x", player->GetPositionX());
+        JsonAppendFloatField(json, firstField, "y", player->GetPositionY());
+        JsonAppendFloatField(json, firstField, "z", player->GetPositionZ());
+        JsonAppendFloatField(json, firstField, "o", player->GetOrientation());
+        JsonAppendNumberField(json, firstField, "nearby_creature_count", creatureCount);
+        JsonAppendNumberField(json, firstField, "nearby_gameobject_count", gameObjectCount);
+        JsonAppendRawField(json, firstField, "nearby_creatures", creatures);
+        JsonAppendRawField(json, firstField, "nearby_gameobjects", gameObjects);
+        json += "}";
+        return json;
+    }
+
+    bool WriteContextSnapshot(uint64 actionRequestId, uint32 playerGuid, std::string const& payloadJson, std::string& errorText)
+    {
+        Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
+        if (!player)
+        {
+            errorText = "player_not_online";
+            return false;
+        }
+
+        std::string contextKind = ExtractJsonStringField(payloadJson, "context_kind");
+        if (contextKind.empty())
+        {
+            contextKind = ExtractJsonStringField(payloadJson, "contextKind");
+        }
+        if (contextKind.empty())
+        {
+            contextKind = "nearby";
+        }
+
+        uint32 radius = 40;
+        uint32 requestedRadius = 0;
+        if (TryExtractJsonUInt32Field(payloadJson, "radius", requestedRadius) && requestedRadius > 0)
+        {
+            radius = std::clamp<uint32>(requestedRadius, 5, 100);
+        }
+
+        std::string snapshotJson = BuildNearbyContextSnapshotJson(player, actionRequestId, contextKind, radius);
+        WorldDatabase.Execute(
+            "INSERT INTO wm_bridge_context_request (PlayerGUID, ContextKind, Radius, Status, RequestedBy, MetadataJSON, ProcessedAt) "
+            "VALUES ({}, {}, {}, 'done', 'wm_bridge_action_queue', {}, NOW())",
+            playerGuid,
+            SqlString(contextKind),
+            radius,
+            SqlString(payloadJson));
+
+        WorldDatabase.Execute(
+            "INSERT INTO wm_bridge_context_snapshot (RequestID, PlayerGUID, ContextKind, Radius, MapID, ZoneID, AreaID, Source, PayloadJSON) "
+            "VALUES (NULL, {}, {}, {}, {}, {}, {}, 'native_bridge', {})",
+            playerGuid,
+            SqlString(contextKind),
+            radius,
+            player->GetMapId(),
+            player->GetZoneId(),
+            player->GetAreaId(),
+            SqlString(snapshotJson));
+
+        return true;
+    }
+
     void EmitQuestGrantedEvent(Player* player, Quest const* quest)
     {
         if (!player || !quest || !WmBridge::GetConfig().emitQuest || !WmBridge::IsPlayerAllowed(player))
@@ -368,12 +584,14 @@ namespace
 
         if (actionKind == "context_snapshot_request")
         {
-            WorldDatabase.Execute(
-                "INSERT INTO wm_bridge_context_request (PlayerGUID, ContextKind, Radius, Status, RequestedBy, MetadataJSON) "
-                "VALUES ({}, 'action_request', 40, 'pending', 'wm_bridge_action_queue', {})",
-                playerGuid,
-                SqlString(payloadJson));
-            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "context_request_queued"));
+            std::string errorText;
+            if (!WriteContextSnapshot(requestId, playerGuid, payloadJson, errorText))
+            {
+                CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, errorText), errorText);
+                return;
+            }
+
+            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "context_snapshot_written"));
             return;
         }
 

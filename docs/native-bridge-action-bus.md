@@ -26,7 +26,7 @@ Implemented native actions in the first safe slice:
 - `debug_ping`
 - `debug_echo`
 - `debug_fail`
-- `context_snapshot_request` queues `wm_bridge_context_request`; snapshot row production is still `PARTIAL`
+- `context_snapshot_request` writes one `wm_bridge_context_request` plus one `wm_bridge_context_snapshot` when the scoped player is online; live proof is still `PARTIAL` until player `5406` is logged into the lab
 - `quest_add`
 - `world_announce_to_player`
 
@@ -176,8 +176,8 @@ python -m wm.context.snapshot --player-guid 5406 --timeout-seconds 10 --summary
 Current status:
 
 - `WORKING`: action row reaches `done` and a newer `wm_bridge_context_snapshot` row appears for the scoped player.
-- `PARTIAL`: action row reaches `done` but no snapshot row appears. This is the expected status with the tracked native code as of 2026-04-14 because `context_snapshot_request` only inserts `wm_bridge_context_request`.
-- `PARTIAL`: if lab `worldserver` is not running, the action row remains `pending`; on 2026-04-14 the latest bridge-lab request was `pending` and `wm_bridge_context_snapshot` had zero rows for player `5406`.
+- `PARTIAL`: if lab `worldserver` is not running, the action row remains `pending`.
+- `PARTIAL`: if player `5406` is not online, the rebuilt lab worldserver consumes the request and fails it with `player_not_online`; this was the live result on 2026-04-14 for request `28`.
 - `BROKEN`: action row fails, rejects, expires, or bridge/action tables are unavailable.
 - `UNKNOWN`: not used for this operator command.
 

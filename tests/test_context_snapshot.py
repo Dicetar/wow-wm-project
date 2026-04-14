@@ -48,6 +48,23 @@ class ContextSnapshotRequesterTests(unittest.TestCase):
         self.assertIsNone(proof.snapshot)
         self.assertTrue(any("context_snapshot_request reached done" in note for note in proof.notes))
 
+    def test_request_reports_partial_when_player_is_offline(self) -> None:
+        client = _FakeMysqlClient(snapshot_rows=[])
+        requester = NativeContextSnapshotRequester(
+            client=client,  # type: ignore[arg-type]
+            settings=Settings(),
+            action_client=_FakeActionClient(wait_status="failed", error_text="player_not_online"),  # type: ignore[arg-type]
+        )
+
+        proof = requester.request(
+            player_guid=5406,
+            idempotency_key="snapshot:test",
+            timeout_seconds=0,
+        )
+
+        self.assertEqual(proof.status, "PARTIAL")
+        self.assertTrue(any("player_not_online" in note for note in proof.notes))
+
     def test_request_reports_partial_without_submitting_when_snapshot_table_missing(self) -> None:
         action_client = _FakeActionClient(wait_status="done")
         requester = NativeContextSnapshotRequester(
@@ -107,8 +124,9 @@ class _FakeMysqlClient:
 
 
 class _FakeActionClient:
-    def __init__(self, *, wait_status: str) -> None:
+    def __init__(self, *, wait_status: str, error_text: str | None = None) -> None:
         self.wait_status = wait_status
+        self.error_text = error_text
         self.submitted: dict[str, Any] = {}
         self.was_submitted = False
 
@@ -119,10 +137,10 @@ class _FakeActionClient:
 
     def wait(self, *, request_id: int, timeout_seconds: float, poll_seconds: float) -> NativeBridgeActionRequest:
         del request_id, timeout_seconds, poll_seconds
-        return _request(status=self.wait_status)
+        return _request(status=self.wait_status, error_text=self.error_text)
 
 
-def _request(*, status: str) -> NativeBridgeActionRequest:
+def _request(*, status: str, error_text: str | None = None) -> NativeBridgeActionRequest:
     return NativeBridgeActionRequest(
         request_id=12,
         idempotency_key="snapshot:test",
@@ -132,6 +150,7 @@ def _request(*, status: str) -> NativeBridgeActionRequest:
         status=status,
         created_by="test",
         risk_level="low",
+        error_text=error_text,
     )
 
 
