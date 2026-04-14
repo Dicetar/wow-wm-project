@@ -92,7 +92,8 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - `wm.context_pack.v1` assembly now packages source event, character state, target profile, subject card, journal summary, recent events, related subject events, reactive quest runtime, control recipe/policy metadata, and latest native snapshot rows when present
 - `python -m wm.context.snapshot` and `scripts/bridge_lab/Request-BridgeLabContextSnapshot.ps1` provide a bounded one-shot request/wait path for native context snapshot proof
 - repo status is `WORKING` for resolver, journal reader/inspect, context pack assembly, and bounded snapshot command tests
-- live status is `PARTIAL`: local smoke on 2026-04-14 could not connect to default MySQL on `127.0.0.1:3306`, and tracked native code still lacks the snapshot writer that would turn queued `wm_bridge_context_request` rows into `wm_bridge_context_snapshot` rows
+- bridge-lab DB status is `WORKING`: on 2026-04-14, `wm.journal.inspect` and event-backed `wm.context.builder` were proven against `127.0.0.1:33307` using `sql/dev/seed_journal_context_5406_world.sql`
+- native snapshot status is still `PARTIAL`: no lab `worldserver` process was consuming the queue during the smoke, the latest `context_snapshot_request` remained `pending`, `wm_bridge_context_snapshot` had zero rows for player `5406`, and tracked native code still lacks the snapshot writer that would turn queued `wm_bridge_context_request` rows into snapshots
 
 ### Rebuilt latest-source baseline
 

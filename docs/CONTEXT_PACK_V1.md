@@ -76,10 +76,20 @@ Seeded event-backed smoke path:
 
 ```powershell
 cd D:\WOW\wm-project
-$sql = Get-Content .\sql\dev\seed_journal_context_5406_world.sql -Raw
-& $env:WM_MYSQL_BIN_PATH --host=$env:WM_WORLD_DB_HOST --port=$env:WM_WORLD_DB_PORT --user=$env:WM_WORLD_DB_USER --password=$env:WM_WORLD_DB_PASSWORD --database=$env:WM_WORLD_DB_NAME --execute="$sql"
-$eventId = (& $env:WM_MYSQL_BIN_PATH --host=$env:WM_WORLD_DB_HOST --port=$env:WM_WORLD_DB_PORT --user=$env:WM_WORLD_DB_USER --password=$env:WM_WORLD_DB_PASSWORD --database=$env:WM_WORLD_DB_NAME --batch --raw --skip-column-names --execute="SELECT EventID FROM wm_event_log WHERE Source = 'dev_seed' AND SourceEventKey = 'journal-context-5406-46-kill-1' LIMIT 1").Trim()
-python -m wm.context.builder --event-id $eventId --summary
+.\start-bridge-lab-mysql.bat
+$env:WM_WORLD_DB_HOST = "127.0.0.1"
+$env:WM_WORLD_DB_PORT = "33307"
+$env:WM_WORLD_DB_USER = "acore"
+$env:WM_WORLD_DB_PASSWORD = "acore"
+$env:WM_WORLD_DB_NAME = "acore_world"
+$env:WM_CHAR_DB_HOST = "127.0.0.1"
+$env:WM_CHAR_DB_PORT = "33307"
+$env:WM_CHAR_DB_USER = "acore"
+$env:WM_CHAR_DB_PASSWORD = "acore"
+$env:WM_CHAR_DB_NAME = "acore_characters"
+& "D:\WOW\WM_BridgeLab\deps\mysql\bin\mysql.exe" --host=$env:WM_WORLD_DB_HOST --port=$env:WM_WORLD_DB_PORT --user=$env:WM_WORLD_DB_USER --password=$env:WM_WORLD_DB_PASSWORD --database=$env:WM_WORLD_DB_NAME --execute="source D:/WOW/wm-project/sql/dev/seed_journal_context_5406_world.sql"
+$eventId = (& "D:\WOW\WM_BridgeLab\deps\mysql\bin\mysql.exe" --host=$env:WM_WORLD_DB_HOST --port=$env:WM_WORLD_DB_PORT --user=$env:WM_WORLD_DB_USER --password=$env:WM_WORLD_DB_PASSWORD --database=$env:WM_WORLD_DB_NAME --batch --raw --skip-column-names --execute="SELECT EventID FROM wm_event_log WHERE Source = 'dev_seed' AND SourceEventKey = 'journal-context-5406-46-kill-1' LIMIT 1").Trim()
+python -m wm.context.builder --event-id $eventId --summary --no-native-snapshot
 ```
 
 One-shot native snapshot request/wait path:
@@ -101,9 +111,10 @@ Current expected result for the snapshot command is `PARTIAL` unless a native sn
 ## Current Proof Status
 
 - `WORKING`: repo tests for deterministic event-backed pack assembly, optional-section status behavior, native snapshot row consumption, and CLI `UNKNOWN` behavior for unresolved targets.
-- `PARTIAL`: live smoke on 2026-04-14 against default `127.0.0.1:3306` could not connect, so builder output used resolver fallback and missing optional sections; snapshot request proof also returned `PARTIAL`.
+- `WORKING`: bridge-lab proof on 2026-04-14 against `127.0.0.1:33307` after `sql/dev/seed_journal_context_5406_world.sql`; `python -m wm.context.builder --event-id 603 --summary --no-native-snapshot` produced `status: WORKING`, `trigger_event_type: kill`, `journal_status: WORKING`, and `eligible_recipes: kill_burst_bounty`.
+- `PARTIAL`: native snapshot inclusion. The same event-backed pack without `--no-native-snapshot` produced `status: PARTIAL` because no `wm_bridge_context_snapshot` row exists for player `5406`.
 - `BROKEN`: no current repo evidence.
-- `UNKNOWN`: live bridge-lab event-backed pack from a real native event id has not been rerun after this checkpoint.
+- `UNKNOWN`: target or event resolution failure.
 
 ## Next Step
 

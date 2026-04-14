@@ -177,6 +177,7 @@ Current status:
 
 - `WORKING`: action row reaches `done` and a newer `wm_bridge_context_snapshot` row appears for the scoped player.
 - `PARTIAL`: action row reaches `done` but no snapshot row appears. This is the expected status with the tracked native code as of 2026-04-14 because `context_snapshot_request` only inserts `wm_bridge_context_request`.
+- `PARTIAL`: if lab `worldserver` is not running, the action row remains `pending`; on 2026-04-14 the latest bridge-lab request was `pending` and `wm_bridge_context_snapshot` had zero rows for player `5406`.
 - `BROKEN`: action row fails, rejects, expires, or bridge/action tables are unavailable.
 - `UNKNOWN`: not used for this operator command.
 

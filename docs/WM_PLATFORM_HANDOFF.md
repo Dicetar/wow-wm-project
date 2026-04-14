@@ -77,7 +77,8 @@ Current architecture:
   - DB-backed journal read helpers and resolver-card fallback exist
   - context-pack assembly exists and includes recipe/policy metadata plus latest native snapshot rows when present
   - repo tests are `WORKING` for the resolver, journal reader/inspect, and context-pack assembly
-  - live DB row proof, automatic subject materialization, fresh native snapshot consumption, zone mood, and full proposal-gate previews are still `PARTIAL`
+  - bridge-lab DB proof on `127.0.0.1:33307` is `WORKING` for the seeded player `5406` / creature `46` journal and event-backed context pack
+  - automatic subject materialization, fresh native snapshot consumption, zone mood, and full proposal-gate previews are still `PARTIAL`
 - visible shell-bank spells are not yet proven end-to-end in the client because the local patch artifact is not finalized and installed from repo instructions
 - summon/twin behavior work exists in pieces, but only the debug/native lane is currently supported for iteration
 - experimental `template_watch` / `template_publish` comparison work remains isolated in `.worktrees/template-watch-compare`; its dynamic binding idea is useful, but its standalone watcher path is not the production architecture

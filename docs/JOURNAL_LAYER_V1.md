@@ -127,8 +127,13 @@ Use this only against a disposable/lab world DB. It upserts one known creature s
 
 ```powershell
 cd D:\WOW\wm-project
-$sql = Get-Content .\sql\dev\seed_journal_context_5406_world.sql -Raw
-& $env:WM_MYSQL_BIN_PATH --host=$env:WM_WORLD_DB_HOST --port=$env:WM_WORLD_DB_PORT --user=$env:WM_WORLD_DB_USER --password=$env:WM_WORLD_DB_PASSWORD --database=$env:WM_WORLD_DB_NAME --execute="$sql"
+.\start-bridge-lab-mysql.bat
+$env:WM_WORLD_DB_HOST = "127.0.0.1"
+$env:WM_WORLD_DB_PORT = "33307"
+$env:WM_WORLD_DB_USER = "acore"
+$env:WM_WORLD_DB_PASSWORD = "acore"
+$env:WM_WORLD_DB_NAME = "acore_world"
+& "D:\WOW\WM_BridgeLab\deps\mysql\bin\mysql.exe" --host=$env:WM_WORLD_DB_HOST --port=$env:WM_WORLD_DB_PORT --user=$env:WM_WORLD_DB_USER --password=$env:WM_WORLD_DB_PASSWORD --database=$env:WM_WORLD_DB_NAME --execute="source D:/WOW/wm-project/sql/dev/seed_journal_context_5406_world.sql"
 python -m wm.journal.inspect --player-guid 5406 --target-entry 46 --summary
 ```
 
@@ -151,7 +156,7 @@ For the player `5406` fixture, the inspect command should show `Murloc Forager` 
 ## Current proof status
 
 - `WORKING`: repo tests for summary generation, DB-row loading, table-missing fallback, DB-unavailable fallback, and `wm.journal.inspect` rendering.
-- `PARTIAL`: live lab proof. On 2026-04-14, bounded local smoke against default `127.0.0.1:3306` could not connect, so the command returned resolver-backed `PARTIAL` output with no journal rows loaded.
+- `WORKING`: bridge-lab proof on 2026-04-14 against `127.0.0.1:33307` after `sql/dev/seed_journal_context_5406_world.sql`; `wm.journal.inspect --player-guid 5406 --target-entry 46 --summary` loaded `subject_definition`, `subject_enrichment`, `subject_resolver`, `player_subject_journal`, and `player_subject_event`.
 - `UNKNOWN`: any target entry that cannot be resolved by static lookup or runtime resolver.
 
 ## Next implementation target
