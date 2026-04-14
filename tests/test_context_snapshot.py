@@ -30,6 +30,23 @@ class ContextSnapshotRequesterTests(unittest.TestCase):
         self.assertEqual(action_client.submitted["action_kind"], "context_snapshot_request")
         self.assertEqual(action_client.submitted["payload"]["context_kind"], "nearby")
 
+    def test_request_reuses_existing_snapshot_for_duplicate_idempotency_key(self) -> None:
+        client = _FakeMysqlClient(snapshot_rows=[], matching_action_snapshot=_snapshot_row(snapshot_id="91"))
+        requester = NativeContextSnapshotRequester(
+            client=client,  # type: ignore[arg-type]
+            settings=Settings(),
+            action_client=_FakeActionClient(wait_status="done"),  # type: ignore[arg-type]
+        )
+
+        proof = requester.request(
+            player_guid=5406,
+            idempotency_key="snapshot:test",
+            timeout_seconds=0,
+        )
+
+        self.assertEqual(proof.status, "WORKING")
+        self.assertEqual(proof.snapshot["snapshot_id"] if proof.snapshot else None, 91)
+
     def test_request_reports_partial_when_action_done_but_no_snapshot_appears(self) -> None:
         client = _FakeMysqlClient(snapshot_rows=[])
         requester = NativeContextSnapshotRequester(
@@ -97,9 +114,16 @@ class ContextSnapshotRequesterTests(unittest.TestCase):
 
 
 class _FakeMysqlClient:
-    def __init__(self, *, snapshot_rows: list[dict[str, Any]], fail_max: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        snapshot_rows: list[dict[str, Any]],
+        fail_max: bool = False,
+        matching_action_snapshot: dict[str, Any] | None = None,
+    ) -> None:
         self.snapshot_rows = snapshot_rows
         self.fail_max = fail_max
+        self.matching_action_snapshot = matching_action_snapshot
         self.queries: list[str] = []
 
     def query(
@@ -120,6 +144,8 @@ class _FakeMysqlClient:
             return [{"SnapshotID": "90"}]
         if "SnapshotID >" in sql:
             return list(self.snapshot_rows)
+        if "PayloadJSON LIKE" in sql:
+            return [self.matching_action_snapshot] if self.matching_action_snapshot is not None else []
         return []
 
 
@@ -154,9 +180,9 @@ def _request(*, status: str, error_text: str | None = None) -> NativeBridgeActio
     )
 
 
-def _snapshot_row() -> dict[str, Any]:
+def _snapshot_row(*, snapshot_id: str = "91") -> dict[str, Any]:
     return {
-        "SnapshotID": "91",
+        "SnapshotID": snapshot_id,
         "RequestID": "22",
         "OccurredAt": "2026-04-14 12:00:00",
         "PlayerGUID": "5406",

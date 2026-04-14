@@ -1,5 +1,5 @@
 Status: DESIGN_ONLY
-Last verified: 2026-04-14
+Last verified: 2026-04-15
 Verified by: Codex
 Doc type: design
 
@@ -135,7 +135,7 @@ Make manual control the normal operator lane for native actions and keep it iden
 
 Expose nearby context as snapshots and package deterministic world state for operators and later LLM use.
 
-### Current checkpoint (2026-04-14)
+### Current checkpoint (2026-04-15)
 
 - `PARTIAL`
 - initial subject resolver and DB-backed journal reader slices exist
@@ -145,7 +145,7 @@ Expose nearby context as snapshots and package deterministic world state for ope
 - bridge-lab DB proof on 2026-04-14 against `127.0.0.1:33307` is `WORKING` for `wm.journal.inspect` and `wm.context.builder --event-id` with native snapshot disabled
 - `wm.context_pack.v1` assembly exists for source event, character state, target profile, subject card, journal summary, recent events, related subject events, reactive quest runtime, eligible recipes, policy metadata, and latest native context snapshot rows when present
 - `python -m wm.context.snapshot` and the bridge-lab wrapper can request one bounded native snapshot proof
-- fresh live context snapshot consumption remains `PARTIAL`: the native writer is implemented and the bridge-lab `worldserver` target compiled, but the first live action proof failed with `player_not_online`; rerun after player `5406` is logged into the lab
+- fresh live context snapshot consumption is `WORKING` for one-shot operator proof: on 2026-04-15, action request `31` reached `done`, `wm_bridge_context_snapshot` row `1` was written, and the event-backed context pack consumed it with `native_snapshot: true`
 - zone mood, non-reactive quest runtime, and full proposal-gate preview sections are still open
 
 ### Deliverables

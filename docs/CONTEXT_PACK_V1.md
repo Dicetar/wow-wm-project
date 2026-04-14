@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-14
+Last verified: 2026-04-15
 Verified by: Codex
 Doc type: reference
 
@@ -56,8 +56,6 @@ The builder composes existing systems:
 
 - the CLI path still depends on live DB access for journal loading
 - native context snapshot inclusion loads only an existing latest snapshot row during pack assembly
-- `python -m wm.context.snapshot` can request one native snapshot and wait with a bounded timeout; tracked `mod-wm-bridge` now writes one `wm_bridge_context_snapshot` from the action queue when the scoped player is online
-- live bridge-lab proof against a real event row has not been completed in this session
 - zone/local mood and broader scene context are not included yet
 - recipe/policy sections are context only; they do not execute proposals
 
@@ -100,7 +98,7 @@ python -m wm.context.snapshot --player-guid 5406 --timeout-seconds 10 --summary
 .\scripts\bridge_lab\Request-BridgeLabContextSnapshot.ps1 -PlayerGuid 5406 -TimeoutSeconds 10 -Summary
 ```
 
-Current expected result for the snapshot command is `PARTIAL` unless a native snapshot writer exists and writes `wm_bridge_context_snapshot`.
+Current expected result for the snapshot command is `WORKING` when player `5406` is online in the bridge lab.
 
 ## Status Behavior
 
@@ -112,8 +110,8 @@ Current expected result for the snapshot command is `PARTIAL` unless a native sn
 
 - `WORKING`: repo tests for deterministic event-backed pack assembly, optional-section status behavior, native snapshot row consumption, and CLI `UNKNOWN` behavior for unresolved targets.
 - `WORKING`: bridge-lab proof on 2026-04-14 against `127.0.0.1:33307` after `sql/dev/seed_journal_context_5406_world.sql`; `python -m wm.context.builder --event-id 603 --summary --no-native-snapshot` produced `status: WORKING`, `trigger_event_type: kill`, `journal_status: WORKING`, and `eligible_recipes: kill_burst_bounty`.
-- `PARTIAL`: native snapshot inclusion. The same event-backed pack without `--no-native-snapshot` produced `status: PARTIAL` until a fresh online-player snapshot row exists for player `5406`.
-- `PARTIAL`: bridge-lab native snapshot proof on 2026-04-14 consumed action request `28` with the rebuilt worldserver, but it failed with `player_not_online`; rerun after logging player `5406` into the lab.
+- `WORKING`: bridge-lab native snapshot proof on 2026-04-15 consumed action request `31`, wrote `wm_bridge_context_snapshot` row `1`, and `python -m wm.context.builder --event-id 603 --summary` produced `native_snapshot: true` with `status: WORKING`.
+- `WORKING`: duplicate snapshot CLI runs with the same idempotency key now find the existing matching snapshot instead of waiting for a newer row and misreporting `PARTIAL`.
 - `BROKEN`: no current repo evidence.
 - `UNKNOWN`: target or event resolution failure.
 
@@ -121,7 +119,7 @@ Current expected result for the snapshot command is `PARTIAL` unless a native sn
 
 Integrate:
 
-- fresh `context_snapshot_request` issuance before pack assembly once the online-player lab proof is green
+- optional fresh `context_snapshot_request` issuance before pack assembly
 - quest runtime state from non-reactive quest sources
 - zone/local mood summaries
 - eligible action-policy gates suitable for proposal validation previews

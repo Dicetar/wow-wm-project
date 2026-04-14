@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-14
+Last verified: 2026-04-15
 Verified by: Codex
 Doc type: reference
 
@@ -26,7 +26,7 @@ Implemented native actions in the first safe slice:
 - `debug_ping`
 - `debug_echo`
 - `debug_fail`
-- `context_snapshot_request` writes one `wm_bridge_context_request` plus one `wm_bridge_context_snapshot` when the scoped player is online; live proof is still `PARTIAL` until player `5406` is logged into the lab
+- `context_snapshot_request` writes one `wm_bridge_context_request` plus one `wm_bridge_context_snapshot` when the scoped player is online; live bridge-lab proof is `WORKING`
 - `quest_add`
 - `world_announce_to_player`
 
@@ -177,9 +177,16 @@ Current status:
 
 - `WORKING`: action row reaches `done` and a newer `wm_bridge_context_snapshot` row appears for the scoped player.
 - `PARTIAL`: if lab `worldserver` is not running, the action row remains `pending`.
-- `PARTIAL`: if player `5406` is not online, the rebuilt lab worldserver consumes the request and fails it with `player_not_online`; this was the live result on 2026-04-14 for request `28`.
+- `PARTIAL`: if player `5406` is not online, the rebuilt lab worldserver consumes the request and fails it with `player_not_online`.
 - `BROKEN`: action row fails, rejects, expires, or bridge/action tables are unavailable.
 - `UNKNOWN`: not used for this operator command.
+
+Lab verification on 2026-04-15:
+
+- `context_snapshot_request` request `31` reached `done`
+- `wm_bridge_context_snapshot` row `1` was written for player `5406`
+- snapshot payload included player location plus nearby creature/gameobject arrays
+- `python -m wm.context.builder --event-id 603 --summary` consumed the snapshot and reported `native_snapshot: true`
 
 Submit a small ordered sequence:
 

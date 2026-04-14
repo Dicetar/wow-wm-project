@@ -107,6 +107,12 @@ class NativeContextSnapshotRequester:
                 poll_seconds=poll_seconds,
                 notes=notes,
             )
+            if snapshot is None and action.status == "done":
+                snapshot = self._load_snapshot_for_action_request(
+                    player_guid=guid,
+                    action_request_id=action.request_id,
+                    notes=notes,
+                )
 
         status = _proof_status(action=action, snapshot=snapshot, notes=notes)
         return NativeContextSnapshotProof(
@@ -168,6 +174,41 @@ class NativeContextSnapshotRequester:
             )
         except MysqlCliError as exc:
             notes.append(f"snapshot_load: {str(exc).strip() or type(exc).__name__}")
+            return None
+        if not rows:
+            return None
+        row = rows[0]
+        return {
+            "snapshot_id": _int_or_none(row.get("SnapshotID")),
+            "request_id": _int_or_none(row.get("RequestID")),
+            "occurred_at": _str_or_none(row.get("OccurredAt")),
+            "player_guid": _int_or_none(row.get("PlayerGUID")),
+            "context_kind": _str_or_none(row.get("ContextKind")),
+            "radius": _int_or_none(row.get("Radius")),
+            "map_id": _int_or_none(row.get("MapID")),
+            "zone_id": _int_or_none(row.get("ZoneID")),
+            "area_id": _int_or_none(row.get("AreaID")),
+            "source": _str_or_none(row.get("Source")),
+            "payload": _parse_json_value(row.get("PayloadJSON")),
+        }
+
+    def _load_snapshot_for_action_request(
+        self,
+        *,
+        player_guid: int,
+        action_request_id: int,
+        notes: list[str],
+    ) -> dict[str, Any] | None:
+        try:
+            rows = self._query_world(
+                "SELECT SnapshotID, RequestID, OccurredAt, PlayerGUID, ContextKind, Radius, MapID, ZoneID, AreaID, Source, PayloadJSON "
+                "FROM wm_bridge_context_snapshot "
+                f"WHERE PlayerGUID = {int(player_guid)} "
+                f"AND PayloadJSON LIKE '%\"action_request_id\":{int(action_request_id)}%' "
+                "ORDER BY SnapshotID DESC LIMIT 1"
+            )
+        except MysqlCliError as exc:
+            notes.append(f"snapshot_lookup: {str(exc).strip() or type(exc).__name__}")
             return None
         if not rows:
             return None

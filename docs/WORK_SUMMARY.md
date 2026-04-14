@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-14
+Last verified: 2026-04-15
 Verified by: Codex
 Doc type: handoff
 
@@ -93,7 +93,7 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - `python -m wm.context.snapshot` and `scripts/bridge_lab/Request-BridgeLabContextSnapshot.ps1` provide a bounded one-shot request/wait path for native context snapshot proof
 - repo status is `WORKING` for resolver, journal reader/inspect, context pack assembly, and bounded snapshot command tests
 - bridge-lab DB status is `WORKING`: on 2026-04-14, `wm.journal.inspect` and event-backed `wm.context.builder` were proven against `127.0.0.1:33307` using `sql/dev/seed_journal_context_5406_world.sql`
-- native snapshot status is still `PARTIAL`: tracked native code now writes one `wm_bridge_context_snapshot` from the action queue and the bridge-lab `worldserver` target compiles, but the first live request failed with `player_not_online`; rerun after player `5406` is logged into the lab
+- native snapshot status is `WORKING` for one-shot bridge-lab proof: on 2026-04-15, scoped player `5406` was online, native request `31` reached `done`, snapshot row `1` was written, duplicate idempotency lookup returned the existing snapshot, and event-backed context pack output included `native_snapshot: true`
 
 ### Rebuilt latest-source baseline
 
