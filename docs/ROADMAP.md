@@ -1,6 +1,6 @@
 Status: DESIGN_ONLY
-Last verified: 2026-04-13
-Verified by: Codex
+Last verified: 2026-04-14
+Verified by: ChatGPT
 Doc type: design
 
 # WM Roadmap
@@ -24,8 +24,8 @@ The direction is native-first:
 Current fallback policy:
 
 - primary target architecture: `native_bridge`
-- current proven live fallback: `addon_log`
-- debug-only fallback: `combat_log`
+- current fallback/debug path: `combat_log`
+- legacy/retired live path: `addon_log`
 
 ## Working principles
 
@@ -34,205 +34,125 @@ Current fallback policy:
 - the LLM does not get freeform mutation powers
 - manual control remains the first-class reference lane
 - all risky native work is proven in `D:\WOW\WM_BridgeLab` before any promotion
+- live perception and action should stay pinned to one explicitly claimed WM player at a time
 
-## Phase 0: Stabilize the current bridge-lab delta
+## Phase 0: Stabilize the native-first baseline
 
 ### Goal
 
-Turn the current lab spike into a clean checkpoint we can safely build on.
+Turn the current lab/native path into the boring default substrate for WM.
 
 ### Deliverables
 
-- lab launcher plus auth realmlist sync helper
-- graceful-first lab worldserver restart path
-- native `quest_add` implementation
-- native `quest/granted` emission after successful `quest_add`
-- Questie compat addon for WM custom quest ids
-- docs updated to reflect the actual lab workflow
-- lab runtime config helper keeps `WeatherVibe.Debug = 0`
+- docs updated to reflect `native_bridge` as the target live source
+- retire `addon_log` from current-state docs
+- keep `combat_log` only as fallback/debug
+- verify native event coverage for kill, quest lifecycle, gossip, area enter, spell cast, item use, aura changes, and weather changes
+- keep lab runtime config helper and bridge-lab workflow healthy
 
 ### Exit criteria
 
-- the lab boots from repo helpers
-- `quest_add` places the quest directly into Jecia's journal and the quest is turn-in capable
-- successful `quest_add` also yields a native quest event visible to WM
-- WeatherVibe debug spam is off in the lab
-- Questie no longer spams tracker errors for WM custom quest ids
-- the repo is push-ready again
+- the repo clearly names `native_bridge` as the live direction
+- `addon_log` is no longer presented as the current primary path
+- operators can bring up the bridge lab and native watcher from repo docs alone
 
-## Phase 1: Native parity for the current bounty loop
+## Phase 1: Active WM player scope
 
 ### Goal
 
-Make the existing reactive bounty loop work fully through native perception and native-preferred action execution.
+Make one explicitly claimed player the live WM target for perception, journaling, and action.
 
 ### Deliverables
 
-- native `kill`
-- native `quest_granted`
-- native `quest_completed`
-- native `quest_rewarded`
-- cooldown and suppression remain in WM
-- `quest_grant` prefers native `quest_add` and falls back to SOAP only when native is unavailable
-- runtime quest-state polling remains as reconciliation, not primary truth
+- dedicated WM claim spell / aura
+- WM-owned active-player scope table
+- bridge scope update flow driven by the claim event
+- watcher supervisor that retargets/restarts when the claimed GUID changes
+- online-state sanity checks using `characters.online`
 
 ### Exit criteria
 
-- 4 `Kobold Vermin` kills in 120 seconds grant quest `910000` through native action
-- turning in to `Marshal McBride` emits usable native reward-state facts
-- immediate retrigger is suppressed while the quest is active or complete-but-not-rewarded
-- post-reward cooldown works
-- after cooldown, the same burst grants again
-- `addon_log` still works if native is disabled
+- applying the WM claim effect rewrites the active player GUID
+- the watcher follows only that GUID
+- switching the claim effect to another character cleanly rewrites scope and restarts perception
 
-## Phase 2: Control-native convergence
+## Phase 2: Journal Layer V2 and rollups
 
 ### Goal
 
-Make manual control the normal operator lane for native actions and keep it identical to future LLM contracts.
+Move from per-subject counters only to richer per-character memory.
 
 ### Deliverables
 
-- event inspect
-- proposal build
-- validate
-- dry-run
-- apply
-- audit
-- capability-aware action selection:
-  - native when implemented and policy-allowed
-  - fallback only where native is not yet proven
-- `control/` remains the single place for:
-  - event contracts
-  - action contracts
-  - recipe registry
-  - runtime safety checks
-  - policy defaults
-  - manual examples
+- daily kill rollups by player and subject
+- optional zone/faction/family rollups
+- richer pressure-style views such as yesterday/this week hot subjects
+- keep append-only raw events plus derived counters and summaries
 
 ### Exit criteria
 
-- a human can reproduce the bounty grant and small native tests entirely through the control workbench
-- proposal audit links source event -> proposal -> native request -> result
-- policy, idempotency, stale-event, and wrong-player rejections are visible and explainable
+- WM can answer what this player killed a lot yesterday / this week
+- subject, family, and zone pressure views are inspectable
 
-## Phase 3: Context and perception packs
+## Phase 3: Template convergence
 
 ### Goal
 
-Expose nearby context as snapshots and package deterministic world state for operators and later LLM use.
+Unify the publish side around top-level artifact families while keeping the richer operator-facing workbench split.
+
+### Top-level managed artifact families
+
+1. quests
+2. items
+3. spells
+
+### Operator-facing content workbench subtypes
+
+The current workbench should continue to expose richer categories where that helps operators:
+
+- managed items
+- passive spell-slot drafts
+- visible spell-slot drafts
+- item-trigger spell-slot drafts
+- WM shell-bank drafts
 
 ### Deliverables
 
-- `context_snapshot_request`
-- `wm_bridge_context_snapshot`
-- WM perception packs built from:
-  - recent canonical events
-  - quest runtime state
-  - player refs and location
-  - nearby entities and objects
-  - current area and weather
-- snapshot requests start as operator/manual tools first
+- top-level docs use the three-family platform model
+- content workbench docs keep the richer subtype breakdown
+- quest, item, and spell templates converge on shared provenance/lifecycle rules
 
-### Exit criteria
-
-- WM can request a scoped nearby snapshot for one player and consume it deterministically
-- control inspect can show recent events plus nearby context together
-- no continuous nearby-entity spam lane is introduced
-
-## Phase 4: Broaden native action primitives
+## Phase 4: Spawn pressure and event-state control
 
 ### Goal
 
-Front-load reusable typed verbs so later WM features do not require constant full rebuild churn.
-
-### Native action order
-
-1. `world_announce_to_player`
-2. quest verbs:
-   - `quest_add`
-   - `quest_complete`
-   - objective and counter helpers
-3. low-risk player verbs:
-   - `player_apply_aura`
-   - `player_remove_aura`
-   - `player_restore_health_power`
-4. reward verbs:
-   - `player_add_item`
-   - `player_add_money`
-   - `player_add_reputation`
-5. interaction verbs:
-   - `gossip_override_set`
-   - `gossip_override_clear`
-   - `player_show_menu`
-6. WM-owned scene verbs:
-   - `creature_spawn`
-   - `creature_despawn`
-   - `creature_say`
-   - `creature_emote`
-   - `creature_follow_player`
-7. environment verbs:
-   - `zone_set_weather`
-   - `zone_clear_weather_override`
-
-### Rules
-
-- no generic GM-command action
-- no arbitrary SQL action
-- no mutation of non-WM-owned creatures or gameobjects except explicit admin-only lab tools
-- every verb needs:
-  - policy default
-  - payload schema
-  - manual proposal example
-  - lab proof
-  - clear result and error JSON
-
-## Phase 5: Artifact governance and scene composition
-
-### Goal
-
-Treat WM-created artifacts and WM-owned spawned objects as first-class lifecycle-managed objects.
+Let WM overcharge encounters and local events without treating permanent world DB edits as the first tool.
 
 ### Deliverables
 
-- staged -> active -> retired -> archived lifecycle model
-- provenance links from:
-  - source event
-  - control proposal
-  - native action request
-  - publish log / rollback state
-- WM-owned scene composition:
-  - temporary NPCs
-  - temporary gameobjects
-  - companion flows
-  - injected gossip and menu interactions
+- temporary summon-wave events first
+- WM-owned spawn pressure overlay second
+- pool switching / respawn-multiplier work later where justified
+- avoid raw permanent world edits as the default event engine
 
 ### Exit criteria
 
-- WM can compose small multi-part scenes without losing provenance or rollback clarity
-- slot ownership and WM-owned object ownership are explicit
+- WM can create a local overcharge event safely and reversibly
+- event-state spawns use explicit WM-owned provenance
 
-## Phase 6: LLM layer on top of locked contracts
+## Phase 5: Rich world-direction features
 
 ### Goal
 
-Let the LLM choose and fill registered controls only after the native/manual foundation is boringly reliable.
+Use native facts + memory + templates to create more interesting world behavior.
 
 ### Deliverables
 
-- LLM input includes:
-  - perception pack
-  - eligible recipes
-  - allowed action contracts
-  - current policy gates
-- manual stays the reference lane
-- direct live apply stays off by default
-
-### Exit criteria
-
-- LLM proposals use the same schema as manual proposals
-- no freeform config edits, shell commands, SQL, or file mutations are exposed
-- direct apply remains gated and explainable
+- mentor / familiar NPC followups
+- local legend / local reputation summaries
+- zone mood / pressure systems
+- richer quest/item/spell reward patterns
+- small event-state scenes built from typed native actions
 
 ## What is intentionally not first
 
@@ -242,6 +162,6 @@ Not first:
 - more combat-log work
 - Eluna or ALE as the main WM runtime
 - freeform LLM-to-game mutation
-- broad autonomous story logic before native perception and action are stable
+- broad autonomous story logic before native perception, active-player scope, and memory are stable
 
 Those may still matter later, but they are not the shortest path to a stable World Master platform.

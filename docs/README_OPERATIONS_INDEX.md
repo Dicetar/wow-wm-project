@@ -1,6 +1,6 @@
 Status: WORKING
-Last verified: 2026-04-13
-Verified by: Codex
+Last verified: 2026-04-14
+Verified by: ChatGPT
 Doc type: reference
 
 # Documentation Index
@@ -37,6 +37,7 @@ The repo uses a Diataxis-style split:
 
 ## Architecture / Decisions
 
+- [Event Watcher Architecture](EVENT_WATCHER_ARCHITECTURE.md)
 - [ADR 0001: No stock live spell carriers](adr/0001-no-stock-live-spell-carriers.md)
 - [ADR 0002: Extend the existing action bus](adr/0002-extend-existing-action-bus.md)
 - [ADR 0003: Client shell bank for visible WM spells](adr/0003-client-shell-bank-for-visible-wm-spells.md)
@@ -50,6 +51,7 @@ The repo uses a Diataxis-style split:
 
 ## Reference / Contracts
 
+- [Active WM Player Scope](ACTIVE_WM_PLAYER_SCOPE.md)
 - [Content Workbench V1](CONTENT_WORKBENCH_V1.md)
 - [Prompt Package V1](PROMPT_PACKAGE_V1.md) - historical prompt-package reference; check status header before trusting
 - [Item Slot Pipeline V1](ITEM_SLOT_PIPELINE_V1.md)
