@@ -1,5 +1,5 @@
 Status: DESIGN_TARGET
-Last verified: 2026-04-13
+Last verified: 2026-04-14
 Verified by: ChatGPT
 Doc type: program roadmap
 
@@ -29,8 +29,7 @@ Today the repo already has a real platform spine:
 - Python package and CLI-first control plane
 - WM-owned schema and bootstrap flow
 - deterministic event spine with inspect / preview / run / watch
-- live working event ingestion through `addon_log`
-- native AzerothCore rollout path through `mod-wm-bridge`
+- native AzerothCore live perception path through `mod-wm-bridge`
 - native action queue contracts with player scoping and policy gates
 - content workbench flows for managed items, spells, and shell-bank behavior
 - journal groundwork and quest draft groundwork
@@ -288,10 +287,11 @@ The project already has a lot of moving parts. Before adding more ambition, the 
 ### Deliverables
 
 - verify and document the current supported runtime matrix:
-  - addon bridge
   - native bridge
+  - combat-log fallback/debug path
   - SOAP fallback paths
   - lab build path
+  - legacy addon path only as historical reference
 - tighten environment/bootstrap docs so a fresh machine can reach a known-good state
 - standardize WM-owned table bootstrap, verification, and drift checks
 - improve operator diagnostics for:
@@ -522,7 +522,7 @@ Move more of WM’s live truth onto native bridge facts while keeping fallbacks 
 
 ### Why this phase matters
 
-The addon bridge proved the platform. The native bridge should become the durable substrate.
+Native bridge should become the durable substrate for live WM facts.
 
 ### Deliverables
 
@@ -535,11 +535,11 @@ The addon bridge proved the platform. The native bridge should become the durabl
 - event normalization layer with consistent canonical WM event shapes
 - event replay tooling
 - suppression/cooldown behavior unified across adapters
-- reconciliation rules between native truth, addon bridge, and runtime queries
+- reconciliation rules between native truth, combat-log fallback, legacy addon-derived history, and runtime queries where needed
 
 ### Exit criteria
 
-- the same high-level WM logic can run on addon_log or native_bridge
+- the same high-level WM logic can run on native_bridge with clear fallback behavior
 - native bridge becomes the preferred fact source for supported events
 - fallback adapters remain usable without polluting the domain layer
 

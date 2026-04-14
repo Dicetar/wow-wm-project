@@ -10,6 +10,31 @@ Goal:
 
 This remains lighter than the full control lane. It is for rapid iteration while the main WM platform stays deterministic and audited.
 
+## Top-level platform model vs operator-facing categories
+
+At the platform level, WM should think in three top-level managed artifact families:
+
+- quests
+- items
+- spells
+
+The content workbench is intentionally more detailed than that platform model.
+
+On the operator side, the workbench currently supports these practical categories:
+
+- managed item draft creation
+- managed passive spell-slot draft creation
+- managed visible spell-slot draft creation
+- managed item-trigger spell-slot draft creation
+- WM shell-bank summon draft creation
+
+So the repo uses:
+
+- a simple three-family platform model for architecture and governance
+- a richer operator-facing subtype model where the workbench needs it
+
+Quest templates still live primarily in the quest draft and publish lane rather than this workbench file.
+
 ## What it supports now
 
 - managed item draft creation
