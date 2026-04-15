@@ -20,6 +20,7 @@ This remains lighter than the full control lane. It is for rapid iteration while
 - WM shell publish into `wm_spell_shell` / `wm_spell_behavior`
 - WM shell grant / ungrant on one player
 - lab-only WM spell behavior debug invocation
+- fast release summon submitter for already-proven Bonebound Twins behavior
 - native-bridge-first spell learn / unlearn with SOAP fallback
 - direct item delivery helpers:
   - `.additem`
@@ -184,11 +185,35 @@ python -m wm.content.workbench invoke-shell-behavior `
   --mode apply
 ```
 
+After that path is proven, use the fast release submitter for repeated summon execution:
+
+```powershell
+python -m wm.spells.summon_release `
+  --player-guid 5406 `
+  --summary
+```
+
+BridgeLab shortcut:
+
+```powershell
+.\summon-bridge-lab-bonebound-twins.bat -PlayerGuid 5406
+```
+
+Release submitter behavior:
+
+- defaults to shell `940001` and behavior `summon_bonebound_twin_v2`
+- defaults to `apply`, not dry-run
+- skips shell-bank lookup, player lookup, preflight, and default wait/poll verification
+- returns the request id immediately; pass `--wait` only when you want post-submit confirmation
+
+Do not use the release submitter while changing schema, behavior config, player scope, or native code. Use `invoke-shell-behavior` for proof and diagnostics first.
+
 Current lab default:
 
 - `mod-wm-spells` is the intended summon / ability runtime
 - `mod-wm-prototypes` is legacy and disabled by default
 - `bonebound_servant_v1` is the first stable summon shell target
+- `bonebound_twins_v1` / shell `940001` is the current fast release summon target
 - the client patch workspace lives under `client_patches\wm_spell_shell_bank\`
 
 ## Recommended workflow

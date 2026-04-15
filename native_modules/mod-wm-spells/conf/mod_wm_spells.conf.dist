@@ -8,14 +8,14 @@
 WmSpells.Enable = 1
 WmSpells.PlayerGuidAllowList = ""
 WmSpells.LabOnlyDebugInvokeEnable = 0
-WmSpells.DebugPollIntervalMs = 1000
+WmSpells.DebugPollIntervalMs = 50
 
 #
 # Bonebound Servant v1
 # One stable WM-owned true pet using a generic demon-style summon backend with skeleton visuals.
 #
 WmSpells.BoneboundServant.Enable = 1
-WmSpells.BoneboundServant.ShellSpellIds = "940000"
+WmSpells.BoneboundServant.ShellSpellIds = "940000,940001"
 WmSpells.BoneboundServant.RequireCorpse = 1
 WmSpells.BoneboundServant.CreatureEntry = 1860
 WmSpells.BoneboundServant.Name = "Bonebound Servant"

@@ -14,6 +14,7 @@
 #include <optional>
 #include <regex>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -210,6 +211,20 @@ namespace
         return behaviorKind == "summon_bonebound_servant_v1" || behaviorKind == "summon_bonebound_twin_v2";
     }
 
+    bool IsBoneboundShellOrBehavior(uint32 shellSpellId)
+    {
+        if (shellSpellId == 0)
+            return false;
+
+        if (gConfig.boneboundShellSpellIds.find(shellSpellId) != gConfig.boneboundShellSpellIds.end())
+            return true;
+
+        std::optional<WmSpells::BehaviorRecord> behaviorRecord = WmSpells::LoadBehaviorRecord(shellSpellId);
+        return behaviorRecord.has_value()
+            && IsBoneboundBehaviorKind(behaviorRecord->behaviorKind)
+            && behaviorRecord->status != "disabled";
+    }
+
     std::optional<std::string> ExtractJsonString(std::string const& json, std::string const& key)
     {
         std::regex pattern("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");
@@ -357,13 +372,43 @@ namespace
             return false;
 
         uint32 createdBySpellId = pet->GetUInt32Value(UNIT_CREATED_BY_SPELL);
-        if (createdBySpellId != 0 && gConfig.boneboundShellSpellIds.find(createdBySpellId) != gConfig.boneboundShellSpellIds.end())
+        if (IsBoneboundShellOrBehavior(createdBySpellId))
             return true;
 
         if (pet->GetEntry() == gConfig.boneboundCreatureEntry && gConfig.boneboundDisplayId != 0 && pet->GetDisplayId() == gConfig.boneboundDisplayId)
             return true;
 
         return false;
+    }
+
+    void RemoveBoneboundOmega(Player* owner);
+
+    bool RestoreTemporarilyUnsummonedBoneboundPet(Player* owner)
+    {
+        if (!owner || owner->GetPetGUID() || owner->GetPet())
+            return false;
+
+        uint32 petNumber = owner->GetTemporaryUnsummonedPetNumber();
+        uint32 shellSpellId = owner->GetLastPetSpell();
+        if (petNumber == 0 || !IsBoneboundShellOrBehavior(shellSpellId))
+            return false;
+
+        if (owner->IsPetNeedBeTemporaryUnsummoned())
+        {
+            RemoveBoneboundOmega(owner);
+            return false;
+        }
+
+        Pet* restoredPet = new Pet(owner);
+        if (!restoredPet->LoadPetFromDB(owner, 0, petNumber, true))
+        {
+            delete restoredPet;
+            return false;
+        }
+
+        owner->SetTemporaryUnsummonedPetNumber(0);
+        WmSpells::ReapplyBoneboundOverlay(restoredPet);
+        return true;
     }
 
     void ApplyBoneboundOverlay(Player* owner, Pet* pet, WmSpells::BoneboundBehaviorConfig const& config)
@@ -580,7 +625,7 @@ namespace WmSpells
         gConfig.labOnlyDebugInvokeEnable = sConfigMgr->GetOption<bool>("WmSpells.LabOnlyDebugInvokeEnable", false);
         gConfig.debugPollIntervalMs = sConfigMgr->GetOption<uint32>("WmSpells.DebugPollIntervalMs", 1000u);
         gConfig.boneboundServantEnabled = sConfigMgr->GetOption<bool>("WmSpells.BoneboundServant.Enable", true);
-        ParseUIntSet(sConfigMgr->GetOption<std::string>("WmSpells.BoneboundServant.ShellSpellIds", "940000"), gConfig.boneboundShellSpellIds);
+        ParseUIntSet(sConfigMgr->GetOption<std::string>("WmSpells.BoneboundServant.ShellSpellIds", "940000,940001"), gConfig.boneboundShellSpellIds);
         gConfig.boneboundRequireCorpse = sConfigMgr->GetOption<bool>("WmSpells.BoneboundServant.RequireCorpse", true);
         gConfig.boneboundCreatureEntry = sConfigMgr->GetOption<uint32>("WmSpells.BoneboundServant.CreatureEntry", 1860u);
         gConfig.boneboundName = sConfigMgr->GetOption<std::string>("WmSpells.BoneboundServant.Name", "Bonebound Servant");
@@ -743,8 +788,13 @@ namespace WmSpells
         if (gBoneboundOmegaByPlayer.empty())
             return;
 
+        std::vector<uint32> ownerGuids;
+        ownerGuids.reserve(gBoneboundOmegaByPlayer.size());
+        for (auto const& [ownerGuid, _] : gBoneboundOmegaByPlayer)
+            ownerGuids.push_back(ownerGuid);
+
         std::vector<uint32> staleOwners;
-        for (auto const& [ownerGuid, omegaGuid] : gBoneboundOmegaByPlayer)
+        for (uint32 ownerGuid : ownerGuids)
         {
             Player* owner = ObjectAccessor::FindPlayerByLowGUID(ownerGuid);
             if (!owner || !IsPlayerAllowed(owner))
@@ -753,44 +803,64 @@ namespace WmSpells
                 continue;
             }
 
-            Pet* alphaPet = owner->GetPet();
-            if (!alphaPet || !IsBoneboundPet(alphaPet))
-            {
-                RemoveBoneboundOmega(owner);
-                continue;
-            }
-
-            std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL));
-            if (!behaviorRecord.has_value())
-            {
-                RemoveBoneboundOmega(owner);
-                continue;
-            }
-
-            std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, false);
-            if (!runtimeConfig.has_value() || !runtimeConfig->spawnOmega)
-            {
-                RemoveBoneboundOmega(owner);
-                continue;
-            }
-
-            if (alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL) != runtimeConfig->shellSpellId)
-                alphaPet->SetUInt32Value(UNIT_CREATED_BY_SPELL, runtimeConfig->shellSpellId);
-
-              ApplyBoneboundCreatureAppearance(
-                  alphaPet,
-                  runtimeConfig->name,
-                  runtimeConfig->displayId,
-                  runtimeConfig->virtualItem1,
-                  runtimeConfig->virtualItem2,
-                  runtimeConfig->virtualItem3,
-                  ResolveAlphaVisualScale(owner, *runtimeConfig));
-            ApplyOwnerTransferBonuses(alphaPet, owner, *runtimeConfig, false);
-            SyncBoneboundOmega(owner, alphaPet, *runtimeConfig);
+            MaintainBoneboundSummons(owner);
         }
 
         for (uint32 ownerGuid : staleOwners)
             gBoneboundOmegaByPlayer.erase(ownerGuid);
+    }
+
+    void MaintainBoneboundSummons(Player* owner)
+    {
+        if (!owner || !IsPlayerAllowed(owner) || !gConfig.boneboundServantEnabled)
+            return;
+
+        if (RestoreTemporarilyUnsummonedBoneboundPet(owner))
+            return;
+
+        Pet* alphaPet = owner->GetPet();
+        if (!alphaPet || !IsBoneboundPet(alphaPet))
+        {
+            RemoveBoneboundOmega(owner);
+            return;
+        }
+
+        std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL));
+        if (!behaviorRecord.has_value())
+        {
+            RemoveBoneboundOmega(owner);
+            return;
+        }
+
+        std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, false);
+        if (!runtimeConfig.has_value())
+        {
+            RemoveBoneboundOmega(owner);
+            return;
+        }
+
+        if (alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL) != runtimeConfig->shellSpellId)
+            alphaPet->SetUInt32Value(UNIT_CREATED_BY_SPELL, runtimeConfig->shellSpellId);
+
+        ApplyBoneboundCreatureAppearance(
+            alphaPet,
+            runtimeConfig->name,
+            runtimeConfig->displayId,
+            runtimeConfig->virtualItem1,
+            runtimeConfig->virtualItem2,
+            runtimeConfig->virtualItem3,
+            ResolveAlphaVisualScale(owner, *runtimeConfig));
+        ApplyOwnerTransferBonuses(alphaPet, owner, *runtimeConfig, false);
+
+        if (runtimeConfig->spawnOmega)
+            SyncBoneboundOmega(owner, alphaPet, *runtimeConfig);
+        else
+            RemoveBoneboundOmega(owner);
+    }
+
+    void ForgetBoneboundCompanions(Player* owner)
+    {
+        RemoveBoneboundOmega(owner);
     }
 
     void ReapplyBoneboundOverlay(Pet* pet)

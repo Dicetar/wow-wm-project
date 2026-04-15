@@ -111,6 +111,8 @@ namespace WmSpells
     BehaviorExecutionResult ExecuteBoneboundServant(Player* player, uint32 createdBySpellId, bool persistPet);
     BehaviorExecutionResult ExecuteShellBehavior(Player* player, uint32 shellSpellId, bool persistPetFallback);
     void UpdateTrackedCompanions(uint32 diff);
+    void MaintainBoneboundSummons(Player* player);
+    void ForgetBoneboundCompanions(Player* player);
     void ReapplyBoneboundOverlay(Pet* pet);
     void PollDebugRequests(uint32 diff);
 }

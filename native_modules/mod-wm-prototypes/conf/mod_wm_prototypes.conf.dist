@@ -14,7 +14,7 @@ WmPrototypes.PlayerGuidAllowList = ""
 # Legacy broken path. Do not use as the default WM summon implementation.
 #
 WmPrototypes.TwinSkeleton.Enable = 0
-WmPrototypes.TwinSkeleton.ShellSpellIds = "688,697,691,712,30146"
+WmPrototypes.TwinSkeleton.ShellSpellIds = ""
 WmPrototypes.TwinSkeleton.PrimaryCreatureEntry = 1890
 WmPrototypes.TwinSkeleton.SecondaryCreatureEntry = 201
 WmPrototypes.TwinSkeleton.DurationMs = 45000

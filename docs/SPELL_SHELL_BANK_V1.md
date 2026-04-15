@@ -19,6 +19,8 @@ That is why the first twin-skeleton prototype missed the mark:
 - it reused `Summon Voidwalker`
 - it changed behavior, but it was not a new visible spell
 
+That path is retired. The current Bonebound Twins debug/native lane binds behavior to WM-owned shell `940001` and explicitly removes WM script bindings from stock carriers such as `697` and `49126`.
+
 ## Hard pet constraint
 
 Stock AzerothCore exposes a **single real pet slot** for the player.
@@ -116,4 +118,12 @@ Your requested summon is best modeled as:
   - stats scale from intellect + spell power
 
 That is the correct next implementation lane.
-The current reused-voidwalker prototype is only a temporary behavior proof and should not be confused with the final feature.
+
+Current status:
+
+- `WORKING`: shell `940001` is bound to `summon_bonebound_twin_v2` in the bridge-lab DB
+- `WORKING`: Alpha is the one true persisted pet and Omega is the linked guardian companion
+- `WORKING`: total intellect is added to all summon stats and shadow spell power is added to summon attack power
+- `PARTIAL`: the visible player-facing spell remains blocked on installing and validating the shell-bank client patch
+
+Do not replace or reuse `Summon Voidwalker`, `Raise Ghoul`, or any other stock spell as the permanent WM carrier for this behavior.

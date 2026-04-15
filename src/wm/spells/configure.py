@@ -16,6 +16,7 @@ ALLOWLIST_KEY = "WmSpells.PlayerGuidAllowList"
 DEBUG_ENABLE_KEY = "WmSpells.LabOnlyDebugInvokeEnable"
 BONEBOUND_ENABLE_KEY = "WmSpells.BoneboundServant.Enable"
 BONEBOUND_SHELL_IDS_KEY = "WmSpells.BoneboundServant.ShellSpellIds"
+DEBUG_POLL_INTERVAL_MS_KEY = "WmSpells.DebugPollIntervalMs"
 
 
 @dataclass(slots=True)
@@ -23,6 +24,7 @@ class WmSpellsRuntimeConfigSnapshot:
     enabled: bool
     player_guid_allowlist: list[int]
     debug_invoke_enabled: bool
+    debug_poll_interval_ms: int
     bonebound_enabled: bool
     bonebound_shell_spell_ids: list[int]
 
@@ -36,6 +38,7 @@ class WmSpellsConfigUpdateResult:
     new_shell_spell_ids: list[int]
     enabled: bool
     debug_invoke_enabled: bool
+    debug_poll_interval_ms: int
     bonebound_enabled: bool
     changed: bool
     reload_requested: bool
@@ -56,6 +59,7 @@ def parse_wm_spells_runtime_config(config_text: str) -> WmSpellsRuntimeConfigSna
         enabled=_parse_bool_option(config_text, ENABLE_KEY, default=True),
         player_guid_allowlist=_parse_int_list_option(config_text, ALLOWLIST_KEY),
         debug_invoke_enabled=_parse_bool_option(config_text, DEBUG_ENABLE_KEY, default=False),
+        debug_poll_interval_ms=_parse_int_option(config_text, DEBUG_POLL_INTERVAL_MS_KEY, default=1000),
         bonebound_enabled=_parse_bool_option(config_text, BONEBOUND_ENABLE_KEY, default=True),
         bonebound_shell_spell_ids=_parse_int_list_option(config_text, BONEBOUND_SHELL_IDS_KEY),
     )
@@ -71,6 +75,7 @@ def update_wm_spells_runtime_config(
     replace_shell_spell_ids: bool = False,
     ensure_enabled: bool = True,
     enable_debug_invoke: bool | None = None,
+    debug_poll_interval_ms: int | None = None,
     ensure_bonebound_enabled: bool = True,
     write: bool = True,
 ) -> WmSpellsConfigUpdateResult:
@@ -102,12 +107,14 @@ def update_wm_spells_runtime_config(
 
     enabled = True if ensure_enabled else snapshot.enabled
     debug_invoke_enabled = snapshot.debug_invoke_enabled if enable_debug_invoke is None else bool(enable_debug_invoke)
+    new_debug_poll_interval_ms = snapshot.debug_poll_interval_ms if debug_poll_interval_ms is None else int(debug_poll_interval_ms)
     bonebound_enabled = True if ensure_bonebound_enabled else snapshot.bonebound_enabled
 
     updated_text = existing_text
     updated_text = _set_bool_option(updated_text, ENABLE_KEY, enabled)
     updated_text = _set_int_list_option(updated_text, ALLOWLIST_KEY, new_allowlist)
     updated_text = _set_bool_option(updated_text, DEBUG_ENABLE_KEY, debug_invoke_enabled)
+    updated_text = _set_int_option(updated_text, DEBUG_POLL_INTERVAL_MS_KEY, new_debug_poll_interval_ms)
     updated_text = _set_bool_option(updated_text, BONEBOUND_ENABLE_KEY, bonebound_enabled)
     updated_text = _set_int_list_option(updated_text, BONEBOUND_SHELL_IDS_KEY, new_shell_spell_ids)
     changed = updated_text != existing_text
@@ -124,6 +131,7 @@ def update_wm_spells_runtime_config(
         new_shell_spell_ids=new_shell_spell_ids,
         enabled=enabled,
         debug_invoke_enabled=debug_invoke_enabled,
+        debug_poll_interval_ms=new_debug_poll_interval_ms,
         bonebound_enabled=bonebound_enabled,
         changed=changed,
         reload_requested=False,
@@ -151,6 +159,16 @@ def _parse_bool_option(config_text: str, key: str, *, default: bool) -> bool:
     return default
 
 
+def _parse_int_option(config_text: str, key: str, *, default: int) -> int:
+    raw = _get_config_value(config_text, key)
+    if raw is None:
+        return default
+    try:
+        return int(_strip_config_quotes(raw.strip()))
+    except ValueError:
+        return default
+
+
 def _parse_int_list_option(config_text: str, key: str) -> list[int]:
     raw = _get_config_value(config_text, key)
     if raw is None:
@@ -169,6 +187,11 @@ def _parse_int_list_option(config_text: str, key: str) -> list[int]:
 
 def _set_bool_option(config_text: str, key: str, value: bool) -> str:
     rendered = f"{key} = {1 if value else 0}"
+    return _set_config_line(config_text, key=key, rendered=rendered)
+
+
+def _set_int_option(config_text: str, key: str, value: int) -> str:
+    rendered = f"{key} = {int(value)}"
     return _set_config_line(config_text, key=key, rendered=rendered)
 
 
@@ -226,6 +249,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--replace-shell-spell-ids", action="store_true")
     parser.add_argument("--enable-debug-invoke", action="store_true")
     parser.add_argument("--disable-debug-invoke", action="store_true")
+    parser.add_argument("--debug-poll-interval-ms", type=int)
     parser.add_argument("--no-enable", action="store_true")
     parser.add_argument("--no-bonebound-enable", action="store_true")
     parser.add_argument("--reload-via-soap", action="store_true")
@@ -252,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
         replace_shell_spell_ids=bool(args.replace_shell_spell_ids),
         ensure_enabled=not bool(args.no_enable),
         enable_debug_invoke=enable_debug,
+        debug_poll_interval_ms=args.debug_poll_interval_ms,
         ensure_bonebound_enabled=not bool(args.no_bonebound_enable),
         write=True,
     )
@@ -271,6 +296,7 @@ def main(argv: list[str] | None = None) -> int:
             f"allowlist={','.join(str(v) for v in result.new_allowlist) or '<empty>'} "
             f"shell_spell_ids={','.join(str(v) for v in result.new_shell_spell_ids) or '<empty>'} "
             f"debug_invoke_enabled={str(bool(result.debug_invoke_enabled)).lower()} "
+            f"debug_poll_interval_ms={result.debug_poll_interval_ms} "
             f"reload_requested={result.reload_requested}"
         )
         if result.reload_result is not None:

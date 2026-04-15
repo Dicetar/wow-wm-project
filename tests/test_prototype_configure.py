@@ -17,7 +17,7 @@ class PrototypeConfigureTests(unittest.TestCase):
                         "WmPrototypes.Enable = 0",
                         'WmPrototypes.PlayerGuidAllowList = "1234"',
                         "WmPrototypes.TwinSkeleton.Enable = 0",
-                        'WmPrototypes.TwinSkeleton.ShellSpellIds = "697"',
+                        'WmPrototypes.TwinSkeleton.ShellSpellIds = "940001"',
                         "",
                     ]
                 ),
@@ -27,7 +27,7 @@ class PrototypeConfigureTests(unittest.TestCase):
             result = update_twin_skeleton_config(
                 config_path=config_path,
                 player_guids=[5406],
-                shell_spell_ids=[691],
+                shell_spell_ids=[940002],
                 append_players=True,
                 write=False,
             )
@@ -35,7 +35,7 @@ class PrototypeConfigureTests(unittest.TestCase):
             self.assertTrue(result.changed)
             self.assertEqual(result.previous_allowlist, [1234])
             self.assertEqual(result.new_allowlist, [1234, 5406])
-            self.assertEqual(result.new_shell_spell_ids, [691, 697])
+            self.assertEqual(result.new_shell_spell_ids, [940001, 940002])
             snapshot = parse_prototype_runtime_config(config_path.read_text(encoding="utf-8"))
             self.assertFalse(snapshot.enabled)
             self.assertEqual(snapshot.player_guid_allowlist, [1234])
@@ -48,7 +48,7 @@ class PrototypeConfigureTests(unittest.TestCase):
             result = update_twin_skeleton_config(
                 config_path=config_path,
                 player_guids=[5406],
-                shell_spell_ids=[697],
+                shell_spell_ids=[940001],
                 append_players=False,
                 write=True,
             )
@@ -58,7 +58,7 @@ class PrototypeConfigureTests(unittest.TestCase):
             self.assertTrue(snapshot.enabled)
             self.assertTrue(snapshot.twin_skeleton_enabled)
             self.assertEqual(snapshot.player_guid_allowlist, [5406])
-            self.assertEqual(snapshot.twin_skeleton_shell_spell_ids, [697])
+            self.assertEqual(snapshot.twin_skeleton_shell_spell_ids, [940001])
 
 
 if __name__ == "__main__":

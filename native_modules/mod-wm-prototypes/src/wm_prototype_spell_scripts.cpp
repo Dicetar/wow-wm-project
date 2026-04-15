@@ -124,11 +124,11 @@ namespace
         gConfig.skeletalPetEnabled = sConfigMgr->GetOption<bool>("WmPrototypes.SkeletalPet.Enable", true);
         ParseUIntSet(sConfigMgr->GetOption<std::string>("WmPrototypes.PlayerGuidAllowList", ""), gConfig.playerGuidAllowList);
         ParseUIntSet(
-            sConfigMgr->GetOption<std::string>("WmPrototypes.TwinSkeleton.ShellSpellIds", "688,697,691,712,30146"),
+            sConfigMgr->GetOption<std::string>("WmPrototypes.TwinSkeleton.ShellSpellIds", ""),
             gConfig.twinSkeletonShellSpellIds
         );
         ParseUIntSet(
-            sConfigMgr->GetOption<std::string>("WmPrototypes.SkeletalPet.ShellSpellIds", "49126"),
+            sConfigMgr->GetOption<std::string>("WmPrototypes.SkeletalPet.ShellSpellIds", ""),
             gConfig.skeletalPetShellSpellIds
         );
         gConfig.primaryCreatureEntry = sConfigMgr->GetOption<uint32>("WmPrototypes.TwinSkeleton.PrimaryCreatureEntry", 1890u);

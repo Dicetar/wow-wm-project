@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-04-14
+Last verified: 2026-04-15
 Verified by: Codex
 Doc type: reference
 
@@ -136,7 +136,19 @@ If you touch summon, creature, or pet behavior, regression-test at least:
 
 If you cannot run the regression, document it as untested.
 
-### 4. End each session with hard labels
+### 4. Promote proven tools into release lanes
+
+When a schema, tool, or behavior is proven `WORKING` and operators will use it repeatedly, create a release lane that does the same action without the diagnostic preflight stack.
+
+Rules:
+
+- Keep the test/debug lane for validation, preflight, dry-run, polling, and detailed evidence.
+- Add a separate release command or explicit release flag for the proven path.
+- Release lanes must submit the known-good action directly, fail fast on real runtime errors, and avoid hidden dry-runs, player lookups, schema probes, and default wait loops.
+- Release lanes must document exact prerequisites. If a prerequisite is not proven, the lane is `PARTIAL`, not `WORKING`.
+- Do not use release lanes for `PARTIAL`, `UNKNOWN`, or structurally dirty lab states.
+
+### 5. End each session with hard labels
 
 Every changed component must be labeled as one of:
 

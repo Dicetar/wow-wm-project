@@ -16,7 +16,6 @@ from wm.items.publish import ItemPublisher
 from wm.items.publish import load_managed_item_draft
 from wm.reserved.db_allocator import ReservedSlotDbAllocator
 from wm.reserved.models import ReservedSlot
-from wm.prototypes.configure import update_twin_skeleton_config
 from wm.runtime_sync import RuntimeCommandResult
 from wm.runtime_sync import SoapRuntimeClient
 from wm.sources.native_bridge.action_kinds import NATIVE_ACTION_KIND_BY_ID
@@ -486,19 +485,22 @@ def configure_twin_skeleton_runtime(
     reload_via_soap: bool = False,
     reload_command: str = ".reload config",
 ) -> dict[str, Any]:
-    config_result = update_twin_skeleton_config(
-        config_path=config_path or Path(settings.wm_prototypes_config_path),
+    config_result = update_wm_spells_runtime_config(
+        config_path=config_path or Path(settings.wm_spells_config_path),
         player_guids=[int(player_guid)],
         shell_spell_ids=[int(shell_spell_id)],
         append_players=True,
         replace_shell_spell_ids=False,
         ensure_enabled=True,
+        enable_debug_invoke=True,
+        debug_poll_interval_ms=50,
+        ensure_bonebound_enabled=True,
         write=(mode == "apply"),
     )
     notes = [
-        "Twin Skeleton reuses an existing visible summon shell for fast testing.",
-        "Visible spell name and icon still come from the shell spell until WM ships a client spell-shell bank.",
-        "Twin Skeleton stats scale from caster level, intellect, and shadow spell power in the native module.",
+        "Bonebound Twins use the WM shell-bank / mod-wm-spells lane.",
+        "Do not bind this behavior to Summon Voidwalker, Raise Ghoul, or any other stock live spell carrier.",
+        "Alpha and Omega receive the summoner's total intellect as all-stat bonus and shadow spell power as attack power.",
     ]
     if mode == "apply" and config_result.changed and not reload_via_soap:
         notes.append("Config changed on disk but worldserver has not reloaded it yet. Run .reload config or restart worldserver before casting.")
@@ -531,6 +533,7 @@ def configure_bonebound_servant_runtime(
         replace_shell_spell_ids=False,
         ensure_enabled=True,
         enable_debug_invoke=True,
+        debug_poll_interval_ms=50,
         ensure_bonebound_enabled=True,
         write=(mode == "apply"),
     )
@@ -1343,11 +1346,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     learn_twin_skeleton = subparsers.add_parser(
         "learn-twin-skeleton",
-        help="Legacy broken prototype path. Kept only for postmortem/debug compatibility.",
+        help="Configure the WM-owned Bonebound Twins shell and optionally teach that shell.",
     )
     learn_twin_skeleton.add_argument("--player-guid", type=int)
     learn_twin_skeleton.add_argument("--player-name")
-    learn_twin_skeleton.add_argument("--shell-spell-id", type=int, default=697)
+    learn_twin_skeleton.add_argument("--shell-spell-id", type=int, default=940001)
     learn_twin_skeleton.add_argument("--all-ranks", action="store_true")
     learn_twin_skeleton.add_argument("--config-path", type=Path)
     learn_twin_skeleton.add_argument("--reload-via-soap", action="store_true")

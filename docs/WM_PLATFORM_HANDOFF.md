@@ -63,6 +63,9 @@ Current architecture:
 - client patch workspace exists
 - `mod-wm-spells` exists as the stable native spell-behavior runtime
 - lab debug invoke exists for shell-bound behavior testing without a visible client shell
+- Bonebound Twins debug/native lane is `WORKING` on shell `940001`: bridge-lab SQL binds `summon_bonebound_twin_v2`, stock carriers `697` / `49126` are retired, and player `5406` produced a persisted `Bonebound Alpha` from debug request `7` on 2026-04-15
+- Bonebound Twins stat transfer is `WORKING` in native config/code: summoner total intellect is applied to all summon stats and shadow spell power is applied to summon attack power
+- Bonebound Twins fast release submitter is `WORKING`: `python -m wm.spells.summon_release --player-guid 5406 --summary` submits the proven shell `940001` request directly without preflight or default wait loops; bridge-lab request `8` on 2026-04-15 reached `done` in the same second
 
 ## What is partial
 
@@ -80,7 +83,7 @@ Current architecture:
   - bridge-lab DB proof on `127.0.0.1:33307` is `WORKING` for the seeded player `5406` / creature `46` journal and event-backed context pack
   - automatic subject materialization, zone mood, and full proposal-gate previews are still `PARTIAL`
 - visible shell-bank spells are not yet proven end-to-end in the client because the local patch artifact is not finalized and installed from repo instructions
-- summon/twin behavior work exists in pieces, but only the debug/native lane is currently supported for iteration
+- Bonebound Twins mount/dismount lifecycle is `PARTIAL` until the current live bridge-lab visual test confirms both Alpha and Omega return after temporary unsummon
 - experimental `template_watch` / `template_publish` comparison work remains isolated in `.worktrees/template-watch-compare`; its dynamic binding idea is useful, but its standalone watcher path is not the production architecture
 
 ## What is broken or retired

@@ -126,7 +126,7 @@ class RuntimeCommandTests(unittest.TestCase):
         try:
             result = execute_runtime_command(
                 settings=settings,  # type: ignore[arg-type]
-                command=".player learn Jecia 697",
+                command=".player learn Jecia 940001",
                 mode="apply",
             )
         finally:
@@ -245,14 +245,14 @@ class ContentWorkbenchTests(unittest.TestCase):
 
     def test_configure_twin_skeleton_runtime_can_preview_without_writing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config_path = Path(tmp).joinpath("mod_wm_prototypes.conf")
+            config_path = Path(tmp).joinpath("mod_wm_spells.conf")
             config_path.write_text("[worldserver]\n", encoding="utf-8")
-            settings = type("SettingsStub", (), {"wm_prototypes_config_path": str(config_path), "soap_enabled": False})()
+            settings = type("SettingsStub", (), {"wm_spells_config_path": str(config_path), "soap_enabled": False})()
 
             result = configure_twin_skeleton_runtime(
                 settings=settings,  # type: ignore[arg-type]
                 player_guid=5406,
-                shell_spell_id=697,
+                shell_spell_id=940001,
                 mode="dry-run",
                 config_path=config_path,
                 reload_via_soap=False,
@@ -260,8 +260,9 @@ class ContentWorkbenchTests(unittest.TestCase):
 
             self.assertTrue(result["changed"])
             self.assertEqual(result["new_allowlist"], [5406])
-            self.assertEqual(result["new_shell_spell_ids"], [697])
-            self.assertIn("existing visible summon shell", " ".join(result["notes"]))
+            self.assertEqual(result["new_shell_spell_ids"], [940001])
+            self.assertTrue(result["debug_invoke_enabled"])
+            self.assertIn("WM shell-bank", " ".join(result["notes"]))
             self.assertEqual(config_path.read_text(encoding="utf-8"), "[worldserver]\n")
 
     def test_configure_bonebound_servant_runtime_can_preview_without_writing(self) -> None:

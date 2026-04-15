@@ -327,6 +327,19 @@ class SpellBehaviorDebugClient:
         behavior_kind: str,
         payload: dict[str, Any] | None = None,
     ) -> SpellBehaviorDebugRequest:
+        request_id = self.submit_fast(player_guid=player_guid, behavior_kind=behavior_kind, payload=payload)
+        request = self.get(request_id=request_id)
+        if request is None:
+            raise RuntimeError(f"WM spell debug request {request_id} was created but could not be loaded.")
+        return request
+
+    def submit_fast(
+        self,
+        *,
+        player_guid: int,
+        behavior_kind: str,
+        payload: dict[str, Any] | None = None,
+    ) -> int:
         payload_json = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True)
         rows = self._query_world(
             "INSERT INTO wm_spell_debug_request (PlayerGUID, BehaviorKind, PayloadJSON, Status) VALUES ("
@@ -336,10 +349,7 @@ class SpellBehaviorDebugClient:
         request_id = int(rows[0]["RequestID"]) if rows else 0
         if request_id <= 0:
             raise RuntimeError("WM spell debug request was not created.")
-        request = self.get(request_id=request_id)
-        if request is None:
-            raise RuntimeError(f"WM spell debug request {request_id} was created but could not be loaded.")
-        return request
+        return request_id
 
     def get(self, *, request_id: int) -> SpellBehaviorDebugRequest | None:
         rows = self._query_world(
@@ -409,7 +419,9 @@ def _default_behavior_config(shell: SpellShellDefinition) -> dict[str, Any]:
             "spawn_omega": True,
             "preserve_base_stats": True,
             "owner_intellect_to_all_stats": True,
+            "owner_intellect_to_all_stats_scale": 1.0,
             "owner_shadow_power_to_attack_power": True,
+            "owner_shadow_power_to_attack_power_scale": 1.0,
             "virtual_item_1": 1897,
             "virtual_item_2": 0,
             "virtual_item_3": 0,

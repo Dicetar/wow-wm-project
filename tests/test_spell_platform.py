@@ -20,6 +20,7 @@ class WmSpellsConfigureTests(unittest.TestCase):
                         "WmSpells.Enable = 0",
                         'WmSpells.PlayerGuidAllowList = "1234"',
                         "WmSpells.LabOnlyDebugInvokeEnable = 0",
+                        "WmSpells.DebugPollIntervalMs = 1000",
                         "WmSpells.BoneboundServant.Enable = 0",
                         'WmSpells.BoneboundServant.ShellSpellIds = "940000"',
                         "",
@@ -35,6 +36,7 @@ class WmSpellsConfigureTests(unittest.TestCase):
                 append_players=True,
                 write=False,
                 enable_debug_invoke=True,
+                debug_poll_interval_ms=50,
             )
 
             self.assertTrue(result.changed)
@@ -42,8 +44,10 @@ class WmSpellsConfigureTests(unittest.TestCase):
             self.assertEqual(result.new_allowlist, [1234, 5406])
             self.assertEqual(result.previous_shell_spell_ids, [940000])
             self.assertEqual(result.new_shell_spell_ids, [940000, 940001])
+            self.assertEqual(result.debug_poll_interval_ms, 50)
             snapshot = parse_wm_spells_runtime_config(config_path.read_text(encoding="utf-8"))
             self.assertFalse(snapshot.enabled)
+            self.assertEqual(snapshot.debug_poll_interval_ms, 1000)
             self.assertEqual(snapshot.player_guid_allowlist, [1234])
 
 
@@ -75,7 +79,9 @@ class SpellPlatformDraftTests(unittest.TestCase):
         self.assertFalse(draft.behavior_config["require_corpse"])
         self.assertTrue(draft.behavior_config["spawn_omega"])
         self.assertTrue(draft.behavior_config["owner_intellect_to_all_stats"])
+        self.assertEqual(draft.behavior_config["owner_intellect_to_all_stats_scale"], 1.0)
         self.assertTrue(draft.behavior_config["owner_shadow_power_to_attack_power"])
+        self.assertEqual(draft.behavior_config["owner_shadow_power_to_attack_power_scale"], 1.0)
         self.assertEqual(draft.behavior_config["omega_name"], "Bonebound Omega")
 
 

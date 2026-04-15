@@ -108,6 +108,9 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - graceful-first lab worldserver restart helper falls back to force only if the process hangs
 - bridge lab runtime configuration forces `WeatherVibe.Debug = 0` so weather debugging does not spam the client during WM tests
 - summon/spell platform status is documented separately in `docs/SUMMON_SPELL_PLATFORM_STATUS.md`, including retired stock-carrier paths and the current shell-bank direction
+- Bonebound Twins debug/native status is `WORKING` for repo tests, native build, bridge-lab SQL binding, and debug invoke on shell `940001`: on 2026-04-15, request `7` for player `5406` executed `summon_bonebound_twin_v2` and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
+- Bonebound Twins fast release submitter is `WORKING` as `python -m wm.spells.summon_release`; it skips proof preflights and submits the known shell `940001` request directly for repeated operator use, with bridge-lab request `8` reaching `done` in the same second on 2026-04-15
+- Bonebound Twins visible spell and mount/dismount lifecycle remain `PARTIAL` until the client shell patch and current live temporary-unsummon visual test are both proven
 
 ### IPP cleanup work
 

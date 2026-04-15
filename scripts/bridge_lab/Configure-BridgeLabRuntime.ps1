@@ -100,14 +100,16 @@ if (Test-Path $spellsConfig) {
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.Enable" -Value "1"
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """"""
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.LabOnlyDebugInvokeEnable" -Value "1"
+    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.DebugPollIntervalMs" -Value "50"
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.Enable" -Value "1"
-    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value """940000,940001,49126"""
+    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value """940000,940001"""
 }
 
 if (Test-Path $prototypeConfig) {
     Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.Enable" -Value "0"
     Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.PlayerGuidAllowList" -Value """"""
     Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.TwinSkeleton.Enable" -Value "0"
+    Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.TwinSkeleton.ShellSpellIds" -Value """"""
     Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.SkeletalPet.Enable" -Value "0"
     Set-ConfigValue -Path $prototypeConfig -Key "WmPrototypes.SkeletalPet.ShellSpellIds" -Value """"""
 }
