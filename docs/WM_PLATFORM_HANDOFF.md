@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-15
+Last verified: 2026-04-16
 Verified by: Codex
 Doc type: handoff
 
@@ -64,11 +64,10 @@ Current architecture:
 - client patch workspace exists
 - `mod-wm-spells` exists as the stable native spell-behavior runtime
 - lab debug invoke exists for shell-bound behavior testing without a visible client shell
-- Bonebound Twins debug/native lane is `WORKING` on shell `940001`: bridge-lab SQL binds `summon_bonebound_twin_v2`, stock carriers `697` / `49126` are retired, and player `5406` produced a persisted `Bonebound Alpha` from debug request `7` on 2026-04-15
-- Bonebound Twins stat transfer is `WORKING` in native config/code: summoner total intellect is applied to all summon stats and shadow spell power is applied to summon attack power
-- Bonebound Omega stat-order fix is `WORKING`: on 2026-04-15 the lab-confirmed `33/40` base-Voidwalker regression was fixed by applying owner/template stat recalculation before writing Omega's final Alpha-derived health and damage
-- Bonebound Twins fast release submitter is `WORKING`: `python -m wm.spells.summon_release --player-guid 5406 --summary` submits the proven shell `940001` request directly without preflight or default wait loops; bridge-lab request `8` on 2026-04-15 reached `done` in the same second
-- Bonebound Twins Gorehowl weapon config is `WORKING` in BridgeLab: request `9` reached `done`, and live behavior config for shell `940001` sets both Alpha and Omega virtual item 1 to `28773`
+- Bonebound Alpha native lane is `WORKING` at repo/build level on shell `940001`: bridge-lab SQL now binds `summon_bonebound_alpha_v3`, `spawn_omega=false`, stock carriers `697` / `49126` remain retired, and the native module builds with low physical bleed ticks plus Alpha echo melee-hook behavior
+- Bonebound Alpha stat transfer is `WORKING` in native config/code: summoner total intellect is applied to Alpha stats and shadow spell power is applied to Alpha attack power
+- Bonebound Alpha fast release submitter is `WORKING`: `python -m wm.spells.summon_release --player-guid 5406 --summary` submits shell `940001` directly and now defaults to behavior `summon_bonebound_alpha_v3`
+- Bonebound Alpha Gorehowl weapon config is `WORKING` in BridgeLab: shell `940001` behavior config sets Alpha virtual item 1 to `28773`
 - persistent combat proficiency repo and live path are `WORKING` for player `5406`: DBC override SQL makes Shield `433`, Leather `414`, and Dual Wield skill `118` login-valid, `python -m wm.spells.shield_proficiency --player-guid 5406 --mode apply --summary` grants only the explicit player GUID through `character_skills`, `character_spell`, and `wm_spell_grant`, and the block-rating passive shell `944000` no longer restores Shield by runtime `SetSkill` or class override hooks; Dual Wield persists through stock spell `674`, `mod-wm-spells` materializes the volatile `CanDualWield()` flag only for active `combat_proficiency` grants, offhand one-handed sword equip works, and Dual Wield displays in the spellbook
 
 ## What is partial
@@ -87,7 +86,7 @@ Current architecture:
   - bridge-lab DB proof on `127.0.0.1:33307` is `WORKING` for the seeded player `5406` / creature `46` journal and event-backed context pack
   - automatic subject materialization, zone mood, and full proposal-gate previews are still `PARTIAL`
 - visible shell-bank spells are not yet proven end-to-end in the client because the local patch artifact is not finalized and installed from repo instructions
-- Bonebound Twins mount/dismount lifecycle is `PARTIAL` until the current live bridge-lab visual test confirms both Alpha and Omega return after temporary unsummon
+- Bonebound Alpha live release-lane smoke is `WORKING`: on 2026-04-16 the SQL applied, worldserver restarted, player `5406` came online, release request `11` completed on shell `940001`, and user validation accepted the low bleed / echo behavior; future damage tuning should still capture exact tick and melee values before changing coefficients
 - combat proficiency bot-safety proof is `PARTIAL`: player `5406` is confirmed live for Shield, Leather, and Dual Wield, but a playerbot maintenance cycle still needs to show bots did not inherit the grants
 - experimental `template_watch` / `template_publish` comparison work remains isolated in `.worktrees/template-watch-compare`; its dynamic binding idea is useful, but its standalone watcher path is not the production architecture
 - implicit auto-bounty generation is not a supported default path; use explicit JSON templates to install the exact bounty being tested
@@ -97,6 +96,7 @@ Current architecture:
 - stock spell carrier reuse for WM abilities is retired
 - `mod-wm-prototypes` is not the main summon or ability lane
 - visible stock-carrier summon testing is retired
+- Bonebound Omega TempSummon parity is broken and retired for the release lane: live proof showed Alpha melee around `120`, Omega melee around `9`, and Omega mana around `20` even after field-copy hardening
 - freeform LLM mutation of configs, SQL, shell commands, or arbitrary game state is not allowed
 
 For the summon failure history, read:
@@ -170,7 +170,8 @@ If a feature needs a visible spellbook entry, hotbar button, or owned tooltip, t
 
 - Client-visible spell work requires client truth, not just server truth.
 - combat proficiency persistence requires DBC validity plus explicit character rows; do not restore skills with login/update `SetSkill` hooks, class-equip overrides, `playercreateinfo_skills`, `mod_learnspells`, or playerbot maintenance. Dual Wield needs skill `118` to be DBC-valid before spell `674` survives login; native runtime may then materialize `CanDualWield()` from persistent spell `674` only for explicit `combat_proficiency` grants. Two-handed offhand weapons require Titan Grip and are not normal Dual Wield.
-- Bonebound Omega stat writes must happen after owner-transfer/template stat recalculation. If Omega shows base creature health such as `33/40`, inspect `ApplyOwnerTransferBonuses()` / `UpdateAllStats()` ordering before changing DB config.
+- Bonebound Omega field copying is not proof of real combat parity. If a second combat companion returns later, use a true supported pet/guardian chassis or hook-backed damage path and prove health, mana, and melee output in the lab before marking it `WORKING`.
+- Alpha echo template truth matters: spawn echo procs from WM creature entry `920101`, not stock Voidwalker `1860`, and copy final Alpha health/power/damage only after `UpdateAllStats()` paths have run.
 - Do not let old auto-generated bounty rules drive live tests. Install one explicit template, arm the watcher from the end, then kill the exact target entry/prefix after arming.
 - Dirty lab state can poison summon and pet retests.
 - Design docs can be useful and still be stale.

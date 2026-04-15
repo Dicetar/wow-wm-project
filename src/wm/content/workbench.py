@@ -498,9 +498,9 @@ def configure_twin_skeleton_runtime(
         write=(mode == "apply"),
     )
     notes = [
-        "Bonebound Twins use the WM shell-bank / mod-wm-spells lane.",
+        "Bonebound Alpha uses the WM shell-bank / mod-wm-spells lane; the old Twins command name is a compatibility alias.",
         "Do not bind this behavior to Summon Voidwalker, Raise Ghoul, or any other stock live spell carrier.",
-        "Alpha and Omega receive the summoner's total intellect as all-stat bonus and shadow spell power as attack power.",
+        "Alpha receives the summoner's total intellect as all-stat bonus, shadow spell power as attack power, and native shadow/echo behavior.",
     ]
     if mode == "apply" and config_result.changed and not reload_via_soap:
         notes.append("Config changed on disk but worldserver has not reloaded it yet. Run .reload config or restart worldserver before casting.")
@@ -1346,7 +1346,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     learn_twin_skeleton = subparsers.add_parser(
         "learn-twin-skeleton",
-        help="Configure the WM-owned Bonebound Twins shell and optionally teach that shell.",
+        help="Configure the WM-owned Bonebound Alpha shell and optionally teach that shell; command name is a legacy alias.",
     )
     learn_twin_skeleton.add_argument("--player-guid", type=int)
     learn_twin_skeleton.add_argument("--player-name")

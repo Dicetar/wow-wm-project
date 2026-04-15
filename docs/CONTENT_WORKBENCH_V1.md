@@ -20,7 +20,7 @@ This remains lighter than the full control lane. It is for rapid iteration while
 - WM shell publish into `wm_spell_shell` / `wm_spell_behavior`
 - WM shell grant / ungrant on one player
 - lab-only WM spell behavior debug invocation
-- fast release summon submitter for already-proven Bonebound Twins behavior
+- fast release summon submitter for already-proven Bonebound Alpha behavior
 - native-bridge-first spell learn / unlearn with SOAP fallback
 - direct item delivery helpers:
   - `.additem`
@@ -201,7 +201,7 @@ BridgeLab shortcut:
 
 Release submitter behavior:
 
-- defaults to shell `940001` and behavior `summon_bonebound_twin_v2`
+- defaults to shell `940001` and behavior `summon_bonebound_alpha_v3`
 - defaults to `apply`, not dry-run
 - skips shell-bank lookup, player lookup, preflight, and default wait/poll verification
 - returns the request id immediately; pass `--wait` only when you want post-submit confirmation

@@ -92,6 +92,21 @@ namespace WmSpells
         uint32 omegaDamagePct = 75;
         float omegaFollowDistance = 2.2f;
         float omegaFollowAngle = PET_FOLLOW_ANGLE;
+        bool shadowDotEnabled = true;
+        uint32 shadowDotCooldownMs = 6000;
+        uint32 shadowDotDurationMs = 4000;
+        uint32 shadowDotTickMs = 1000;
+        uint32 shadowDotBaseDamage = 3;
+        uint32 shadowDotDamagePerLevelPct = 25;
+        uint32 shadowDotDamagePerIntellectPct = 1;
+        uint32 shadowDotDamagePerShadowPowerPct = 0;
+        bool alphaEchoEnabled = true;
+        uint32 alphaEchoCreatureEntry = 920101;
+        float alphaEchoProcChancePct = 5.0f;
+        uint32 alphaEchoMaxActive = 3;
+        uint32 alphaEchoDamagePct = 100;
+        float alphaEchoFollowDistance = 2.6f;
+        float alphaEchoFollowAngle = PET_FOLLOW_ANGLE;
     };
 
     struct BehaviorRecord
@@ -124,6 +139,7 @@ namespace WmSpells
     void MaintainBoneboundSummons(Player* player);
     void ForgetBoneboundCompanions(Player* player);
     void ReapplyBoneboundOverlay(Pet* pet);
+    void HandleBoneboundMeleeDamage(Unit* attacker, Unit* victim, uint32& damage);
     void MaintainIntellectBlockPassive(Player* player);
     void MaintainCombatProficiencies(Player* player);
     void ForgetIntellectBlockPassive(Player* player);

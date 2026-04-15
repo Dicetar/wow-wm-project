@@ -7,6 +7,7 @@
 #include "MotionMaster.h"
 #include "ObjectAccessor.h"
 #include "PetDefines.h"
+#include "Random.h"
 #include "TemporarySummon.h"
 
 #include <algorithm>
@@ -22,11 +23,37 @@ namespace
 
     constexpr uint32 COMBAT_PROFICIENCY_SHELL_ID = 944000;
     constexpr uint32 DUAL_WIELD_SPELL_ID = 674;
+    constexpr float WM_PI = 3.14159265358979323846f;
 
     WmSpells::RuntimeConfig gConfig;
     uint32 gDebugPollTimer = 0;
     std::unordered_map<uint32, ObjectGuid> gBoneboundOmegaByPlayer;
     std::unordered_map<uint32, int32> gIntellectBlockRatingByPlayer;
+
+    struct BoneboundShadowDotState
+    {
+        ObjectGuid casterGuid;
+        ObjectGuid targetGuid;
+        uint32 ownerGuid = 0;
+        uint32 remainingMs = 0;
+        uint32 tickMs = 1000;
+        uint32 tickTimerMs = 1000;
+        uint32 tickDamage = 1;
+    };
+
+    struct BoneboundAlphaEchoState
+    {
+        ObjectGuid echoGuid;
+        uint32 ownerGuid = 0;
+        uint32 remainingMs = 0;
+        uint32 damagePct = 100;
+        float followDistance = 2.2f;
+        float followAngle = PET_FOLLOW_ANGLE;
+    };
+
+    std::vector<BoneboundShadowDotState> gBoneboundShadowDots;
+    std::unordered_map<uint32, BoneboundAlphaEchoState> gBoneboundAlphaEchoes;
+    std::unordered_map<uint32, uint32> gBoneboundShadowDotCooldownByPet;
 
     void ParseUIntSet(std::string const& raw, std::unordered_set<uint32>& target)
     {
@@ -176,6 +203,126 @@ namespace
         target->SetStatPctModifier(UNIT_MOD_ATTACK_POWER, TOTAL_PCT, source->GetPctModifierValue(UNIT_MOD_ATTACK_POWER, TOTAL_PCT));
     }
 
+    struct BoneboundDamageRange
+    {
+        float minDamage = BASE_MINDAMAGE;
+        float maxDamage = BASE_MAXDAMAGE;
+    };
+
+    float ResolveOmegaDamageScale(WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (config.preserveBaseStats)
+            return 1.0f;
+        return static_cast<float>(std::max<uint32>(1u, config.omegaDamagePct)) / 100.0f;
+    }
+
+    BoneboundDamageRange ResolveOmegaWeaponDamage(Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!alphaPet)
+            return {};
+
+        float damageScale = ResolveOmegaDamageScale(config);
+        BoneboundDamageRange damage{
+            alphaPet->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE) * damageScale,
+            alphaPet->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE) * damageScale,
+        };
+        if (damage.minDamage <= 0.0f)
+            damage.minDamage = BASE_MINDAMAGE;
+        if (damage.maxDamage < damage.minDamage)
+            damage.maxDamage = damage.minDamage;
+        return damage;
+    }
+
+    BoneboundDamageRange ResolveOmegaFinalDamage(Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!alphaPet)
+            return {};
+
+        float damageScale = ResolveOmegaDamageScale(config);
+        BoneboundDamageRange damage{
+            alphaPet->GetFloatValue(UNIT_FIELD_MINDAMAGE) * damageScale,
+            alphaPet->GetFloatValue(UNIT_FIELD_MAXDAMAGE) * damageScale,
+        };
+        if (damage.minDamage <= 0.0f || damage.maxDamage <= 0.0f)
+            return ResolveOmegaWeaponDamage(alphaPet, config);
+        if (damage.maxDamage < damage.minDamage)
+            damage.maxDamage = damage.minDamage;
+        return damage;
+    }
+
+    void ApplyOmegaFinalDamageFields(TempSummon* omega, BoneboundDamageRange const& finalDamage)
+    {
+        if (!omega)
+            return;
+
+        omega->SetStatFloatValue(UNIT_FIELD_MINDAMAGE, finalDamage.minDamage);
+        omega->SetStatFloatValue(UNIT_FIELD_MAXDAMAGE, finalDamage.maxDamage);
+    }
+
+    uint32 ResolveOmegaMaxHealth(Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config);
+
+    uint32 PreserveRuntimeValuePct(uint32 previousValue, uint32 previousMaxValue, uint32 desiredMaxValue, bool refill)
+    {
+        if (desiredMaxValue == 0)
+            return 0;
+        if (refill)
+            return desiredMaxValue;
+        if (previousMaxValue == 0)
+            return std::min(previousValue, desiredMaxValue);
+
+        uint64 scaledValue = (static_cast<uint64>(previousValue) * desiredMaxValue) / previousMaxValue;
+        scaledValue = std::clamp<uint64>(scaledValue, 0ULL, static_cast<uint64>(desiredMaxValue));
+        return static_cast<uint32>(scaledValue);
+    }
+
+    void CopyAlphaFinalStatsToOmega(Pet* alphaPet, TempSummon* omega, WmSpells::BoneboundBehaviorConfig const& config, bool refill)
+    {
+        if (!alphaPet || !omega)
+            return;
+
+        uint32 previousHealth = omega->GetHealth();
+        uint32 previousMaxHealth = omega->GetMaxHealth();
+        uint32 desiredMaxHealth = ResolveOmegaMaxHealth(alphaPet, config);
+
+        omega->SetCreateHealth(alphaPet->GetCreateHealth());
+        omega->SetMaxHealth(desiredMaxHealth);
+        omega->SetHealth(PreserveRuntimeValuePct(previousHealth, previousMaxHealth, desiredMaxHealth, refill));
+
+        omega->SetCreateMana(alphaPet->GetCreateMana());
+        for (uint8 powerIndex = POWER_MANA; powerIndex < MAX_POWERS; ++powerIndex)
+        {
+            Powers power = Powers(powerIndex);
+            uint32 previousPower = omega->GetPower(power);
+            uint32 previousMaxPower = omega->GetMaxPower(power);
+            uint32 desiredMaxPower = alphaPet->GetMaxPower(power);
+            omega->SetMaxPower(power, desiredMaxPower);
+            omega->SetPower(power, PreserveRuntimeValuePct(previousPower, previousMaxPower, desiredMaxPower, refill));
+        }
+
+        for (uint8 statIndex = STAT_STRENGTH; statIndex < MAX_STATS; ++statIndex)
+        {
+            Stats stat = Stats(statIndex);
+            omega->SetCreateStat(stat, alphaPet->GetCreateStat(stat));
+            omega->SetStat(stat, static_cast<int32>(alphaPet->GetStat(stat)));
+            omega->SetFloatValue(static_cast<uint16>(UNIT_FIELD_POSSTAT0) + statIndex, alphaPet->GetPosStat(stat));
+            omega->SetFloatValue(static_cast<uint16>(UNIT_FIELD_NEGSTAT0) + statIndex, alphaPet->GetNegStat(stat));
+        }
+
+        for (uint8 schoolIndex = SPELL_SCHOOL_NORMAL; schoolIndex < MAX_SPELL_SCHOOL; ++schoolIndex)
+        {
+            SpellSchools school = SpellSchools(schoolIndex);
+            omega->SetResistance(school, static_cast<int32>(alphaPet->GetResistance(school)));
+        }
+
+        omega->SetInt32Value(UNIT_FIELD_ATTACK_POWER, alphaPet->GetInt32Value(UNIT_FIELD_ATTACK_POWER));
+        omega->SetInt32Value(UNIT_FIELD_ATTACK_POWER_MODS, alphaPet->GetInt32Value(UNIT_FIELD_ATTACK_POWER_MODS));
+        omega->SetFloatValue(UNIT_FIELD_ATTACK_POWER_MULTIPLIER, alphaPet->GetFloatValue(UNIT_FIELD_ATTACK_POWER_MULTIPLIER));
+        omega->SetInt32Value(UNIT_FIELD_RANGED_ATTACK_POWER, alphaPet->GetInt32Value(UNIT_FIELD_RANGED_ATTACK_POWER));
+        omega->SetInt32Value(UNIT_FIELD_RANGED_ATTACK_POWER_MODS, alphaPet->GetInt32Value(UNIT_FIELD_RANGED_ATTACK_POWER_MODS));
+        omega->SetFloatValue(UNIT_FIELD_RANGED_ATTACK_POWER_MULTIPLIER, alphaPet->GetFloatValue(UNIT_FIELD_RANGED_ATTACK_POWER_MULTIPLIER));
+        ApplyOmegaFinalDamageFields(omega, ResolveOmegaFinalDamage(alphaPet, config));
+    }
+
     uint32 ResolveOmegaMaxHealth(Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config)
     {
         if (!alphaPet)
@@ -185,47 +332,12 @@ namespace
         return std::max<uint32>(1u, (alphaPet->GetMaxHealth() * healthPct) / 100u);
     }
 
-    void ApplyOmegaHealth(TempSummon* omega, uint32 desiredMaxHealth, uint32 previousHealth, uint32 previousMaxHealth, bool refillHealth)
-    {
-        if (!omega)
-            return;
-
-        previousMaxHealth = std::max<uint32>(1u, previousMaxHealth);
-        desiredMaxHealth = std::max<uint32>(1u, desiredMaxHealth);
-        omega->SetMaxHealth(desiredMaxHealth);
-
-        if (refillHealth)
-        {
-            omega->SetHealth(desiredMaxHealth);
-            return;
-        }
-
-        if (previousHealth == 0)
-        {
-            omega->SetHealth(0);
-            return;
-        }
-
-        uint64 scaledHealth = (static_cast<uint64>(previousHealth) * desiredMaxHealth) / previousMaxHealth;
-        scaledHealth = std::clamp<uint64>(scaledHealth, 1u, desiredMaxHealth);
-        omega->SetHealth(static_cast<uint32>(scaledHealth));
-    }
-
     void ApplyBoneboundOmegaRuntime(Player* owner, Pet* alphaPet, TempSummon* omega, WmSpells::BoneboundBehaviorConfig const& config, bool refillHealth)
     {
         if (!owner || !alphaPet || !omega)
             return;
 
-        uint32 previousHealth = omega->GetHealth();
-        uint32 previousMaxHealth = omega->GetMaxHealth();
-        float minDamage = alphaPet->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE);
-        float maxDamage = alphaPet->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE);
-        if (!config.preserveBaseStats)
-        {
-            float damageScale = static_cast<float>(std::max<uint32>(1u, config.omegaDamagePct)) / 100.0f;
-            minDamage *= damageScale;
-            maxDamage *= damageScale;
-        }
+        BoneboundDamageRange weaponDamage = ResolveOmegaWeaponDamage(alphaPet, config);
 
         omega->SetCreatorGUID(owner->GetGUID());
         omega->SetOwnerGUID(owner->GetGUID());
@@ -243,12 +355,13 @@ namespace
         // Creature stat recalculation can restore template health, so do it before
         // writing the final Alpha-derived Omega health and damage.
         ApplyOwnerTransferBonuses(omega, owner, config, false);
-        ApplyOmegaHealth(omega, ResolveOmegaMaxHealth(alphaPet, config), previousHealth, previousMaxHealth, refillHealth);
-        omega->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, minDamage);
-        omega->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, maxDamage);
+        omega->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, weaponDamage.minDamage);
+        omega->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, weaponDamage.maxDamage);
         omega->SetAttackTime(BASE_ATTACK, alphaPet->GetAttackTime(BASE_ATTACK));
         MirrorMeleeAttackPower(alphaPet, omega);
+        omega->UpdateAttackPowerAndDamage(false);
         omega->UpdateDamagePhysical(BASE_ATTACK);
+        CopyAlphaFinalStatsToOmega(alphaPet, omega, config, refillHealth);
     }
 
     WmSpells::BoneboundBehaviorConfig DefaultBoneboundBehaviorConfig(uint32 shellSpellId, bool persistPet)
@@ -287,7 +400,9 @@ namespace
 
     bool IsBoneboundBehaviorKind(std::string const& behaviorKind)
     {
-        return behaviorKind == "summon_bonebound_servant_v1" || behaviorKind == "summon_bonebound_twin_v2";
+        return behaviorKind == "summon_bonebound_servant_v1"
+            || behaviorKind == "summon_bonebound_twin_v2"
+            || behaviorKind == "summon_bonebound_alpha_v3";
     }
 
     bool IsIntellectBlockBehaviorKind(std::string const& behaviorKind)
@@ -361,6 +476,11 @@ namespace
         if (record.behaviorKind == "summon_bonebound_twin_v2")
         {
             config.spawnOmega = true;
+            config.preserveBaseStats = true;
+        }
+        if (record.behaviorKind == "summon_bonebound_alpha_v3")
+        {
+            config.spawnOmega = false;
             config.preserveBaseStats = true;
         }
 
@@ -446,6 +566,39 @@ namespace
             config.omegaFollowDistance = *value;
         if (std::optional<float> value = ExtractJsonFloat(configJson, "omega_follow_angle"))
             config.omegaFollowAngle = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "shadow_dot_enabled"))
+            config.shadowDotEnabled = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_cooldown_ms"))
+            config.shadowDotCooldownMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_duration_ms"))
+            config.shadowDotDurationMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_tick_ms"))
+            config.shadowDotTickMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_base_damage"))
+            config.shadowDotBaseDamage = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_damage_per_level_pct"))
+            config.shadowDotDamagePerLevelPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_damage_per_intellect_pct"))
+            config.shadowDotDamagePerIntellectPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_damage_per_shadow_power_pct"))
+            config.shadowDotDamagePerShadowPowerPct = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "alpha_echo_enabled"))
+            config.alphaEchoEnabled = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "alpha_echo_proc_chance_pct"))
+            config.alphaEchoProcChancePct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "alpha_echo_max_active"))
+            config.alphaEchoMaxActive = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "alpha_echo_creature_entry"))
+            config.alphaEchoCreatureEntry = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "alpha_echo_damage_pct"))
+            config.alphaEchoDamagePct = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "alpha_echo_follow_distance"))
+            config.alphaEchoFollowDistance = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "alpha_echo_follow_angle"))
+            config.alphaEchoFollowAngle = *value;
+
+        if (record.behaviorKind == "summon_bonebound_alpha_v3")
+            config.spawnOmega = false;
 
         return config;
     }
@@ -630,6 +783,364 @@ namespace
                 omega->CombatStop(true);
             omega->SetWalk(false);
             omega->GetMotionMaster()->MoveFollow(owner, config.omegaFollowDistance, config.omegaFollowAngle);
+        }
+    }
+
+    std::optional<WmSpells::BoneboundBehaviorConfig> LoadActiveBoneboundConfig(uint32 shellSpellId, bool persistPetFallback)
+    {
+        std::optional<WmSpells::BehaviorRecord> behaviorRecord = WmSpells::LoadBehaviorRecord(shellSpellId);
+        if (!behaviorRecord.has_value())
+            return std::nullopt;
+        return BuildBoneboundBehaviorConfig(*behaviorRecord, persistPetFallback);
+    }
+
+    uint32 ResolveShadowDotTickDamage(Player* owner, Unit* caster, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!owner)
+            return 1u;
+
+        float intellect = std::max(0.0f, owner->GetTotalStatValue(STAT_INTELLECT));
+        int32 shadowPower = std::max<int32>(0, owner->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_SHADOW));
+        uint32 level = caster ? caster->GetLevel() : owner->GetLevel();
+        float damage = static_cast<float>(config.shadowDotBaseDamage)
+            + static_cast<float>(level) * (static_cast<float>(config.shadowDotDamagePerLevelPct) / 100.0f)
+            + intellect * (static_cast<float>(config.shadowDotDamagePerIntellectPct) / 100.0f)
+            + static_cast<float>(shadowPower) * (static_cast<float>(config.shadowDotDamagePerShadowPowerPct) / 100.0f);
+        return std::max<uint32>(1u, static_cast<uint32>(std::round(damage)));
+    }
+
+    void StartBoneboundShadowDot(Player* owner, Unit* caster, Unit* target, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!owner || !caster || !target || !target->IsAlive() || !config.shadowDotEnabled)
+            return;
+
+        uint32 durationMs = std::max<uint32>(1000u, config.shadowDotDurationMs);
+        uint32 tickMs = std::max<uint32>(500u, config.shadowDotTickMs);
+        uint32 tickDamage = ResolveShadowDotTickDamage(owner, caster, config);
+
+        for (BoneboundShadowDotState& dot : gBoneboundShadowDots)
+        {
+            if (dot.casterGuid == caster->GetGUID() && dot.targetGuid == target->GetGUID())
+            {
+                dot.ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+                dot.remainingMs = durationMs;
+                dot.tickMs = tickMs;
+                dot.tickTimerMs = tickMs;
+                dot.tickDamage = tickDamage;
+                return;
+            }
+        }
+
+        BoneboundShadowDotState dot;
+        dot.casterGuid = caster->GetGUID();
+        dot.targetGuid = target->GetGUID();
+        dot.ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+        dot.remainingMs = durationMs;
+        dot.tickMs = tickMs;
+        dot.tickTimerMs = tickMs;
+        dot.tickDamage = tickDamage;
+        gBoneboundShadowDots.push_back(dot);
+    }
+
+    uint32 CountActiveBoneboundAlphaEchoes(uint32 ownerGuid)
+    {
+        uint32 count = 0;
+        for (auto const& [_, echo] : gBoneboundAlphaEchoes)
+        {
+            if (echo.ownerGuid == ownerGuid)
+                ++count;
+        }
+        return count;
+    }
+
+    uint32 ResolveAlphaEchoDurationMs(Player* owner)
+    {
+        if (!owner)
+            return 1000u;
+
+        uint32 seconds = std::max<uint32>(1u, static_cast<uint32>(std::round(std::max(0.0f, owner->GetTotalStatValue(STAT_INTELLECT)))));
+        return seconds * 1000u;
+    }
+
+    float RandomAlphaEchoFollowAngle()
+    {
+        return -WM_PI + (static_cast<float>(urand(0, 10000)) / 10000.0f) * (WM_PI * 2.0f);
+    }
+
+    float RandomAlphaEchoFollowDistance(WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        float baseDistance = std::max(1.5f, config.alphaEchoFollowDistance);
+        float minDistance = std::max(1.0f, baseDistance - 0.8f);
+        float maxDistance = baseDistance + 1.2f;
+        return minDistance + (static_cast<float>(urand(0, 10000)) / 10000.0f) * (maxDistance - minDistance);
+    }
+
+    uint32 ResolveAlphaMeleeDamageRoll(Pet* alphaPet, Player* owner, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!alphaPet)
+            return owner ? std::max<uint32>(1u, static_cast<uint32>(std::round(BuildDamage(owner, config.baseMinDamage, config)))) : 1u;
+
+        float minDamage = alphaPet->GetFloatValue(UNIT_FIELD_MINDAMAGE);
+        float maxDamage = alphaPet->GetFloatValue(UNIT_FIELD_MAXDAMAGE);
+        if (minDamage <= 0.0f || maxDamage <= 0.0f)
+        {
+            minDamage = alphaPet->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE);
+            maxDamage = alphaPet->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE);
+        }
+        if (minDamage <= 0.0f || maxDamage <= 0.0f)
+        {
+            minDamage = BuildDamage(owner, config.baseMinDamage, config);
+            maxDamage = BuildDamage(owner, config.baseMaxDamage, config);
+        }
+
+        uint32 low = std::max<uint32>(1u, static_cast<uint32>(std::floor(minDamage)));
+        uint32 high = std::max<uint32>(low, static_cast<uint32>(std::ceil(maxDamage)));
+        return urand(low, high);
+    }
+
+    void CopyAlphaFinalStatsToEcho(Pet* alphaPet, TempSummon* echo, bool refill)
+    {
+        if (!alphaPet || !echo)
+            return;
+
+        uint32 previousHealth = echo->GetHealth();
+        uint32 previousMaxHealth = echo->GetMaxHealth();
+        uint32 desiredMaxHealth = std::max<uint32>(1u, alphaPet->GetMaxHealth());
+
+        echo->SetCreateHealth(alphaPet->GetCreateHealth());
+        echo->SetMaxHealth(desiredMaxHealth);
+        echo->SetHealth(PreserveRuntimeValuePct(previousHealth, previousMaxHealth, desiredMaxHealth, refill));
+
+        echo->SetCreateMana(alphaPet->GetCreateMana());
+        for (uint8 powerIndex = POWER_MANA; powerIndex < MAX_POWERS; ++powerIndex)
+        {
+            Powers power = Powers(powerIndex);
+            uint32 previousPower = echo->GetPower(power);
+            uint32 previousMaxPower = echo->GetMaxPower(power);
+            uint32 desiredMaxPower = alphaPet->GetMaxPower(power);
+            echo->SetMaxPower(power, desiredMaxPower);
+            echo->SetPower(power, PreserveRuntimeValuePct(previousPower, previousMaxPower, desiredMaxPower, refill));
+        }
+
+        for (uint8 statIndex = STAT_STRENGTH; statIndex < MAX_STATS; ++statIndex)
+        {
+            Stats stat = Stats(statIndex);
+            echo->SetCreateStat(stat, alphaPet->GetCreateStat(stat));
+            echo->SetStat(stat, static_cast<int32>(alphaPet->GetStat(stat)));
+            echo->SetFloatValue(static_cast<uint16>(UNIT_FIELD_POSSTAT0) + statIndex, alphaPet->GetPosStat(stat));
+            echo->SetFloatValue(static_cast<uint16>(UNIT_FIELD_NEGSTAT0) + statIndex, alphaPet->GetNegStat(stat));
+        }
+
+        for (uint8 schoolIndex = SPELL_SCHOOL_NORMAL; schoolIndex < MAX_SPELL_SCHOOL; ++schoolIndex)
+        {
+            SpellSchools school = SpellSchools(schoolIndex);
+            echo->SetResistance(school, static_cast<int32>(alphaPet->GetResistance(school)));
+        }
+
+        echo->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, alphaPet->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE));
+        echo->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, alphaPet->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE));
+        echo->SetAttackTime(BASE_ATTACK, alphaPet->GetAttackTime(BASE_ATTACK));
+        MirrorMeleeAttackPower(alphaPet, echo);
+        echo->UpdateAttackPowerAndDamage(false);
+        echo->UpdateDamagePhysical(BASE_ATTACK);
+        echo->SetStatFloatValue(UNIT_FIELD_MINDAMAGE, alphaPet->GetFloatValue(UNIT_FIELD_MINDAMAGE));
+        echo->SetStatFloatValue(UNIT_FIELD_MAXDAMAGE, alphaPet->GetFloatValue(UNIT_FIELD_MAXDAMAGE));
+    }
+
+    void ApplyBoneboundAlphaEchoRuntime(Player* owner, Pet* alphaPet, TempSummon* echo, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!owner || !alphaPet || !echo)
+            return;
+
+        echo->SetCreatorGUID(owner->GetGUID());
+        echo->SetOwnerGUID(owner->GetGUID());
+        echo->SetFaction(owner->GetFaction());
+        echo->SetLevel(alphaPet->GetLevel());
+        echo->SetUInt32Value(UNIT_CREATED_BY_SPELL, config.shellSpellId);
+        ApplyBoneboundCreatureAppearance(
+            echo,
+            config.name,
+            config.displayId,
+            config.virtualItem1,
+            config.virtualItem2,
+            config.virtualItem3,
+            alphaPet->GetObjectScale());
+        // Creature stat recalculation restores template fields; copy Alpha values after it.
+        ApplyOwnerTransferBonuses(echo, owner, config, false);
+        CopyAlphaFinalStatsToEcho(alphaPet, echo, true);
+        echo->SetReactState(REACT_DEFENSIVE);
+    }
+
+    void TrySpawnBoneboundAlphaEcho(Player* owner, Pet* alphaPet, Unit* victim, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!owner || !alphaPet || !victim || !victim->IsAlive() || !config.alphaEchoEnabled)
+            return;
+
+        uint32 ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+        if (CountActiveBoneboundAlphaEchoes(ownerGuid) >= std::max<uint32>(1u, config.alphaEchoMaxActive))
+            return;
+
+        uint32 durationMs = ResolveAlphaEchoDurationMs(owner);
+        float followDistance = RandomAlphaEchoFollowDistance(config);
+        float followAngle = RandomAlphaEchoFollowAngle();
+        uint32 echoEntry = config.alphaEchoCreatureEntry != 0 ? config.alphaEchoCreatureEntry : config.creatureEntry;
+
+        Position pos;
+        owner->GetClosePoint(pos.m_positionX, pos.m_positionY, pos.m_positionZ, 1.0f, followDistance, followAngle);
+        TempSummon* echo = owner->SummonCreature(
+            echoEntry,
+            pos.m_positionX,
+            pos.m_positionY,
+            pos.m_positionZ,
+            owner->GetOrientation(),
+            TEMPSUMMON_TIMED_DESPAWN,
+            durationMs);
+        if (!echo)
+            return;
+
+        ApplyBoneboundAlphaEchoRuntime(owner, alphaPet, echo, config);
+        if (echo->AI())
+            echo->AI()->AttackStart(victim);
+
+        BoneboundAlphaEchoState state;
+        state.echoGuid = echo->GetGUID();
+        state.ownerGuid = ownerGuid;
+        state.remainingMs = durationMs;
+        state.damagePct = std::max<uint32>(1u, config.alphaEchoDamagePct);
+        state.followDistance = followDistance;
+        state.followAngle = followAngle;
+        gBoneboundAlphaEchoes[static_cast<uint32>(echo->GetGUID().GetCounter())] = state;
+    }
+
+    void MaintainBoneboundAlphaAbilities(Player* owner, Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config, uint32 diff)
+    {
+        if (!owner || !alphaPet)
+            return;
+
+        uint32 petGuid = static_cast<uint32>(alphaPet->GetGUID().GetCounter());
+        uint32& cooldown = gBoneboundShadowDotCooldownByPet[petGuid];
+        cooldown = cooldown > diff ? cooldown - diff : 0u;
+
+        Unit* victim = alphaPet->GetVictim();
+        if (!victim || !victim->IsAlive())
+            return;
+
+        if (config.shadowDotEnabled && cooldown == 0)
+        {
+            StartBoneboundShadowDot(owner, alphaPet, victim, config);
+            cooldown = std::max<uint32>(1000u, config.shadowDotCooldownMs);
+        }
+    }
+
+    void RemoveBoneboundAlphaEchoes(Player* owner)
+    {
+        if (!owner)
+            return;
+
+        uint32 ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+        for (auto it = gBoneboundAlphaEchoes.begin(); it != gBoneboundAlphaEchoes.end();)
+        {
+            if (it->second.ownerGuid != ownerGuid)
+            {
+                ++it;
+                continue;
+            }
+
+            if (Creature* echo = ObjectAccessor::GetCreature(*owner, it->second.echoGuid))
+                echo->DespawnOrUnsummon();
+            it = gBoneboundAlphaEchoes.erase(it);
+        }
+
+        gBoneboundShadowDots.erase(
+            std::remove_if(
+                gBoneboundShadowDots.begin(),
+                gBoneboundShadowDots.end(),
+                [ownerGuid](BoneboundShadowDotState const& dot) { return dot.ownerGuid == ownerGuid; }),
+            gBoneboundShadowDots.end());
+    }
+
+    void UpdateBoneboundShadowDots(uint32 diff)
+    {
+        for (auto it = gBoneboundShadowDots.begin(); it != gBoneboundShadowDots.end();)
+        {
+            Player* owner = ObjectAccessor::FindPlayerByLowGUID(it->ownerGuid);
+            if (!owner)
+            {
+                it = gBoneboundShadowDots.erase(it);
+                continue;
+            }
+
+            Unit* caster = ObjectAccessor::GetUnit(*owner, it->casterGuid);
+            Unit* target = ObjectAccessor::GetUnit(*owner, it->targetGuid);
+            if (!caster || !target || !target->IsAlive())
+            {
+                it = gBoneboundShadowDots.erase(it);
+                continue;
+            }
+
+            if (it->tickTimerMs > diff)
+            {
+                it->tickTimerMs -= diff;
+            }
+            else
+            {
+                Unit::DealDamage(caster, target, it->tickDamage, nullptr, DOT, SPELL_SCHOOL_MASK_NORMAL, nullptr, true);
+                it->tickTimerMs = it->tickMs;
+            }
+
+            if (it->remainingMs > diff)
+            {
+                it->remainingMs -= diff;
+                ++it;
+            }
+            else
+            {
+                it = gBoneboundShadowDots.erase(it);
+            }
+        }
+    }
+
+    void UpdateBoneboundAlphaEchoes(uint32 diff)
+    {
+        for (auto it = gBoneboundAlphaEchoes.begin(); it != gBoneboundAlphaEchoes.end();)
+        {
+            Player* owner = ObjectAccessor::FindPlayerByLowGUID(it->second.ownerGuid);
+            if (!owner)
+            {
+                it = gBoneboundAlphaEchoes.erase(it);
+                continue;
+            }
+
+            Creature* echo = ObjectAccessor::GetCreature(*owner, it->second.echoGuid);
+            if (!echo || !echo->IsAlive())
+            {
+                it = gBoneboundAlphaEchoes.erase(it);
+                continue;
+            }
+
+            if (it->second.remainingMs <= diff)
+            {
+                echo->DespawnOrUnsummon();
+                it = gBoneboundAlphaEchoes.erase(it);
+                continue;
+            }
+            it->second.remainingMs -= diff;
+
+            Pet* alphaPet = owner->GetPet();
+            if (alphaPet && IsBoneboundPet(alphaPet))
+            {
+                if (Unit* victim = alphaPet->GetVictim())
+                {
+                    if (echo->AI())
+                        echo->AI()->AttackStart(victim);
+                }
+                else if (!echo->IsInCombat())
+                {
+                    echo->GetMotionMaster()->MoveFollow(owner, it->second.followDistance, it->second.followAngle);
+                }
+            }
+
+            ++it;
         }
     }
 
@@ -882,6 +1393,7 @@ namespace WmSpells
         if (config.requireCorpse && !GetCorpseTarget(player))
             return {false, "corpse_required"};
 
+        RemoveBoneboundAlphaEchoes(player);
         RemoveBoneboundOmega(player);
         if (Pet* currentPet = player->GetPet())
             player->RemovePet(currentPet, PET_SAVE_AS_DELETED);
@@ -937,8 +1449,11 @@ namespace WmSpells
         return {false, "unsupported_shell_spell"};
     }
 
-    void UpdateTrackedCompanions(uint32 /*diff*/)
+    void UpdateTrackedCompanions(uint32 diff)
     {
+        UpdateBoneboundShadowDots(diff);
+        UpdateBoneboundAlphaEchoes(diff);
+
         if (gBoneboundOmegaByPlayer.empty())
             return;
 
@@ -975,6 +1490,7 @@ namespace WmSpells
         Pet* alphaPet = owner->GetPet();
         if (!alphaPet || !IsBoneboundPet(alphaPet))
         {
+            RemoveBoneboundAlphaEchoes(owner);
             RemoveBoneboundOmega(owner);
             return;
         }
@@ -982,6 +1498,7 @@ namespace WmSpells
         std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL));
         if (!behaviorRecord.has_value())
         {
+            RemoveBoneboundAlphaEchoes(owner);
             RemoveBoneboundOmega(owner);
             return;
         }
@@ -989,6 +1506,7 @@ namespace WmSpells
         std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, false);
         if (!runtimeConfig.has_value())
         {
+            RemoveBoneboundAlphaEchoes(owner);
             RemoveBoneboundOmega(owner);
             return;
         }
@@ -1005,6 +1523,7 @@ namespace WmSpells
             runtimeConfig->virtualItem3,
             ResolveAlphaVisualScale(owner, *runtimeConfig));
         ApplyOwnerTransferBonuses(alphaPet, owner, *runtimeConfig, false);
+        MaintainBoneboundAlphaAbilities(owner, alphaPet, *runtimeConfig, 1000u);
 
         if (runtimeConfig->spawnOmega)
             SyncBoneboundOmega(owner, alphaPet, *runtimeConfig);
@@ -1012,8 +1531,55 @@ namespace WmSpells
             RemoveBoneboundOmega(owner);
     }
 
+    void HandleBoneboundMeleeDamage(Unit* attacker, Unit* victim, uint32& damage)
+    {
+        if (!attacker || !victim || damage == 0)
+            return;
+
+        if (Pet* alphaPet = attacker->ToPet())
+        {
+            if (!IsBoneboundPet(alphaPet))
+                return;
+
+            Unit* ownerUnit = alphaPet->GetOwner();
+            Player* owner = ownerUnit ? ownerUnit->ToPlayer() : nullptr;
+            if (!owner || !IsPlayerAllowed(owner))
+                return;
+
+            std::optional<BoneboundBehaviorConfig> runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
+            if (!runtimeConfig.has_value() || !runtimeConfig->alphaEchoEnabled)
+                return;
+
+            float procChance = std::clamp(runtimeConfig->alphaEchoProcChancePct, 0.0f, 100.0f);
+            if (procChance > 0.0f && roll_chance_f(procChance))
+                TrySpawnBoneboundAlphaEcho(owner, alphaPet, victim, *runtimeConfig);
+            return;
+        }
+
+        auto echoIt = gBoneboundAlphaEchoes.find(static_cast<uint32>(attacker->GetGUID().GetCounter()));
+        if (echoIt == gBoneboundAlphaEchoes.end())
+            return;
+
+        Player* owner = ObjectAccessor::FindPlayerByLowGUID(echoIt->second.ownerGuid);
+        if (!owner || !IsPlayerAllowed(owner))
+            return;
+
+        Pet* alphaPet = owner->GetPet();
+        if (!alphaPet || !IsBoneboundPet(alphaPet))
+            return;
+
+        std::optional<BoneboundBehaviorConfig> runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
+        if (!runtimeConfig.has_value())
+            return;
+
+        uint32 alphaRoll = ResolveAlphaMeleeDamageRoll(alphaPet, owner, *runtimeConfig);
+        uint32 scaledRoll = std::max<uint32>(1u, (alphaRoll * std::max<uint32>(1u, echoIt->second.damagePct)) / 100u);
+        damage = std::max<uint32>(damage, scaledRoll);
+    }
+
     void ForgetBoneboundCompanions(Player* owner)
     {
+        RemoveBoneboundAlphaEchoes(owner);
         RemoveBoneboundOmega(owner);
     }
 

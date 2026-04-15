@@ -42,7 +42,7 @@ def test_bonebound_shell_definitions_are_present() -> None:
     assert summon_shell.behavior_kind == "summon_bonebound_servant_v1"
     assert twin_shell is not None
     assert twin_shell.spell_id == 940001
-    assert twin_shell.behavior_kind == "summon_bonebound_twin_v2"
+    assert twin_shell.behavior_kind == "summon_bonebound_alpha_v3"
     assert pet_active_shell is not None
     assert pet_active_shell.family_id == "pet_active"
     assert pet_active_shell.spell_id == 945000
@@ -68,7 +68,7 @@ def test_patch_rows_expand_all_family_ranges_and_overlay_named_shells() -> None:
     twin_shell = next(row for row in rows if row.spell_id == 940001)
     assert twin_shell.is_named_override is True
     assert twin_shell.shell_key == "bonebound_twins_v1"
-    assert twin_shell.behavior_kind == "summon_bonebound_twin_v2"
+    assert twin_shell.behavior_kind == "summon_bonebound_alpha_v3"
     assert pet_active_shell.is_named_override is True
     assert pet_active_shell.shell_key == "bonebound_servant_slash_v1"
 

@@ -11,7 +11,7 @@ from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient
 from wm.spells.platform import SpellBehaviorDebugClient
 
-DEFAULT_BONEBOUND_TWINS_BEHAVIOR_KIND = "summon_bonebound_twin_v2"
+DEFAULT_BONEBOUND_TWINS_BEHAVIOR_KIND = "summon_bonebound_alpha_v3"
 DEFAULT_BONEBOUND_TWINS_SHELL_SPELL_ID = 940001
 
 

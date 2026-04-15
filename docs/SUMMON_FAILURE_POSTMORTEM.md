@@ -1,5 +1,5 @@
 Status: BROKEN
-Last verified: 2026-04-15
+Last verified: 2026-04-16
 Verified by: Codex
 Doc type: postmortem
 
@@ -99,9 +99,9 @@ Saved pet rows in `character_pet` and related tables made later tests unreliable
 
 Different pet behaviors and overlays were mixed during the experiment, which made recast, dismiss, control, and resource behavior inconsistent.
 
-## Later fixed bug: Omega stat recalculation order
+## Later failure: Omega TempSummon parity
 
-Status: `WORKING`
+Status: `BROKEN`
 
 On 2026-04-15, `Bonebound Omega` showed base Voidwalker-style health (`33/40`) even though the shell `940001` behavior config and Alpha pet state were correct.
 
@@ -119,11 +119,58 @@ Fix:
 - Preserve current health percentage during sync and refill only on fresh spawn.
 - Apply weapon damage and mirrored attack power after the final health write.
 
+Later live evidence on 2026-04-16 showed this did not solve true combat parity:
+
+- Alpha melee was around `120`.
+- Omega melee remained around `9`.
+- Omega mana remained around `20`.
+- Copying Alpha final visible fields and powers onto Omega did not reliably affect the Creature/TempSummon combat path.
+
+Structural conclusion:
+
+- Omega was a `TempSummon`/Creature, not a real pet.
+- Creature stat/resource/damage calculation is not the same as the Alpha `Pet` path.
+- Visible target-frame fields are not sufficient proof of actual swing damage or resource parity.
+
+Decision:
+
+- Retire Omega from the shell `940001` release lane.
+- Move current behavior to single Alpha on `summon_bonebound_alpha_v3`.
+- If a second combat companion returns later, design it as a true supported pet/guardian model or an explicit hook-backed companion, then prove health, mana, and damage output in the lab.
+
 Do not repeat:
 
 - Do not treat base-template Omega health as a SQL/config issue before checking native stat recalculation order.
 - Do not set final Omega max health before `ApplyOwnerTransferBonuses()`.
 - Do not keep separate create/sync stat code paths for Omega.
+- Do not claim TempSummon parity from copied fields without live damage/resource proof.
+
+## Later failure: Alpha echo inherited Voidwalker template truth
+
+Status: `BROKEN`
+
+On 2026-04-16, Alpha echo procs appeared in-game as `Voidwalker` with roughly `60` health, even though the live runtime renamed and visually reskinned the summon after spawn.
+
+Root cause:
+
+- The echo was spawned from stock creature template `1860`.
+- Client target frames and nameplates use creature-template truth; `SetName()` after spawn is not a reliable replacement for a real template row.
+- The runtime copied Alpha health before `ApplyOwnerTransferBonuses()`.
+- `ApplyOwnerTransferBonuses()` calls `UpdateAllStats()`, which restored creature-template health for the temporary summon.
+
+Fix:
+
+- Add WM creature template `920101` named `Bonebound Alpha Echo`.
+- Spawn echo procs from `alpha_echo_creature_entry=920101`, falling back to the Alpha creature only if the explicit echo entry is missing from config.
+- Apply owner-transfer/stat recalculation first.
+- Copy Alpha final health, power, stats, resistances, attack power, weapon damage, and visible melee fields after recalculation.
+- Randomize echo follow angle and distance per proc so multiple echoes do not merge into one follow point.
+
+Do not repeat:
+
+- Do not spawn WM-named temporary companions from stock creature entries and assume runtime rename is enough.
+- Do not write final health or damage fields before a code path that calls `UpdateAllStats()`.
+- Do not mark echo behavior `WORKING` from visual model alone; validate target-frame name, health, and melee output in live combat.
 
 ## What is retired
 

@@ -132,16 +132,16 @@
       "shell_key": "bonebound_twins_v1",
       "spell_id": 940001,
       "family_id": "summon_pet",
-      "label": "Bonebound Twins",
-      "behavior_kind": "summon_bonebound_twin_v2",
+      "label": "Bonebound Alpha",
+      "behavior_kind": "summon_bonebound_alpha_v3",
       "targeting": "self_cast",
       "required_level": 1,
       "icon_hint": "Spell_Shadow_AnimateDead",
-      "tooltip": "Raise Bonebound Alpha and Bonebound Omega under WM control.",
+      "tooltip": "Raise Bonebound Alpha with WM-controlled bleed and echo behavior.",
       "patch_state": "planned",
       "notes": [
-        "Alpha is the one true pet. Omega is a synced guardian companion.",
-        "This shell is intended as the broad dual-summon reference path for future WM spell ideas."
+        "Legacy key kept for operator compatibility; this shell now runs the single-Alpha behavior.",
+        "Omega TempSummon parity is retired after live damage/mana mismatch."
       ]
     },
     {

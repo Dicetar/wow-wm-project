@@ -71,20 +71,25 @@ class SpellPlatformDraftTests(unittest.TestCase):
             self.assertEqual(loaded.spell_id, draft.spell_id)
             self.assertEqual(loaded.behavior_kind, draft.behavior_kind)
 
-    def test_twin_shell_draft_uses_dual_summon_defaults(self) -> None:
+    def test_alpha_shell_draft_uses_single_summon_ability_defaults(self) -> None:
         draft = create_shell_draft(shell_key="bonebound_twins_v1", player_guid=5406)
 
         self.assertEqual(draft.spell_id, 940001)
-        self.assertEqual(draft.behavior_kind, "summon_bonebound_twin_v2")
+        self.assertEqual(draft.behavior_kind, "summon_bonebound_alpha_v3")
         self.assertFalse(draft.behavior_config["require_corpse"])
-        self.assertTrue(draft.behavior_config["spawn_omega"])
+        self.assertFalse(draft.behavior_config["spawn_omega"])
         self.assertTrue(draft.behavior_config["owner_intellect_to_all_stats"])
         self.assertEqual(draft.behavior_config["owner_intellect_to_all_stats_scale"], 1.0)
         self.assertTrue(draft.behavior_config["owner_shadow_power_to_attack_power"])
         self.assertEqual(draft.behavior_config["owner_shadow_power_to_attack_power_scale"], 1.0)
         self.assertEqual(draft.behavior_config["virtual_item_1"], 28773)
-        self.assertEqual(draft.behavior_config["omega_virtual_item_1"], 28773)
-        self.assertEqual(draft.behavior_config["omega_name"], "Bonebound Omega")
+        self.assertTrue(draft.behavior_config["shadow_dot_enabled"])
+        self.assertEqual(draft.behavior_config["shadow_dot_cooldown_ms"], 6000)
+        self.assertEqual(draft.behavior_config["shadow_dot_tick_ms"], 1000)
+        self.assertEqual(draft.behavior_config["shadow_dot_damage_per_shadow_power_pct"], 0)
+        self.assertTrue(draft.behavior_config["alpha_echo_enabled"])
+        self.assertEqual(draft.behavior_config["alpha_echo_creature_entry"], 920101)
+        self.assertEqual(draft.behavior_config["alpha_echo_proc_chance_pct"], 5.0)
 
     def test_intellect_block_shell_draft_is_rating_only(self) -> None:
         draft = create_shell_draft(shell_key="jecia_intellect_block_v1", player_guid=5406)

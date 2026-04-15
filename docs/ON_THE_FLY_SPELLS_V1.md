@@ -62,7 +62,7 @@ Current first target:
 Near-term follow-up kinds:
 
 - `grant_shell_spell`
-- `summon_bonebound_twin_v2`
+- `summon_bonebound_alpha_v3`
 
 WM fills structured data. C++ executes registered behavior.
 

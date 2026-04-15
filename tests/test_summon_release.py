@@ -18,7 +18,7 @@ class FakeMysqlClient:
                 {
                     "RequestID": "42",
                     "PlayerGUID": "5406",
-                    "BehaviorKind": "summon_bonebound_twin_v2",
+                    "BehaviorKind": "summon_bonebound_alpha_v3",
                     "PayloadJSON": '{"shell_spell_id": 940001}',
                     "Status": "done",
                     "ResultJSON": '{"ok": true}',
@@ -45,7 +45,7 @@ class ReleaseSummonTests(unittest.TestCase):
 
         request_id = debug_client.submit_fast(
             player_guid=5406,
-            behavior_kind="summon_bonebound_twin_v2",
+            behavior_kind="summon_bonebound_alpha_v3",
             payload={"shell_spell_id": 940001},
         )
 

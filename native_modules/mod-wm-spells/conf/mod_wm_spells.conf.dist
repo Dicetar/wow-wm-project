@@ -45,3 +45,11 @@ WmSpells.BoneboundServant.BaseMaxDamage = 11
 WmSpells.BoneboundServant.DamagePerLevelPct = 125
 WmSpells.BoneboundServant.DamagePerIntellectPct = 8
 WmSpells.BoneboundServant.DamagePerShadowPowerPct = 16
+
+#
+# Bonebound Alpha v3 abilities are DB behavior-config driven on shell 940001:
+# - native shadow DoT, default 5s cooldown / 8s duration / 2s tick
+# - passive 5% melee proc to spawn a temporary Alpha echo
+# Echo duration is the summoner's total intellect value in seconds.
+# Keep these server-only until a client shell patch exposes player-facing text.
+#

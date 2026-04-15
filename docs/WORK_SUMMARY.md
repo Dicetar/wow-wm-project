@@ -109,12 +109,13 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - graceful-first lab worldserver restart helper falls back to force only if the process hangs
 - bridge lab runtime configuration forces `WeatherVibe.Debug = 0` so weather debugging does not spam the client during WM tests
 - summon/spell platform status is documented separately in `docs/SUMMON_SPELL_PLATFORM_STATUS.md`, including retired stock-carrier paths and the current shell-bank direction
-- Bonebound Twins debug/native status is `WORKING` for repo tests, native build, bridge-lab SQL binding, and debug invoke on shell `940001`: on 2026-04-15, request `7` for player `5406` executed `summon_bonebound_twin_v2` and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
-- Bonebound Twins fast release submitter is `WORKING` as `python -m wm.spells.summon_release`; it skips proof preflights and submits the known shell `940001` request directly for repeated operator use, with bridge-lab request `8` reaching `done` in the same second on 2026-04-15
-- Bonebound Twins Gorehowl weapon config is `WORKING` for the release lane: request `9` reached `done`, and live shell `940001` behavior config has both Alpha and Omega virtual item 1 set to `28773`
-- Bonebound Omega stat-order hardening is `WORKING`: the live `33/40` base-Voidwalker regression was fixed by applying owner/template stat recalculation before writing Omega's final Alpha-derived health and damage, and a repo regression test now locks that ordering
+- Bonebound Alpha v3 repo/native status is `WORKING` for focused repo tests, native build, bridge-lab SQL binding, and worldserver restart on shell `940001`: the live behavior row now uses `summon_bonebound_alpha_v3`, `spawn_omega=false`, Alpha Gorehowl visual item `28773`, low physical bleed ticks through the legacy `shadow_dot_*` config keys, and a 5% Alpha echo proc path
+- Bonebound Alpha fast release submitter is `WORKING` as `python -m wm.spells.summon_release`; it skips proof preflights and submits shell `940001` directly for repeated operator use, now defaulting to `summon_bonebound_alpha_v3`
+- Bonebound Alpha echo hardening is `WORKING` at repo/build/SQL level: echo procs now use WM creature template `920101`, copy Alpha final health/power/damage after stat recalculation, and randomize follow slots around the player
+- Bonebound Alpha live release-lane smoke is `WORKING`: the 2026-04-16 build and SQL applied successfully, worldserver restarted, player `5406` came online, release request `11` completed on shell `940001`, and user validation accepted the low bleed / echo behavior; exact combat-log values were not captured
+- Bonebound Omega parity is `BROKEN` and retired for the release lane: live evidence showed Alpha damage around `120`, Omega damage around `9`, and Omega mana around `20`; TempSummon field-copy hardening did not produce reliable combat parity
 - persistent WM combat proficiency repo and live path are `WORKING` for player `5406`: high-ID `skillraceclassinfo_dbc` / `skilllineability_dbc` override SQL makes Shield `433`, Leather `414`, and Dual Wield skill `118` login-valid, `python -m wm.spells.shield_proficiency --player-guid 5406 --mode apply --summary` grants only explicit player GUIDs, Dual Wield persists through spell `674`, `mod-wm-spells` syncs the volatile Dual Wield flag only for active `combat_proficiency` grants, offhand one-handed sword equip works, Dual Wield displays in the spellbook, and `passive_intellect_block_v1` shell `944000` remains separate as an intellect/spellpower block-rating passive
-- Bonebound Twins visible spell and mount/dismount lifecycle remain `PARTIAL` until the client shell patch and current live temporary-unsummon visual test are both proven
+- Bonebound Alpha visible spell lifecycle remains `PARTIAL` until the client shell patch and spellbook/action-bar path are proven end-to-end
 - combat proficiency playerbot proof remains `PARTIAL`: Shield, Leather, and Dual Wield are confirmed live for player `5406`, but playerbot maintenance is still unchecked for no inheritance
 
 ### IPP cleanup work
@@ -149,7 +150,8 @@ For the portable workflow, the repo now owns:
 - subject recognition and memory remain `PARTIAL` at live/lab level until subject cards can be materialized automatically, seeded rows are proven against the lab DB, fresh native snapshots are consumed, and full proposal-gate previews exist
 - combat proficiencies must not be added through `playercreateinfo_skills`, `playercreateinfo_spell_custom`, `mod_learnspells`, playerbot factory code, runtime `SetSkill` reapply, or class/equip override hooks; the only runtime exception is Dual Wield materializing `CanDualWield()` from persistent spell `674` behind explicit skill `118` validity and an explicit `combat_proficiency` grant
 - Dual Wield is one-handed offhand capability; two-handed offhand weapons require Titan Grip and must be treated as a separate feature
-- Omega stat tuning must not write final health before `ApplyOwnerTransferBonuses()` / `UpdateAllStats()`; that ordering reverts Omega to creature-template health and was the source of the live base-Voidwalker stat regression
+- Omega stat tuning by TempSummon field copy is retired. Do not claim a second combat companion is `WORKING` from target-frame fields alone; prove health, mana, and damage output or use a true pet/guardian/hook-backed design.
+- Alpha echo template/name/health bugs must be fixed through server truth: use WM creature template `920101` and write final copied Alpha fields after stat recalculation, not before.
 
 ## Recommended workflow
 

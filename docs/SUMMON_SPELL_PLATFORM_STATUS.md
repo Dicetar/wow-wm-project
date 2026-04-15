@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-15
+Last verified: 2026-04-16
 Verified by: Codex
 Doc type: status
 
@@ -30,10 +30,13 @@ Current supported iteration lane:
 - `mod-wm-spells` plus `wm_spell_debug_request`
 - `python -m wm.content.workbench invoke-shell-behavior`
 
-Current fast release lane for the proven Bonebound Twins behavior:
+Current fast release lane for the Bonebound Alpha behavior:
 
 - `python -m wm.spells.summon_release --player-guid 5406 --summary`
+- `.\summon-bridge-lab-bonebound-alpha.bat -PlayerGuid 5406`
 - `.\summon-bridge-lab-bonebound-twins.bat -PlayerGuid 5406`
+
+The `twins` wrapper name is now a compatibility alias only. Shell `940001` runs single-Alpha behavior `summon_bonebound_alpha_v3`, not the retired Omega companion path.
 
 The release lane assumes the shell, behavior row, scoped player, lab config, and worldserver are already proven. It skips shell-bank lookup, player lookup, schema preflight, and default wait/poll verification. Use the debug lane first when changing schema, behavior config, player scope, or native code.
 
@@ -53,13 +56,15 @@ Visible stock-carrier testing is not supported.
 - `mod-wm-spells` builds in `WM_BridgeLab`
 - shell, behavior, grant, and debug tables exist
 - debug invoke resolves shell-bound config from `wm_spell_behavior`
-- `WORKING`: Bonebound Twins debug/native lane uses WM shell `940001`, not stock `697` or `49126`
+- `WORKING`: Bonebound Alpha debug/native lane uses WM shell `940001`, not stock `697` or `49126`
 - `WORKING`: lab DB proof on 2026-04-15 retired `49126`, disabled its behavior row, removed stock WM spell-script bindings, and left only `940001 -> spell_wm_shell_dispatch`
-- `WORKING`: lab invoke request `7` for player `5406` executed `summon_bonebound_twin_v2` and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
-- `WORKING`: Bonebound Twins behavior config transfers the summoner's total intellect to all summon stats and shadow spell power to summon attack power
-- `WORKING`: Bonebound Omega stat-order hardening is live-proven on 2026-04-15; Omega no longer snaps back to base Voidwalker health after stat recalculation because final Alpha-derived health is applied after owner-transfer/template stat updates
-- `WORKING`: Bonebound Twins release submitter exists at `python -m wm.spells.summon_release`; bridge-lab request `8` for player `5406` returned immediately, reached `done` in the same second, and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
-- `WORKING`: Gorehowl visual weapon update for Bonebound Twins; bridge-lab request `9` reached `done`, and live `wm_spell_behavior` for shell `940001` has `virtual_item_1=28773` and `omega_virtual_item_1=28773`
+- `WORKING`: historical lab invoke request `7` for player `5406` executed the old twin behavior and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
+- `WORKING`: Bonebound Alpha behavior config transfers the summoner's total intellect to all Alpha stats and shadow spell power to Alpha attack power
+- `WORKING`: Bonebound Alpha v3 repo/native implementation builds in BridgeLab: shell `940001` maps to `summon_bonebound_alpha_v3`, `spawn_omega=false`, Alpha keeps Gorehowl visual item `28773`, the native periodic is now a low physical bleed despite legacy `shadow_dot_*` config key names, and temporary Alpha echo damage is enforced through the `UnitScript::ModifyMeleeDamage` hook instead of TempSummon visible field copying
+- `WORKING`: Alpha echoes use WM creature template `920101` (`Bonebound Alpha Echo`) instead of spawning from the Voidwalker template; runtime stat recalculation runs before Alpha health/power/damage is copied, and each echo gets a randomized follow distance/angle around the player
+- `WORKING`: Bonebound Alpha release submitter exists at `python -m wm.spells.summon_release`; it now defaults to behavior `summon_bonebound_alpha_v3` and shell `940001`
+- `WORKING`: live post-restart Alpha v3 smoke was accepted on 2026-04-16 after request `11` completed for online player `5406`; repo evidence proves the active pet row is `Bonebound Alpha` on shell `940001`, and user validation reported the bleed/echo behavior acceptable
+- `BROKEN`: Bonebound Omega TempSummon parity is retired for the release lane. Live evidence showed Alpha melee around `120`, Omega melee around `9`, and Omega mana around `20`; copying Alpha-visible fields onto a Creature/TempSummon did not affect the actual combat path reliably.
 - `WORKING`: persistent combat proficiency repo path exists through DBC override SQL plus explicit GUID grant:
   - `native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_02_wm_spell_shield_proficiency.sql` seeds high-ID `skillraceclassinfo_dbc` and `skilllineability_dbc` rows for Shield skill `433`
   - `native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_03_wm_spell_leather_dual_wield_proficiency.sql` seeds high-ID `skillraceclassinfo_dbc` and `skilllineability_dbc` rows for Leather skill `414`
@@ -93,20 +98,47 @@ Still blocked on the client patch being built and installed from repo instructio
 - real action-bar and tooltip proof
 - final cast/recast/dismiss/relog lifecycle proof on the visible shell path
 
-### Twin summon experiments
+### Bonebound Alpha v3
 
-Bonebound Twins are now the supported debug/native twin-summon iteration path in `mod-wm-spells`.
+Bonebound Alpha v3 is the supported current summon iteration path in `mod-wm-spells`.
 
-Use them as lab/debug work only until the shell-bank patch is installed and validated.
+Use it as lab/debug work only until the shell-bank patch is installed and validated.
 
 Current classification:
 
-- `WORKING`: repo tests, native build, bridge-lab SQL binding, and debug invoke for shell `940001`
-- `WORKING`: fast release submit path for already-proven shell `940001`, including live bridge-lab request `8`
-- `WORKING`: Gorehowl weapon config for both Alpha and Omega, including live bridge-lab request `9`
-- `WORKING`: Omega stat transfer after the 2026-04-15 stat-order fix; live test confirmed stats returned after deploying patched `worldserver.exe`
+- `WORKING`: repo tests, native build, bridge-lab SQL binding, and worldserver restart for shell `940001`
+- `WORKING`: single Alpha true-pet summon model; `spawn_omega=false`
+- `WORKING`: Gorehowl visual weapon config for Alpha through `virtual_item_1=28773`
+- `WORKING`: native Alpha bleed implementation exists with default 6 second cooldown, 4 second duration, 1 second tick, low level/intellect scaling, and no shadow spell-power scaling
+- `WORKING`: Alpha passive echo implementation exists with 5% melee proc chance, maximum 3 active echoes, WM creature template `920101`, randomized follow slots around the player, and echo lifetime equal to summoner total intellect in seconds
+- `WORKING`: live in-game smoke for the release lane was accepted after the 2026-04-16 deploy; exact combat-log numbers were not captured, so future tuning should still record tick and melee values before changing damage
 - `PARTIAL`: visible client spellbook/action-bar path until the client shell-bank patch is installed and validated
-- `PARTIAL`: mount/dismount lifecycle until the current bridge-lab visual test confirms both Alpha and Omega return after temporary unsummon
+
+What to do:
+
+- Use shell `940001` with behavior `summon_bonebound_alpha_v3`.
+- Use `.\summon-bridge-lab-bonebound-alpha.bat -PlayerGuid 5406 -Wait` after the player is online.
+- Keep `summon-bridge-lab-bonebound-twins.bat` only as a compatibility alias.
+- Validate Alpha melee, 1-second bleed ticks, `Bonebound Alpha Echo` name/health, and one echo proc in combat before calling the live ability proof `WORKING`.
+
+What not to do:
+
+- Do not set `spawn_omega=true` for the release lane.
+- Do not describe 940001 as a working dual-summon/twins behavior until a true second-pet or hook-backed companion model is designed and proven.
+- Do not revive TempSummon field-copy attempts for Omega damage parity.
+- Do not spawn Alpha echoes from stock creature entry `1860`; target frame/nameplate text comes from creature template truth, not just `SetName()`.
+- Do not copy Alpha health/power/damage onto a Creature/TempSummon before `ApplyOwnerTransferBonuses()` / `UpdateAllStats()`.
+
+### Retired twin summon experiments
+
+Bonebound Twins are not the current supported release path.
+
+The old Alpha/Omega experiment remains useful as failure evidence.
+
+Current classification:
+
+- `BROKEN`: Omega TempSummon stat/damage parity. Health ordering was improved, but live damage and mana still followed Creature/TempSummon behavior rather than Alpha pet behavior.
+- `BROKEN`: `summon_bonebound_twin_v2` as the default release behavior for shell `940001`; keep it retired unless redesigned
 - `WORKING`: Shield, Leather, and Dual Wield live proof for player `5406`; all survived the explicit GUID grant path without broad creation or playerbot tables, and Dual Wield is visible in the spellbook
 - `BROKEN`: stock-carrier bindings for `697` / `49126`; do not revive them
 
@@ -156,23 +188,22 @@ Current classification:
 - `WORKING`: live Shield, Leather, and Dual Wield proof for player `5406`; Dual Wield appears in the spellbook and one-handed offhand equip works without `.learn 674`
 - `PARTIAL`: playerbot negative proof; current DB had zero non-Jecia warlock rows for Shield `433` or spells `107`/`9116` before the Leather/Dual Wield extension, but a maintenance/level-up cycle has not been observed after the SQL became active
 
-### Bonebound runtime stat-order rule
+### Bonebound Omega runtime failure rule
 
-Omega is a `TempSummon`, not a saved pet row. Creature stat recalculation can restore template-derived max health and damage after code writes custom values.
+Omega is a `TempSummon`, not a saved pet row. Creature stat recalculation and Creature melee damage paths can restore or ignore template-derived runtime values after code writes custom values.
 
 What to do:
 
-- Apply owner stat transfer and any `UpdateAllStats()` path before writing final Omega max health.
-- Derive Omega max health from Alpha after Alpha has already received owner intellect/stat transfer.
-- Preserve Omega's current health percentage during sync, but refill on fresh spawn.
-- Apply Omega weapon damage, attack time, mirrored attack power, and `UpdateDamagePhysical()` after the final health pass.
-- Keep `tests/test_bonebound_runtime.py` covering this order before changing Omega stat code.
+- Treat Omega as retired for release behavior.
+- If a second combat companion is needed later, design it as a hook-backed companion or a true supported pet/guardian chassis before changing fields again.
+- Record live damage and resource proof before marking any second companion `WORKING`.
 
 What not to do:
 
 - Do not set `omega->SetMaxHealth(alphaPet->GetMaxHealth())` before `ApplyOwnerTransferBonuses()` and assume it survives.
 - Do not diagnose a `33/40` or similar Omega target frame as a DB config problem before checking stat recalculation order.
-- Do not duplicate spawn/sync stat code; use one shared runtime helper so Alpha/Omega tuning cannot drift between creation and maintenance.
+- Do not treat visible copied fields as proof of actual melee damage.
+- Do not revive Omega as the default 940001 behavior without a new structural design.
 
 ## Release Lane Rules
 
@@ -181,7 +212,7 @@ Use release mode only after the matching debug/test path is already green.
 What release mode does:
 
 - inserts the known `wm_spell_debug_request` row directly
-- defaults to `summon_bonebound_twin_v2` and shell `940001`
+- defaults to `summon_bonebound_alpha_v3` and shell `940001`
 - returns after submit unless `--wait` is explicitly passed
 - relies on `WmSpells.DebugPollIntervalMs = 50` in the lab config for fast native pickup
 
@@ -210,12 +241,13 @@ Retired implementation patterns:
 
 ## Next verification step
 
-1. finish the current bridge-lab mount/dismount test for `940001`
-2. confirm both `Bonebound Alpha` and `Bonebound Omega` return after temporary unsummon
-3. observe one playerbot maintenance/level-up cycle and confirm bots did not inherit combat proficiencies
-4. build and install the local shell-bank client patch
-5. grant `940000` or `940001` through the workbench
-6. validate the visible shell path:
+1. for any new Alpha tuning, clean the player pet state or resummon through the release wrapper
+2. run `.\summon-bridge-lab-bonebound-alpha.bat -PlayerGuid 5406 -Wait`
+3. record Alpha melee, bleed tick values, and at least one 5% Alpha echo proc with `Bonebound Alpha Echo` name and non-template health
+4. observe one playerbot maintenance/level-up cycle and confirm bots did not inherit combat proficiencies
+5. build and install the local shell-bank client patch
+6. grant `940000` or `940001` through the workbench
+7. validate the visible shell path:
    - spellbook entry
    - cast behavior
    - clean failure UX when gated

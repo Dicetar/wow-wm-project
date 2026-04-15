@@ -19,7 +19,7 @@ That is why the first twin-skeleton prototype missed the mark:
 - it reused `Summon Voidwalker`
 - it changed behavior, but it was not a new visible spell
 
-That path is retired. The current Bonebound Twins debug/native lane binds behavior to WM-owned shell `940001` and explicitly removes WM script bindings from stock carriers such as `697` and `49126`.
+That path is retired. The current Bonebound Alpha debug/native lane binds behavior to WM-owned shell `940001` and explicitly removes WM script bindings from stock carriers such as `697` and `49126`.
 
 ## Hard pet constraint
 
@@ -121,9 +121,10 @@ That is the correct next implementation lane.
 
 Current status:
 
-- `WORKING`: shell `940001` is bound to `summon_bonebound_twin_v2` in the bridge-lab DB
-- `WORKING`: Alpha is the one true persisted pet and Omega is the linked guardian companion
-- `WORKING`: total intellect is added to all summon stats and shadow spell power is added to summon attack power
+- `WORKING`: shell `940001` is bound to `summon_bonebound_alpha_v3` in the bridge-lab DB
+- `WORKING`: Alpha is the one true persisted pet; Omega is retired from the release lane
+- `WORKING`: total intellect is added to Alpha stats and shadow spell power is added to Alpha attack power
+- `PARTIAL`: Alpha low physical bleed and echo proc are implemented and built, but live combat proof is pending
 - `PARTIAL`: the visible player-facing spell remains blocked on installing and validating the shell-bank client patch
 
 Do not replace or reuse `Summon Voidwalker`, `Raise Ghoul`, or any other stock spell as the permanent WM carrier for this behavior.
