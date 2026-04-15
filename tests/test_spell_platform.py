@@ -82,7 +82,21 @@ class SpellPlatformDraftTests(unittest.TestCase):
         self.assertEqual(draft.behavior_config["owner_intellect_to_all_stats_scale"], 1.0)
         self.assertTrue(draft.behavior_config["owner_shadow_power_to_attack_power"])
         self.assertEqual(draft.behavior_config["owner_shadow_power_to_attack_power_scale"], 1.0)
+        self.assertEqual(draft.behavior_config["virtual_item_1"], 28773)
+        self.assertEqual(draft.behavior_config["omega_virtual_item_1"], 28773)
         self.assertEqual(draft.behavior_config["omega_name"], "Bonebound Omega")
+
+    def test_intellect_block_shell_draft_is_rating_only(self) -> None:
+        draft = create_shell_draft(shell_key="jecia_intellect_block_v1", player_guid=5406)
+
+        self.assertEqual(draft.spell_id, 944000)
+        self.assertEqual(draft.family_id, "passive_aura")
+        self.assertEqual(draft.behavior_kind, "passive_intellect_block_v1")
+        self.assertEqual(draft.targeting, "passive")
+        self.assertEqual(draft.behavior_config["intellect_to_block_rating_scale"], 1.0)
+        self.assertEqual(draft.behavior_config["spell_power_to_block_rating_scale"], 1.0)
+        self.assertEqual(draft.behavior_config["spell_school_mask"], 126)
+        self.assertEqual(draft.behavior_config["max_block_rating"], 0)
 
 
 if __name__ == "__main__":

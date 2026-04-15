@@ -422,13 +422,13 @@ def _default_behavior_config(shell: SpellShellDefinition) -> dict[str, Any]:
             "owner_intellect_to_all_stats_scale": 1.0,
             "owner_shadow_power_to_attack_power": True,
             "owner_shadow_power_to_attack_power_scale": 1.0,
-            "virtual_item_1": 1897,
+            "virtual_item_1": 28773,
             "virtual_item_2": 0,
             "virtual_item_3": 0,
             "omega_creature_entry": 1860,
             "omega_name": "Bonebound Omega",
             "omega_display_id": 734,
-            "omega_virtual_item_1": 1897,
+            "omega_virtual_item_1": 28773,
             "omega_virtual_item_2": 0,
             "omega_virtual_item_3": 0,
             "omega_scale_multiplier": 1.0,
@@ -436,6 +436,13 @@ def _default_behavior_config(shell: SpellShellDefinition) -> dict[str, Any]:
             "omega_damage_pct": 100,
             "omega_follow_distance": 2.2,
             "omega_follow_angle": -1.5708,
+        }
+    if shell.behavior_kind == "passive_intellect_block_v1":
+        return {
+            "intellect_to_block_rating_scale": 1.0,
+            "spell_power_to_block_rating_scale": 1.0,
+            "spell_school_mask": 126,
+            "max_block_rating": 0,
         }
     return {}
 

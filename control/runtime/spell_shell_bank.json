@@ -92,7 +92,8 @@
       "behavior_kinds": [
         "passive_stat_bonus",
         "passive_proc",
-        "conditional_aura"
+        "conditional_aura",
+        "passive_intellect_block_v1"
       ]
     },
     {
@@ -156,6 +157,22 @@
       "patch_state": "planned",
       "notes": [
         "Reserved for later. Keep disabled until the base servant lifecycle is stable."
+      ]
+    },
+    {
+      "shell_key": "jecia_intellect_block_v1",
+      "spell_id": 944000,
+      "family_id": "passive_aura",
+      "label": "Jecia's Guarded Mind",
+      "behavior_kind": "passive_intellect_block_v1",
+      "targeting": "passive",
+      "required_level": 15,
+      "icon_hint": "Ability_Defend",
+      "tooltip": "Convert intellect and spell power into block rating while Shield proficiency is explicitly WM-granted.",
+      "patch_state": "planned",
+      "notes": [
+        "This passive modifies block rating only.",
+        "It must not restore Shield proficiency; persistent Shield access is owned by DBC validity plus the explicit GUID grant."
       ]
     }
   ]

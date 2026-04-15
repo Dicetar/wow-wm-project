@@ -18,6 +18,7 @@ namespace WmSpells
         bool labOnlyDebugInvokeEnable = false;
         uint32 debugPollIntervalMs = 1000;
         std::unordered_set<uint32> playerGuidAllowList;
+        bool intellectBlockPassiveEnabled = true;
         bool boneboundServantEnabled = true;
         std::unordered_set<uint32> boneboundShellSpellIds;
         bool boneboundRequireCorpse = true;
@@ -101,6 +102,15 @@ namespace WmSpells
         std::string status;
     };
 
+    struct IntellectBlockPassiveConfig
+    {
+        uint32 shellSpellId = 0;
+        float intellectToBlockRatingScale = 1.0f;
+        float spellPowerToBlockRatingScale = 1.0f;
+        uint32 spellSchoolMask = SPELL_SCHOOL_MASK_MAGIC;
+        uint32 maxBlockRating = 0;
+    };
+
     RuntimeConfig const& GetConfig();
     void LoadConfig();
     bool IsPlayerAllowed(Player* player);
@@ -114,5 +124,8 @@ namespace WmSpells
     void MaintainBoneboundSummons(Player* player);
     void ForgetBoneboundCompanions(Player* player);
     void ReapplyBoneboundOverlay(Pet* pet);
+    void MaintainIntellectBlockPassive(Player* player);
+    void MaintainCombatProficiencies(Player* player);
+    void ForgetIntellectBlockPassive(Player* player);
     void PollDebugRequests(uint32 diff);
 }

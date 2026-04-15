@@ -82,8 +82,8 @@ foreach ($required in @($buildExe, $runExe, $spellsConfig)) {
 }
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.Enable" -Value "1"
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.Enable" -Value "1"
-Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value '"940000,940001,49126"'
-Write-Host "bridge_lab_shell_module=mod-wm-spells shell_spell_ids=940000,940001,49126"
+Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value '"940000,940001"'
+Write-Host "bridge_lab_shell_module=mod-wm-spells shell_spell_ids=940000,940001"
 
 $existing = Get-LabWorldProcess -ExecutablePath $runExe
 if ($null -ne $existing) {

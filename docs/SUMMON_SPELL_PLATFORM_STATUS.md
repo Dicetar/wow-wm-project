@@ -46,7 +46,7 @@ Visible stock-carrier testing is not supported.
 - shell-bank contract exists
 - client patch workspace exists
 - default bank size is 1000 slots per family across 6 families
-- named shell entries exist for `940000` and `940001`
+- named shell entries exist for `940000`, `940001`, and `944000`
 
 ### Native spell runtime
 
@@ -58,6 +58,16 @@ Visible stock-carrier testing is not supported.
 - `WORKING`: lab invoke request `7` for player `5406` executed `summon_bonebound_twin_v2` and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
 - `WORKING`: Bonebound Twins behavior config transfers the summoner's total intellect to all summon stats and shadow spell power to summon attack power
 - `WORKING`: Bonebound Twins release submitter exists at `python -m wm.spells.summon_release`; bridge-lab request `8` for player `5406` returned immediately, reached `done` in the same second, and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
+- `WORKING`: Gorehowl visual weapon update for Bonebound Twins; bridge-lab request `9` reached `done`, and live `wm_spell_behavior` for shell `940001` has `virtual_item_1=28773` and `omega_virtual_item_1=28773`
+- `WORKING`: persistent combat proficiency repo path exists through DBC override SQL plus explicit GUID grant:
+  - `native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_02_wm_spell_shield_proficiency.sql` seeds high-ID `skillraceclassinfo_dbc` and `skilllineability_dbc` rows for Shield skill `433`
+  - `native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_03_wm_spell_leather_dual_wield_proficiency.sql` seeds high-ID `skillraceclassinfo_dbc` and `skilllineability_dbc` rows for Leather skill `414`
+  - `native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_04_wm_spell_dual_wield_skill_validity.sql` seeds high-ID `skillraceclassinfo_dbc` for Dual Wield skill `118`, which AzerothCore validates before keeping spell `674`
+  - `python -m wm.spells.shield_proficiency --player-guid 5406 --mode apply --summary` upserts only `character_skills(118,433,414)`, `character_spell(107,9116,9077,674)`, and a `wm_spell_grant` marker for shell `944000`
+  - `mod-wm-spells` materializes AzerothCore's volatile Dual Wield runtime flag only when the player is allowlisted, has an active `combat_proficiency` grant for shell `944000`, and already has persistent spell `674`
+  - bridge-lab live proof on 2026-04-15 confirmed player `5406` can equip Shield, Leather, and a one-handed sword in offhand; Dual Wield is also visible in the spellbook
+  - focused repo tests verify the SQL does not insert or update `playercreateinfo_skills`, `playercreateinfo_spell_custom`, or `mod_learnspells`
+- `WORKING`: `passive_intellect_block_v1` is rating-only; it reads an active `wm_spell_grant` and applies block rating from intellect plus spell power, but it no longer calls `SetSkill`, `SetCanBlock`, or overrides shield equip class checks
 
 ### Operator lane
 
@@ -92,9 +102,57 @@ Current classification:
 
 - `WORKING`: repo tests, native build, bridge-lab SQL binding, and debug invoke for shell `940001`
 - `WORKING`: fast release submit path for already-proven shell `940001`, including live bridge-lab request `8`
+- `WORKING`: Gorehowl weapon config for both Alpha and Omega, including live bridge-lab request `9`
 - `PARTIAL`: visible client spellbook/action-bar path until the client shell-bank patch is installed and validated
 - `PARTIAL`: mount/dismount lifecycle until the current bridge-lab visual test confirms both Alpha and Omega return after temporary unsummon
+- `WORKING`: Shield, Leather, and Dual Wield live proof for player `5406`; all survived the explicit GUID grant path without broad creation or playerbot tables, and Dual Wield is visible in the spellbook
 - `BROKEN`: stock-carrier bindings for `697` / `49126`; do not revive them
+
+### Persistent combat proficiency
+
+The supported persistence model is server truth first:
+
+- `skillraceclassinfo_dbc` makes Shield skill `433` valid for all races/classes at login, but does not grant it.
+- `skillraceclassinfo_dbc` makes Leather skill `414` valid for all races/classes at login, but does not grant it.
+- `skillraceclassinfo_dbc` makes Dual Wield skill `118` valid for all races/classes at login, but does not grant it.
+- `skilllineability_dbc` ties stock client-known passives `9116` and `107` to skill `433` with `AcquireMethod=2`.
+- `skilllineability_dbc` ties stock client-known passive `9077` to skill `414` with `AcquireMethod=2`.
+- Dual Wield is spell-gated by stock spell `674`, not by a skill line; the explicit grant inserts it into `character_spell`, and `mod-wm-spells` syncs `CanDualWield()` from that persistent spell only for active `combat_proficiency` grants.
+- `character_skills` and `character_spell` are granted only by explicit player GUID through `python -m wm.spells.shield_proficiency`.
+- `wm_spell_grant` shell `944000` enables the separate intellect/spellpower block-rating passive.
+
+Do not use these paths for Shield:
+
+- `playercreateinfo_skills`
+- `playercreateinfo_spell_custom`
+- `mod_learnspells`
+- playerbot factory or maintenance code
+- runtime `OnPlayerLogin` / `OnPlayerAfterUpdate` `SetSkill(433, 1, 1)` reapply
+- `OnPlayerIsClass` equip-shield overrides
+
+What to do:
+
+- Apply the world SQL updates for Shield, Leather, and Dual Wield skill validity before live use.
+- Restart worldserver after `skillraceclassinfo_dbc` or `skilllineability_dbc` changes; those DBC override tables are startup-loaded.
+- Grant a real WM player explicitly with `python -m wm.spells.shield_proficiency --player-guid <guid> --mode apply --summary`.
+- Verify `character_skills` contains `118`, `414`, and `433`, and `character_spell` contains `107`, `674`, `9077`, and `9116`.
+- Relog the player before testing persistence and spellbook display.
+- Test Dual Wield with a one-handed weapon in offhand; two-handed weapons are Titan Grip, not normal Dual Wield.
+
+What not to do:
+
+- Do not treat DBC validity as a grant; it only prevents login validation from deleting explicit character rows.
+- Do not grant these proficiencies through class creation tables, playerbot factories, maintenance commands, or `mod_learnspells`.
+- Do not restore Shield or Leather with runtime `SetSkill` hooks.
+- Do not override class equip checks to make shields work; fix server truth through DBC validity and explicit rows.
+- Do not assume `character_spell(674)` is sufficient; AzerothCore deletes it unless skill `118` is valid for the race/class.
+- Do not call two-handed offhand testing a Dual Wield failure; that requires Titan Grip and is a separate capability.
+
+Current classification:
+
+- `WORKING`: repo/static implementation and tests for DBC rows, explicit grant SQL, rating-only block passive, and explicit-grant Dual Wield runtime sync
+- `WORKING`: live Shield, Leather, and Dual Wield proof for player `5406`; Dual Wield appears in the spellbook and one-handed offhand equip works without `.learn 674`
+- `PARTIAL`: playerbot negative proof; current DB had zero non-Jecia warlock rows for Shield `433` or spells `107`/`9116` before the Leather/Dual Wield extension, but a maintenance/level-up cycle has not been observed after the SQL became active
 
 ## Release Lane Rules
 
@@ -134,9 +192,10 @@ Retired implementation patterns:
 
 1. finish the current bridge-lab mount/dismount test for `940001`
 2. confirm both `Bonebound Alpha` and `Bonebound Omega` return after temporary unsummon
-3. build and install the local shell-bank client patch
-4. grant `940000` or `940001` through the workbench
-5. validate the visible shell path:
+3. observe one playerbot maintenance/level-up cycle and confirm bots did not inherit combat proficiencies
+4. build and install the local shell-bank client patch
+5. grant `940000` or `940001` through the workbench
+6. validate the visible shell path:
    - spellbook entry
    - cast behavior
    - clean failure UX when gated

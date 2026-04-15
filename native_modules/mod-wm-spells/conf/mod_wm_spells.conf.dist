@@ -11,6 +11,14 @@ WmSpells.LabOnlyDebugInvokeEnable = 0
 WmSpells.DebugPollIntervalMs = 50
 
 #
+# Intellect Block Passive
+# Server-side passive lane. Requires an active wm_spell_grant for BehaviorKind
+# passive_intellect_block_v1. This modifies block rating only; Shield proficiency
+# persistence comes from DBC validity plus explicit character skill/spell grants.
+#
+WmSpells.IntellectBlockPassive.Enable = 1
+
+#
 # Bonebound Servant v1
 # One stable WM-owned true pet using a generic demon-style summon backend with skeleton visuals.
 #

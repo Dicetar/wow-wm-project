@@ -20,9 +20,13 @@ namespace
 {
     using namespace std::chrono_literals;
 
+    constexpr uint32 COMBAT_PROFICIENCY_SHELL_ID = 944000;
+    constexpr uint32 DUAL_WIELD_SPELL_ID = 674;
+
     WmSpells::RuntimeConfig gConfig;
     uint32 gDebugPollTimer = 0;
     std::unordered_map<uint32, ObjectGuid> gBoneboundOmegaByPlayer;
+    std::unordered_map<uint32, int32> gIntellectBlockRatingByPlayer;
 
     void ParseUIntSet(std::string const& raw, std::unordered_set<uint32>& target)
     {
@@ -211,6 +215,11 @@ namespace
         return behaviorKind == "summon_bonebound_servant_v1" || behaviorKind == "summon_bonebound_twin_v2";
     }
 
+    bool IsIntellectBlockBehaviorKind(std::string const& behaviorKind)
+    {
+        return behaviorKind == "passive_intellect_block_v1";
+    }
+
     bool IsBoneboundShellOrBehavior(uint32 shellSpellId)
     {
         if (shellSpellId == 0)
@@ -362,6 +371,27 @@ namespace
             config.omegaFollowDistance = *value;
         if (std::optional<float> value = ExtractJsonFloat(configJson, "omega_follow_angle"))
             config.omegaFollowAngle = *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::IntellectBlockPassiveConfig> BuildIntellectBlockPassiveConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (!IsIntellectBlockBehaviorKind(record.behaviorKind) || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::IntellectBlockPassiveConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "intellect_to_block_rating_scale"))
+            config.intellectToBlockRatingScale = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "spell_power_to_block_rating_scale"))
+            config.spellPowerToBlockRatingScale = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "spell_school_mask"))
+            config.spellSchoolMask = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "max_block_rating"))
+            config.maxBlockRating = *value;
 
         return config;
     }
@@ -598,6 +628,96 @@ namespace
         return payload;
     }
 
+    void ApplyIntellectBlockRating(Player* player, int32 desiredRating)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        int32 currentRating = 0;
+        if (auto it = gIntellectBlockRatingByPlayer.find(playerGuid); it != gIntellectBlockRatingByPlayer.end())
+            currentRating = it->second;
+
+        if (currentRating == desiredRating)
+            return;
+
+        if (currentRating > 0)
+            player->ApplyRatingMod(CR_BLOCK, currentRating, false);
+
+        if (desiredRating > 0)
+        {
+            player->ApplyRatingMod(CR_BLOCK, desiredRating, true);
+            gIntellectBlockRatingByPlayer[playerGuid] = desiredRating;
+        }
+        else
+        {
+            gIntellectBlockRatingByPlayer.erase(playerGuid);
+        }
+    }
+
+    std::optional<WmSpells::IntellectBlockPassiveConfig> LoadActiveIntellectBlockPassiveConfig(Player* player)
+    {
+        if (!player || !WmSpells::IsPlayerAllowed(player) || !gConfig.intellectBlockPassiveEnabled)
+            return std::nullopt;
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT b.ShellSpellID, b.ConfigJSON, b.Status "
+            "FROM wm_spell_grant g "
+            "JOIN wm_spell_behavior b ON b.ShellSpellID = g.ShellSpellID "
+            "WHERE g.PlayerGUID = {} "
+            "  AND g.RevokedAt IS NULL "
+            "  AND b.BehaviorKind = 'passive_intellect_block_v1' "
+            "  AND b.Status = 'active' "
+            "ORDER BY g.GrantID DESC LIMIT 1",
+            static_cast<uint32>(player->GetGUID().GetCounter()));
+
+        if (!result)
+            return std::nullopt;
+
+        Field* fields = result->Fetch();
+        WmSpells::BehaviorRecord record;
+        record.shellSpellId = fields[0].Get<uint32>();
+        record.behaviorKind = "passive_intellect_block_v1";
+        record.configJson = fields[1].Get<std::string>();
+        record.status = fields[2].Get<std::string>();
+        return BuildIntellectBlockPassiveConfig(record);
+    }
+
+    bool HasActiveCombatProficiencyGrant(Player* player)
+    {
+        if (!player || !WmSpells::IsPlayerAllowed(player))
+            return false;
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT 1 FROM wm_spell_grant "
+            "WHERE PlayerGUID = {} "
+            "  AND ShellSpellID = {} "
+            "  AND GrantKind = 'combat_proficiency' "
+            "  AND RevokedAt IS NULL "
+            "LIMIT 1",
+            static_cast<uint32>(player->GetGUID().GetCounter()),
+            COMBAT_PROFICIENCY_SHELL_ID);
+
+        return result != nullptr;
+    }
+
+    int32 ResolveIntellectBlockRating(Player* player, WmSpells::IntellectBlockPassiveConfig const& config)
+    {
+        if (!player)
+            return 0;
+
+        float intellect = std::max(0.0f, player->GetTotalStatValue(STAT_INTELLECT));
+        int32 spellPower = std::max<int32>(0, player->SpellBaseDamageBonusDone(static_cast<SpellSchoolMask>(config.spellSchoolMask)));
+        float rating = intellect * config.intellectToBlockRatingScale
+            + static_cast<float>(spellPower) * config.spellPowerToBlockRatingScale;
+
+        int32 resolved = std::max<int32>(0, static_cast<int32>(std::round(rating)));
+        if (config.maxBlockRating > 0)
+            resolved = std::min<int32>(resolved, static_cast<int32>(config.maxBlockRating));
+
+        return resolved;
+    }
+
     void CompleteDebugRequest(uint64 requestId, std::string const& status, std::string const& resultJson, std::string const& errorText = "")
     {
         WorldDatabase.Execute(
@@ -624,6 +744,7 @@ namespace WmSpells
         ParseUIntSet(sConfigMgr->GetOption<std::string>("WmSpells.PlayerGuidAllowList", ""), gConfig.playerGuidAllowList);
         gConfig.labOnlyDebugInvokeEnable = sConfigMgr->GetOption<bool>("WmSpells.LabOnlyDebugInvokeEnable", false);
         gConfig.debugPollIntervalMs = sConfigMgr->GetOption<uint32>("WmSpells.DebugPollIntervalMs", 1000u);
+        gConfig.intellectBlockPassiveEnabled = sConfigMgr->GetOption<bool>("WmSpells.IntellectBlockPassive.Enable", true);
         gConfig.boneboundServantEnabled = sConfigMgr->GetOption<bool>("WmSpells.BoneboundServant.Enable", true);
         ParseUIntSet(sConfigMgr->GetOption<std::string>("WmSpells.BoneboundServant.ShellSpellIds", "940000,940001"), gConfig.boneboundShellSpellIds);
         gConfig.boneboundRequireCorpse = sConfigMgr->GetOption<bool>("WmSpells.BoneboundServant.RequireCorpse", true);
@@ -666,7 +787,7 @@ namespace WmSpells
 
     bool IsSupportedBehaviorKind(std::string const& behaviorKind)
     {
-        return IsBoneboundBehaviorKind(behaviorKind);
+        return IsBoneboundBehaviorKind(behaviorKind) || IsIntellectBlockBehaviorKind(behaviorKind);
     }
 
     std::optional<BehaviorRecord> LoadBehaviorRecord(uint32 shellSpellId)
@@ -773,11 +894,17 @@ namespace WmSpells
         if (!behaviorRecord.has_value())
             return {false, "shell_behavior_missing"};
 
+        if (IsIntellectBlockBehaviorKind(behaviorRecord->behaviorKind))
+        {
+            MaintainIntellectBlockPassive(player);
+            return {true, "intellect_block_passive_maintained"};
+        }
+
         std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, persistPetFallback);
         if (!runtimeConfig.has_value())
             return {false, "shell_behavior_disabled"};
 
-        if (IsSupportedBehaviorKind(behaviorRecord->behaviorKind))
+        if (IsBoneboundBehaviorKind(behaviorRecord->behaviorKind))
             return ExecuteBoneboundServant(player, shellSpellId, runtimeConfig->persistPet);
 
         return {false, "unsupported_shell_spell"};
@@ -861,6 +988,47 @@ namespace WmSpells
     void ForgetBoneboundCompanions(Player* owner)
     {
         RemoveBoneboundOmega(owner);
+    }
+
+    void MaintainIntellectBlockPassive(Player* player)
+    {
+        if (!player)
+            return;
+
+        std::optional<IntellectBlockPassiveConfig> config = LoadActiveIntellectBlockPassiveConfig(player);
+        if (!config.has_value())
+        {
+            ApplyIntellectBlockRating(player, 0);
+            return;
+        }
+
+        ApplyIntellectBlockRating(player, ResolveIntellectBlockRating(player, *config));
+    }
+
+    void MaintainCombatProficiencies(Player* player)
+    {
+        if (!player || !WmSpells::IsPlayerAllowed(player))
+            return;
+
+        if (!player->HasSpell(DUAL_WIELD_SPELL_ID) || player->CanDualWield())
+            return;
+
+        if (!HasActiveCombatProficiencyGrant(player))
+            return;
+
+        // character_spell is the persistent truth; AzerothCore keeps Dual Wield
+        // as a volatile runtime flag, so materialize it only for explicit WM grants.
+        player->CastSpell(player, DUAL_WIELD_SPELL_ID, true);
+        if (!player->CanDualWield())
+            player->SetCanDualWield(true);
+    }
+
+    void ForgetIntellectBlockPassive(Player* player)
+    {
+        if (!player)
+            return;
+
+        ApplyIntellectBlockRating(player, 0);
     }
 
     void ReapplyBoneboundOverlay(Pet* pet)

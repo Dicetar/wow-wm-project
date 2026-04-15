@@ -66,6 +66,8 @@ Current architecture:
 - Bonebound Twins debug/native lane is `WORKING` on shell `940001`: bridge-lab SQL binds `summon_bonebound_twin_v2`, stock carriers `697` / `49126` are retired, and player `5406` produced a persisted `Bonebound Alpha` from debug request `7` on 2026-04-15
 - Bonebound Twins stat transfer is `WORKING` in native config/code: summoner total intellect is applied to all summon stats and shadow spell power is applied to summon attack power
 - Bonebound Twins fast release submitter is `WORKING`: `python -m wm.spells.summon_release --player-guid 5406 --summary` submits the proven shell `940001` request directly without preflight or default wait loops; bridge-lab request `8` on 2026-04-15 reached `done` in the same second
+- Bonebound Twins Gorehowl weapon config is `WORKING` in BridgeLab: request `9` reached `done`, and live behavior config for shell `940001` sets both Alpha and Omega virtual item 1 to `28773`
+- persistent combat proficiency repo and live path are `WORKING` for player `5406`: DBC override SQL makes Shield `433`, Leather `414`, and Dual Wield skill `118` login-valid, `python -m wm.spells.shield_proficiency --player-guid 5406 --mode apply --summary` grants only the explicit player GUID through `character_skills`, `character_spell`, and `wm_spell_grant`, and the block-rating passive shell `944000` no longer restores Shield by runtime `SetSkill` or class override hooks; Dual Wield persists through stock spell `674`, `mod-wm-spells` materializes the volatile `CanDualWield()` flag only for active `combat_proficiency` grants, offhand one-handed sword equip works, and Dual Wield displays in the spellbook
 
 ## What is partial
 
@@ -84,6 +86,7 @@ Current architecture:
   - automatic subject materialization, zone mood, and full proposal-gate previews are still `PARTIAL`
 - visible shell-bank spells are not yet proven end-to-end in the client because the local patch artifact is not finalized and installed from repo instructions
 - Bonebound Twins mount/dismount lifecycle is `PARTIAL` until the current live bridge-lab visual test confirms both Alpha and Omega return after temporary unsummon
+- combat proficiency bot-safety proof is `PARTIAL`: player `5406` is confirmed live for Shield, Leather, and Dual Wield, but a playerbot maintenance cycle still needs to show bots did not inherit the grants
 - experimental `template_watch` / `template_publish` comparison work remains isolated in `.worktrees/template-watch-compare`; its dynamic binding idea is useful, but its standalone watcher path is not the production architecture
 
 ## What is broken or retired
@@ -163,6 +166,7 @@ If a feature needs a visible spellbook entry, hotbar button, or owned tooltip, t
 ## Known footguns
 
 - Client-visible spell work requires client truth, not just server truth.
+- combat proficiency persistence requires DBC validity plus explicit character rows; do not restore skills with login/update `SetSkill` hooks, class-equip overrides, `playercreateinfo_skills`, `mod_learnspells`, or playerbot maintenance. Dual Wield needs skill `118` to be DBC-valid before spell `674` survives login; native runtime may then materialize `CanDualWield()` from persistent spell `674` only for explicit `combat_proficiency` grants. Two-handed offhand weapons require Titan Grip and are not normal Dual Wield.
 - Dirty lab state can poison summon and pet retests.
 - Design docs can be useful and still be stale.
 - Current-state docs and postmortems outrank aspirational design notes.

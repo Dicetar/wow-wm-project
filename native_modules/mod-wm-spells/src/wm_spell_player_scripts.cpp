@@ -24,11 +24,13 @@ public:
 
         gBoneboundMaintenanceTimers[static_cast<uint32>(player->GetGUID().GetCounter())] = 0;
         WmSpells::MaintainBoneboundSummons(player);
+        WmSpells::MaintainIntellectBlockPassive(player);
+        WmSpells::MaintainCombatProficiencies(player);
     }
 
     void OnPlayerAfterUpdate(Player* player, uint32 diff) override
     {
-        if (!player || !WmSpells::IsPlayerAllowed(player))
+        if (!player)
             return;
 
         uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
@@ -41,6 +43,8 @@ public:
 
         timer = BONEBOUND_MAINTENANCE_INTERVAL_MS;
         WmSpells::MaintainBoneboundSummons(player);
+        WmSpells::MaintainIntellectBlockPassive(player);
+        WmSpells::MaintainCombatProficiencies(player);
     }
 
     void OnPlayerBeforeLogout(Player* player) override
@@ -51,7 +55,9 @@ public:
         uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
         gBoneboundMaintenanceTimers.erase(ownerGuid);
         WmSpells::ForgetBoneboundCompanions(player);
+        WmSpells::ForgetIntellectBlockPassive(player);
     }
+
 };
 
 void AddSC_mod_wm_spells_player_scripts()
