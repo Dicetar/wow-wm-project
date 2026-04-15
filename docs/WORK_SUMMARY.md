@@ -26,6 +26,7 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - reusable reactive bounty rule storage
 - repo-owned reactive bounty templates under `control/examples/reactive_bounties/`
 - one-command bridge-lab install wrapper in `scripts/bridge_lab/Install-BridgeLabReactiveBounty.ps1`
+- implicit auto-bounty creation from arbitrary kills is now disabled by default; explicit JSON templates are the fast publish/install lane
 - reactive bounty installs now default to a fresh reserved quest slot unless an explicit `quest_id` is pinned on purpose
 - reactive bounty dry-runs can preview a free reserved slot safely and keep apply-mode slot staging strict
 - shared bounty drafts and publish SQL now carry richer reward fields:
@@ -144,6 +145,7 @@ For the portable workflow, the repo now owns:
 - Questie needs a tiny compat shim for WM custom quest ids because upstream Questie-335 does not know repo-owned quest ids like `910000`
 - Phase 1 native bounty parity remains `PARTIAL` until the full in-game loop is rerun end-to-end on the current bridge lab
 - dynamic per-trigger template watching remains experimental; the keepable pieces are being folded into the shared reactive/publish path instead of promoting a second watcher architecture
+- auto-generated active bounty rules are not the default operator model; old lab rows should be treated as dirty state and replaced by explicit `reactive_bounty:template:*` installs
 - subject recognition and memory remain `PARTIAL` at live/lab level until subject cards can be materialized automatically, seeded rows are proven against the lab DB, fresh native snapshots are consumed, and full proposal-gate previews exist
 - combat proficiencies must not be added through `playercreateinfo_skills`, `playercreateinfo_spell_custom`, `mod_learnspells`, playerbot factory code, runtime `SetSkill` reapply, or class/equip override hooks; the only runtime exception is Dual Wield materializing `CanDualWield()` from persistent spell `674` behind explicit skill `118` validity and an explicit `combat_proficiency` grant
 - Dual Wield is one-handed offhand capability; two-handed offhand weapons require Titan Grip and must be treated as a separate feature

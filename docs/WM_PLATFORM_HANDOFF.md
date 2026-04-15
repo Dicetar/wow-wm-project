@@ -43,6 +43,7 @@ Current architecture:
 - `native_bridge` exists and can emit canonical WM events
 - `wm.events.watch` now survives per-iteration spine failures and flushes summary/error lines for automation logs instead of exiting silently on the first exception
 - reactive bounty installs now have a repo-owned fast path through `control/examples/reactive_bounties/` and `scripts/bridge_lab/Install-BridgeLabReactiveBounty.ps1`
+- reactive bounty templates are the supported fast operator lane; implicit auto-bounty creation from arbitrary kills is disabled by default and only available behind explicit opt-in config
 - reactive bounty templates now default to fresh `wm_reserved_slot` quest allocation instead of reusing one mutable live quest ID across iterations
 - reactive bounty dry-runs can preview the next free reserved quest slot without staging it or producing a false preflight failure
 - shared reactive bounty publishing supports richer quest reward fields when the live `quest_template` schema exposes them:
@@ -89,6 +90,7 @@ Current architecture:
 - Bonebound Twins mount/dismount lifecycle is `PARTIAL` until the current live bridge-lab visual test confirms both Alpha and Omega return after temporary unsummon
 - combat proficiency bot-safety proof is `PARTIAL`: player `5406` is confirmed live for Shield, Leather, and Dual Wield, but a playerbot maintenance cycle still needs to show bots did not inherit the grants
 - experimental `template_watch` / `template_publish` comparison work remains isolated in `.worktrees/template-watch-compare`; its dynamic binding idea is useful, but its standalone watcher path is not the production architecture
+- implicit auto-bounty generation is not a supported default path; use explicit JSON templates to install the exact bounty being tested
 
 ## What is broken or retired
 
@@ -169,6 +171,7 @@ If a feature needs a visible spellbook entry, hotbar button, or owned tooltip, t
 - Client-visible spell work requires client truth, not just server truth.
 - combat proficiency persistence requires DBC validity plus explicit character rows; do not restore skills with login/update `SetSkill` hooks, class-equip overrides, `playercreateinfo_skills`, `mod_learnspells`, or playerbot maintenance. Dual Wield needs skill `118` to be DBC-valid before spell `674` survives login; native runtime may then materialize `CanDualWield()` from persistent spell `674` only for explicit `combat_proficiency` grants. Two-handed offhand weapons require Titan Grip and are not normal Dual Wield.
 - Bonebound Omega stat writes must happen after owner-transfer/template stat recalculation. If Omega shows base creature health such as `33/40`, inspect `ApplyOwnerTransferBonuses()` / `UpdateAllStats()` ordering before changing DB config.
+- Do not let old auto-generated bounty rules drive live tests. Install one explicit template, arm the watcher from the end, then kill the exact target entry/prefix after arming.
 - Dirty lab state can poison summon and pet retests.
 - Design docs can be useful and still be stale.
 - Current-state docs and postmortems outrank aspirational design notes.

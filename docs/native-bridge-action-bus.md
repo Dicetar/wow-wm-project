@@ -230,6 +230,7 @@ Phase 1 parity evidence as of 2026-04-13:
   - SOAP fallback when native prerequisites are not ready
   - post-reward cooldown reopen after expiry
   - one `execute_event_spine` integration pass with runtime reconciliation events recorded separately from the grant action
+- explicit bounty templates are now the operator lane for live proof; implicit auto-bounty creation is disabled by default and must not be used to explain watcher behavior
 - historical bridge-lab evidence for player `5406` includes:
   - `wm_bridge_action_request` `quest_add` rows reaching `done`
   - native `quest_granted` for `Bounty: Kobold Vermin`

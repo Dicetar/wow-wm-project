@@ -130,6 +130,26 @@ class DeterministicRuleEngineTests(unittest.TestCase):
             ),
         )
 
+    def test_auto_bounty_manager_is_not_created_by_default(self) -> None:
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=FakeRuleStore(),
+            reactive_store=FakeReactiveStore(),  # type: ignore[arg-type]
+        )
+
+        self.assertIsNone(engine.auto_bounty)
+
+    def test_auto_bounty_manager_is_opt_in(self) -> None:
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(reactive_auto_bounty_enabled=True),
+            store=FakeRuleStore(),
+            reactive_store=FakeReactiveStore(),  # type: ignore[arg-type]
+        )
+
+        self.assertIsNotNone(engine.auto_bounty)
+
     def test_kill_threshold_emits_derived_events_and_opportunity(self) -> None:
         store = FakeRuleStore()
         engine = DeterministicRuleEngine(
@@ -570,6 +590,54 @@ class DeterministicRuleEngineTests(unittest.TestCase):
 
         self.assertEqual(len(result.opportunities), 1)
         self.assertEqual(result.opportunities[0].metadata["quest_id"], 910001)
+
+    def test_template_rule_can_match_by_subject_name_prefix(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key=f"native_bridge:murloc:{index}",
+                occurred_at=f"2026-04-08 12:00:0{index}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=285 + index,
+                metadata={"payload": {"subject_name": "Murloc Coastrunner"}},
+            )
+            for index in range(1, 5)
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:template:murloc",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=0,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=120,
+                quest_id=910021,
+                turn_in_npc_entry=240,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={"subject_name_prefix": "Murloc"},
+                notes=["template"],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1])
+
+        self.assertEqual(len(result.opportunities), 1)
+        self.assertEqual(result.opportunities[0].metadata["quest_id"], 910021)
 
     def test_auto_bounty_can_replace_non_matching_exact_rule_with_defias_cutpurse_rule(self) -> None:
         store = FakeRuleStore()

@@ -46,7 +46,12 @@ class DeterministicRuleEngine:
         if self.reactive_store is None and settings is not None:
             self.reactive_store = ReactiveQuestStore(client=client, settings=settings)
         self.auto_bounty = auto_bounty
-        if self.auto_bounty is None and self.reactive_store is not None and settings is not None:
+        if (
+            self.auto_bounty is None
+            and self.reactive_store is not None
+            and settings is not None
+            and settings.reactive_auto_bounty_enabled
+        ):
             self.auto_bounty = ReactiveAutoBountyManager(
                 client=client,
                 settings=settings,
@@ -422,7 +427,11 @@ def _subject_name_from_event(event: WMEvent) -> str | None:
 def _rule_matches_event(*, rule: ReactiveQuestRule, event: WMEvent) -> bool:
     if rule.subject_type != (event.subject_type or ""):
         return False
-    name_prefix = rule.metadata.get("auto_bounty_name_prefix")
+    name_prefix = (
+        rule.metadata.get("subject_name_prefix")
+        or rule.metadata.get("auto_bounty_name_prefix")
+        or rule.metadata.get("auto_bounty_source_name_prefix")
+    )
     if isinstance(name_prefix, str) and name_prefix.strip():
         subject_name = _subject_name_from_event(event)
         return isinstance(subject_name, str) and subject_name.lower().startswith(name_prefix.strip().lower())

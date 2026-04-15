@@ -287,7 +287,7 @@ class ReactiveInstallTests(unittest.TestCase):
             resolver=FakeResolver(),  # type: ignore[arg-type]
         )
         rule = ReactiveQuestRule(
-            rule_key="reactive_bounty:auto:defias_bandit",
+            rule_key="reactive_bounty:template:defias_bandit",
             is_active=True,
             player_guid_scope=5406,
             subject_type="creature",
@@ -322,7 +322,7 @@ class ReactiveInstallTests(unittest.TestCase):
             resolver=FakeResolver(),  # type: ignore[arg-type]
         )
         rule = ReactiveQuestRule(
-            rule_key="reactive_bounty:auto:defias_bandit",
+            rule_key="reactive_bounty:template:defias_bandit",
             is_active=True,
             player_guid_scope=5406,
             subject_type="creature",
@@ -359,7 +359,7 @@ class ReactiveInstallTests(unittest.TestCase):
             resolver=FakeResolver(),  # type: ignore[arg-type]
         )
         rule = ReactiveQuestRule(
-            rule_key="reactive_bounty:auto:murloc",
+            rule_key="reactive_bounty:template:murloc",
             is_active=True,
             player_guid_scope=5406,
             subject_type="creature",
@@ -381,7 +381,7 @@ class ReactiveInstallTests(unittest.TestCase):
                 "reward_spell_id": 22888,
                 "reward_spell_display_id": 22888,
                 "reward_reputations": [{"faction_id": 72, "value": 75}],
-                "auto_bounty_name_prefix": "Murloc",
+                "subject_name_prefix": "Murloc",
             },
             notes=[],
         )
@@ -408,7 +408,7 @@ class ReactiveInstallTests(unittest.TestCase):
             resolver=FakeResolver(),  # type: ignore[arg-type]
         )
         rule = ReactiveQuestRule(
-            rule_key="reactive_bounty:auto:murloc",
+            rule_key="reactive_bounty:template:murloc",
             is_active=True,
             player_guid_scope=5406,
             subject_type="creature",
@@ -486,7 +486,7 @@ class ReactiveInstallTests(unittest.TestCase):
             exit_code = main(
                 [
                     "--rule-key",
-                    "reactive_bounty:auto:defias_bandit",
+                    "reactive_bounty:template:defias_bandit",
                     "--player-guid",
                     "5406",
                     "--subject-entry",
@@ -552,7 +552,7 @@ class ReactiveInstallTests(unittest.TestCase):
         template_path.write_text(
             json.dumps(
                 {
-                    "rule_key": "reactive_bounty:auto:defias_bandit",
+                    "rule_key": "reactive_bounty:template:defias_bandit",
                     "subject_entry": 116,
                     "turn_in_npc_entry": 261,
                     "kill_threshold": 4,
@@ -607,7 +607,7 @@ class ReactiveInstallTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIsNotNone(captured_rule)
         assert captured_rule is not None
-        self.assertEqual(captured_rule.rule_key, "reactive_bounty:auto:defias_bandit")
+        self.assertEqual(captured_rule.rule_key, "reactive_bounty:template:defias_bandit")
         self.assertEqual(captured_rule.subject_entry, 116)
         self.assertEqual(captured_rule.turn_in_npc_entry, 261)
         self.assertEqual(captured_rule.window_seconds, 300)
@@ -653,7 +653,7 @@ class ReactiveInstallTests(unittest.TestCase):
         template_path.write_text(
             json.dumps(
                 {
-                    "rule_key": "reactive_bounty:auto:murloc",
+                    "rule_key": "reactive_bounty:template:murloc",
                     "subject_entry": 285,
                     "subject_name_prefix": "Murloc",
                     "turn_in_npc_entry": 240,
@@ -717,7 +717,7 @@ class ReactiveInstallTests(unittest.TestCase):
         self.assertIsNotNone(captured_rule)
         assert captured_rule is not None
         self.assertEqual(captured_rule.quest_id, 910001)
-        self.assertEqual(captured_rule.metadata["auto_bounty_name_prefix"], "Murloc")
+        self.assertEqual(captured_rule.metadata["subject_name_prefix"], "Murloc")
         self.assertEqual(captured_rule.metadata["reward_item_entry"], 45574)
         self.assertEqual(captured_rule.metadata["reward_xp_difficulty"], 4)
         self.assertEqual(captured_rule.metadata["reward_spell_id"], 22888)
@@ -757,7 +757,7 @@ class ReactiveInstallTests(unittest.TestCase):
                 return Result()
 
         existing_rule = ReactiveQuestRule(
-            rule_key="reactive_bounty:auto:murloc",
+            rule_key="reactive_bounty:template:murloc",
             is_active=True,
             player_guid_scope=5406,
             subject_type="creature",
@@ -799,7 +799,7 @@ class ReactiveInstallTests(unittest.TestCase):
             exit_code = main(
                 [
                     "--rule-key",
-                    "reactive_bounty:auto:murloc",
+                    "reactive_bounty:template:murloc",
                     "--player-guid",
                     "5406",
                     "--subject-entry",

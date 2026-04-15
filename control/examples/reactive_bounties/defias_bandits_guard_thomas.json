@@ -1,5 +1,5 @@
 {
-  "rule_key": "reactive_bounty:auto:defias_bandit",
+  "rule_key": "reactive_bounty:template:defias_bandit",
   "player_guid": 5406,
   "subject_entry": 116,
   "turn_in_npc_entry": 261,

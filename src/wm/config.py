@@ -56,6 +56,7 @@ class Settings:
     event_default_questgiver_entry: int | None = None
     event_followup_kill_count: int = 6
     event_default_reward_money_copper: int = 1200
+    reactive_auto_bounty_enabled: bool = False
     addon_log_path: str = _default_bootstrap_path("run", "logs", "WMOps.log")
     addon_log_batch_size: int = 200
     addon_channel_name: str = "WMBridgePrivate"
@@ -103,6 +104,8 @@ class Settings:
             ),
             event_followup_kill_count=int(os.getenv("WM_EVENT_FOLLOWUP_KILL_COUNT", "6")),
             event_default_reward_money_copper=int(os.getenv("WM_EVENT_DEFAULT_REWARD_MONEY_COPPER", "1200")),
+            reactive_auto_bounty_enabled=os.getenv("WM_REACTIVE_AUTO_BOUNTY_ENABLED", "0").strip().lower()
+            in {"1", "true", "yes", "on"},
             addon_log_path=os.getenv(
                 "WM_ADDON_LOG_PATH",
                 _default_bootstrap_path("run", "logs", "WMOps.log"),

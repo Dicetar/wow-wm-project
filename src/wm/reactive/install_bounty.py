@@ -592,7 +592,7 @@ def main(argv: list[str] | None = None) -> int:
     if quest_title is not None:
         metadata["quest_title"] = quest_title
     if subject_name_prefix is not None:
-        metadata["auto_bounty_name_prefix"] = subject_name_prefix
+        metadata["subject_name_prefix"] = subject_name_prefix
     if reward_item_entry is not None:
         metadata["reward_item_entry"] = reward_item_entry
     if reward_item_name is not None:
