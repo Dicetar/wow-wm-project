@@ -57,6 +57,7 @@ Visible stock-carrier testing is not supported.
 - `WORKING`: lab DB proof on 2026-04-15 retired `49126`, disabled its behavior row, removed stock WM spell-script bindings, and left only `940001 -> spell_wm_shell_dispatch`
 - `WORKING`: lab invoke request `7` for player `5406` executed `summon_bonebound_twin_v2` and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
 - `WORKING`: Bonebound Twins behavior config transfers the summoner's total intellect to all summon stats and shadow spell power to summon attack power
+- `WORKING`: Bonebound Omega stat-order hardening is live-proven on 2026-04-15; Omega no longer snaps back to base Voidwalker health after stat recalculation because final Alpha-derived health is applied after owner-transfer/template stat updates
 - `WORKING`: Bonebound Twins release submitter exists at `python -m wm.spells.summon_release`; bridge-lab request `8` for player `5406` returned immediately, reached `done` in the same second, and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
 - `WORKING`: Gorehowl visual weapon update for Bonebound Twins; bridge-lab request `9` reached `done`, and live `wm_spell_behavior` for shell `940001` has `virtual_item_1=28773` and `omega_virtual_item_1=28773`
 - `WORKING`: persistent combat proficiency repo path exists through DBC override SQL plus explicit GUID grant:
@@ -103,6 +104,7 @@ Current classification:
 - `WORKING`: repo tests, native build, bridge-lab SQL binding, and debug invoke for shell `940001`
 - `WORKING`: fast release submit path for already-proven shell `940001`, including live bridge-lab request `8`
 - `WORKING`: Gorehowl weapon config for both Alpha and Omega, including live bridge-lab request `9`
+- `WORKING`: Omega stat transfer after the 2026-04-15 stat-order fix; live test confirmed stats returned after deploying patched `worldserver.exe`
 - `PARTIAL`: visible client spellbook/action-bar path until the client shell-bank patch is installed and validated
 - `PARTIAL`: mount/dismount lifecycle until the current bridge-lab visual test confirms both Alpha and Omega return after temporary unsummon
 - `WORKING`: Shield, Leather, and Dual Wield live proof for player `5406`; all survived the explicit GUID grant path without broad creation or playerbot tables, and Dual Wield is visible in the spellbook
@@ -153,6 +155,24 @@ Current classification:
 - `WORKING`: repo/static implementation and tests for DBC rows, explicit grant SQL, rating-only block passive, and explicit-grant Dual Wield runtime sync
 - `WORKING`: live Shield, Leather, and Dual Wield proof for player `5406`; Dual Wield appears in the spellbook and one-handed offhand equip works without `.learn 674`
 - `PARTIAL`: playerbot negative proof; current DB had zero non-Jecia warlock rows for Shield `433` or spells `107`/`9116` before the Leather/Dual Wield extension, but a maintenance/level-up cycle has not been observed after the SQL became active
+
+### Bonebound runtime stat-order rule
+
+Omega is a `TempSummon`, not a saved pet row. Creature stat recalculation can restore template-derived max health and damage after code writes custom values.
+
+What to do:
+
+- Apply owner stat transfer and any `UpdateAllStats()` path before writing final Omega max health.
+- Derive Omega max health from Alpha after Alpha has already received owner intellect/stat transfer.
+- Preserve Omega's current health percentage during sync, but refill on fresh spawn.
+- Apply Omega weapon damage, attack time, mirrored attack power, and `UpdateDamagePhysical()` after the final health pass.
+- Keep `tests/test_bonebound_runtime.py` covering this order before changing Omega stat code.
+
+What not to do:
+
+- Do not set `omega->SetMaxHealth(alphaPet->GetMaxHealth())` before `ApplyOwnerTransferBonuses()` and assume it survives.
+- Do not diagnose a `33/40` or similar Omega target frame as a DB config problem before checking stat recalculation order.
+- Do not duplicate spawn/sync stat code; use one shared runtime helper so Alpha/Omega tuning cannot drift between creation and maintenance.
 
 ## Release Lane Rules
 

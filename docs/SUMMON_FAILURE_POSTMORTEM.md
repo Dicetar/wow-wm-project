@@ -1,5 +1,5 @@
 Status: BROKEN
-Last verified: 2026-04-13
+Last verified: 2026-04-15
 Verified by: Codex
 Doc type: postmortem
 
@@ -98,6 +98,32 @@ Saved pet rows in `character_pet` and related tables made later tests unreliable
 ### 4. Mixed chassis assumptions
 
 Different pet behaviors and overlays were mixed during the experiment, which made recast, dismiss, control, and resource behavior inconsistent.
+
+## Later fixed bug: Omega stat recalculation order
+
+Status: `WORKING`
+
+On 2026-04-15, `Bonebound Omega` showed base Voidwalker-style health (`33/40`) even though the shell `940001` behavior config and Alpha pet state were correct.
+
+Root cause:
+
+- Omega is a `TempSummon`.
+- The runtime wrote Alpha-derived health/damage, then called owner-transfer/stat recalculation.
+- `UpdateAllStats()` restored creature-template max health for the temporary summon.
+
+Fix:
+
+- Use one shared Omega runtime helper for create and sync.
+- Apply owner-transfer/template stat recalculation first.
+- Apply final Alpha-derived Omega health afterward.
+- Preserve current health percentage during sync and refill only on fresh spawn.
+- Apply weapon damage and mirrored attack power after the final health write.
+
+Do not repeat:
+
+- Do not treat base-template Omega health as a SQL/config issue before checking native stat recalculation order.
+- Do not set final Omega max health before `ApplyOwnerTransferBonuses()`.
+- Do not keep separate create/sync stat code paths for Omega.
 
 ## What is retired
 

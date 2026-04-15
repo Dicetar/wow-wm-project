@@ -176,6 +176,81 @@ namespace
         target->SetStatPctModifier(UNIT_MOD_ATTACK_POWER, TOTAL_PCT, source->GetPctModifierValue(UNIT_MOD_ATTACK_POWER, TOTAL_PCT));
     }
 
+    uint32 ResolveOmegaMaxHealth(Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!alphaPet)
+            return 1u;
+
+        uint32 healthPct = std::max<uint32>(1u, config.omegaHealthPct);
+        return std::max<uint32>(1u, (alphaPet->GetMaxHealth() * healthPct) / 100u);
+    }
+
+    void ApplyOmegaHealth(TempSummon* omega, uint32 desiredMaxHealth, uint32 previousHealth, uint32 previousMaxHealth, bool refillHealth)
+    {
+        if (!omega)
+            return;
+
+        previousMaxHealth = std::max<uint32>(1u, previousMaxHealth);
+        desiredMaxHealth = std::max<uint32>(1u, desiredMaxHealth);
+        omega->SetMaxHealth(desiredMaxHealth);
+
+        if (refillHealth)
+        {
+            omega->SetHealth(desiredMaxHealth);
+            return;
+        }
+
+        if (previousHealth == 0)
+        {
+            omega->SetHealth(0);
+            return;
+        }
+
+        uint64 scaledHealth = (static_cast<uint64>(previousHealth) * desiredMaxHealth) / previousMaxHealth;
+        scaledHealth = std::clamp<uint64>(scaledHealth, 1u, desiredMaxHealth);
+        omega->SetHealth(static_cast<uint32>(scaledHealth));
+    }
+
+    void ApplyBoneboundOmegaRuntime(Player* owner, Pet* alphaPet, TempSummon* omega, WmSpells::BoneboundBehaviorConfig const& config, bool refillHealth)
+    {
+        if (!owner || !alphaPet || !omega)
+            return;
+
+        uint32 previousHealth = omega->GetHealth();
+        uint32 previousMaxHealth = omega->GetMaxHealth();
+        float minDamage = alphaPet->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE);
+        float maxDamage = alphaPet->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE);
+        if (!config.preserveBaseStats)
+        {
+            float damageScale = static_cast<float>(std::max<uint32>(1u, config.omegaDamagePct)) / 100.0f;
+            minDamage *= damageScale;
+            maxDamage *= damageScale;
+        }
+
+        omega->SetCreatorGUID(owner->GetGUID());
+        omega->SetOwnerGUID(owner->GetGUID());
+        omega->SetFaction(owner->GetFaction());
+        ApplyBoneboundCreatureAppearance(
+            omega,
+            config.omegaName,
+            config.omegaDisplayId,
+            config.omegaVirtualItem1,
+            config.omegaVirtualItem2,
+            config.omegaVirtualItem3,
+            ResolveOmegaVisualScale(owner, alphaPet, config));
+        omega->SetLevel(alphaPet->GetLevel());
+
+        // Creature stat recalculation can restore template health, so do it before
+        // writing the final Alpha-derived Omega health and damage.
+        ApplyOwnerTransferBonuses(omega, owner, config, false);
+        ApplyOmegaHealth(omega, ResolveOmegaMaxHealth(alphaPet, config), previousHealth, previousMaxHealth, refillHealth);
+        omega->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, minDamage);
+        omega->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, maxDamage);
+        omega->SetAttackTime(BASE_ATTACK, alphaPet->GetAttackTime(BASE_ATTACK));
+        MirrorMeleeAttackPower(alphaPet, omega);
+        omega->UpdateDamagePhysical(BASE_ATTACK);
+    }
+
     WmSpells::BoneboundBehaviorConfig DefaultBoneboundBehaviorConfig(uint32 shellSpellId, bool persistPet)
     {
         WmSpells::BoneboundBehaviorConfig config;
@@ -519,37 +594,7 @@ namespace
         if (!omega)
             return nullptr;
 
-        omega->SetCreatorGUID(owner->GetGUID());
-        omega->SetOwnerGUID(owner->GetGUID());
-        omega->SetFaction(owner->GetFaction());
-        ApplyBoneboundCreatureAppearance(
-            omega,
-            config.omegaName,
-            config.omegaDisplayId,
-            config.omegaVirtualItem1,
-            config.omegaVirtualItem2,
-            config.omegaVirtualItem3,
-            ResolveOmegaVisualScale(owner, alphaPet, config));
-        omega->SetLevel(alphaPet->GetLevel());
-        uint32 maxHealth = alphaPet->GetMaxHealth();
-        if (!config.preserveBaseStats)
-            maxHealth = std::max<uint32>(1u, (alphaPet->GetMaxHealth() * std::max<uint32>(1u, config.omegaHealthPct)) / 100u);
-        omega->SetMaxHealth(maxHealth);
-        omega->SetHealth(maxHealth);
-        float minDamage = alphaPet->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE);
-        float maxDamage = alphaPet->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE);
-        if (!config.preserveBaseStats)
-        {
-            float damageScale = static_cast<float>(std::max<uint32>(1u, config.omegaDamagePct)) / 100.0f;
-            minDamage *= damageScale;
-            maxDamage *= damageScale;
-        }
-        omega->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, minDamage);
-        omega->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, maxDamage);
-        omega->SetAttackTime(BASE_ATTACK, alphaPet->GetAttackTime(BASE_ATTACK));
-        ApplyOwnerTransferBonuses(omega, owner, config, false);
-        MirrorMeleeAttackPower(alphaPet, omega);
-        omega->UpdateDamagePhysical(BASE_ATTACK);
+        ApplyBoneboundOmegaRuntime(owner, alphaPet, omega, config, true);
         omega->SetReactState(REACT_DEFENSIVE);
         omega->GetMotionMaster()->MoveFollow(owner, config.omegaFollowDistance, config.omegaFollowAngle);
 
@@ -572,25 +617,7 @@ namespace
         if (!omega)
             return;
 
-        omega->SetFaction(owner->GetFaction());
-        ApplyBoneboundCreatureAppearance(
-            omega,
-            config.omegaName,
-            config.omegaDisplayId,
-            config.omegaVirtualItem1,
-            config.omegaVirtualItem2,
-            config.omegaVirtualItem3,
-            ResolveOmegaVisualScale(owner, alphaPet, config));
-        omega->SetLevel(alphaPet->GetLevel());
-        omega->SetMaxHealth(alphaPet->GetMaxHealth());
-        if (omega->GetHealth() > omega->GetMaxHealth())
-            omega->SetHealth(omega->GetMaxHealth());
-        omega->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, alphaPet->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE));
-        omega->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, alphaPet->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE));
-        omega->SetAttackTime(BASE_ATTACK, alphaPet->GetAttackTime(BASE_ATTACK));
-        ApplyOwnerTransferBonuses(omega, owner, config, false);
-        MirrorMeleeAttackPower(alphaPet, omega);
-        omega->UpdateDamagePhysical(BASE_ATTACK);
+        ApplyBoneboundOmegaRuntime(owner, alphaPet, omega, config, false);
 
         if (Unit* victim = alphaPet->GetVictim())
         {
