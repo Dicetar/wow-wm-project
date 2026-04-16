@@ -79,6 +79,7 @@ Make the existing reactive bounty loop work fully through native perception and 
 - the April 13, 2026 bridge-lab rerun did not complete the live kill/turn-in cycle because validation player `5406` was offline, so the Phase 1 exit criteria remain open
 - April 14, 2026 comparison work kept richer reward support as a product capability and moved it into the shared bounty draft / publish path instead of a parallel template publisher; dry-run slot preview now stays non-mutating without false preflight failure; dynamic per-trigger watcher binding remains a `REWORK` item
 - April 15, 2026 cleanup separated operator templates from implicit auto-bounties: bundled examples now use `reactive_bounty:template:*`, `WM_REACTIVE_AUTO_BOUNTY_ENABLED` defaults off, and live validation should install one explicit template before arming the watcher
+- April 16, 2026 operator-lane cleanup made bundled templates discoverable by key: `wm.reactive.install_bounty --list-templates --summary` lists available bounties and `--template-key <key>` installs one without copying file paths
 
 ### Deliverables
 

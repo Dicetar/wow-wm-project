@@ -20,6 +20,9 @@ from wm.refs import PlayerRef
 from wm.refs import QuestRef
 from wm.reactive.models import ReactiveQuestRule
 from wm.reactive.store import ReactiveQuestStore
+from wm.reactive.templates import list_reactive_bounty_templates
+from wm.reactive.templates import render_reactive_bounty_template_list
+from wm.reactive.templates import resolve_reactive_bounty_template_path
 from wm.reserved.db_allocator import ReservedSlotDbAllocator
 
 
@@ -379,6 +382,9 @@ class ReactiveBountyInstaller:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Install or refresh a reusable reactive bounty definition.")
     parser.add_argument("--template", type=Path)
+    parser.add_argument("--template-key", help="Bundled template key, filename stem, rule key, or rule-key suffix.")
+    parser.add_argument("--templates-dir", type=Path)
+    parser.add_argument("--list-templates", action="store_true")
     parser.add_argument("--rule-key")
     parser.add_argument("--player-guid", type=int)
     parser.add_argument("--subject-entry", type=int)
@@ -543,8 +549,30 @@ def _resolve_rule_quest_id(
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
-    template = _load_template(args.template)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    if args.template is not None and args.template_key:
+        parser.error("--template and --template-key are mutually exclusive.")
+    if args.list_templates:
+        templates = list_reactive_bounty_templates(template_dir=args.templates_dir)
+        payload = {"templates": [template.to_dict() for template in templates]}
+        raw = json.dumps(payload, indent=2, ensure_ascii=False)
+        if args.output_json is not None:
+            args.output_json.parent.mkdir(parents=True, exist_ok=True)
+            args.output_json.write_text(raw, encoding="utf-8")
+        if args.summary or args.output_json is not None:
+            print(render_reactive_bounty_template_list(templates))
+            if args.output_json is not None:
+                print("")
+                print(f"output_json: {args.output_json}")
+        else:
+            print(raw)
+        return 0
+
+    template_path = args.template
+    if args.template_key:
+        template_path = resolve_reactive_bounty_template_path(args.template_key, template_dir=args.templates_dir)
+    template = _load_template(template_path)
     settings = Settings.from_env()
     client = MysqlCliClient()
     installer = ReactiveBountyInstaller(client=client, settings=settings)

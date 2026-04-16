@@ -1,4 +1,6 @@
 import json
+import contextlib
+import io
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -7,6 +9,8 @@ from wm.config import Settings
 from wm.reactive.install_bounty import main
 from wm.reactive.install_bounty import ReactiveBountyInstaller
 from wm.reactive.models import ReactiveQuestRule
+from wm.reactive.templates import list_reactive_bounty_templates
+from wm.reactive.templates import resolve_reactive_bounty_template_path
 
 
 class _DummyClient:
@@ -614,6 +618,112 @@ class ReactiveInstallTests(unittest.TestCase):
         self.assertEqual(captured_rule.quest_id, 910001)
         self.assertEqual(captured_rule.metadata["objective_target_name"], "Defias Bandits")
         self.assertEqual(captured_rule.quest.title, "Bounty: Defias Bandits")
+
+    def test_template_catalog_resolves_bundled_keys(self) -> None:
+        templates = list_reactive_bounty_templates()
+        keys = {template.key for template in templates}
+
+        self.assertIn("defias_bandits_guard_thomas", keys)
+        self.assertIn("murlocs_dughan_tabard_dragonslayer", keys)
+        self.assertEqual(
+            resolve_reactive_bounty_template_path("defias_bandit").name,
+            "defias_bandits_guard_thomas.json",
+        )
+        self.assertEqual(
+            resolve_reactive_bounty_template_path("murloc").name,
+            "murlocs_dughan_tabard_dragonslayer.json",
+        )
+
+    def test_cli_lists_templates_without_db_clients(self) -> None:
+        output = io.StringIO()
+
+        with (
+            patch("wm.reactive.install_bounty.Settings.from_env", side_effect=AssertionError("no settings for list")),
+            patch("wm.reactive.install_bounty.MysqlCliClient", side_effect=AssertionError("no mysql for list")),
+            contextlib.redirect_stdout(output),
+        ):
+            exit_code = main(["--list-templates", "--summary"])
+
+        self.assertEqual(exit_code, 0)
+        rendered = output.getvalue()
+        self.assertIn("defias_bandits_guard_thomas", rendered)
+        self.assertIn("murlocs_dughan_tabard_dragonslayer", rendered)
+
+    def test_cli_template_key_loads_bundled_template(self) -> None:
+        captured_rule: ReactiveQuestRule | None = None
+        fake_slot_allocator = FakeSlotAllocator()
+
+        class FakeInstaller:
+            def __init__(self, **kwargs) -> None:
+                del kwargs
+
+            def install(self, *, rule: ReactiveQuestRule, mode: str):
+                nonlocal captured_rule
+                captured_rule = rule
+
+                class Result:
+                    def __init__(self) -> None:
+                        self.mode = mode
+                        self.rule = rule.to_dict()
+                        self.quest_exists = False
+                        self.quest_matches_reactive_shape = False
+                        self.quest_publish = None
+                        self.notes = []
+
+                    def to_dict(self_nonlocal):
+                        return {
+                            "mode": self_nonlocal.mode,
+                            "rule": self_nonlocal.rule,
+                            "quest_exists": self_nonlocal.quest_exists,
+                            "quest_matches_reactive_shape": self_nonlocal.quest_matches_reactive_shape,
+                            "quest_publish": self_nonlocal.quest_publish,
+                            "notes": self_nonlocal.notes,
+                        }
+
+                return Result()
+
+        with (
+            patch("wm.reactive.install_bounty.Settings.from_env", return_value=Settings()),
+            patch("wm.reactive.install_bounty.MysqlCliClient", return_value=object()),
+            patch("wm.reactive.install_bounty.ReactiveBountyInstaller", FakeInstaller),
+            patch("wm.reactive.install_bounty.ReservedSlotDbAllocator", return_value=fake_slot_allocator),
+            patch("wm.reactive.install_bounty.ReactiveQuestStore") as reactive_store_cls,
+            patch("wm.reactive.install_bounty.LiveCreatureResolver") as resolver_cls,
+        ):
+            reactive_store_cls.return_value.fetch_character_name.return_value = "Jecia"
+            reactive_store_cls.return_value.get_rule_by_key.return_value = None
+            resolver_cls.return_value.resolve.side_effect = [
+                FakeResolveResult(
+                    entry=285,
+                    name="Murloc",
+                    profile=type("Profile", (), {"entry": 285, "name": "Murloc", "level_max": 7, "mechanical_type": "HUMANOID", "family": None})(),
+                ),
+                FakeResolveResult(
+                    entry=240,
+                    name="Marshal Dughan",
+                    profile=type("Profile", (), {"entry": 240, "name": "Marshal Dughan", "level_max": 25, "mechanical_type": "HUMANOID", "family": None})(),
+                ),
+            ]
+
+            exit_code = main(
+                [
+                    "--template-key",
+                    "murloc",
+                    "--player-guid",
+                    "5406",
+                    "--mode",
+                    "dry-run",
+                    "--summary",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIsNotNone(captured_rule)
+        assert captured_rule is not None
+        self.assertEqual(captured_rule.rule_key, "reactive_bounty:template:murloc")
+        self.assertEqual(captured_rule.subject_entry, 285)
+        self.assertEqual(captured_rule.turn_in_npc_entry, 240)
+        self.assertEqual(captured_rule.quest_id, 910001)
 
     def test_cli_template_loads_reward_and_prefix_overrides(self) -> None:
         captured_rule: ReactiveQuestRule | None = None

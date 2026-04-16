@@ -1,7 +1,8 @@
 param(
     [string]$WorkspaceRoot = "D:\WOW\wm-project",
     [string]$BridgeLabRoot = "D:\WOW\WM_BridgeLab",
-    [string]$TemplatePath = "D:\WOW\wm-project\control\examples\reactive_bounties\defias_bandits_guard_thomas.json",
+    [string]$TemplatePath = "",
+    [string]$TemplateKey = "defias_bandits_guard_thomas",
     [int]$PlayerGuid = 5406,
     [ValidateSet("apply", "dry-run")]
     [string]$Mode = "apply",
@@ -17,7 +18,7 @@ $bridgeConfig = Join-Path $BridgeLabRoot "run\configs\modules\mod_wm_bridge.conf
 if (-not (Test-Path -LiteralPath $pythonExe)) {
     throw "Python executable was not found: $pythonExe"
 }
-if (-not (Test-Path -LiteralPath $TemplatePath)) {
+if ($TemplatePath -and -not (Test-Path -LiteralPath $TemplatePath)) {
     throw "Reactive bounty template was not found: $TemplatePath"
 }
 if (-not (Test-Path -LiteralPath $bridgeConfig)) {
@@ -31,4 +32,18 @@ $env:WM_SOAP_PORT = [string]$SoapPort
 $env:WM_BRIDGE_CONFIG_PATH = $bridgeConfig
 
 Set-Location -LiteralPath $WorkspaceRoot
-& $pythonExe -m wm.reactive.install_bounty --template $TemplatePath --player-guid $PlayerGuid --mode $Mode --summary
+$installArgs = @(
+    "-m",
+    "wm.reactive.install_bounty",
+    "--player-guid",
+    ([string]$PlayerGuid),
+    "--mode",
+    $Mode,
+    "--summary"
+)
+if ($TemplatePath) {
+    $installArgs += @("--template", $TemplatePath)
+} else {
+    $installArgs += @("--template-key", $TemplateKey)
+}
+& $pythonExe @installArgs

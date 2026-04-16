@@ -44,6 +44,7 @@ Current architecture:
 - `wm.events.watch` now survives per-iteration spine failures and flushes summary/error lines for automation logs instead of exiting silently on the first exception
 - reactive bounty installs now have a repo-owned fast path through `control/examples/reactive_bounties/` and `scripts/bridge_lab/Install-BridgeLabReactiveBounty.ps1`
 - reactive bounty templates are the supported fast operator lane; implicit auto-bounty creation from arbitrary kills is disabled by default and only available behind explicit opt-in config
+- `python -m wm.reactive.install_bounty --list-templates --summary` lists bundled templates, and `--template-key <key>` installs one without copying a JSON path
 - reactive bounty templates now default to fresh `wm_reserved_slot` quest allocation instead of reusing one mutable live quest ID across iterations
 - reactive bounty dry-runs can preview the next free reserved quest slot without staging it or producing a false preflight failure
 - shared reactive bounty publishing supports richer quest reward fields when the live `quest_template` schema exposes them:
@@ -89,7 +90,7 @@ Current architecture:
 - Bonebound Alpha live release-lane smoke is `WORKING`: on 2026-04-16 the SQL applied, worldserver restarted, player `5406` came online, release request `11` completed on shell `940001`, and user validation accepted the low bleed / echo behavior; future damage tuning should still capture exact tick and melee values before changing coefficients
 - combat proficiency bot-safety proof is `PARTIAL`: player `5406` is confirmed live for Shield, Leather, and Dual Wield, but a playerbot maintenance cycle still needs to show bots did not inherit the grants
 - experimental `template_watch` / `template_publish` comparison work remains isolated in `.worktrees/template-watch-compare`; its dynamic binding idea is useful, but its standalone watcher path is not the production architecture
-- implicit auto-bounty generation is not a supported default path; use explicit JSON templates to install the exact bounty being tested
+- implicit auto-bounty generation is not a supported default path; use explicit JSON templates or `--template-key` to install the exact bounty being tested
 
 ## What is broken or retired
 
@@ -172,7 +173,7 @@ If a feature needs a visible spellbook entry, hotbar button, or owned tooltip, t
 - combat proficiency persistence requires DBC validity plus explicit character rows; do not restore skills with login/update `SetSkill` hooks, class-equip overrides, `playercreateinfo_skills`, `mod_learnspells`, or playerbot maintenance. Dual Wield needs skill `118` to be DBC-valid before spell `674` survives login; native runtime may then materialize `CanDualWield()` from persistent spell `674` only for explicit `combat_proficiency` grants. Two-handed offhand weapons require Titan Grip and are not normal Dual Wield.
 - Bonebound Omega field copying is not proof of real combat parity. If a second combat companion returns later, use a true supported pet/guardian chassis or hook-backed damage path and prove health, mana, and melee output in the lab before marking it `WORKING`.
 - Alpha echo template truth matters: spawn echo procs from WM creature entry `920101`, not stock Voidwalker `1860`, and copy final Alpha health/power/damage only after `UpdateAllStats()` paths have run.
-- Do not let old auto-generated bounty rules drive live tests. Install one explicit template, arm the watcher from the end, then kill the exact target entry/prefix after arming.
+- Do not let old auto-generated bounty rules drive live tests. Install one explicit template by path or `--template-key`, arm the watcher from the end, then kill the exact target entry/prefix after arming.
 - Dirty lab state can poison summon and pet retests.
 - Design docs can be useful and still be stale.
 - Current-state docs and postmortems outrank aspirational design notes.
