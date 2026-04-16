@@ -1,0 +1,37 @@
+{
+  "template_key": "marshal_dughan_westfall_murloc_burst",
+  "description": "Publish a Marshal Dughan bounty when the player kills five Westfall murlocs inside thirty seconds.",
+  "trigger_event_type": "kill",
+  "threshold_count": 5,
+  "window_seconds": 30,
+  "cooldown_seconds": 900,
+  "subject_match": {
+    "faction_labels": ["Murloc"],
+    "zone_ids": [40]
+  },
+  "publish": {
+    "turn_in_npc_entry": 240,
+    "grant_mode": "npc_start",
+    "followup_kill_count": 5,
+    "title_template": "Marshal Dughan: Break the {target_name} Push",
+    "quest_description_template": "You cut down {threshold_count} murlocs in {window_seconds} seconds, but {turn_in_npc_name} wants the line broken for good. Hunt down {followup_kill_count} more {target_name} before they regroup.",
+    "objective_text_template": "Slay {followup_kill_count} more {target_name}.",
+    "offer_reward_text_template": "\"That should buy the farms some breathing room,\" says {turn_in_npc_name}. \"Stormwind remembers this service.\"",
+    "request_items_text_template": "Drive back {followup_kill_count} more {target_name}, then return to {turn_in_npc_name}.",
+    "tags": ["westfall", "murloc", "marshal_dughan", "burst_kill"],
+    "reward": {
+      "money_copper": 3500,
+      "experience": 300,
+      "reward_item_entry": 45574,
+      "reward_item_name": "Stormwind Tabard",
+      "reward_item_count": 1,
+      "reward_spell_cast_id": 22888,
+      "reputations": [
+        {
+          "faction_id": 72,
+          "value": 75
+        }
+      ]
+    }
+  }
+}
