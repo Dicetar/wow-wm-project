@@ -29,10 +29,22 @@ Implemented native actions in the first safe slice:
 - `context_snapshot_request` writes one `wm_bridge_context_request` plus one `wm_bridge_context_snapshot` when the scoped player is online; live bridge-lab proof is `WORKING`
 - `quest_add`
 - `world_announce_to_player`
+- Primitive Pack 1 is `WORKING` in BridgeLab behind policy-disabled defaults:
+  - `player_apply_aura`
+  - `player_remove_aura`
+  - `player_restore_health_power`
+  - `player_add_item`
+  - `player_add_money`
+  - `player_add_reputation`
+  - `creature_spawn`
+  - `creature_despawn`
+  - `creature_say`
+  - `creature_emote`
 
 Everything risky should be proven in `D:\WOW\WM_BridgeLab` before promotion.
 
 `quest_add` now emits a native bridge `quest/granted` row on success so WM can observe the grant through the same event spine instead of relying only on the action result.
+For WM force-grant parity, `quest_add` mirrors GM `.quest add` sanity checks: reject item-start quests and already-active quests, but do not reuse `player->CanTakeQuest()`, because that is stricter than the existing SOAP/GM path and can reject repeatable/operator WM grants that are supposed to succeed.
 The higher-level WM `quest_grant` action now prefers native `quest_add` when bridge config, player scope, and policy are ready, and falls back to SOAP only when native is not currently available.
 
 ## Tables
@@ -63,6 +75,8 @@ Support tables staged for future capability bodies:
 - `wm_bridge_spell_script`
 - `wm_bridge_counter`
 - `wm_bridge_chat_keyword`
+
+Primitive Pack 1 uses `wm_bridge_world_object.LiveGUIDLow` so WM-owned creature follow-up actions can resolve the spawned live creature safely by low GUID without touching non-WM-owned world objects. `creature_spawn` now inserts the ownership row synchronously before the immediate lookup so live result JSON carries the real `object_id` instead of `0`.
 
 ## Lab Workflow
 
@@ -275,13 +289,33 @@ python -m wm.control.apply --proposal control\examples\proposals\manual_native_d
 python -m wm.control.audit --idempotency-key <key-from-apply-summary> --summary
 ```
 
+Experimental scene play uses the same control/native path, but builds one proposal per step from bundled JSON under `control/scenes/`:
+
+```powershell
+python -m wm.control.scene_play --scene field_medic_pulse --player-guid 5406 --mode dry-run --summary
+python -m wm.control.scene_play --scene summon_marker --player-guid 5406 --mode apply --confirm-live-apply --summary
+```
+
+Scene JSON is intentionally strict:
+
+- every step must reference a registered, implemented native action kind
+- payload must stay a JSON object
+- risk levels must be `low`, `medium`, or `high`
+- scene play is an operator wrapper over `manual_admin_action`, not a second executor
+
 The validator rejects unknown native verbs before they reach the queue. Non-admin event-bound proposals also reject stale source events by default through `control/policies/direct_apply.json` `max_source_event_age_seconds=600`; build proposals from fresh `wm_event_log` rows instead of copying old example JSON for live apply.
 
 Current control-native convergence status:
 
 - `WORKING`: repo tests cover proposal validation, idempotency rejection, wrong-player rejection, stale-event rejection, audit row fetch/list, and native request extraction from `quest_grant` / `native_bridge_action` execution results.
 - `WORKING`: BridgeLab control debug proof ran through `wm.control.validate`, `wm.control.apply`, and `wm.control.audit`; native `debug_ping` request `36` reached `done`.
-- `PARTIAL`: fresh bounty `quest_grant` proof created event `1551`, proposal `6`, and native `quest_add` request `37`, but the native request failed with `player_not_online`; rerun with player `5406` online before claiming the bounty grant exit criterion.
+- `WORKING`: repo tests cover Primitive Pack 1 payload contracts, policy-disabled defaults, WM-owned creature guards, `creature_spawn` synchronous object-id return, and `wm.control.scene_play` scene loading/summary behavior.
+- `WORKING`: BridgeLab Primitive Pack 1 proof for player `5406` reached native requests `54-72` `done`:
+  - `field_medic_pulse` completed restore -> aura -> announce
+  - `summon_marker` completed spawn -> say -> emote -> despawn with spawn result `object_id=4`
+  - `bonebound_battle_cry` completed spawn -> say -> emote -> buff
+  - direct control applies proved `player_remove_aura`, `player_add_money`, `player_add_reputation`, and `player_add_item`
+- `WORKING`: fresh bounty `quest_grant` rerun on 2026-04-16 reached event `1599`, proposal `43`, and native `quest_add` request `74` `done`; `wm.control.audit` linked the source event to the native request/result, `wm.executor` recorded `quest_grant_issued` event `1601`, native bridge event `26505` recorded `quest/granted` for quest `910020`, and GM `.quest status 910020 Jecia` reported `Incomplete`
 
 ## Broad Action Vocabulary
 

@@ -1,3 +1,8 @@
+Status: PARTIAL
+Last verified: 2026-04-17
+Verified by: Codex
+Doc type: reference
+
 # Item Slot Pipeline V1
 
 This note defines the first **managed item-slot** pipeline for the WM repo.
@@ -27,6 +32,44 @@ This pipeline is for:
 - reusing the resulting item entry in quest rewards
 
 This matches the slot-based architecture established earlier for WM item work.
+
+## Current live proof
+
+`WORKING`: BridgeLab item reward proof for player `5406` / quest `910024`.
+
+- Managed item slot `910006` publishes `Night Watcher's Lens`.
+- Base item: `2994` (`Deprecated Seer's Monocle`), cloned as a cloth head item.
+- Reward shape:
+  - +8 Intellect
+  - +6 Stamina
+  - +12 spell power
+  - equip spell `132` with trigger `1`, used as the visible `Detect Invisibility` marker aura for the lens
+  - native hidden effect in `mod-wm-spells`: while the lens is equipped and the visible aura is present, player/pet/owned-summon creature kills restore a small amount of mana on a 12-second cooldown
+- Quest `910024` (`Bounty: Nightbane Dark Runner - Lens`) rewards item `910006` x1 plus the existing 12 silver.
+- Retired test slot `910021` was not a valid visual proof after reward mutation because the player had already accepted/rewarded that quest ID before the item reward was attached; use a fresh quest slot when changing visible quest rewards.
+- BridgeLab commands on 2026-04-17:
+
+```bash
+python -m wm.items.live_publish \
+  --draft-json control/examples/items/night_watchers_lens.json \
+  --mode apply \
+  --runtime-sync soap \
+  --soap-command ".reload item_template" \
+  --summary
+
+python -m wm.quests.edit_live \
+  --quest-id 910024 \
+  --reward-item-entry 910006 \
+  --reward-item-count 1 \
+  --reward-money-copper 1200 \
+  --mode apply \
+  --runtime-sync auto \
+  --summary
+```
+
+`PARTIAL`: client-visible behavior of the item passive still needs in-game confirmation after accepting/turning in the fresh quest and equipping the lens. If the item aura/effect is stale, publish a fresh item slot or restart worldserver; item reload behavior and client item cache behavior are core/module-specific.
+
+Design rule: hidden server-side item effects are allowed only when the player gets an effect indication. For this lens, the visible indication is the `Detect Invisibility` aura plus a system message on mana restore. Do not repeat the retired `13890` boot-enchant-on-headgear mistake.
 
 ---
 
@@ -169,7 +212,7 @@ python -m wm.quests.edit_live ^
   --summary
 ```
 
-So the item slice becomes useful immediately even before there is a dedicated quest↔item orchestration command.
+So the item slice becomes useful immediately even before there is a dedicated quest-item orchestration command.
 
 ---
 
@@ -183,6 +226,10 @@ Not yet:
 - copy-on-publish retirement discipline for item slots
 - spell-slot registry governance
 - a dedicated managed spell / passive / ability pipeline
+- hidden server-side item mechanics without a visible aura, buff, debuff, combat-log/system message, or tooltip indicator
+- unrelated stock spell reuse for tooltip text or passive flavor
+- custom item mechanics such as "wand can fire while moving"; that is a native combat/action feature, not a safe item-template-only reward
+- reusing a quest ID after changing visible rewards in the same client session; the client/server runtime can keep showing the old reward packet, so iterate with a fresh reserved quest slot
 
 Those are the next layers after the first managed item slot loop is proven.
 

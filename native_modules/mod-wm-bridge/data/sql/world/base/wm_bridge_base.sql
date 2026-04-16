@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS wm_bridge_world_object (
     ArcKey VARCHAR(128) NULL,
     TemplateEntry INT NULL,
     LiveGUID VARCHAR(128) NULL,
+    LiveGUIDLow INT NULL,
     MapID INT NULL,
     PositionX FLOAT NULL,
     PositionY FLOAT NULL,
@@ -136,6 +137,7 @@ CREATE TABLE IF NOT EXISTS wm_bridge_world_object (
     UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_wm_bridge_world_object_owner (OwnerPlayerGUID, ObjectType),
     KEY idx_wm_bridge_world_object_live (LiveGUID),
+    KEY idx_wm_bridge_world_object_live_low (LiveGUIDLow),
     KEY idx_wm_bridge_world_object_arc (ArcKey)
 );
 

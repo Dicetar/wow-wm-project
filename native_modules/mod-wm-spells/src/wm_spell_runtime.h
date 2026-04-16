@@ -1,9 +1,11 @@
 #pragma once
 
 #include "Common.h"
+#include "Creature.h"
 #include "ObjectGuid.h"
 #include "Pet.h"
 #include "Player.h"
+#include "Unit.h"
 
 #include <optional>
 #include <string>
@@ -102,7 +104,7 @@ namespace WmSpells
         uint32 shadowDotDamagePerShadowPowerPct = 0;
         bool alphaEchoEnabled = true;
         uint32 alphaEchoCreatureEntry = 920101;
-        float alphaEchoProcChancePct = 5.0f;
+        float alphaEchoProcChancePct = 7.5f;
         uint32 alphaEchoMaxActive = 3;
         uint32 alphaEchoDamagePct = 100;
         float alphaEchoFollowDistance = 2.6f;
@@ -143,5 +145,8 @@ namespace WmSpells
     void MaintainIntellectBlockPassive(Player* player);
     void MaintainCombatProficiencies(Player* player);
     void ForgetIntellectBlockPassive(Player* player);
+    void MaintainNightWatchersLens(Player* player, uint32 diff);
+    void ForgetNightWatchersLens(Player* player);
+    void HandleNightWatchersLensKill(Player* player, Creature* killed, Unit* killer);
     void PollDebugRequests(uint32 diff);
 }

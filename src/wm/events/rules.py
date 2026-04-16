@@ -130,22 +130,33 @@ class DeterministicRuleEngine:
         if not rules:
             return False
 
-        recent_observed_events = self.store.list_recent_events(
-            event_class="observed",
-            player_guid=int(event.player_guid or 0),
-            limit=400,
-            newest_first=False,
+        # Fetch the newest bounded slice first, then restore chronological order
+        # for streak/window math.  `ORDER ASC LIMIT n` returns the oldest rows in
+        # a long-running event log, which hides fresh live kills from the watcher.
+        recent_observed_events = list(
+            reversed(
+                self.store.list_recent_events(
+                    event_class="observed",
+                    player_guid=int(event.player_guid or 0),
+                    limit=400,
+                    newest_first=True,
+                )
+            )
         )
+        recent_observed_kills = [
+            candidate
+            for candidate in recent_observed_events
+            if candidate.event_type == event.event_type and candidate.subject_type == event.subject_type
+        ]
         for rule in rules:
             self._evaluate_reactive_rule(
                 event=event,
                 rule=rule,
+                recent_player_kills=recent_observed_kills,
                 recent_kills=[
                     candidate
-                    for candidate in recent_observed_events
-                    if candidate.event_type == event.event_type
-                    and candidate.subject_type == event.subject_type
-                    and _rule_matches_event(rule=rule, event=candidate)
+                    for candidate in recent_observed_kills
+                    if _rule_matches_event(rule=rule, event=candidate)
                 ],
                 result=result,
             )
@@ -265,6 +276,7 @@ class DeterministicRuleEngine:
         *,
         event: WMEvent,
         rule: ReactiveQuestRule,
+        recent_player_kills: list[WMEvent],
         recent_kills: list[WMEvent],
         result: RuleEvaluationResult,
     ) -> None:
@@ -279,11 +291,11 @@ class DeterministicRuleEngine:
             )
             return
 
-        burst = _kill_burst_window(
-            recent_kills=recent_kills,
+        burst = _reactive_rule_threshold_state(
+            rule=rule,
             current_event=event,
-            window_seconds=rule.window_seconds,
-            threshold=rule.kill_threshold,
+            recent_player_kills=recent_player_kills,
+            recent_kills=recent_kills,
         )
         if not burst["threshold_crossed"]:
             return
@@ -297,7 +309,9 @@ class DeterministicRuleEngine:
                     "quest_id": rule.quest_id,
                     "window_seconds": rule.window_seconds,
                     "kill_threshold": rule.kill_threshold,
+                    "threshold_mode": burst["threshold_mode"],
                     "kills_in_window": burst["kills_in_window"],
+                    "consecutive_kills": burst["consecutive_kills"],
                 },
             )
         )
@@ -321,7 +335,9 @@ class DeterministicRuleEngine:
                 "grant_mode": rule.grant_mode,
                 "window_seconds": rule.window_seconds,
                 "kill_threshold": rule.kill_threshold,
+                "threshold_mode": burst["threshold_mode"],
                 "kills_in_window": burst["kills_in_window"],
+                "consecutive_kills": burst["consecutive_kills"],
                 "trigger_event_id": event.event_id,
                 "runtime_state": current_state,
                 "reactive_rule": rule.to_dict(),
@@ -466,8 +482,91 @@ def _kill_burst_window(
     return {
         "kills_in_window": kills_in_window,
         "count_before_current": count_before_current,
+        "consecutive_kills": kills_in_window,
+        "threshold_mode": "window",
         "threshold_crossed": threshold_crossed,
     }
+
+
+def _kill_burst_consecutive(
+    *,
+    recent_player_kills: list[WMEvent],
+    current_event: WMEvent,
+    rule: ReactiveQuestRule,
+) -> dict[str, int | bool | str]:
+    current_at = _parse_timestamp(current_event.occurred_at)
+    if current_at is None:
+        return {
+            "kills_in_window": 0,
+            "count_before_current": 0,
+            "consecutive_kills": 0,
+            "threshold_mode": "consecutive",
+            "threshold_crossed": False,
+        }
+
+    cutoff = current_at - timedelta(seconds=max(1, int(rule.window_seconds)))
+    consecutive_kills = 0
+    count_before_current = 0
+    for candidate in reversed(recent_player_kills):
+        candidate_at = _parse_timestamp(candidate.occurred_at)
+        if candidate_at is None:
+            continue
+        if candidate_at < cutoff:
+            break
+        if _event_after(candidate, current_event, candidate_at=candidate_at, current_at=current_at):
+            continue
+        if not _rule_matches_event(rule=rule, event=candidate):
+            if _event_before(candidate, current_event, candidate_at=candidate_at, current_at=current_at):
+                break
+            continue
+        consecutive_kills += 1
+        if _event_before(candidate, current_event, candidate_at=candidate_at, current_at=current_at):
+            count_before_current += 1
+
+    threshold = max(1, int(rule.kill_threshold))
+    threshold_crossed = consecutive_kills >= threshold and consecutive_kills % threshold == 0
+    return {
+        "kills_in_window": consecutive_kills,
+        "count_before_current": count_before_current,
+        "consecutive_kills": consecutive_kills,
+        "threshold_mode": "consecutive",
+        "threshold_crossed": threshold_crossed,
+    }
+
+
+def _reactive_rule_threshold_state(
+    *,
+    rule: ReactiveQuestRule,
+    current_event: WMEvent,
+    recent_player_kills: list[WMEvent],
+    recent_kills: list[WMEvent],
+) -> dict[str, int | bool | str]:
+    if _rule_requires_consecutive_kills(rule):
+        return _kill_burst_consecutive(
+            recent_player_kills=recent_player_kills,
+            current_event=current_event,
+            rule=rule,
+        )
+    return _kill_burst_window(
+        recent_kills=recent_kills,
+        current_event=current_event,
+        window_seconds=rule.window_seconds,
+        threshold=rule.kill_threshold,
+    )
+
+
+def _rule_requires_consecutive_kills(rule: ReactiveQuestRule) -> bool:
+    for key in ("require_consecutive_kills", "consecutive_kills", "streak_mode"):
+        raw_value = rule.metadata.get(key)
+        if isinstance(raw_value, bool):
+            return raw_value
+        if isinstance(raw_value, str):
+            normalized = raw_value.strip().lower()
+            if normalized in {"1", "true", "yes", "on", "consecutive", "streak"}:
+                return True
+            if normalized in {"0", "false", "no", "off", "window"}:
+                return False
+    return False
 
 
 def _event_before(

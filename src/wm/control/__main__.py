@@ -9,6 +9,7 @@ COMMANDS = {
     "validate": "python -m wm.control.validate --proposal <path>",
     "apply": "python -m wm.control.apply --proposal <path> --mode dry-run",
     "audit": "python -m wm.control.audit --idempotency-key <key>",
+    "scene-play": "python -m wm.control.scene_play --scene field_medic_pulse --player-guid <guid> --mode dry-run",
     "propose": "python -m wm.control.propose --event-id <id>",
     "export-schemas": "python -m wm.control.export_schemas",
     "manual-grant-quest": "python -m wm.control.manual_grant_quest --player-guid <guid> --quest-id <id>",

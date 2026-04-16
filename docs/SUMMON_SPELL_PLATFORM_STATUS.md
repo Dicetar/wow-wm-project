@@ -62,6 +62,7 @@ Visible stock-carrier testing is not supported.
 - `WORKING`: Bonebound Alpha behavior config transfers the summoner's total intellect to all Alpha stats and shadow spell power to Alpha attack power
 - `WORKING`: Bonebound Alpha v3 repo/native implementation builds in BridgeLab: shell `940001` maps to `summon_bonebound_alpha_v3`, `spawn_omega=false`, Alpha keeps Gorehowl visual item `28773`, the native periodic is now a low physical bleed despite legacy `shadow_dot_*` config key names, and temporary Alpha echo damage is enforced through the `UnitScript::ModifyMeleeDamage` hook instead of TempSummon visible field copying
 - `WORKING`: Alpha echoes use WM creature template `920101` (`Bonebound Alpha Echo`) instead of spawning from the Voidwalker template; runtime stat recalculation runs before Alpha health/power/damage is copied, and each echo gets a randomized follow distance/angle around the player
+- `PARTIAL`: Alpha echo mount/dismount restore is implemented, repo/static-tested, native-built, and deployed to BridgeLab worldserver pid `31208`. The runtime now preserves missing Echo state while the owner pet is temporarily unsummoned by mounting, prevents player maintenance from erasing that state while the main pet is absent, then respawns the Echo from the saved template/follow slot with its remaining lifetime after the Bonebound pet returns. Live in-game BridgeLab proof is still pending.
 - `WORKING`: Bonebound Alpha release submitter exists at `python -m wm.spells.summon_release`; it now defaults to behavior `summon_bonebound_alpha_v3` and shell `940001`
 - `WORKING`: live post-restart Alpha v3 smoke was accepted on 2026-04-16 after request `11` completed for online player `5406`; repo evidence proves the active pet row is `Bonebound Alpha` on shell `940001`, and user validation reported the bleed/echo behavior acceptable
 - `BROKEN`: Bonebound Omega TempSummon parity is retired for the release lane. Live evidence showed Alpha melee around `120`, Omega melee around `9`, and Omega mana around `20`; copying Alpha-visible fields onto a Creature/TempSummon did not affect the actual combat path reliably.
@@ -110,8 +111,9 @@ Current classification:
 - `WORKING`: single Alpha true-pet summon model; `spawn_omega=false`
 - `WORKING`: Gorehowl visual weapon config for Alpha through `virtual_item_1=28773`
 - `WORKING`: native Alpha bleed implementation exists with default 6 second cooldown, 4 second duration, 1 second tick, low level/intellect scaling, and no shadow spell-power scaling
-- `WORKING`: Alpha passive echo implementation exists with 5% melee proc chance, maximum 3 active echoes, WM creature template `920101`, randomized follow slots around the player, and echo lifetime equal to summoner total intellect in seconds
+- `WORKING`: Alpha passive echo implementation exists with 7.5% melee proc chance, maximum 3 active echoes, WM creature template `920101`, randomized follow slots around the player, and echo lifetime equal to summoner total intellect in seconds
 - `WORKING`: live in-game smoke for the release lane was accepted after the 2026-04-16 deploy; exact combat-log numbers were not captured, so future tuning should still record tick and melee values before changing damage
+- `PARTIAL`: Echo temporary-unsummon restore after player mounting is repo-tested and rebuilt/deployed to BridgeLab, but not yet proven in-game. The intended behavior is that active Echoes keep counting down while mounted and reappear after dismount if lifetime remains. The first live attempt failed because `MaintainBoneboundSummons()` still called `RemoveBoneboundAlphaEchoes()` while the pet was temporarily unsummoned; this cleanup path is now guarded.
 - `PARTIAL`: visible client spellbook/action-bar path until the client shell-bank patch is installed and validated
 
 What to do:
@@ -119,7 +121,7 @@ What to do:
 - Use shell `940001` with behavior `summon_bonebound_alpha_v3`.
 - Use `.\summon-bridge-lab-bonebound-alpha.bat -PlayerGuid 5406 -Wait` after the player is online.
 - Keep `summon-bridge-lab-bonebound-twins.bat` only as a compatibility alias.
-- Validate Alpha melee, 1-second bleed ticks, `Bonebound Alpha Echo` name/health, and one echo proc in combat before calling the live ability proof `WORKING`.
+- Validate Alpha melee, 1-second bleed ticks, `Bonebound Alpha Echo` name/health, one echo proc in combat, and mount/dismount Echo restoration before calling the live ability proof `WORKING`.
 
 What not to do:
 
@@ -128,6 +130,8 @@ What not to do:
 - Do not revive TempSummon field-copy attempts for Omega damage parity.
 - Do not spawn Alpha echoes from stock creature entry `1860`; target frame/nameplate text comes from creature template truth, not just `SetName()`.
 - Do not copy Alpha health/power/damage onto a Creature/TempSummon before `ApplyOwnerTransferBonuses()` / `UpdateAllStats()`.
+- Do not erase missing Echo state immediately after mounting; mount is a temporary-unsummon lifecycle event, not proof that the Echo was killed or expired.
+- Do not preserve Echo state in only one updater path; player maintenance can still erase it unless the temporary-unsummon branch returns before `RemoveBoneboundAlphaEchoes()`.
 
 ### Retired twin summon experiments
 
@@ -243,11 +247,12 @@ Retired implementation patterns:
 
 1. for any new Alpha tuning, clean the player pet state or resummon through the release wrapper
 2. run `.\summon-bridge-lab-bonebound-alpha.bat -PlayerGuid 5406 -Wait`
-3. record Alpha melee, bleed tick values, and at least one 5% Alpha echo proc with `Bonebound Alpha Echo` name and non-template health
-4. observe one playerbot maintenance/level-up cycle and confirm bots did not inherit combat proficiencies
-5. build and install the local shell-bank client patch
-6. grant `940000` or `940001` through the workbench
-7. validate the visible shell path:
+3. record Alpha melee, bleed tick values, and at least one 7.5% Alpha echo proc with `Bonebound Alpha Echo` name and non-template health
+4. mount after an Echo exists, dismount before its intellect-based lifetime expires, and confirm the Echo reappears without a new proc
+5. observe one playerbot maintenance/level-up cycle and confirm bots did not inherit combat proficiencies
+6. build and install the local shell-bank client patch
+7. grant `940000` or `940001` through the workbench
+8. validate the visible shell path:
    - spellbook entry
    - cast behavior
    - clean failure UX when gated

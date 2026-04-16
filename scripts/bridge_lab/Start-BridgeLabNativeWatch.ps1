@@ -9,6 +9,7 @@ param(
     [int]$SoapPort = 7879,
     [ValidateSet("auto", "native", "soap")]
     [string]$QuestGrantTransport = "auto",
+    [switch]$EnableReactiveAutoBounty,
     [switch]$ArmFromEnd,
     [switch]$PrintIdle
 )
@@ -103,6 +104,7 @@ $runnerLines = @(
     ('$env:WM_SOAP_PORT = ' + (Convert-ToPsLiteral ([string]$SoapPort))),
     ('$env:WM_BRIDGE_CONFIG_PATH = ' + (Convert-ToPsLiteral $bridgeConfig)),
     ('$env:WM_QUEST_GRANT_TRANSPORT = ' + (Convert-ToPsLiteral $QuestGrantTransport)),
+    ('$env:WM_REACTIVE_AUTO_BOUNTY_ENABLED = ' + (Convert-ToPsLiteral $(if ($EnableReactiveAutoBounty.IsPresent) { '1' } else { '0' }))),
     ('Set-Location ' + (Convert-ToPsLiteral $WorkspaceRoot)),
     ('$arguments = @(' + ($argumentsLiteral -join ', ') + ')'),
     ('& ' + (Convert-ToPsLiteral $pythonExe) + ' @arguments 1>> ' + (Convert-ToPsLiteral $paths.Stdout) + ' 2>> ' + (Convert-ToPsLiteral $paths.Stderr))
@@ -147,6 +149,7 @@ $metadata = @{
     interval_seconds = $IntervalSeconds
     arm_from_end = [bool]$ArmFromEnd.IsPresent
     print_idle = [bool]$PrintIdle.IsPresent
+    reactive_auto_bounty_enabled = [bool]$EnableReactiveAutoBounty.IsPresent
     quest_grant_transport = $QuestGrantTransport
     stdout_log = $paths.Stdout
     stderr_log = $paths.Stderr

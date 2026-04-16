@@ -355,6 +355,7 @@ class NativeBridgeSourceTests(unittest.TestCase):
             "wm_bridge_companion_actions.cpp",
             "wm_bridge_environment_actions.cpp",
             "wm_bridge_debug_actions.cpp",
+            "wm_bridge_unit_script.cpp",
         }
 
         self.assertTrue(expected_files.issubset({path.name for path in root.glob("*.cpp")}))
@@ -374,6 +375,19 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertIn("world_announce_to_player", source)
         self.assertNotIn("HandleCommand", source)
         self.assertNotIn("ChatHandler", source)
+
+    def test_native_bridge_tracks_owned_summon_kills_beyond_pet_hooks(self) -> None:
+        loader = Path("native_modules/mod-wm-bridge/src/mod_wm_bridge_loader.cpp").read_text(encoding="utf-8")
+        source = Path("native_modules/mod-wm-bridge/src/wm_bridge_unit_script.cpp").read_text(encoding="utf-8")
+
+        self.assertIn("AddSC_mod_wm_bridge_unit_script", loader)
+        self.assertIn("UNITHOOK_ON_UNIT_DEATH", source)
+        self.assertIn("GetCharmerOrOwnerPlayerOrPlayerItself()", source)
+        self.assertIn('JsonAppendString(payload, firstField, "kill_source", "owned_unit")', source)
+        self.assertIn("killer->ToPlayer()", source)
+        self.assertIn("killer->IsPet()", source)
+        self.assertIn("killer->IsTotem()", source)
+        self.assertIn('MakePlayerScopedEvent(player, "combat", "kill")', source)
 
     def test_python_native_catalog_has_no_duplicate_ids(self) -> None:
         kinds = native_action_kind_ids()

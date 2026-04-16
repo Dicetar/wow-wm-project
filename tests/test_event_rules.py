@@ -64,7 +64,6 @@ class FakeRuleStore:
         limit: int = 20,
         newest_first: bool = True,
     ):
-        del limit
         rows = list(self.subject_events)
         if event_class is not None:
             rows = [event for event in rows if event.event_class == event_class]
@@ -72,7 +71,7 @@ class FakeRuleStore:
             rows = [event for event in rows if event.player_guid == player_guid]
         if newest_first:
             rows = list(reversed(rows))
-        return rows
+        return rows[:limit]
 
 
 class FakeReactiveStore:
@@ -328,6 +327,315 @@ class DeterministicRuleEngineTests(unittest.TestCase):
         result = engine.evaluate(store.subject_events[-1])
 
         self.assertEqual(result.opportunities, [])
+
+    def test_consecutive_kill_rule_does_not_trigger_when_sequence_is_interrupted(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=1,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key="kill:1",
+                occurred_at="2026-04-08 12:00:01",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=116,
+                metadata={"payload": {"subject_name": "Defias Bandit"}},
+            ),
+            WMEvent(
+                event_id=2,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key="kill:2",
+                occurred_at="2026-04-08 12:00:02",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=116,
+                metadata={"payload": {"subject_name": "Defias Bandit"}},
+            ),
+            WMEvent(
+                event_id=3,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key="kill:3",
+                occurred_at="2026-04-08 12:00:03",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=500,
+                metadata={"payload": {"subject_name": "Nightbane Shadow Weaver"}},
+            ),
+            WMEvent(
+                event_id=4,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key="kill:4",
+                occurred_at="2026-04-08 12:00:04",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=116,
+                metadata={"payload": {"subject_name": "Defias Bandit"}},
+            ),
+            WMEvent(
+                event_id=5,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key="kill:5",
+                occurred_at="2026-04-08 12:00:05",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=116,
+                metadata={"payload": {"subject_name": "Defias Bandit"}},
+            ),
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:auto:zone:12:subject:116",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=116,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=300,
+                quest_id=910111,
+                turn_in_npc_entry=261,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={"auto_bounty": True, "require_consecutive_kills": True},
+                notes=["auto_bounty"],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1], preview=True)
+
+        self.assertEqual(result.derived_events, [])
+        self.assertEqual(result.opportunities, [])
+
+    def test_consecutive_kill_rule_triggers_on_fourth_same_entry_after_reset(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=1,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key="kill:1",
+                occurred_at="2026-04-08 12:00:01",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=500,
+                metadata={"payload": {"subject_name": "Nightbane Shadow Weaver"}},
+            ),
+            WMEvent(
+                event_id=2,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key="kill:2",
+                occurred_at="2026-04-08 12:00:02",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=116,
+                metadata={"payload": {"subject_name": "Defias Bandit"}},
+            ),
+            WMEvent(
+                event_id=3,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key="kill:3",
+                occurred_at="2026-04-08 12:00:03",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=116,
+                metadata={"payload": {"subject_name": "Defias Bandit"}},
+            ),
+            WMEvent(
+                event_id=4,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key="kill:4",
+                occurred_at="2026-04-08 12:00:04",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=116,
+                metadata={"payload": {"subject_name": "Defias Bandit"}},
+            ),
+            WMEvent(
+                event_id=5,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key="kill:5",
+                occurred_at="2026-04-08 12:00:05",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=116,
+                metadata={"payload": {"subject_name": "Defias Bandit"}},
+            ),
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:auto:zone:12:subject:116",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=116,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=300,
+                quest_id=910112,
+                turn_in_npc_entry=261,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={"auto_bounty": True, "require_consecutive_kills": True},
+                notes=["auto_bounty"],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1], preview=True)
+
+        self.assertEqual({item.event_type for item in result.derived_events}, {"kill_burst_detected"})
+        self.assertEqual(len(result.opportunities), 1)
+        self.assertEqual(result.opportunities[0].metadata["threshold_mode"], "consecutive")
+        self.assertEqual(result.opportunities[0].metadata["consecutive_kills"], 4)
+
+    def test_consecutive_kill_rule_uses_newest_event_window_after_long_history(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key=f"old:{index}",
+                occurred_at="2026-04-08 11:00:00",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=500,
+                metadata={"payload": {"subject_name": "Old History Mob"}},
+            )
+            for index in range(1, 401)
+        ]
+        store.subject_events.extend(
+            [
+                WMEvent(
+                    event_id=400 + index,
+                    event_class="observed",
+                    event_type="kill",
+                    source="native_bridge",
+                    source_event_key=f"fresh:{index}",
+                    occurred_at=f"2026-04-08 12:00:0{index}",
+                    player_guid=5406,
+                    subject_type="creature",
+                    subject_entry=116,
+                    metadata={"payload": {"subject_name": "Defias Bandit"}},
+                )
+                for index in range(1, 5)
+            ]
+        )
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:auto:zone:12:subject:116",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=116,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=300,
+                quest_id=910112,
+                turn_in_npc_entry=261,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={"auto_bounty": True, "require_consecutive_kills": True},
+                notes=["auto_bounty"],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1], preview=True)
+
+        self.assertEqual({item.event_type for item in result.derived_events}, {"kill_burst_detected"})
+        self.assertEqual(len(result.opportunities), 1)
+        self.assertEqual(result.opportunities[0].metadata["consecutive_kills"], 4)
+
+    def test_consecutive_kill_rule_triggers_again_on_next_threshold_multiple(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key=f"kill:{index}",
+                occurred_at=f"2026-04-08 12:00:{index:02d}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=205,
+                metadata={"payload": {"subject_name": "Nightbane Dark Runner"}},
+            )
+            for index in range(1, 9)
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:auto:zone:10:subject:205",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=205,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=300,
+                quest_id=910021,
+                turn_in_npc_entry=264,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={"auto_bounty": True, "require_consecutive_kills": True},
+                notes=["auto_bounty"],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        fifth_result = engine.evaluate(store.subject_events[4], preview=True)
+        eighth_result = engine.evaluate(store.subject_events[-1], preview=True)
+
+        self.assertEqual(fifth_result.derived_events, [])
+        self.assertEqual(fifth_result.opportunities, [])
+        self.assertEqual({item.event_type for item in eighth_result.derived_events}, {"kill_burst_detected"})
+        self.assertEqual(eighth_result.opportunities[0].metadata["consecutive_kills"], 8)
 
     def test_reactive_rule_suppresses_active_and_rewarded_states(self) -> None:
         store = FakeRuleStore()

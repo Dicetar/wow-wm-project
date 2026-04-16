@@ -1,0 +1,36 @@
+{
+  "id": "field_medic_pulse",
+  "schema_version": "control.scene.v1",
+  "description": "Small manual medic pulse: restore health/power, apply a short visible buff, and notify the scoped player.",
+  "steps": [
+    {
+      "native_action_kind": "player_restore_health_power",
+      "payload": {
+        "health_percent": 35,
+        "power_percent": 35,
+        "power_type": "active"
+      },
+      "risk_level": "low",
+      "idempotency_suffix": "restore",
+      "expected_effect": "The scoped player regains a small amount of health and active power."
+    },
+    {
+      "native_action_kind": "player_apply_aura",
+      "payload": {
+        "spell_id": 687
+      },
+      "risk_level": "medium",
+      "idempotency_suffix": "fortitude",
+      "expected_effect": "The scoped player receives a visible Demon Skin aura."
+    },
+    {
+      "native_action_kind": "world_announce_to_player",
+      "payload": {
+        "message": "WM field medic pulse delivered."
+      },
+      "risk_level": "low",
+      "idempotency_suffix": "announce",
+      "expected_effect": "The scoped player sees a short local WM notification."
+    }
+  ]
+}

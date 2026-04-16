@@ -1,4 +1,6 @@
 #include "ScriptMgr.h"
+#include "Creature.h"
+#include "Item.h"
 #include "Player.h"
 #include "wm_spell_runtime.h"
 
@@ -26,6 +28,7 @@ public:
         WmSpells::MaintainBoneboundSummons(player);
         WmSpells::MaintainIntellectBlockPassive(player);
         WmSpells::MaintainCombatProficiencies(player);
+        WmSpells::MaintainNightWatchersLens(player, 0);
     }
 
     void OnPlayerAfterUpdate(Player* player, uint32 diff) override
@@ -45,6 +48,7 @@ public:
         WmSpells::MaintainBoneboundSummons(player);
         WmSpells::MaintainIntellectBlockPassive(player);
         WmSpells::MaintainCombatProficiencies(player);
+        WmSpells::MaintainNightWatchersLens(player, BONEBOUND_MAINTENANCE_INTERVAL_MS);
     }
 
     void OnPlayerBeforeLogout(Player* player) override
@@ -56,6 +60,33 @@ public:
         gBoneboundMaintenanceTimers.erase(ownerGuid);
         WmSpells::ForgetBoneboundCompanions(player);
         WmSpells::ForgetIntellectBlockPassive(player);
+        WmSpells::ForgetNightWatchersLens(player);
+    }
+
+    void OnPlayerCreatureKill(Player* killer, Creature* killed) override
+    {
+        WmSpells::HandleNightWatchersLensKill(killer, killed, killer);
+    }
+
+    void OnPlayerCreatureKilledByPet(Player* petOwner, Creature* killed) override
+    {
+        WmSpells::HandleNightWatchersLensKill(petOwner, killed, petOwner);
+    }
+
+    void OnPlayerEquip(Player* player, Item* item, uint8 /*bag*/, uint8 /*slot*/, bool /*update*/) override
+    {
+        if (!item || !item->GetTemplate() || item->GetTemplate()->ItemId != 910006)
+            return;
+
+        WmSpells::MaintainNightWatchersLens(player, 0);
+    }
+
+    void OnPlayerUnequip(Player* player, Item* item) override
+    {
+        if (!item || !item->GetTemplate() || item->GetTemplate()->ItemId != 910006)
+            return;
+
+        WmSpells::ForgetNightWatchersLens(player);
     }
 
 };

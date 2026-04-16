@@ -1,0 +1,55 @@
+{
+  "item_entry": 910006,
+  "base_item_entry": 2994,
+  "name": "Night Watcher's Lens",
+  "description": "A WM-managed bounty reward. The lens exposes hidden quarry and feeds focus back to the wearer after a kill.",
+  "item_class": 4,
+  "item_subclass": 1,
+  "inventory_type": 1,
+  "quality": 3,
+  "item_level": 28,
+  "required_level": 18,
+  "bonding": 1,
+  "buy_price": 0,
+  "sell_price": 0,
+  "max_count": 1,
+  "stackable": 1,
+  "allowable_class": -1,
+  "allowable_race": -1,
+  "clear_stats": true,
+  "clear_spells": true,
+  "stats": [
+    {
+      "stat_type": 5,
+      "stat_value": 8
+    },
+    {
+      "stat_type": 7,
+      "stat_value": 6
+    },
+    {
+      "stat_type": 45,
+      "stat_value": 12
+    }
+  ],
+  "spells": [
+    {
+      "spell_id": 132,
+      "trigger": 1,
+      "charges": 0,
+      "ppm_rate": 0.0,
+      "cooldown_ms": -1,
+      "category": 0,
+      "category_cooldown_ms": -1
+    }
+  ],
+  "tags": [
+    "wm_generated",
+    "managed_item_slot",
+    "quest_reward",
+    "bounty_reward",
+    "night_watchers_lens",
+    "visible_aura_marker",
+    "native_hidden_effect"
+  ]
+}

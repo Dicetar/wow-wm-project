@@ -1,0 +1,54 @@
+{
+  "id": "summon_marker",
+  "schema_version": "control.scene.v1",
+  "description": "Spawn one temporary WM-owned visual creature marker, make it speak/emote, then despawn it.",
+  "steps": [
+    {
+      "native_action_kind": "creature_spawn",
+      "payload": {
+        "creature_entry": 920101,
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "duration_ms": 15000,
+        "distance": 4.0,
+        "angle_offset": -0.9,
+        "follow_player": true,
+        "follow_distance": 4.0,
+        "follow_angle": -0.9
+      },
+      "risk_level": "medium",
+      "idempotency_suffix": "spawn",
+      "expected_effect": "A temporary WM-owned marker appears near the scoped player."
+    },
+    {
+      "native_action_kind": "creature_say",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "text": "Marker established."
+      },
+      "risk_level": "low",
+      "delay_seconds": 0.5,
+      "idempotency_suffix": "say",
+      "expected_effect": "The marker says a short line."
+    },
+    {
+      "native_action_kind": "creature_emote",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "text": "fades into blue sparks."
+      },
+      "risk_level": "low",
+      "idempotency_suffix": "emote",
+      "expected_effect": "The marker performs a text emote before cleanup."
+    },
+    {
+      "native_action_kind": "creature_despawn",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}"
+      },
+      "risk_level": "medium",
+      "delay_seconds": 4.0,
+      "idempotency_suffix": "despawn",
+      "expected_effect": "The marker despawns through the WM-owned creature guard."
+    }
+  ]
+}

@@ -216,6 +216,25 @@ class ReactiveQuestStore:
         )
         self._execute_world(sql)
 
+    def deactivate_player_auto_bounty_rules(
+        self,
+        *,
+        player_guid: int,
+        except_rule_key: str | None = None,
+    ) -> None:
+        predicates = [
+            f"PlayerGUIDScope = {int(player_guid)}",
+            "RuleKey LIKE 'reactive_bounty:auto:%'",
+        ]
+        if except_rule_key not in (None, ""):
+            predicates.append(f"RuleKey <> {_sql_string(str(except_rule_key))}")
+        sql = (
+            "UPDATE wm_reactive_quest_rule "
+            "SET IsActive = 0, UpdatedAt = CURRENT_TIMESTAMP "
+            f"WHERE {' AND '.join(predicates)}"
+        )
+        self._execute_world(sql)
+
     def get_player_quest_runtime_state(self, *, player_guid: int, quest_id: int) -> PlayerQuestRuntimeState | None:
         rows = self.client.query(
             host=self.settings.world_db_host,

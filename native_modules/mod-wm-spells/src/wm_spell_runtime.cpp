@@ -4,6 +4,7 @@
 #include "Creature.h"
 #include "CreatureAI.h"
 #include "DatabaseEnv.h"
+#include "Item.h"
 #include "MotionMaster.h"
 #include "ObjectAccessor.h"
 #include "PetDefines.h"
@@ -23,12 +24,19 @@ namespace
 
     constexpr uint32 COMBAT_PROFICIENCY_SHELL_ID = 944000;
     constexpr uint32 DUAL_WIELD_SPELL_ID = 674;
+    constexpr uint32 NIGHT_WATCHERS_LENS_ITEM_ENTRY = 910006;
+    // Detect Invisibility is a client-known, visible marker aura that fits the lens fantasy.
+    // The WM-owned hidden mechanic below is gated on this aura plus the equipped item.
+    constexpr uint32 NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID = 132;
+    constexpr uint32 NIGHT_WATCHERS_LENS_COOLDOWN_MS = 12000;
     constexpr float WM_PI = 3.14159265358979323846f;
 
     WmSpells::RuntimeConfig gConfig;
     uint32 gDebugPollTimer = 0;
     std::unordered_map<uint32, ObjectGuid> gBoneboundOmegaByPlayer;
     std::unordered_map<uint32, int32> gIntellectBlockRatingByPlayer;
+    std::unordered_map<uint32, uint32> gNightWatchersLensCooldownMsByPlayer;
+    std::unordered_set<uint32> gNightWatchersLensAuraAppliedByPlayer;
 
     struct BoneboundShadowDotState
     {
@@ -45,6 +53,7 @@ namespace
     {
         ObjectGuid echoGuid;
         uint32 ownerGuid = 0;
+        uint32 creatureEntry = 0;
         uint32 remainingMs = 0;
         uint32 damagePct = 100;
         float followDistance = 2.2f;
@@ -971,6 +980,44 @@ namespace
         echo->SetReactState(REACT_DEFENSIVE);
     }
 
+    TempSummon* SpawnBoneboundAlphaEchoFromState(
+        Player* owner,
+        Pet* alphaPet,
+        Unit* victim,
+        BoneboundAlphaEchoState& state,
+        WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!owner || !alphaPet || state.remainingMs == 0)
+            return nullptr;
+
+        uint32 echoEntry = state.creatureEntry != 0
+            ? state.creatureEntry
+            : (config.alphaEchoCreatureEntry != 0 ? config.alphaEchoCreatureEntry : config.creatureEntry);
+
+        Position pos;
+        owner->GetClosePoint(pos.m_positionX, pos.m_positionY, pos.m_positionZ, 1.0f, state.followDistance, state.followAngle);
+        TempSummon* echo = owner->SummonCreature(
+            echoEntry,
+            pos.m_positionX,
+            pos.m_positionY,
+            pos.m_positionZ,
+            owner->GetOrientation(),
+            TEMPSUMMON_TIMED_DESPAWN,
+            state.remainingMs);
+        if (!echo)
+            return nullptr;
+
+        ApplyBoneboundAlphaEchoRuntime(owner, alphaPet, echo, config);
+        if (victim && victim->IsAlive() && echo->AI())
+            echo->AI()->AttackStart(victim);
+        else
+            echo->GetMotionMaster()->MoveFollow(owner, state.followDistance, state.followAngle);
+
+        state.echoGuid = echo->GetGUID();
+        state.creatureEntry = echoEntry;
+        return echo;
+    }
+
     void TrySpawnBoneboundAlphaEcho(Player* owner, Pet* alphaPet, Unit* victim, WmSpells::BoneboundBehaviorConfig const& config)
     {
         if (!owner || !alphaPet || !victim || !victim->IsAlive() || !config.alphaEchoEnabled)
@@ -985,30 +1032,18 @@ namespace
         float followAngle = RandomAlphaEchoFollowAngle();
         uint32 echoEntry = config.alphaEchoCreatureEntry != 0 ? config.alphaEchoCreatureEntry : config.creatureEntry;
 
-        Position pos;
-        owner->GetClosePoint(pos.m_positionX, pos.m_positionY, pos.m_positionZ, 1.0f, followDistance, followAngle);
-        TempSummon* echo = owner->SummonCreature(
-            echoEntry,
-            pos.m_positionX,
-            pos.m_positionY,
-            pos.m_positionZ,
-            owner->GetOrientation(),
-            TEMPSUMMON_TIMED_DESPAWN,
-            durationMs);
-        if (!echo)
-            return;
-
-        ApplyBoneboundAlphaEchoRuntime(owner, alphaPet, echo, config);
-        if (echo->AI())
-            echo->AI()->AttackStart(victim);
-
         BoneboundAlphaEchoState state;
-        state.echoGuid = echo->GetGUID();
         state.ownerGuid = ownerGuid;
+        state.creatureEntry = echoEntry;
         state.remainingMs = durationMs;
         state.damagePct = std::max<uint32>(1u, config.alphaEchoDamagePct);
         state.followDistance = followDistance;
         state.followAngle = followAngle;
+
+        TempSummon* echo = SpawnBoneboundAlphaEchoFromState(owner, alphaPet, victim, state, config);
+        if (!echo)
+            return;
+
         gBoneboundAlphaEchoes[static_cast<uint32>(echo->GetGUID().GetCounter())] = state;
     }
 
@@ -1111,20 +1146,56 @@ namespace
                 continue;
             }
 
-            Creature* echo = ObjectAccessor::GetCreature(*owner, it->second.echoGuid);
-            if (!echo || !echo->IsAlive())
-            {
-                it = gBoneboundAlphaEchoes.erase(it);
-                continue;
-            }
-
             if (it->second.remainingMs <= diff)
             {
-                echo->DespawnOrUnsummon();
+                if (Creature* echo = ObjectAccessor::GetCreature(*owner, it->second.echoGuid))
+                    echo->DespawnOrUnsummon();
                 it = gBoneboundAlphaEchoes.erase(it);
                 continue;
             }
             it->second.remainingMs -= diff;
+
+            Creature* echo = ObjectAccessor::GetCreature(*owner, it->second.echoGuid);
+            if (!echo || !echo->IsAlive())
+            {
+                // Mounting temporarily unsummons pets and can despawn related TempSummons.
+                // Keep the Echo state alive until the main Bonebound pet can return.
+                if (owner->IsPetNeedBeTemporaryUnsummoned())
+                {
+                    ++it;
+                    continue;
+                }
+
+                Pet* alphaPet = owner->GetPet();
+                if (!alphaPet && RestoreTemporarilyUnsummonedBoneboundPet(owner))
+                    alphaPet = owner->GetPet();
+
+                if (!alphaPet || !IsBoneboundPet(alphaPet))
+                {
+                    it = gBoneboundAlphaEchoes.erase(it);
+                    continue;
+                }
+
+                std::optional<WmSpells::BoneboundBehaviorConfig> runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
+                if (!runtimeConfig.has_value() || !runtimeConfig->alphaEchoEnabled)
+                {
+                    it = gBoneboundAlphaEchoes.erase(it);
+                    continue;
+                }
+
+                Unit* victim = alphaPet->GetVictim();
+                BoneboundAlphaEchoState state = it->second;
+                TempSummon* restored = SpawnBoneboundAlphaEchoFromState(owner, alphaPet, victim, state, *runtimeConfig);
+                if (!restored)
+                {
+                    it = gBoneboundAlphaEchoes.erase(it);
+                    continue;
+                }
+
+                it = gBoneboundAlphaEchoes.erase(it);
+                gBoneboundAlphaEchoes[static_cast<uint32>(restored->GetGUID().GetCounter())] = state;
+                continue;
+            }
 
             Pet* alphaPet = owner->GetPet();
             if (alphaPet && IsBoneboundPet(alphaPet))
@@ -1237,6 +1308,59 @@ namespace
             COMBAT_PROFICIENCY_SHELL_ID);
 
         return result != nullptr;
+    }
+
+    bool IsNightWatchersLensEquipped(Player* player)
+    {
+        if (!player)
+            return false;
+
+        Item* headItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_HEAD);
+        return headItem && headItem->GetTemplate() && headItem->GetTemplate()->ItemId == NIGHT_WATCHERS_LENS_ITEM_ENTRY;
+    }
+
+    void TickNightWatchersLensCooldown(Player* player, uint32 diff)
+    {
+        if (!player || diff == 0)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto cooldownIt = gNightWatchersLensCooldownMsByPlayer.find(playerGuid);
+        if (cooldownIt == gNightWatchersLensCooldownMsByPlayer.end())
+            return;
+
+        if (cooldownIt->second > diff)
+        {
+            cooldownIt->second -= diff;
+            return;
+        }
+
+        gNightWatchersLensCooldownMsByPlayer.erase(cooldownIt);
+    }
+
+    void EnsureNightWatchersLensAura(Player* player)
+    {
+        if (!player || player->HasAura(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID))
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        player->AddAura(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID, player);
+        if (player->HasAura(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID))
+            gNightWatchersLensAuraAppliedByPlayer.insert(playerGuid);
+    }
+
+    int32 ResolveNightWatchersLensManaRestore(Player* player)
+    {
+        if (!player || player->GetMaxPower(POWER_MANA) == 0)
+            return 0;
+
+        float intellect = std::max(0.0f, player->GetTotalStatValue(STAT_INTELLECT));
+        int32 shadowPower = std::max<int32>(0, player->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_SHADOW));
+        uint32 maxMana = player->GetMaxPower(POWER_MANA);
+        float restored = static_cast<float>(maxMana) * 0.02f
+            + intellect * 0.33f
+            + static_cast<float>(shadowPower) * 0.20f;
+        return std::max<int32>(10, static_cast<int32>(std::round(restored)));
     }
 
     int32 ResolveIntellectBlockRating(Player* player, WmSpells::IntellectBlockPassiveConfig const& config)
@@ -1490,6 +1614,12 @@ namespace WmSpells
         Pet* alphaPet = owner->GetPet();
         if (!alphaPet || !IsBoneboundPet(alphaPet))
         {
+            if (owner->IsPetNeedBeTemporaryUnsummoned())
+            {
+                RemoveBoneboundOmega(owner);
+                return;
+            }
+
             RemoveBoneboundAlphaEchoes(owner);
             RemoveBoneboundOmega(owner);
             return;
@@ -1622,6 +1752,67 @@ namespace WmSpells
             return;
 
         ApplyIntellectBlockRating(player, 0);
+    }
+
+    void MaintainNightWatchersLens(Player* player, uint32 diff)
+    {
+        if (!player)
+            return;
+
+        TickNightWatchersLensCooldown(player, diff);
+
+        if (!IsPlayerAllowed(player) || !IsNightWatchersLensEquipped(player))
+        {
+            ForgetNightWatchersLens(player);
+            return;
+        }
+
+        EnsureNightWatchersLensAura(player);
+    }
+
+    void ForgetNightWatchersLens(Player* player)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        gNightWatchersLensCooldownMsByPlayer.erase(playerGuid);
+        if (gNightWatchersLensAuraAppliedByPlayer.erase(playerGuid) > 0)
+            player->RemoveAurasDueToSpell(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID);
+    }
+
+    void HandleNightWatchersLensKill(Player* player, Creature* killed, Unit* killer)
+    {
+        if (!player || !killed || !killer)
+            return;
+
+        if (!IsPlayerAllowed(player) || !IsNightWatchersLensEquipped(player))
+            return;
+
+        if (!player->HasAura(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID))
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        if (auto cooldownIt = gNightWatchersLensCooldownMsByPlayer.find(playerGuid);
+            cooldownIt != gNightWatchersLensCooldownMsByPlayer.end() && cooldownIt->second > 0)
+        {
+            return;
+        }
+
+        int32 missingMana = static_cast<int32>(player->GetMaxPower(POWER_MANA)) - static_cast<int32>(player->GetPower(POWER_MANA));
+        if (missingMana <= 0)
+            return;
+
+        int32 restore = std::min<int32>(missingMana, ResolveNightWatchersLensManaRestore(player));
+        if (restore <= 0)
+            return;
+
+        player->ModifyPower(POWER_MANA, restore);
+        gNightWatchersLensCooldownMsByPlayer[playerGuid] = NIGHT_WATCHERS_LENS_COOLDOWN_MS;
+        player->SendSystemMessage(
+            std::string("Night Watcher's Lens confirms the quarry: ")
+            + std::to_string(restore)
+            + " mana restored.");
     }
 
     void ReapplyBoneboundOverlay(Pet* pet)

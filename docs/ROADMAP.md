@@ -35,6 +35,54 @@ Current fallback policy:
 - manual control remains the first-class reference lane
 - all risky native work is proven in `D:\WOW\WM_BridgeLab` before any promotion
 
+## Priority order
+
+The revised external notes in `D:\WOW\STUFFv2.md` and `D:\WOW\DS_Roadmap_16-04v2.md` are useful as idea input, but they do not replace current-state docs.
+
+Adopted priority order:
+
+1. Native operator lane plus Primitive Pack 1
+   - enable the next high-value native verbs through the existing action bus and `control/`
+   - prove small playable scenes through audit, not through a second runtime path
+   - example: `field_medic_pulse`, `bonebound_battle_cry`, and `summon_marker`
+2. Native parity for the existing reactive bounty loop
+   - finish the current watcher/spine/bounty path instead of inventing a parallel watcher
+   - example: kill burst -> native-preferred quest grant -> reward facts -> cooldown -> regrant
+3. Context, journal, and subject integration
+   - make context packs and prompt inputs use real player-subject history and native snapshot data
+   - example: generated content references the player's actual history with a target instead of generic bounty text
+4. Item and spell artifact pipelines
+   - extend the existing reserved-slot and rollback model from quests into items and spell grants
+   - example: a generated quest rewards a generated WM-owned item from a reserved item slot
+5. Visible shell-bank and summon release quality
+   - finalize the client-facing spell shell path and keep Bonebound Alpha as the supported summon lane
+   - example: a visible WM spell in the spellbook summons or triggers supported WM behavior without stock spell reuse
+6. Dynamic scenes, encounters, chat, and narrative arcs
+   - add richer world interventions only after primitives, context, and artifact governance are stable
+   - example: a WM-owned scene actor spawns, speaks, buffs, and despawns, or a later arc reacts to journal state
+
+Keep from the revised notes:
+
+- journal prompt integration
+- subject enrichment and cached subject cards
+- item pipeline V1
+- visible spell shell bank
+- native action vocabulary expansion
+- chat, encounter, and arc ideas as later layers
+
+Rework from the revised notes:
+
+- reactive logic must stay on the existing event spine, not a second watcher engine
+- native verbs must ship through the current action bus, policy, and audit contracts
+- content expansion must use the existing reserved-slot and rollback lifecycle, not ad-hoc publishes
+
+Do not adopt:
+
+- treating quest hardening as the whole project center
+- parallel watcher or publisher architecture
+- stock spell carriers for visible WM abilities
+- any roadmap language that bypasses `control/`, audit, or native policy gates
+
 ## Phase 0: Stabilize the current bridge-lab delta
 
 ### Goal
@@ -80,6 +128,7 @@ Make the existing reactive bounty loop work fully through native perception and 
 - April 14, 2026 comparison work kept richer reward support as a product capability and moved it into the shared bounty draft / publish path instead of a parallel template publisher; dry-run slot preview now stays non-mutating without false preflight failure; dynamic per-trigger watcher binding remains a `REWORK` item
 - April 15, 2026 cleanup separated operator templates from implicit auto-bounties: bundled examples now use `reactive_bounty:template:*`, `WM_REACTIVE_AUTO_BOUNTY_ENABLED` defaults off, and live validation should install one explicit template before arming the watcher
 - April 16, 2026 operator-lane cleanup made bundled templates discoverable by key: `wm.reactive.install_bounty --list-templates --summary` lists available bounties and `--template-key <key>` installs one without copying file paths
+- April 17, 2026 watcher hardening fixed two live blockers: player-owned non-pet summons now emit native kill facts through a guarded `UnitScript::OnUnitDeath` path, and reactive streak evaluation now reads the newest bounded event-log slice before replaying it chronologically so long lab history cannot hide fresh kills; consecutive streaks fire on threshold multiples to recover cleanly from a missed pre-arm crossing without firing every later kill
 
 ### Deliverables
 
@@ -108,14 +157,14 @@ Make manual control the normal operator lane for native actions and keep it iden
 
 ### Current checkpoint (2026-04-16)
 
-- `PARTIAL`
+- `WORKING`
 - repo implementation now has explicit audit visibility through `python -m wm.control.audit`
 - `wm.control.apply --summary` reports idempotency, validation, dry-run/apply status, and native request ids/statuses when present
 - `control/policies/direct_apply.json` now defaults `max_source_event_age_seconds` to `600`, so stale non-admin source events are rejected instead of silently replayed
 - repo tests cover audit fetch/list, native request extraction for `quest_grant` / `native_bridge_action`, stale-event rejection, wrong-player rejection, and duplicate idempotency rejection
 - BridgeLab proof shows control-driven `debug_ping` reaching native request `36` `done` and visible through `wm.control.audit`
-- fresh bounty grant audit linkage is proven but live grant remains blocked by runtime state: event `1551` -> proposal `6` -> native `quest_add` request `37` failed with `player_not_online`
-- exit criteria remain open until the fresh bounty grant is rerun with validation player `5406` online and reaches `done`
+- BridgeLab fresh bounty grant proof is now complete: event `1599` -> proposal `43` -> native `quest_add` request `74` `done`, `wm.control.audit` resolves the native request linkage, `wm.executor` recorded `quest_grant_issued` event `1601`, and native bridge event `26505` recorded `quest/granted` for quest `910020`
+- the structural fix was to align native `quest_add` with GM `.quest add` sanity checks instead of `player->CanTakeQuest()`, because WM force grants must match the existing SOAP/GM operator lane rather than normal quest-offer eligibility
 
 ### Deliverables
 
@@ -165,25 +214,31 @@ Expose nearby context as snapshots and package deterministic world state for ope
 
 - `context_snapshot_request`
 - `wm_bridge_context_snapshot`
+- prompt/package integration for:
+  - journal summaries
+  - subject cards
+  - latest native snapshot rows
 - WM perception packs built from:
   - recent canonical events
   - quest runtime state
   - player refs and location
   - nearby entities and objects
   - current area and weather
+- subject definition and enrichment persistence so target context is cached after first proof
 - snapshot requests start as operator/manual tools first
 
 ### Exit criteria
 
 - WM can request a scoped nearby snapshot for one player and consume it deterministically
 - control inspect can show recent events plus nearby context together
+- journal-backed prompt inputs can reference a player's real history with the resolved subject
 - no continuous nearby-entity spam lane is introduced
 
 ## Phase 4: Broaden native action primitives
 
 ### Goal
 
-Front-load reusable typed verbs so later WM features do not require constant full rebuild churn.
+Front-load reusable typed verbs and operator scenes so later WM features do not require constant full rebuild churn or a second execution path.
 
 ### Native action order
 
@@ -214,6 +269,16 @@ Front-load reusable typed verbs so later WM features do not require constant ful
    - `zone_set_weather`
    - `zone_clear_weather_override`
 
+### Deliverables
+
+- Primitive Pack 1 implemented through `native_bridge_action`
+- `python -m wm.control.scene_play` as an operator wrapper over existing control proposals
+- first playable scenes:
+  - `field_medic_pulse`
+  - `bonebound_battle_cry`
+  - `summon_marker`
+- audit output that links proposal -> native request -> result for scene steps and direct primitive use
+
 ### Rules
 
 - no generic GM-command action
@@ -230,11 +295,23 @@ Front-load reusable typed verbs so later WM features do not require constant ful
 
 ### Goal
 
-Treat WM-created artifacts and WM-owned spawned objects as first-class lifecycle-managed objects.
+Treat WM-created artifacts and WM-owned spawned objects as first-class lifecycle-managed objects, then use them for items, spell grants, and controlled world scenes.
+
+### Current checkpoint (2026-04-17)
+
+- `PARTIAL`
+- item pipeline V1 is repo-tested and live-proven for one managed bounty reward at DB/runtime-reload level
+- `control/examples/items/night_watchers_lens.json` publishes item `910006` (`Night Watcher's Lens`) from a managed item slot with Intellect, Stamina, spell power, visible aura spell `132`, and a native mana-restore-on-kill effect gated by equipped item plus visible aura
+- quest `910024` (`Bounty: Nightbane Dark Runner - Lens`) now rewards item `910006` x1 through the shared quest edit path, so WM can replace coin-only bounty rewards with managed artifacts without bypassing slot governance
+- visible reward iteration must allocate a fresh quest slot after an older test ID has been accepted or rewarded; `910021` was retired for this proof because the live client kept showing stale money-only reward data after mutation
+- client-visible reward pickup, equip behavior, and passive behavior remain `PARTIAL` until confirmed in-game after quest turn-in
+- hidden server mechanics must have visible effect indication; stock auras are acceptable as visible markers only when they fit the mechanic, not as unrelated tooltip hacks
 
 ### Deliverables
 
 - staged -> active -> retired -> archived lifecycle model
+- item pipeline V1 on top of reserved slots, validation, publish, and rollback
+- spell grant and revoke paths that stay inside WM shell ownership and action contracts
 - provenance links from:
   - source event
   - control proposal
@@ -245,11 +322,16 @@ Treat WM-created artifacts and WM-owned spawned objects as first-class lifecycle
   - temporary gameobjects
   - companion flows
   - injected gossip and menu interactions
+- later content layers once the artifact base is proven:
+  - encounter compiler
+  - chat-command entrypoints
+  - multi-step story arcs
 
 ### Exit criteria
 
 - WM can compose small multi-part scenes without losing provenance or rollback clarity
 - slot ownership and WM-owned object ownership are explicit
+- a WM quest can reward a WM item or shell-backed spell grant without bypassing lifecycle tracking
 
 ## Phase 6: LLM layer on top of locked contracts
 
@@ -281,6 +363,9 @@ Not first:
 - more combat-log work
 - Eluna or ALE as the main WM runtime
 - freeform LLM-to-game mutation
-- broad autonomous story logic before native perception and action are stable
+- broad autonomous story logic before native perception, action, and context are stable
+- a parallel watcher or template publisher architecture
+- ad-hoc item or spell publishing outside reserved-slot governance
+- stock spell carrier reuse for visible WM spells
 
 Those may still matter later, but they are not the shortest path to a stable World Master platform.

@@ -20,6 +20,56 @@
     "purge_after_seconds": null
   },
   "native_action_kind_source": "src/wm/sources/native_bridge/action_kinds.py",
+  "payload_contracts": {
+    "player_apply_aura": {
+      "required": ["spell_id"],
+      "optional": ["target_player_guid"],
+      "notes": "Applies spell_id as an aura to the scoped online player. target_player_guid must equal the scoped request PlayerGUID in Primitive Pack 1."
+    },
+    "player_remove_aura": {
+      "required": ["spell_id"],
+      "optional": ["target_player_guid"],
+      "notes": "Removes spell_id from the scoped online player. target_player_guid must equal the scoped request PlayerGUID in Primitive Pack 1."
+    },
+    "player_restore_health_power": {
+      "required_any": ["health_amount", "health_percent", "power_amount", "power_percent"],
+      "optional": ["power_type"],
+      "notes": "Restores flat or percent health and active power. power_type may be active/current, mana, rage, focus, energy, runic_power, or numeric 0-6."
+    },
+    "player_add_item": {
+      "required": ["item_id"],
+      "optional": ["count", "soulbound"],
+      "notes": "Stores the item in bags for the scoped online player and can mark the created stack soulbound."
+    },
+    "player_add_money": {
+      "required": ["copper"],
+      "notes": "Adds a positive copper amount to the scoped online player."
+    },
+    "player_add_reputation": {
+      "required": ["faction_id", "value"],
+      "optional": ["no_spillover"],
+      "notes": "Adjusts one faction for the scoped online player; no_spillover defaults true."
+    },
+    "creature_spawn": {
+      "required": ["creature_entry"],
+      "optional": ["arc_key", "duration_ms", "distance", "angle_offset", "follow_player", "follow_distance", "follow_angle"],
+      "notes": "Spawns a temporary WM-owned creature near the scoped player and records it in wm_bridge_world_object with LiveGUIDLow."
+    },
+    "creature_despawn": {
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Despawns only a creature row owned by the scoped player in wm_bridge_world_object."
+    },
+    "creature_say": {
+      "required": ["text"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Makes only a scoped WM-owned creature say text."
+    },
+    "creature_emote": {
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "optional": ["emote_id", "text"],
+      "notes": "Runs an emote id and/or text emote on only a scoped WM-owned creature."
+    }
+  },
   "guardrails": [
     "No arbitrary SQL, shell command, GM command, or file edit payloads are accepted.",
     "The C++ module validates player scope and DB policy again before executing.",

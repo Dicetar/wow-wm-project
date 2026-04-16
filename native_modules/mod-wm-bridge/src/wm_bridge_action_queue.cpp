@@ -4,13 +4,17 @@
 #include "Cell.h"
 #include "CellImpl.h"
 #include "Creature.h"
+#include "DBCStores.h"
 #include "GameObject.h"
 #include "GridNotifiers.h"
+#include "Item.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "QueryResult.h"
+#include "ReputationMgr.h"
 #include "SpellMgr.h"
+#include "TemporarySummon.h"
 #include "WorldSession.h"
 #include "wm_bridge_common.h"
 
@@ -18,10 +22,12 @@
 #include <cctype>
 #include <exception>
 #include <iomanip>
+#include <initializer_list>
 #include <limits>
 #include <list>
 #include <sstream>
 #include <string>
+#include <utility>
 
 namespace
 {
@@ -176,6 +182,123 @@ namespace
         }
     }
 
+    bool TryExtractJsonInt32Field(std::string const& json, std::string const& key, int32& value)
+    {
+        std::string rawValue = ExtractJsonStringField(json, key);
+        if (rawValue.empty())
+        {
+            return false;
+        }
+
+        try
+        {
+            size_t consumed = 0;
+            long parsed = std::stol(rawValue, &consumed, 10);
+            if (consumed != rawValue.size() || parsed < std::numeric_limits<int32>::min() || parsed > std::numeric_limits<int32>::max())
+            {
+                return false;
+            }
+
+            value = static_cast<int32>(parsed);
+            return true;
+        }
+        catch (std::exception const&)
+        {
+            return false;
+        }
+    }
+
+    bool TryExtractJsonFloatField(std::string const& json, std::string const& key, float& value)
+    {
+        std::string rawValue = ExtractJsonStringField(json, key);
+        if (rawValue.empty())
+        {
+            return false;
+        }
+
+        try
+        {
+            size_t consumed = 0;
+            float parsed = std::stof(rawValue, &consumed);
+            if (consumed != rawValue.size())
+            {
+                return false;
+            }
+
+            value = parsed;
+            return true;
+        }
+        catch (std::exception const&)
+        {
+            return false;
+        }
+    }
+
+    bool TryExtractJsonBoolField(std::string const& json, std::string const& key, bool& value)
+    {
+        std::string rawValue = ExtractJsonStringField(json, key);
+        std::transform(rawValue.begin(), rawValue.end(), rawValue.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        if (rawValue == "1" || rawValue == "true" || rawValue == "yes" || rawValue == "on")
+        {
+            value = true;
+            return true;
+        }
+        if (rawValue == "0" || rawValue == "false" || rawValue == "no" || rawValue == "off")
+        {
+            value = false;
+            return true;
+        }
+        return false;
+    }
+
+    bool TryExtractAnyUInt32Field(std::string const& json, std::initializer_list<char const*> keys, uint32& value)
+    {
+        for (char const* key : keys)
+        {
+            if (TryExtractJsonUInt32Field(json, key, value))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool TryExtractAnyInt32Field(std::string const& json, std::initializer_list<char const*> keys, int32& value)
+    {
+        for (char const* key : keys)
+        {
+            if (TryExtractJsonInt32Field(json, key, value))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool TryExtractAnyFloatField(std::string const& json, std::initializer_list<char const*> keys, float& value)
+    {
+        for (char const* key : keys)
+        {
+            if (TryExtractJsonFloatField(json, key, value))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool TryExtractAnyBoolField(std::string const& json, std::initializer_list<char const*> keys, bool& value)
+    {
+        for (char const* key : keys)
+        {
+            if (TryExtractJsonBoolField(json, key, value))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     int RiskRank(std::string risk)
     {
         std::transform(risk.begin(), risk.end(), risk.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
@@ -252,6 +375,49 @@ namespace
     {
         JsonAppendComma(json, firstField);
         json += "\"" + EscapeForJson(key) + "\":" + rawJson;
+    }
+
+    std::string ActionResultJson(std::string const& status, std::string const& actionKind, std::string const& message = "")
+    {
+        std::string json = "{";
+        bool firstField = true;
+        JsonAppendBoolField(json, firstField, "ok", status == "done");
+        JsonAppendStringField(json, firstField, "action_kind", actionKind);
+        JsonAppendStringField(json, firstField, "status", status);
+        if (!message.empty())
+        {
+            JsonAppendStringField(json, firstField, "message", message);
+        }
+        json += "}";
+        return json;
+    }
+
+    std::string ActionResultJson(
+        std::string const& status,
+        std::string const& actionKind,
+        std::string const& message,
+        std::initializer_list<std::pair<std::string, std::string>> stringFields,
+        std::initializer_list<std::pair<std::string, long long>> numberFields = {})
+    {
+        std::string json = "{";
+        bool firstField = true;
+        JsonAppendBoolField(json, firstField, "ok", status == "done");
+        JsonAppendStringField(json, firstField, "action_kind", actionKind);
+        JsonAppendStringField(json, firstField, "status", status);
+        if (!message.empty())
+        {
+            JsonAppendStringField(json, firstField, "message", message);
+        }
+        for (auto const& field : stringFields)
+        {
+            JsonAppendStringField(json, firstField, field.first, field.second);
+        }
+        for (auto const& field : numberFields)
+        {
+            JsonAppendNumberField(json, firstField, field.first, field.second);
+        }
+        json += "}";
+        return json;
     }
 
     std::string BuildCreatureJson(Player const* player, Creature const* creature)
@@ -458,6 +624,723 @@ namespace
             SqlString(ResultJson(status, actionKind, errorText)));
     }
 
+    bool ResolveScopedOnlinePlayer(
+        uint64 requestId,
+        uint32 playerGuid,
+        std::string const& actionKind,
+        std::string const& payloadJson,
+        Player*& player)
+    {
+        uint32 targetPlayerGuid = playerGuid;
+        uint32 explicitTargetGuid = 0;
+        if (TryExtractAnyUInt32Field(payloadJson, {"target_player_guid", "targetPlayerGuid", "player_guid", "playerGuid"}, explicitTargetGuid))
+        {
+            targetPlayerGuid = explicitTargetGuid;
+        }
+
+        if (targetPlayerGuid != playerGuid)
+        {
+            CompleteAction(
+                requestId,
+                "rejected",
+                actionKind,
+                ActionResultJson(
+                    "rejected",
+                    actionKind,
+                    "target_player_must_match_scoped_player",
+                    {},
+                    {{"player_guid", playerGuid}, {"target_player_guid", targetPlayerGuid}}),
+                "target_player_must_match_scoped_player");
+            return false;
+        }
+
+        player = ObjectAccessor::FindPlayerByLowGUID(targetPlayerGuid);
+        if (!player)
+        {
+            CompleteAction(
+                requestId,
+                "failed",
+                actionKind,
+                ActionResultJson("failed", actionKind, "player_not_online", {}, {{"player_guid", targetPlayerGuid}}),
+                "player_not_online");
+            return false;
+        }
+
+        return true;
+    }
+
+    bool ResolvePowerType(std::string const& payloadJson, Player* player, Powers& power, std::string& errorText)
+    {
+        power = player ? player->getPowerType() : POWER_MANA;
+
+        uint32 numericPower = 0;
+        if (TryExtractAnyUInt32Field(payloadJson, {"power_type", "powerType"}, numericPower))
+        {
+            if (numericPower >= MAX_POWERS)
+            {
+                errorText = "invalid_power_type";
+                return false;
+            }
+            power = static_cast<Powers>(numericPower);
+            return true;
+        }
+
+        std::string rawPower = ExtractJsonStringField(payloadJson, "power_type");
+        if (rawPower.empty())
+        {
+            rawPower = ExtractJsonStringField(payloadJson, "powerType");
+        }
+        std::transform(rawPower.begin(), rawPower.end(), rawPower.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+        if (rawPower.empty() || rawPower == "active" || rawPower == "current")
+        {
+            return true;
+        }
+        if (rawPower == "mana")
+        {
+            power = POWER_MANA;
+            return true;
+        }
+        if (rawPower == "rage")
+        {
+            power = POWER_RAGE;
+            return true;
+        }
+        if (rawPower == "focus")
+        {
+            power = POWER_FOCUS;
+            return true;
+        }
+        if (rawPower == "energy")
+        {
+            power = POWER_ENERGY;
+            return true;
+        }
+        if (rawPower == "runic_power" || rawPower == "runic")
+        {
+            power = POWER_RUNIC_POWER;
+            return true;
+        }
+
+        errorText = "invalid_power_type";
+        return false;
+    }
+
+    uint32 ResolveRestoreAmount(
+        std::string const& payloadJson,
+        std::initializer_list<char const*> amountKeys,
+        std::initializer_list<char const*> percentKeys,
+        uint32 maximum)
+    {
+        uint32 amount = 0;
+        if (TryExtractAnyUInt32Field(payloadJson, amountKeys, amount))
+        {
+            return amount;
+        }
+
+        uint32 percent = 0;
+        if (TryExtractAnyUInt32Field(payloadJson, percentKeys, percent))
+        {
+            percent = std::clamp<uint32>(percent, 0, 100);
+            return static_cast<uint32>((static_cast<uint64>(maximum) * percent) / 100);
+        }
+
+        return 0;
+    }
+
+    struct OwnedCreatureRef
+    {
+        uint64 objectId = 0;
+        uint32 entry = 0;
+        uint32 liveGuidLow = 0;
+        std::string liveGuid;
+        std::string arcKey;
+    };
+
+    bool LoadOwnedCreatureRef(uint32 playerGuid, std::string const& payloadJson, OwnedCreatureRef& ref, std::string& errorText)
+    {
+        QueryResult result;
+        uint32 objectId = 0;
+        uint32 liveGuidLow = 0;
+        std::string arcKey = ExtractJsonStringField(payloadJson, "arc_key");
+        if (arcKey.empty())
+        {
+            arcKey = ExtractJsonStringField(payloadJson, "arcKey");
+        }
+        std::string liveGuid = ExtractJsonStringField(payloadJson, "live_guid");
+        if (liveGuid.empty())
+        {
+            liveGuid = ExtractJsonStringField(payloadJson, "liveGuid");
+        }
+        if (liveGuid.empty())
+        {
+            liveGuid = ExtractJsonStringField(payloadJson, "creature_guid");
+        }
+        if (liveGuid.empty())
+        {
+            liveGuid = ExtractJsonStringField(payloadJson, "creatureGuid");
+        }
+
+        if (TryExtractAnyUInt32Field(payloadJson, {"object_id", "objectId"}, objectId))
+        {
+            result = WorldDatabase.Query(
+                "SELECT ObjectID, TemplateEntry, LiveGUIDLow, LiveGUID, ArcKey "
+                "FROM wm_bridge_world_object "
+                "WHERE ObjectID = {} AND ObjectType = 'creature' AND OwnerPlayerGUID = {} AND DespawnPolicy <> 'despawned' "
+                "LIMIT 1",
+                objectId,
+                playerGuid);
+        }
+        else if (TryExtractAnyUInt32Field(payloadJson, {"live_guid_low", "liveGuidLow", "creature_guid_low", "creatureGuidLow"}, liveGuidLow))
+        {
+            result = WorldDatabase.Query(
+                "SELECT ObjectID, TemplateEntry, LiveGUIDLow, LiveGUID, ArcKey "
+                "FROM wm_bridge_world_object "
+                "WHERE LiveGUIDLow = {} AND ObjectType = 'creature' AND OwnerPlayerGUID = {} AND DespawnPolicy <> 'despawned' "
+                "ORDER BY ObjectID DESC LIMIT 1",
+                liveGuidLow,
+                playerGuid);
+        }
+        else if (!liveGuid.empty())
+        {
+            result = WorldDatabase.Query(
+                "SELECT ObjectID, TemplateEntry, LiveGUIDLow, LiveGUID, ArcKey "
+                "FROM wm_bridge_world_object "
+                "WHERE LiveGUID = {} AND ObjectType = 'creature' AND OwnerPlayerGUID = {} AND DespawnPolicy <> 'despawned' "
+                "ORDER BY ObjectID DESC LIMIT 1",
+                SqlString(liveGuid),
+                playerGuid);
+        }
+        else if (!arcKey.empty())
+        {
+            result = WorldDatabase.Query(
+                "SELECT ObjectID, TemplateEntry, LiveGUIDLow, LiveGUID, ArcKey "
+                "FROM wm_bridge_world_object "
+                "WHERE ArcKey = {} AND ObjectType = 'creature' AND OwnerPlayerGUID = {} AND DespawnPolicy <> 'despawned' "
+                "ORDER BY ObjectID DESC LIMIT 1",
+                SqlString(arcKey),
+                playerGuid);
+        }
+        else
+        {
+            errorText = "missing_creature_reference";
+            return false;
+        }
+
+        if (!result)
+        {
+            errorText = "wm_owned_creature_not_found";
+            return false;
+        }
+
+        Field* fields = result->Fetch();
+        if (fields[1].IsNull() || fields[2].IsNull())
+        {
+            errorText = "wm_owned_creature_incomplete";
+            return false;
+        }
+
+        ref.objectId = fields[0].Get<uint64>();
+        ref.entry = fields[1].Get<uint32>();
+        ref.liveGuidLow = fields[2].Get<uint32>();
+        ref.liveGuid = fields[3].IsNull() ? "" : fields[3].Get<std::string>();
+        ref.arcKey = fields[4].IsNull() ? "" : fields[4].Get<std::string>();
+        return true;
+    }
+
+    Creature* ResolveOwnedCreature(Player* player, OwnedCreatureRef const& ref)
+    {
+        if (!player || ref.entry == 0 || ref.liveGuidLow == 0)
+        {
+            return nullptr;
+        }
+
+        ObjectGuid guid = ObjectGuid::Create<HighGuid::Unit>(ref.entry, static_cast<ObjectGuid::LowType>(ref.liveGuidLow));
+        return ObjectAccessor::GetCreature(*player, guid);
+    }
+
+    void MarkOwnedCreatureDespawned(OwnedCreatureRef const& ref, std::string const& reason)
+    {
+        if (ref.objectId == 0)
+        {
+            return;
+        }
+
+        std::string metadata = "{\"despawn_reason\":\"" + EscapeForJson(reason) + "\"}";
+        WorldDatabase.Execute(
+            "UPDATE wm_bridge_world_object "
+            "SET DespawnPolicy = 'despawned', MetadataJSON = {}, UpdatedAt = CURRENT_TIMESTAMP "
+            "WHERE ObjectID = {}",
+            SqlString(metadata),
+            ref.objectId);
+    }
+
+    bool ExecutePlayerApplyAura(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        uint32 spellId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"spell_id", "spellId"}, spellId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_spell_id"), "missing_spell_id");
+            return true;
+        }
+        if (!sSpellMgr->GetSpellInfo(spellId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_spell", {}, {{"spell_id", spellId}}), "invalid_spell");
+            return true;
+        }
+
+        Aura* aura = player->AddAura(spellId, player);
+        if (!aura)
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "aura_not_applied", {}, {{"spell_id", spellId}, {"player_guid", playerGuid}}), "aura_not_applied");
+            return true;
+        }
+
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "aura_applied", {}, {{"spell_id", spellId}, {"player_guid", playerGuid}}));
+        return true;
+    }
+
+    bool ExecutePlayerRemoveAura(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        uint32 spellId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"spell_id", "spellId"}, spellId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_spell_id"), "missing_spell_id");
+            return true;
+        }
+
+        player->RemoveAurasDueToSpell(spellId);
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "aura_removed", {}, {{"spell_id", spellId}, {"player_guid", playerGuid}}));
+        return true;
+    }
+
+    bool ExecutePlayerRestoreHealthPower(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+        if (!player->IsAlive())
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "player_dead", {}, {{"player_guid", playerGuid}}), "player_dead");
+            return true;
+        }
+
+        Powers power = POWER_MANA;
+        std::string powerError;
+        if (!ResolvePowerType(payloadJson, player, power, powerError))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, powerError), powerError);
+            return true;
+        }
+
+        uint32 healthRestore = ResolveRestoreAmount(payloadJson, {"health", "health_amount", "healthAmount"}, {"health_percent", "healthPercent"}, player->GetMaxHealth());
+        uint32 powerRestore = ResolveRestoreAmount(payloadJson, {"power", "power_amount", "powerAmount", "mana", "mana_amount", "manaAmount"}, {"power_percent", "powerPercent", "mana_percent", "manaPercent"}, player->GetMaxPower(power));
+        if (healthRestore == 0 && powerRestore == 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_restore_amount"), "missing_restore_amount");
+            return true;
+        }
+
+        uint32 healthBefore = player->GetHealth();
+        uint32 powerBefore = player->GetPower(power);
+        uint32 healthAfter = std::min<uint32>(player->GetMaxHealth(), healthBefore + healthRestore);
+        uint32 powerAfter = std::min<uint32>(player->GetMaxPower(power), powerBefore + powerRestore);
+        player->SetHealth(healthAfter);
+        player->SetPower(power, powerAfter);
+
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                "health_power_restored",
+                {},
+                {
+                    {"player_guid", playerGuid},
+                    {"health_before", healthBefore},
+                    {"health_after", healthAfter},
+                    {"power_type", static_cast<long long>(power)},
+                    {"power_before", powerBefore},
+                    {"power_after", powerAfter},
+                }));
+        return true;
+    }
+
+    bool ExecutePlayerAddMoney(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        int32 copper = 0;
+        if (!TryExtractAnyInt32Field(payloadJson, {"copper", "amount", "money"}, copper) || copper <= 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_positive_copper"), "missing_positive_copper");
+            return true;
+        }
+        if (!player->ModifyMoney(copper))
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "money_not_added", {}, {{"copper", copper}, {"player_guid", playerGuid}}), "money_not_added");
+            return true;
+        }
+
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "money_added", {}, {{"copper", copper}, {"player_guid", playerGuid}}));
+        return true;
+    }
+
+    bool ExecutePlayerAddReputation(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        uint32 factionId = 0;
+        int32 value = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"faction_id", "factionId"}, factionId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_faction_id"), "missing_faction_id");
+            return true;
+        }
+        if (!TryExtractAnyInt32Field(payloadJson, {"value", "amount", "reputation"}, value) || value == 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_reputation_value"), "missing_reputation_value");
+            return true;
+        }
+
+        FactionEntry const* faction = sFactionStore.LookupEntry(factionId);
+        if (!faction)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_faction", {}, {{"faction_id", factionId}}), "invalid_faction");
+            return true;
+        }
+
+        bool noSpillover = true;
+        TryExtractAnyBoolField(payloadJson, {"no_spillover", "noSpillover"}, noSpillover);
+        if (!player->GetReputationMgr().ModifyReputation(faction, static_cast<float>(value), noSpillover))
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "reputation_not_added", {}, {{"faction_id", factionId}, {"value", value}}), "reputation_not_added");
+            return true;
+        }
+
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "reputation_added", {}, {{"faction_id", factionId}, {"value", value}, {"player_guid", playerGuid}}));
+        return true;
+    }
+
+    bool ExecutePlayerAddItem(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        uint32 itemId = 0;
+        uint32 count = 1;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"item_id", "itemId", "entry"}, itemId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_item_id"), "missing_item_id");
+            return true;
+        }
+        TryExtractAnyUInt32Field(payloadJson, {"count", "quantity"}, count);
+        count = std::clamp<uint32>(count, 1, 200);
+        if (!sObjectMgr->GetItemTemplate(itemId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_item", {}, {{"item_id", itemId}}), "invalid_item");
+            return true;
+        }
+
+        uint32 noSpaceForCount = 0;
+        ItemPosCountVec destination;
+        InventoryResult inventoryResult = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, destination, itemId, count, &noSpaceForCount);
+        if (inventoryResult != EQUIP_ERR_OK)
+        {
+            count -= noSpaceForCount;
+        }
+        if (count == 0 || destination.empty())
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "inventory_full", {}, {{"item_id", itemId}, {"player_guid", playerGuid}}), "inventory_full");
+            return true;
+        }
+
+        Item* item = player->StoreNewItem(destination, itemId, true);
+        if (!item)
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "item_not_created", {}, {{"item_id", itemId}, {"count", count}}), "item_not_created");
+            return true;
+        }
+
+        bool soulbound = false;
+        if (TryExtractAnyBoolField(payloadJson, {"soulbound", "bind", "bind_on_grant", "bindOnGrant"}, soulbound) && soulbound)
+        {
+            item->SetBinding(true);
+            item->SetState(ITEM_CHANGED, player);
+        }
+        player->SendNewItem(item, count, true, false);
+
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "item_added", {}, {{"item_id", itemId}, {"count", count}, {"player_guid", playerGuid}}));
+        return true;
+    }
+
+    bool ExecuteCreatureSpawn(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        uint32 entry = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"creature_entry", "creatureEntry", "entry"}, entry))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_creature_entry"), "missing_creature_entry");
+            return true;
+        }
+        if (!sObjectMgr->GetCreatureTemplate(entry))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_creature", {}, {{"creature_entry", entry}}), "invalid_creature");
+            return true;
+        }
+
+        uint32 durationMs = 30000;
+        TryExtractAnyUInt32Field(payloadJson, {"duration_ms", "durationMs"}, durationMs);
+        durationMs = std::clamp<uint32>(durationMs, 1000, 600000);
+        float distance = 2.5f;
+        float angleOffset = 0.0f;
+        TryExtractAnyFloatField(payloadJson, {"distance", "spawn_distance", "spawnDistance"}, distance);
+        TryExtractAnyFloatField(payloadJson, {"angle_offset", "angleOffset"}, angleOffset);
+        distance = std::clamp<float>(distance, 0.5f, 30.0f);
+
+        Position position;
+        player->GetClosePoint(position.m_positionX, position.m_positionY, position.m_positionZ, 1.0f, distance, player->GetOrientation() + angleOffset);
+        TempSummon* creature = player->SummonCreature(
+            entry,
+            position.m_positionX,
+            position.m_positionY,
+            position.m_positionZ,
+            player->GetOrientation(),
+            TEMPSUMMON_TIMED_DESPAWN,
+            durationMs);
+        if (!creature)
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_spawned", {}, {{"creature_entry", entry}}), "creature_not_spawned");
+            return true;
+        }
+
+        creature->SetCreatorGUID(player->GetGUID());
+        creature->SetOwnerGUID(player->GetGUID());
+        creature->SetFaction(player->GetFaction());
+        creature->SetPhaseMask(player->GetPhaseMask(), false);
+
+        bool followPlayer = false;
+        if (TryExtractAnyBoolField(payloadJson, {"follow_player", "followPlayer"}, followPlayer) && followPlayer)
+        {
+            float followDistance = distance;
+            float followAngle = angleOffset;
+            TryExtractAnyFloatField(payloadJson, {"follow_distance", "followDistance"}, followDistance);
+            TryExtractAnyFloatField(payloadJson, {"follow_angle", "followAngle"}, followAngle);
+            creature->GetMotionMaster()->MoveFollow(player, std::clamp<float>(followDistance, 0.5f, 30.0f), followAngle);
+        }
+
+        std::string arcKey = ExtractJsonStringField(payloadJson, "arc_key");
+        if (arcKey.empty())
+        {
+            arcKey = ExtractJsonStringField(payloadJson, "arcKey");
+        }
+        std::string metadata = "{";
+        bool firstField = true;
+        JsonAppendNumberField(metadata, firstField, "request_id", static_cast<long long>(requestId));
+        JsonAppendNumberField(metadata, firstField, "duration_ms", durationMs);
+        JsonAppendBoolField(metadata, firstField, "follow_player", followPlayer);
+        metadata += "}";
+
+        // Spawn result payload needs the WM-owned ObjectID immediately, so the insert cannot be queued async.
+        WorldDatabase.DirectExecute(
+            "INSERT INTO wm_bridge_world_object ("
+            "ObjectType, OwnerPlayerGUID, ArcKey, TemplateEntry, LiveGUID, LiveGUIDLow, MapID, PositionX, PositionY, PositionZ, Orientation, PhaseMask, DespawnPolicy, MetadataJSON"
+            ") VALUES ('creature', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'timed', {})",
+            playerGuid,
+            arcKey.empty() ? "NULL" : SqlString(arcKey),
+            entry,
+            SqlString(creature->GetGUID().ToString()),
+            static_cast<uint32>(creature->GetGUID().GetCounter()),
+            player->GetMapId(),
+            creature->GetPositionX(),
+            creature->GetPositionY(),
+            creature->GetPositionZ(),
+            creature->GetOrientation(),
+            creature->GetPhaseMask(),
+            SqlString(metadata));
+
+        QueryResult objectIdResult = WorldDatabase.Query(
+            "SELECT ObjectID FROM wm_bridge_world_object "
+            "WHERE ObjectType = 'creature' AND OwnerPlayerGUID = {} AND LiveGUIDLow = {} "
+            "ORDER BY ObjectID DESC LIMIT 1",
+            playerGuid,
+            static_cast<uint32>(creature->GetGUID().GetCounter()));
+        uint64 objectId = objectIdResult ? objectIdResult->Fetch()[0].Get<uint64>() : 0;
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                "creature_spawned",
+                {{"live_guid", creature->GetGUID().ToString()}, {"arc_key", arcKey}},
+                {
+                    {"object_id", static_cast<long long>(objectId)},
+                    {"creature_entry", entry},
+                    {"live_guid_low", static_cast<long long>(creature->GetGUID().GetCounter())},
+                    {"player_guid", playerGuid},
+                }));
+        return true;
+    }
+
+    bool ExecuteCreatureDespawn(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        OwnedCreatureRef ref;
+        std::string errorText;
+        if (!LoadOwnedCreatureRef(playerGuid, payloadJson, ref, errorText))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, errorText), errorText);
+            return true;
+        }
+
+        Creature* creature = ResolveOwnedCreature(player, ref);
+        if (!creature)
+        {
+            MarkOwnedCreatureDespawned(ref, "creature_not_live");
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_live", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}), "creature_not_live");
+            return true;
+        }
+
+        creature->DespawnOrUnsummon();
+        MarkOwnedCreatureDespawned(ref, "requested");
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_despawned", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}, {"live_guid_low", ref.liveGuidLow}}));
+        return true;
+    }
+
+    bool ExecuteCreatureSay(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        OwnedCreatureRef ref;
+        std::string errorText;
+        if (!LoadOwnedCreatureRef(playerGuid, payloadJson, ref, errorText))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, errorText), errorText);
+            return true;
+        }
+
+        Creature* creature = ResolveOwnedCreature(player, ref);
+        if (!creature)
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_live", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}), "creature_not_live");
+            return true;
+        }
+
+        std::string text = ExtractJsonStringField(payloadJson, "text");
+        if (text.empty())
+        {
+            text = ExtractJsonStringField(payloadJson, "message");
+        }
+        if (text.empty())
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_text"), "missing_text");
+            return true;
+        }
+        if (text.size() > 255)
+        {
+            text.resize(255);
+        }
+
+        creature->Say(text, LANG_UNIVERSAL, player);
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_said", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}));
+        return true;
+    }
+
+    bool ExecuteCreatureEmote(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        OwnedCreatureRef ref;
+        std::string errorText;
+        if (!LoadOwnedCreatureRef(playerGuid, payloadJson, ref, errorText))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, errorText), errorText);
+            return true;
+        }
+
+        Creature* creature = ResolveOwnedCreature(player, ref);
+        if (!creature)
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_live", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}), "creature_not_live");
+            return true;
+        }
+
+        uint32 emoteId = 0;
+        std::string text = ExtractJsonStringField(payloadJson, "text");
+        if (text.empty())
+        {
+            text = ExtractJsonStringField(payloadJson, "message");
+        }
+        if (!TryExtractAnyUInt32Field(payloadJson, {"emote_id", "emoteId"}, emoteId) && text.empty())
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_emote"), "missing_emote");
+            return true;
+        }
+
+        if (emoteId > 0)
+        {
+            creature->HandleEmoteCommand(emoteId);
+        }
+        if (!text.empty())
+        {
+            if (text.size() > 255)
+            {
+                text.resize(255);
+            }
+            creature->TextEmote(text, player);
+        }
+
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_emoted", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}, {"emote_id", emoteId}}));
+        return true;
+    }
+
     bool ActionPolicyAllows(
         uint64 requestId,
         uint32 playerGuid,
@@ -644,9 +1527,26 @@ namespace
                 return;
             }
 
-            if (!player->CanTakeQuest(quest, false))
+            ItemTemplateContainer const* itemTemplates = sObjectMgr->GetItemTemplateStore();
+            bool startsFromItem = std::any_of(
+                itemTemplates->begin(),
+                itemTemplates->end(),
+                [questId](ItemTemplateContainer::value_type const& entry)
+                {
+                    return entry.second.StartQuest == questId;
+                }
+            );
+
+            if (startsFromItem)
             {
-                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "cannot_take_quest"), "cannot_take_quest");
+                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "quest_starts_from_item"), "quest_starts_from_item");
+                return;
+            }
+
+            // Mirror GM .quest add semantics for WM grants instead of player quest-offer eligibility.
+            if (player->IsActiveQuest(questId))
+            {
+                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "quest_already_active"), "quest_already_active");
                 return;
             }
 
@@ -659,6 +1559,66 @@ namespace
             player->AddQuestAndCheckCompletion(quest, nullptr);
             EmitQuestGrantedEvent(player, quest);
             CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "quest_added"));
+            return;
+        }
+
+        if (actionKind == "player_apply_aura")
+        {
+            ExecutePlayerApplyAura(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "player_remove_aura")
+        {
+            ExecutePlayerRemoveAura(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "player_restore_health_power")
+        {
+            ExecutePlayerRestoreHealthPower(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "player_add_item")
+        {
+            ExecutePlayerAddItem(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "player_add_money")
+        {
+            ExecutePlayerAddMoney(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "player_add_reputation")
+        {
+            ExecutePlayerAddReputation(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "creature_spawn")
+        {
+            ExecuteCreatureSpawn(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "creature_despawn")
+        {
+            ExecuteCreatureDespawn(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "creature_say")
+        {
+            ExecuteCreatureSay(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "creature_emote")
+        {
+            ExecuteCreatureEmote(requestId, playerGuid, actionKind, payloadJson);
             return;
         }
 

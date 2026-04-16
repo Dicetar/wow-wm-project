@@ -1,0 +1,53 @@
+{
+  "id": "bonebound_battle_cry",
+  "schema_version": "control.scene.v1",
+  "description": "Temporary WM-owned Bonebound Alpha marker speaks and rallies the scoped player.",
+  "steps": [
+    {
+      "native_action_kind": "creature_spawn",
+      "payload": {
+        "creature_entry": 920101,
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "duration_ms": 12000,
+        "distance": 3.5,
+        "angle_offset": 0.75,
+        "follow_player": true,
+        "follow_distance": 3.5,
+        "follow_angle": 0.75
+      },
+      "risk_level": "medium",
+      "idempotency_suffix": "spawn",
+      "expected_effect": "A temporary WM-owned Bonebound Alpha marker appears near the scoped player."
+    },
+    {
+      "native_action_kind": "creature_say",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "text": "Bonebound, rise and hold the line."
+      },
+      "risk_level": "low",
+      "delay_seconds": 0.5,
+      "idempotency_suffix": "say",
+      "expected_effect": "The WM-owned creature says a short battle cry."
+    },
+    {
+      "native_action_kind": "creature_emote",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "text": "raises a rusted blade in answer."
+      },
+      "risk_level": "low",
+      "idempotency_suffix": "emote",
+      "expected_effect": "The WM-owned creature performs a text emote."
+    },
+    {
+      "native_action_kind": "player_apply_aura",
+      "payload": {
+        "spell_id": 687
+      },
+      "risk_level": "medium",
+      "idempotency_suffix": "buff",
+      "expected_effect": "The scoped player receives a short visible rally buff."
+    }
+  ]
+}

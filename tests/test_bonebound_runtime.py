@@ -22,6 +22,12 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("roll_chance_f(procChance)", runtime)
         self.assertIn("Unit::DealDamage(caster, target, it->tickDamage, nullptr, DOT, SPELL_SCHOOL_MASK_NORMAL", runtime)
         self.assertIn("config.shadowDotCooldownMs = *value;", runtime)
+        self.assertIn("float alphaEchoProcChancePct = 7.5f;", self._repo_root().joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_runtime.h",
+        ).read_text(encoding="utf-8"))
         self.assertIn("uint32 shadowDotCooldownMs = 6000;", self._repo_root().joinpath(
             "native_modules",
             "mod-wm-spells",
@@ -60,6 +66,30 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("WmSpells::HandleBoneboundMeleeDamage(attacker, target, damage)", unit_script)
         self.assertIn("AddSC_mod_wm_spells_unit_scripts", loader)
 
+    def test_alpha_echoes_survive_mount_temporary_unsummon(self) -> None:
+        runtime = self._repo_root().joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_runtime.cpp",
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("uint32 creatureEntry = 0;", runtime)
+        self.assertIn("TempSummon* SpawnBoneboundAlphaEchoFromState", runtime)
+        self.assertIn("owner->IsPetNeedBeTemporaryUnsummoned()", runtime)
+        self.assertIn("Keep the Echo state alive until the main Bonebound pet can return.", runtime)
+        self.assertIn("RestoreTemporarilyUnsummonedBoneboundPet(owner)", runtime)
+        self.assertIn(
+            "if (owner->IsPetNeedBeTemporaryUnsummoned())\n"
+            "            {\n"
+            "                RemoveBoneboundOmega(owner);\n"
+            "                return;\n"
+            "            }\n\n"
+            "            RemoveBoneboundAlphaEchoes(owner);",
+            runtime,
+        )
+        self.assertIn("gBoneboundAlphaEchoes[static_cast<uint32>(restored->GetGUID().GetCounter())] = state;", runtime)
+
     def test_alpha_echo_sql_uses_wm_template_and_bleed_tuning(self) -> None:
         sql = self._repo_root().joinpath(
             "native_modules",
@@ -77,6 +107,41 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn('"shadow_dot_tick_ms":1000', sql)
         self.assertIn('"shadow_dot_damage_per_shadow_power_pct":0', sql)
         self.assertIn('"alpha_echo_creature_entry":920101', sql)
+        self.assertIn('"alpha_echo_proc_chance_pct":7.5', sql)
+
+    def test_night_watchers_lens_uses_visible_aura_marker_for_hidden_effect(self) -> None:
+        repo_root = self._repo_root()
+        runtime = repo_root.joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_runtime.cpp",
+        ).read_text(encoding="utf-8")
+        player_script = repo_root.joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_player_scripts.cpp",
+        ).read_text(encoding="utf-8")
+        unit_script = repo_root.joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_unit_scripts.cpp",
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_ITEM_ENTRY = 910006;", runtime)
+        self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID = 132;", runtime)
+        self.assertIn("player->HasAura(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID)", runtime)
+        self.assertIn("player->ModifyPower(POWER_MANA, restore)", runtime)
+        self.assertIn("Night Watcher's Lens confirms the quarry", runtime)
+        self.assertIn("WmSpells::MaintainNightWatchersLens(player, BONEBOUND_MAINTENANCE_INTERVAL_MS)", player_script)
+        self.assertIn("OnPlayerCreatureKill(Player* killer, Creature* killed) override", player_script)
+        self.assertIn("OnPlayerCreatureKilledByPet(Player* petOwner, Creature* killed) override", player_script)
+        self.assertIn("OnPlayerEquip(Player* player, Item* item", player_script)
+        self.assertIn("OnPlayerUnequip(Player* player, Item* item) override", player_script)
+        self.assertIn("UNITHOOK_ON_UNIT_DEATH", unit_script)
+        self.assertIn("WmSpells::HandleNightWatchersLensKill(owner, killed, killer)", unit_script)
 
 
 if __name__ == "__main__":
