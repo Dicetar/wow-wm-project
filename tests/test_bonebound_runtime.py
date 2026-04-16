@@ -109,7 +109,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn('"alpha_echo_creature_entry":920101', sql)
         self.assertIn('"alpha_echo_proc_chance_pct":7.5', sql)
 
-    def test_night_watchers_lens_uses_visible_aura_marker_for_hidden_effect(self) -> None:
+    def test_night_watchers_lens_tracks_refreshed_visible_target_debuff(self) -> None:
         repo_root = self._repo_root()
         runtime = repo_root.joinpath(
             "native_modules",
@@ -132,16 +132,29 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
 
         self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_ITEM_ENTRY = 910006;", runtime)
         self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID = 132;", runtime)
+        self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_MARK_DEBUFF_SPELL_ID = 770;", runtime)
+        self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_MARK_DURATION_MS = 10000;", runtime)
+        self.assertIn("constexpr float NIGHT_WATCHERS_LENS_PROC_CHANCE_PCT = 10.0f;", runtime)
+        self.assertIn("std::unordered_map<uint64, NightWatchersLensMarkState> gNightWatchersLensMarksByTarget;", runtime)
         self.assertIn("player->HasAura(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID)", runtime)
-        self.assertIn("player->ModifyPower(POWER_MANA, restore)", runtime)
-        self.assertIn("Night Watcher's Lens confirms the quarry", runtime)
+        self.assertIn("bool RefreshNightWatchersLensMark(Player* caster, Unit* target)", runtime)
+        self.assertIn("aura->SetMaxDuration(static_cast<int32>(NIGHT_WATCHERS_LENS_MARK_DURATION_MS));", runtime)
+        self.assertIn("aura->SetDuration(static_cast<int32>(NIGHT_WATCHERS_LENS_MARK_DURATION_MS));", runtime)
+        self.assertIn("gNightWatchersLensMarksByTarget[target->GetGUID().GetRawValue()] =", runtime)
+        self.assertIn("if (IsNightWatchersLensMarked(victim))", runtime)
+        self.assertIn("procChance *= NIGHT_WATCHERS_LENS_MARK_PROC_MULTIPLIER;", runtime)
+        self.assertIn("victimDefenseSkill = 0;", runtime)
+        self.assertIn("miss_chance = 0;", runtime)
+        self.assertIn("dodge_chance = 0;", runtime)
+        self.assertIn("parry_chance = 0;", runtime)
+        self.assertIn("block_chance = 0;", runtime)
         self.assertIn("WmSpells::MaintainNightWatchersLens(player, BONEBOUND_MAINTENANCE_INTERVAL_MS)", player_script)
-        self.assertIn("OnPlayerCreatureKill(Player* killer, Creature* killed) override", player_script)
-        self.assertIn("OnPlayerCreatureKilledByPet(Player* petOwner, Creature* killed) override", player_script)
         self.assertIn("OnPlayerEquip(Player* player, Item* item", player_script)
         self.assertIn("OnPlayerUnequip(Player* player, Item* item) override", player_script)
-        self.assertIn("UNITHOOK_ON_UNIT_DEATH", unit_script)
-        self.assertIn("WmSpells::HandleNightWatchersLensKill(owner, killed, killer)", unit_script)
+        self.assertIn("UNITHOOK_ON_DAMAGE", unit_script)
+        self.assertIn("UNITHOOK_ON_BEFORE_ROLL_MELEE_OUTCOME_AGAINST", unit_script)
+        self.assertIn("WmSpells::HandleNightWatchersLensDamage(attacker, victim, damage)", unit_script)
+        self.assertIn("WmSpells::HandleNightWatchersLensDefenseBypass(", unit_script)
 
 
 if __name__ == "__main__":

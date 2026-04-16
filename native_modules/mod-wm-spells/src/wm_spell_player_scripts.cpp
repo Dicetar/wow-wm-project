@@ -1,5 +1,4 @@
 #include "ScriptMgr.h"
-#include "Creature.h"
 #include "Item.h"
 #include "Player.h"
 #include "wm_spell_runtime.h"
@@ -61,16 +60,6 @@ public:
         WmSpells::ForgetBoneboundCompanions(player);
         WmSpells::ForgetIntellectBlockPassive(player);
         WmSpells::ForgetNightWatchersLens(player);
-    }
-
-    void OnPlayerCreatureKill(Player* killer, Creature* killed) override
-    {
-        WmSpells::HandleNightWatchersLensKill(killer, killed, killer);
-    }
-
-    void OnPlayerCreatureKilledByPet(Player* petOwner, Creature* killed) override
-    {
-        WmSpells::HandleNightWatchersLensKill(petOwner, killed, petOwner);
     }
 
     void OnPlayerEquip(Player* player, Item* item, uint8 /*bag*/, uint8 /*slot*/, bool /*update*/) override

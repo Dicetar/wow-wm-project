@@ -36,6 +36,7 @@ class ManagedItemDraftValidationTests(unittest.TestCase):
         self.assertEqual(draft.spells[0].spell_id, 132)
         self.assertEqual(draft.spells[0].trigger, 1)
         self.assertIn("visible_aura_marker", draft.tags)
+        self.assertIn("target_debuff_proc", draft.tags)
         self.assertIn("native_hidden_effect", draft.tags)
 
 

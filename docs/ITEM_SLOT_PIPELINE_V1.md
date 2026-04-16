@@ -44,7 +44,9 @@ This matches the slot-based architecture established earlier for WM item work.
   - +6 Stamina
   - +12 spell power
   - equip spell `132` with trigger `1`, used as the visible `Detect Invisibility` marker aura for the lens
-  - native hidden effect in `mod-wm-spells`: while the lens is equipped and the visible aura is present, player/pet/owned-summon creature kills restore a small amount of mana on a 12-second cooldown
+  - native effect in `mod-wm-spells`: while the lens is equipped and the visible aura is present, direct player attacks and wand/direct damage hits have a 10% chance to apply or refresh a visible 10-second target debuff (`770`, Faerie Fire)
+  - while the WM-tracked target debuff is active, melee/ranged attack outcome rolls against that target ignore miss, dodge, parry, block, and defense/glancing checks covered by the current hook
+  - WM-owned proc hooks can opt into the "effect chance x2" rule; Bonebound Alpha Echo proc chance now doubles against a WM-marked target
 - Quest `910024` (`Bounty: Nightbane Dark Runner - Lens`) rewards item `910006` x1 plus the existing 12 silver.
 - Retired test slot `910021` was not a valid visual proof after reward mutation because the player had already accepted/rewarded that quest ID before the item reward was attached; use a fresh quest slot when changing visible quest rewards.
 - BridgeLab commands on 2026-04-17:
@@ -67,9 +69,11 @@ python -m wm.quests.edit_live \
   --summary
 ```
 
-`PARTIAL`: client-visible behavior of the item passive still needs in-game confirmation after accepting/turning in the fresh quest and equipping the lens. If the item aura/effect is stale, publish a fresh item slot or restart worldserver; item reload behavior and client item cache behavior are core/module-specific.
+`PARTIAL`: client-visible behavior of the item passive still needs in-game confirmation after accepting/turning in the fresh quest, equipping the lens, and seeing the target debuff apply/refresh in combat. If the item aura/effect is stale, publish a fresh item slot or restart worldserver; item reload behavior and client item cache behavior are core/module-specific.
 
-Design rule: hidden server-side item effects are allowed only when the player gets an effect indication. For this lens, the visible indication is the `Detect Invisibility` aura plus a system message on mana restore. Do not repeat the retired `13890` boot-enchant-on-headgear mistake.
+`PARTIAL`: arbitrary stock/core proc chance doubling is not proven. The current implementation doubles WM-owned proc hooks that explicitly opt in; adding true global proc-doubling needs a deeper proc-event hook.
+
+Design rule: hidden server-side item effects are allowed only when the player gets an effect indication. For this lens, the visible indications are the `Detect Invisibility` wearer aura and the target debuff. Do not repeat the retired `13890` boot-enchant-on-headgear mistake, and do not ship a silent resource/stat/combat mutation.
 
 ---
 

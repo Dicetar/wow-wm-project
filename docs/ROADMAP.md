@@ -301,7 +301,9 @@ Treat WM-created artifacts and WM-owned spawned objects as first-class lifecycle
 
 - `PARTIAL`
 - item pipeline V1 is repo-tested and live-proven for one managed bounty reward at DB/runtime-reload level
-- `control/examples/items/night_watchers_lens.json` publishes item `910006` (`Night Watcher's Lens`) from a managed item slot with Intellect, Stamina, spell power, visible aura spell `132`, and a native mana-restore-on-kill effect gated by equipped item plus visible aura
+- `control/examples/items/night_watchers_lens.json` publishes item `910006` (`Night Watcher's Lens`) from a managed item slot with Intellect, Stamina, spell power, visible wearer aura spell `132`, and a native 10% direct-hit target-mark proc gated by equipped item plus visible aura
+- the target mark uses a visible debuff (`770`) with a tracked 10-second duration that refreshes on reapply; melee/ranged attacks against marked targets bypass the avoidance/defense outcomes covered by the current hook, and WM-owned proc hooks such as Bonebound Alpha Echo can opt into doubled proc chance
+- generic stock/core proc chance doubling remains `PARTIAL` until a real proc-event hook exists; do not document the lens as globally doubling every stock effect yet
 - quest `910024` (`Bounty: Nightbane Dark Runner - Lens`) now rewards item `910006` x1 through the shared quest edit path, so WM can replace coin-only bounty rewards with managed artifacts without bypassing slot governance
 - visible reward iteration must allocate a fresh quest slot after an older test ID has been accepted or rewarded; `910021` was retired for this proof because the live client kept showing stale money-only reward data after mutation
 - client-visible reward pickup, equip behavior, and passive behavior remain `PARTIAL` until confirmed in-game after quest turn-in

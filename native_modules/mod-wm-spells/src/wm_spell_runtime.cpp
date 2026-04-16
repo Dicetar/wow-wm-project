@@ -9,6 +9,7 @@
 #include "ObjectAccessor.h"
 #include "PetDefines.h"
 #include "Random.h"
+#include "SpellAuras.h"
 #include "TemporarySummon.h"
 
 #include <algorithm>
@@ -26,17 +27,26 @@ namespace
     constexpr uint32 DUAL_WIELD_SPELL_ID = 674;
     constexpr uint32 NIGHT_WATCHERS_LENS_ITEM_ENTRY = 910006;
     // Detect Invisibility is a client-known, visible marker aura that fits the lens fantasy.
-    // The WM-owned hidden mechanic below is gated on this aura plus the equipped item.
+    // The WM-owned proc mechanic below is gated on this aura plus the equipped item.
     constexpr uint32 NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID = 132;
-    constexpr uint32 NIGHT_WATCHERS_LENS_COOLDOWN_MS = 12000;
+    // Faerie Fire is a visible target debuff with matching "exposed defenses" semantics.
+    constexpr uint32 NIGHT_WATCHERS_LENS_MARK_DEBUFF_SPELL_ID = 770;
+    constexpr uint32 NIGHT_WATCHERS_LENS_MARK_DURATION_MS = 10000;
+    constexpr float NIGHT_WATCHERS_LENS_PROC_CHANCE_PCT = 10.0f;
+    constexpr float NIGHT_WATCHERS_LENS_MARK_PROC_MULTIPLIER = 2.0f;
     constexpr float WM_PI = 3.14159265358979323846f;
 
     WmSpells::RuntimeConfig gConfig;
     uint32 gDebugPollTimer = 0;
     std::unordered_map<uint32, ObjectGuid> gBoneboundOmegaByPlayer;
     std::unordered_map<uint32, int32> gIntellectBlockRatingByPlayer;
-    std::unordered_map<uint32, uint32> gNightWatchersLensCooldownMsByPlayer;
     std::unordered_set<uint32> gNightWatchersLensAuraAppliedByPlayer;
+
+    struct NightWatchersLensMarkState
+    {
+        ObjectGuid casterGuid;
+        uint32 remainingMs = 0;
+    };
 
     struct BoneboundShadowDotState
     {
@@ -63,6 +73,7 @@ namespace
     std::vector<BoneboundShadowDotState> gBoneboundShadowDots;
     std::unordered_map<uint32, BoneboundAlphaEchoState> gBoneboundAlphaEchoes;
     std::unordered_map<uint32, uint32> gBoneboundShadowDotCooldownByPet;
+    std::unordered_map<uint64, NightWatchersLensMarkState> gNightWatchersLensMarksByTarget;
 
     void ParseUIntSet(std::string const& raw, std::unordered_set<uint32>& target)
     {
@@ -1319,25 +1330,6 @@ namespace
         return headItem && headItem->GetTemplate() && headItem->GetTemplate()->ItemId == NIGHT_WATCHERS_LENS_ITEM_ENTRY;
     }
 
-    void TickNightWatchersLensCooldown(Player* player, uint32 diff)
-    {
-        if (!player || diff == 0)
-            return;
-
-        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
-        auto cooldownIt = gNightWatchersLensCooldownMsByPlayer.find(playerGuid);
-        if (cooldownIt == gNightWatchersLensCooldownMsByPlayer.end())
-            return;
-
-        if (cooldownIt->second > diff)
-        {
-            cooldownIt->second -= diff;
-            return;
-        }
-
-        gNightWatchersLensCooldownMsByPlayer.erase(cooldownIt);
-    }
-
     void EnsureNightWatchersLensAura(Player* player)
     {
         if (!player || player->HasAura(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID))
@@ -1349,18 +1341,51 @@ namespace
             gNightWatchersLensAuraAppliedByPlayer.insert(playerGuid);
     }
 
-    int32 ResolveNightWatchersLensManaRestore(Player* player)
+    bool HasNightWatchersLensReady(Player* player)
     {
-        if (!player || player->GetMaxPower(POWER_MANA) == 0)
-            return 0;
+        return player
+            && WmSpells::IsPlayerAllowed(player)
+            && IsNightWatchersLensEquipped(player)
+            && player->HasAura(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID);
+    }
 
-        float intellect = std::max(0.0f, player->GetTotalStatValue(STAT_INTELLECT));
-        int32 shadowPower = std::max<int32>(0, player->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_SHADOW));
-        uint32 maxMana = player->GetMaxPower(POWER_MANA);
-        float restored = static_cast<float>(maxMana) * 0.02f
-            + intellect * 0.33f
-            + static_cast<float>(shadowPower) * 0.20f;
-        return std::max<int32>(10, static_cast<int32>(std::round(restored)));
+    bool RefreshNightWatchersLensMark(Player* caster, Unit* target)
+    {
+        if (!caster || !target || !target->IsAlive())
+            return false;
+
+        Aura* aura = caster->AddAura(NIGHT_WATCHERS_LENS_MARK_DEBUFF_SPELL_ID, target);
+        if (!aura)
+            aura = target->GetAura(NIGHT_WATCHERS_LENS_MARK_DEBUFF_SPELL_ID, caster->GetGUID());
+        if (!aura)
+            return false;
+
+        aura->SetMaxDuration(static_cast<int32>(NIGHT_WATCHERS_LENS_MARK_DURATION_MS));
+        aura->SetDuration(static_cast<int32>(NIGHT_WATCHERS_LENS_MARK_DURATION_MS));
+
+        gNightWatchersLensMarksByTarget[target->GetGUID().GetRawValue()] = {
+            aura->GetCasterGUID(),
+            NIGHT_WATCHERS_LENS_MARK_DURATION_MS,
+        };
+        return true;
+    }
+
+    void UpdateNightWatchersLensMarks(uint32 diff)
+    {
+        if (diff == 0 || gNightWatchersLensMarksByTarget.empty())
+            return;
+
+        for (auto it = gNightWatchersLensMarksByTarget.begin(); it != gNightWatchersLensMarksByTarget.end();)
+        {
+            if (it->second.remainingMs <= diff)
+            {
+                it = gNightWatchersLensMarksByTarget.erase(it);
+                continue;
+            }
+
+            it->second.remainingMs -= diff;
+            ++it;
+        }
     }
 
     int32 ResolveIntellectBlockRating(Player* player, WmSpells::IntellectBlockPassiveConfig const& config)
@@ -1577,6 +1602,7 @@ namespace WmSpells
     {
         UpdateBoneboundShadowDots(diff);
         UpdateBoneboundAlphaEchoes(diff);
+        UpdateNightWatchersLensMarks(diff);
 
         if (gBoneboundOmegaByPlayer.empty())
             return;
@@ -1681,6 +1707,8 @@ namespace WmSpells
                 return;
 
             float procChance = std::clamp(runtimeConfig->alphaEchoProcChancePct, 0.0f, 100.0f);
+            if (IsNightWatchersLensMarked(victim))
+                procChance = std::clamp(procChance * NIGHT_WATCHERS_LENS_MARK_PROC_MULTIPLIER, 0.0f, 100.0f);
             if (procChance > 0.0f && roll_chance_f(procChance))
                 TrySpawnBoneboundAlphaEcho(owner, alphaPet, victim, *runtimeConfig);
             return;
@@ -1754,12 +1782,10 @@ namespace WmSpells
         ApplyIntellectBlockRating(player, 0);
     }
 
-    void MaintainNightWatchersLens(Player* player, uint32 diff)
+    void MaintainNightWatchersLens(Player* player, uint32 /*diff*/)
     {
         if (!player)
             return;
-
-        TickNightWatchersLensCooldown(player, diff);
 
         if (!IsPlayerAllowed(player) || !IsNightWatchersLensEquipped(player))
         {
@@ -1776,43 +1802,65 @@ namespace WmSpells
             return;
 
         uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
-        gNightWatchersLensCooldownMsByPlayer.erase(playerGuid);
         if (gNightWatchersLensAuraAppliedByPlayer.erase(playerGuid) > 0)
             player->RemoveAurasDueToSpell(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID);
     }
 
-    void HandleNightWatchersLensKill(Player* player, Creature* killed, Unit* killer)
+    bool IsNightWatchersLensMarked(Unit const* unit)
     {
-        if (!player || !killed || !killer)
+        if (!unit)
+            return false;
+
+        auto markIt = gNightWatchersLensMarksByTarget.find(unit->GetGUID().GetRawValue());
+        if (markIt == gNightWatchersLensMarksByTarget.end())
+            return false;
+
+        Aura* aura = unit->GetAura(NIGHT_WATCHERS_LENS_MARK_DEBUFF_SPELL_ID, markIt->second.casterGuid);
+        return aura && aura->GetDuration() > 0;
+    }
+
+    void HandleNightWatchersLensDamage(Unit* attacker, Unit* victim, uint32& damage)
+    {
+        if (!attacker || !victim || damage == 0 || attacker == victim)
             return;
 
-        if (!IsPlayerAllowed(player) || !IsNightWatchersLensEquipped(player))
+        Player* player = attacker->ToPlayer();
+        if (!HasNightWatchersLensReady(player))
             return;
 
-        if (!player->HasAura(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID))
+        float procChance = NIGHT_WATCHERS_LENS_PROC_CHANCE_PCT;
+        if (IsNightWatchersLensMarked(victim))
+            procChance *= NIGHT_WATCHERS_LENS_MARK_PROC_MULTIPLIER;
+
+        if (!roll_chance_f(std::clamp(procChance, 0.0f, 100.0f)))
             return;
 
-        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
-        if (auto cooldownIt = gNightWatchersLensCooldownMsByPlayer.find(playerGuid);
-            cooldownIt != gNightWatchersLensCooldownMsByPlayer.end() && cooldownIt->second > 0)
-        {
-            return;
-        }
+        RefreshNightWatchersLensMark(player, victim);
+    }
 
-        int32 missingMana = static_cast<int32>(player->GetMaxPower(POWER_MANA)) - static_cast<int32>(player->GetPower(POWER_MANA));
-        if (missingMana <= 0)
+    void HandleNightWatchersLensDefenseBypass(
+        Unit const* /*attacker*/,
+        Unit const* victim,
+        WeaponAttackType /*attType*/,
+        int32& /*attackerMaxSkillValueForLevel*/,
+        int32& victimMaxSkillValueForLevel,
+        int32& attackerWeaponSkill,
+        int32& victimDefenseSkill,
+        int32& /*crit_chance*/,
+        int32& miss_chance,
+        int32& dodge_chance,
+        int32& parry_chance,
+        int32& block_chance)
+    {
+        if (!IsNightWatchersLensMarked(victim))
             return;
 
-        int32 restore = std::min<int32>(missingMana, ResolveNightWatchersLensManaRestore(player));
-        if (restore <= 0)
-            return;
-
-        player->ModifyPower(POWER_MANA, restore);
-        gNightWatchersLensCooldownMsByPlayer[playerGuid] = NIGHT_WATCHERS_LENS_COOLDOWN_MS;
-        player->SendSystemMessage(
-            std::string("Night Watcher's Lens confirms the quarry: ")
-            + std::to_string(restore)
-            + " mana restored.");
+        victimMaxSkillValueForLevel = attackerWeaponSkill;
+        victimDefenseSkill = 0;
+        miss_chance = 0;
+        dodge_chance = 0;
+        parry_chance = 0;
+        block_chance = 0;
     }
 
     void ReapplyBoneboundOverlay(Pet* pet)

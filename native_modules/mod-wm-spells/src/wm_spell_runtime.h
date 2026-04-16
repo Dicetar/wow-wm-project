@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Common.h"
-#include "Creature.h"
 #include "ObjectGuid.h"
 #include "Pet.h"
 #include "Player.h"
@@ -147,6 +146,20 @@ namespace WmSpells
     void ForgetIntellectBlockPassive(Player* player);
     void MaintainNightWatchersLens(Player* player, uint32 diff);
     void ForgetNightWatchersLens(Player* player);
-    void HandleNightWatchersLensKill(Player* player, Creature* killed, Unit* killer);
+    bool IsNightWatchersLensMarked(Unit const* unit);
+    void HandleNightWatchersLensDamage(Unit* attacker, Unit* victim, uint32& damage);
+    void HandleNightWatchersLensDefenseBypass(
+        Unit const* attacker,
+        Unit const* victim,
+        WeaponAttackType attType,
+        int32& attackerMaxSkillValueForLevel,
+        int32& victimMaxSkillValueForLevel,
+        int32& attackerWeaponSkill,
+        int32& victimDefenseSkill,
+        int32& crit_chance,
+        int32& miss_chance,
+        int32& dodge_chance,
+        int32& parry_chance,
+        int32& block_chance);
     void PollDebugRequests(uint32 diff);
 }

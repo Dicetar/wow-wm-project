@@ -37,7 +37,7 @@ This repository is now a real WM platform baseline, not just an idea pile.
   - spell reward / display spell
   - XP difficulty
   - reputation reward slots mapped to the current `quest_template` schema
-- BridgeLab bounty reward proof is `WORKING` at DB/runtime-reload level for fresh quest slot `910024`: managed item slot `910006` (`Night Watcher's Lens`) is published from `control/examples/items/night_watchers_lens.json`, rewards a cloth head item with Intellect, Stamina, spell power, visible aura spell `132`, and a native mana-restore-on-kill effect gated by equipped item plus visible aura, and is wired into `RewardItem1` / `RewardAmount1` alongside the old 12 silver
+- BridgeLab bounty reward proof is `WORKING` at DB/runtime-reload level for fresh quest slot `910024`: managed item slot `910006` (`Night Watcher's Lens`) is published from `control/examples/items/night_watchers_lens.json`, rewards a cloth head item with Intellect, Stamina, spell power, visible wearer aura spell `132`, and a native 10% direct-hit target debuff proc gated by equipped item plus visible aura, and is wired into `RewardItem1` / `RewardAmount1` alongside the old 12 silver
 - direct quest grant through SOAP
 - runtime quest-state polling from the characters DB
 - suppression while a reactive quest is active, complete-but-not-turned-in, or cooling down after reward
@@ -159,8 +159,9 @@ For the portable workflow, the repo now owns:
 - some repack-specific/custom NPC or world content still drifts because newer module trees do not perfectly match the historical pack
 - WeatherVibe is loaded but still needs meaningful zone/profile data
 - optional IPP extras are intentionally excluded from the default portable bootstrap path
-- item reward publishing is proven for DB rows and runtime reload, but `Night Watcher's Lens` client/equip/passive behavior remains `PARTIAL` until the live quest turn-in and equip are confirmed; if stale after reload, restart worldserver before changing item schema again
+- item reward publishing is proven for DB rows and runtime reload, but `Night Watcher's Lens` client/equip/passive behavior remains `PARTIAL` until the live quest turn-in, equip, and visible target-debuff refresh behavior are confirmed; if stale after reload, restart worldserver before changing item schema again
 - hidden item effects are not acceptable without player-facing indication; use visible auras/buffs/debuffs/messages/tooltips, and do not use unrelated stock spells as flavor carriers
+- generic stock/core proc chance doubling is not proven; the current lens doubles WM-owned proc hooks that explicitly opt in, including Bonebound Alpha Echo
 - visible quest reward iteration must use fresh reserved quest slots after a player has accepted/rewarded an older test ID; `910021` stayed visually stale after mutation, so `910024` replaced it for the lens reward proof
 - most native mutation action kinds are intentionally disabled/not implemented until their C++ bodies pass lab tests
 - Questie needs a tiny compat shim for WM custom quest ids because upstream Questie-335 does not know repo-owned quest ids like `910000`
