@@ -19,7 +19,7 @@ def load_registry(settings: Settings) -> ControlRegistry:
 
 
 def load_proposal(path: Path) -> ControlProposal:
-    return ControlProposal.model_validate_json(path.read_text(encoding="utf-8"))
+    return ControlProposal.model_validate_json(path.read_text(encoding="utf-8-sig"))
 
 
 def write_json(value: Any, path: Path | None = None) -> None:

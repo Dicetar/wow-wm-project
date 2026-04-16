@@ -1,5 +1,5 @@
 Status: DESIGN_ONLY
-Last verified: 2026-04-15
+Last verified: 2026-04-16
 Verified by: Codex
 Doc type: design
 
@@ -105,6 +105,17 @@ Make the existing reactive bounty loop work fully through native perception and 
 ### Goal
 
 Make manual control the normal operator lane for native actions and keep it identical to future LLM contracts.
+
+### Current checkpoint (2026-04-16)
+
+- `PARTIAL`
+- repo implementation now has explicit audit visibility through `python -m wm.control.audit`
+- `wm.control.apply --summary` reports idempotency, validation, dry-run/apply status, and native request ids/statuses when present
+- `control/policies/direct_apply.json` now defaults `max_source_event_age_seconds` to `600`, so stale non-admin source events are rejected instead of silently replayed
+- repo tests cover audit fetch/list, native request extraction for `quest_grant` / `native_bridge_action`, stale-event rejection, wrong-player rejection, and duplicate idempotency rejection
+- BridgeLab proof shows control-driven `debug_ping` reaching native request `36` `done` and visible through `wm.control.audit`
+- fresh bounty grant audit linkage is proven but live grant remains blocked by runtime state: event `1551` -> proposal `6` -> native `quest_add` request `37` failed with `player_not_online`
+- exit criteria remain open until the fresh bounty grant is rerun with validation player `5406` online and reaches `done`
 
 ### Deliverables
 

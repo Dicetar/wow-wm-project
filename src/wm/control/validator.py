@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+from datetime import timezone
 from typing import Any
 
 from wm.control.builder import compute_idempotency_key
@@ -18,6 +20,7 @@ def validate_control_proposal(
     registry: ControlRegistry,
     source_event: WMEvent | None = None,
     require_live_recipe: bool = True,
+    now: datetime | None = None,
 ) -> ControlValidationResult:
     issues: list[ControlIssue] = []
     registry_issues = registry.validate()
@@ -97,6 +100,13 @@ def validate_control_proposal(
                     message=f"Recipe {normalized.selected_recipe} is not eligible for event type {source_event.event_type}.",
                 )
             )
+        _validate_source_event_freshness(
+            issues=issues,
+            source_event=source_event,
+            policy=policy,
+            now=now,
+            author_kind=normalized.author.kind,
+        )
 
     if normalized.action.kind in {"quest_publish", "item_publish", "spell_publish"} and normalized.author.kind == "llm":
         issues.append(
@@ -130,3 +140,73 @@ def _validate_risk(*, issues: list[ControlIssue], path: str, actual: str, maximu
     maximum_rank = RISK_ORDER.get(maximum, -1)
     if actual_rank > maximum_rank:
         issues.append(ControlIssue(path=path, message=f"Risk {actual} exceeds maximum {maximum} for {owner}."))
+
+
+def _validate_source_event_freshness(
+    *,
+    issues: list[ControlIssue],
+    source_event: WMEvent,
+    policy: dict[str, Any],
+    now: datetime | None,
+    author_kind: str,
+) -> None:
+    if author_kind == "manual_admin":
+        return
+    max_age_raw = policy.get("max_source_event_age_seconds")
+    if max_age_raw in (None, "", 0, "0"):
+        return
+    try:
+        max_age_seconds = int(max_age_raw)
+    except (TypeError, ValueError):
+        issues.append(
+            ControlIssue(
+                path="policy.max_source_event_age_seconds",
+                message=f"Invalid max_source_event_age_seconds policy value: {max_age_raw}",
+            )
+        )
+        return
+    if max_age_seconds <= 0:
+        return
+
+    occurred_at = _parse_event_time(source_event.occurred_at)
+    if occurred_at is None:
+        issues.append(
+            ControlIssue(
+                path="source_event.occurred_at",
+                message=f"Could not parse source event timestamp: {source_event.occurred_at}",
+            )
+        )
+        return
+
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    current_time = current_time.astimezone(timezone.utc)
+    age_seconds = int((current_time - occurred_at).total_seconds())
+    if age_seconds > max_age_seconds:
+        issues.append(
+            ControlIssue(
+                path="source_event.occurred_at",
+                message=(
+                    f"Source event is stale: age_seconds={age_seconds} exceeds "
+                    f"max_source_event_age_seconds={max_age_seconds}."
+                ),
+            )
+        )
+
+
+def _parse_event_time(value: str) -> datetime | None:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    if " " in normalized and "T" not in normalized:
+        normalized = normalized.replace(" ", "T", 1)
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)

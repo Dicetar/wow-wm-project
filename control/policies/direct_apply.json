@@ -3,6 +3,7 @@
   "schema_version": "control.policy.v1",
   "max_actions_per_proposal": 1,
   "max_live_risk": "medium",
+  "max_source_event_age_seconds": 600,
   "llm_requires_env": "WM_LLM_DIRECT_APPLY",
   "all_apply_requires_confirm": true,
   "manual_admin_requires_reason": true,

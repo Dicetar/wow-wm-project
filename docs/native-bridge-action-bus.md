@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-15
+Last verified: 2026-04-16
 Verified by: Codex
 Doc type: reference
 
@@ -272,9 +272,16 @@ Example proposal:
 python -m wm.control.validate --proposal control\examples\proposals\manual_native_debug_ping.json --summary
 python -m wm.control.apply --proposal control\examples\proposals\manual_native_debug_ping.json --mode dry-run --summary
 python -m wm.control.apply --proposal control\examples\proposals\manual_native_debug_ping.json --mode apply --confirm-live-apply --summary
+python -m wm.control.audit --idempotency-key <key-from-apply-summary> --summary
 ```
 
-The validator rejects unknown native verbs before they reach the queue.
+The validator rejects unknown native verbs before they reach the queue. Non-admin event-bound proposals also reject stale source events by default through `control/policies/direct_apply.json` `max_source_event_age_seconds=600`; build proposals from fresh `wm_event_log` rows instead of copying old example JSON for live apply.
+
+Current control-native convergence status:
+
+- `WORKING`: repo tests cover proposal validation, idempotency rejection, wrong-player rejection, stale-event rejection, audit row fetch/list, and native request extraction from `quest_grant` / `native_bridge_action` execution results.
+- `WORKING`: BridgeLab control debug proof ran through `wm.control.validate`, `wm.control.apply`, and `wm.control.audit`; native `debug_ping` request `36` reached `done`.
+- `PARTIAL`: fresh bounty `quest_grant` proof created event `1551`, proposal `6`, and native `quest_add` request `37`, but the native request failed with `player_not_online`; rerun with player `5406` online before claiming the bounty grant exit criterion.
 
 ## Broad Action Vocabulary
 

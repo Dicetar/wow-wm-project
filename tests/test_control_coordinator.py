@@ -1,5 +1,7 @@
 import os
 import unittest
+from datetime import datetime
+from datetime import timezone
 
 from wm.control.builder import build_manual_proposal
 from wm.control.coordinator import ControlCoordinator
@@ -96,6 +98,7 @@ class ControlCoordinatorTests(unittest.TestCase):
             event_store=FakeEventStore(event),  # type: ignore[arg-type]
             executor=executor,  # type: ignore[arg-type]
             audit_store=audit,  # type: ignore[arg-type]
+            now=datetime(2026, 4, 10, 12, 5, tzinfo=timezone.utc),
         )
         proposal = build_manual_proposal(
             event=event,

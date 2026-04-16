@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+from dataclasses import dataclass
 import json
 import subprocess
 from typing import Any
@@ -11,6 +13,34 @@ from wm.db.mysql_cli import MysqlCliClient, MysqlCliError
 from wm.events.store import _sql_int_or_null
 from wm.events.store import _sql_string
 from wm.events.store import _sql_string_or_null
+
+
+@dataclass(slots=True)
+class ControlAuditRecord:
+    proposal_id: int
+    idempotency_key: str
+    schema_version: str
+    registry_hash: str | None
+    schema_hash: str | None
+    author_mode: str
+    author_name: str | None
+    player_guid: int | None
+    source_event_id: int | None
+    source_event_key: str | None
+    selected_recipe: str
+    action_kind: str
+    status: str
+    raw_proposal: dict[str, Any]
+    normalized_proposal: dict[str, Any] | None
+    validation: dict[str, Any] | None
+    dry_run: dict[str, Any] | None
+    apply: dict[str, Any] | None
+    policy_decision: dict[str, Any] | None
+    created_at: str | None
+    updated_at: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 class ControlAuditStore:
@@ -27,6 +57,37 @@ class ControlAuditStore:
         if not rows:
             return None
         return str(rows[0]["Status"])
+
+    def get_record(self, *, idempotency_key: str) -> ControlAuditRecord | None:
+        rows = self._query_world(
+            _control_proposal_select_sql()
+            + " FROM wm_control_proposal "
+            + f"WHERE IdempotencyKey = {_sql_string(idempotency_key)} "
+            + "LIMIT 1"
+        )
+        return _row_to_record(rows[0]) if rows else None
+
+    def list_records(
+        self,
+        *,
+        source_event_id: int | None = None,
+        player_guid: int | None = None,
+        limit: int = 20,
+    ) -> list[ControlAuditRecord]:
+        predicates: list[str] = []
+        if source_event_id is not None:
+            predicates.append(f"SourceEventID = {int(source_event_id)}")
+        if player_guid is not None:
+            predicates.append(f"PlayerGUID = {int(player_guid)}")
+        where_clause = f"WHERE {' AND '.join(predicates)} " if predicates else ""
+        rows = self._query_world(
+            _control_proposal_select_sql()
+            + " FROM wm_control_proposal "
+            + where_clause
+            + "ORDER BY ProposalID DESC "
+            + f"LIMIT {max(1, min(200, int(limit)))}"
+        )
+        return [_row_to_record(row) for row in rows]
 
     def record_proposal(
         self,
@@ -117,3 +178,63 @@ class ControlAuditStore:
         )
         if completed.returncode != 0:
             raise MysqlCliError(completed.stderr.strip() or completed.stdout.strip() or "mysql execute failed")
+
+
+def _control_proposal_select_sql() -> str:
+    return (
+        "SELECT ProposalID, IdempotencyKey, SchemaVersion, RegistryHash, SchemaHash, AuthorMode, AuthorName, "
+        "PlayerGUID, SourceEventID, SourceEventKey, SelectedRecipe, ActionKind, Status, RawProposalJSON, "
+        "NormalizedProposalJSON, ValidationJSON, DryRunJSON, ApplyJSON, PolicyDecisionJSON, CreatedAt, UpdatedAt"
+    )
+
+
+def _row_to_record(row: dict[str, Any]) -> ControlAuditRecord:
+    return ControlAuditRecord(
+        proposal_id=int(row["ProposalID"]),
+        idempotency_key=str(row["IdempotencyKey"]),
+        schema_version=str(row["SchemaVersion"]),
+        registry_hash=_str_or_none(row.get("RegistryHash")),
+        schema_hash=_str_or_none(row.get("SchemaHash")),
+        author_mode=str(row["AuthorMode"]),
+        author_name=_str_or_none(row.get("AuthorName")),
+        player_guid=_int_or_none(row.get("PlayerGUID")),
+        source_event_id=_int_or_none(row.get("SourceEventID")),
+        source_event_key=_str_or_none(row.get("SourceEventKey")),
+        selected_recipe=str(row["SelectedRecipe"]),
+        action_kind=str(row["ActionKind"]),
+        status=str(row["Status"]),
+        raw_proposal=_json_object_or_default(row.get("RawProposalJSON")),
+        normalized_proposal=_json_object_or_none(row.get("NormalizedProposalJSON")),
+        validation=_json_object_or_none(row.get("ValidationJSON")),
+        dry_run=_json_object_or_none(row.get("DryRunJSON")),
+        apply=_json_object_or_none(row.get("ApplyJSON")),
+        policy_decision=_json_object_or_none(row.get("PolicyDecisionJSON")),
+        created_at=_str_or_none(row.get("CreatedAt")),
+        updated_at=_str_or_none(row.get("UpdatedAt")),
+    )
+
+
+def _json_object_or_default(value: Any) -> dict[str, Any]:
+    return _json_object_or_none(value) or {}
+
+
+def _json_object_or_none(value: Any) -> dict[str, Any] | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = json.loads(str(value))
+    except json.JSONDecodeError:
+        return {"raw": str(value)}
+    if isinstance(parsed, dict):
+        return parsed
+    return {"value": parsed}
+
+
+def _str_or_none(value: Any) -> str | None:
+    return None if value in (None, "") else str(value)
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    return int(value)

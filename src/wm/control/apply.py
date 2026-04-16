@@ -7,6 +7,9 @@ from pathlib import Path
 from wm.config import Settings
 from wm.control._cli import build_live_coordinator
 from wm.control._cli import load_proposal
+from wm.control.summary import execution_status
+from wm.control.summary import format_native_request_summary
+from wm.control.summary import native_request_refs_from_results
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -30,8 +33,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.summary:
         print(
             f"status={result.status} mode={args.mode} action={proposal.action.kind} "
-            f"recipe={proposal.selected_recipe} issues={len(result.issues or [])}"
+            f"recipe={proposal.selected_recipe} idempotency_key={result.proposal.idempotency_key} "
+            f"audit_status={result.status} validation_ok={result.validation.ok} "
+            f"dry_run_status={execution_status(result.dry_run)} apply_status={execution_status(result.applied)} "
+            f"issues={len(result.issues or [])}"
         )
+        for ref in native_request_refs_from_results(result.applied, result.dry_run):
+            print(format_native_request_summary(ref))
         for issue in result.issues or []:
             print(f"{issue.severity} path={issue.path} message={issue.message}")
     else:

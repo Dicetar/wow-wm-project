@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import os
 from typing import Any
 
@@ -48,16 +49,18 @@ class ControlCoordinator:
         event_store: EventStore,
         executor: ReactionExecutor,
         audit_store: ControlAuditStore | None = None,
+        now: datetime | None = None,
     ) -> None:
         self.registry = registry
         self.event_store = event_store
         self.executor = executor
         self.audit_store = audit_store
+        self.now = now
 
     def validate(self, proposal: ControlProposal) -> ControlValidationResult:
         proposal = _ensure_idempotency(proposal)
         source_event = self._resolve_source_event(proposal)
-        result = validate_control_proposal(proposal=proposal, registry=self.registry, source_event=source_event)
+        result = validate_control_proposal(proposal=proposal, registry=self.registry, source_event=source_event, now=self.now)
         if source_event is None and proposal.author.kind != "manual_admin":
             result.issues.append(ControlIssue(path="source_event", message="Source event does not exist."))
             result.ok = False

@@ -1,4 +1,6 @@
 import unittest
+from datetime import datetime
+from datetime import timezone
 
 from pydantic import ValidationError
 
@@ -7,6 +9,10 @@ from wm.control.models import ControlAuthor
 from wm.control.registry import ControlRegistry
 from wm.control.validator import validate_control_proposal
 from wm.events.models import WMEvent
+
+
+FRESH_NOW = datetime(2026, 4, 10, 12, 5, tzinfo=timezone.utc)
+STALE_NOW = datetime(2026, 4, 10, 12, 11, tzinfo=timezone.utc)
 
 
 def _event(*, event_type: str = "kill", player_guid: int = 5406) -> WMEvent:
@@ -33,7 +39,7 @@ class ControlProposalTests(unittest.TestCase):
             action_kind="quest_grant",
         )
 
-        result = validate_control_proposal(proposal=proposal, registry=registry, source_event=_event())
+        result = validate_control_proposal(proposal=proposal, registry=registry, source_event=_event(), now=FRESH_NOW)
 
         self.assertTrue(result.ok, [issue.message for issue in result.issues])
         self.assertEqual(proposal.action.payload["quest_id"], 910000)
@@ -50,7 +56,12 @@ class ControlProposalTests(unittest.TestCase):
             payload_overrides={"player_guid": 1111},
         )
 
-        result = validate_control_proposal(proposal=proposal, registry=registry, source_event=_event(player_guid=5406))
+        result = validate_control_proposal(
+            proposal=proposal,
+            registry=registry,
+            source_event=_event(player_guid=5406),
+            now=FRESH_NOW,
+        )
 
         self.assertFalse(result.ok)
         self.assertTrue(any(issue.path == "player.guid" for issue in result.issues))
@@ -64,10 +75,30 @@ class ControlProposalTests(unittest.TestCase):
             action_kind="noop",
         )
 
-        result = validate_control_proposal(proposal=proposal, registry=registry, source_event=_event(event_type="enter_area"))
+        result = validate_control_proposal(
+            proposal=proposal,
+            registry=registry,
+            source_event=_event(event_type="enter_area"),
+            now=FRESH_NOW,
+        )
 
         self.assertFalse(result.ok)
         self.assertTrue(any("not live-enabled" in issue.message for issue in result.issues))
+
+    def test_stale_source_event_is_rejected(self) -> None:
+        registry = ControlRegistry.load("control")
+        event = _event()
+        proposal = build_manual_proposal(
+            event=event,
+            registry=registry,
+            recipe_id="kill_burst_bounty",
+            action_kind="quest_grant",
+        )
+
+        result = validate_control_proposal(proposal=proposal, registry=registry, source_event=event, now=STALE_NOW)
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any(issue.path == "source_event.occurred_at" for issue in result.issues))
 
     def test_manual_admin_author_requires_reason(self) -> None:
         with self.assertRaises(ValidationError):

@@ -29,6 +29,8 @@ Current architecture:
 
 - canonical WM event spine
 - manual control contract system
+- control audit visibility is `WORKING` for repo tests and native debug BridgeLab proof: `python -m wm.control.audit` inspects `wm_control_proposal`, and `wm.control.apply --summary` exposes idempotency, dry-run/apply status, and native request ids/statuses when execution produced them
+- control policy validation now rejects stale non-admin source events by default after `max_source_event_age_seconds=600`, while existing idempotency and wrong-player gates remain tested
 - initial subject resolver slice maps target profiles into WM subject cards and exposes `python -m wm.subjects.inspect`
 - DB-backed journal reader loads WM subject definitions, enrichments, player-subject counters, and raw journal events when those tables exist; prompt demos and inspect paths now fall back to resolver-built subject cards when journal rows or live DB access are missing
 - operator journal inspection exists through `python -m wm.journal.inspect`
@@ -79,6 +81,7 @@ Current architecture:
   - `wm.events.watch --adapter native_bridge --arm-from-end` advanced the live high-water mark
   - the full in-game `Kobold Vermin -> quest 910000 -> reward -> cooldown -> regrant` loop was not rerun because validation player `5406` was offline
 - broad native action vocabulary exists, but many verbs are still disabled or `not_implemented`
+- control-native convergence is `PARTIAL`: audit/stale-event behavior are repo-tested and BridgeLab `debug_ping` request `36` reached `done`, but the fresh bounty `quest_grant` proof on event `1551` / quest `910020` only reached native request `37` with `player_not_online`
 - subject recognition is only a first slice:
   - static lookup and live-target resolver wrapping exist
   - DB-backed journal read helpers and resolver-card fallback exist
@@ -174,6 +177,7 @@ If a feature needs a visible spellbook entry, hotbar button, or owned tooltip, t
 - Bonebound Omega field copying is not proof of real combat parity. If a second combat companion returns later, use a true supported pet/guardian chassis or hook-backed damage path and prove health, mana, and melee output in the lab before marking it `WORKING`.
 - Alpha echo template truth matters: spawn echo procs from WM creature entry `920101`, not stock Voidwalker `1860`, and copy final Alpha health/power/damage only after `UpdateAllStats()` paths have run.
 - Do not let old auto-generated bounty rules drive live tests. Install one explicit template by path or `--template-key`, arm the watcher from the end, then kill the exact target entry/prefix after arming.
+- Control proposals for non-admin event-bound actions must use a fresh source event; old copied proposal JSON will be rejected as stale by policy.
 - Dirty lab state can poison summon and pet retests.
 - Design docs can be useful and still be stale.
 - Current-state docs and postmortems outrank aspirational design notes.

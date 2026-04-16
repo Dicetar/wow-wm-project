@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-15
+Last verified: 2026-04-16
 Verified by: Codex
 Doc type: handoff
 
@@ -70,6 +70,10 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - Pydantic `ControlProposal` contract is shared by manual proposals and future LLM proposals
 - manual inspect/new/validate/apply commands exercise the same coordinator path as LLM proposals
 - live apply is one registered action per proposal, with player scope, source event checks, dry-run, idempotency, and audit state
+- `python -m wm.control.audit` can inspect `wm_control_proposal` rows by idempotency key, source event, or player and summarize source event, validation, dry-run/apply state, and native request ids/statuses when present
+- `python -m wm.control.apply --summary` now prints idempotency, audit/apply status, and native request id/status for `quest_grant` and generic `native_bridge_action` execution results
+- control proposal loading accepts UTF-8 BOM JSON, because Windows PowerShell `Set-Content -Encoding UTF8` can emit a BOM and should not break operator-created proposal files
+- direct apply policy now rejects stale non-admin source events through `max_source_event_age_seconds=600`; repo tests cover stale-event, wrong-player, and duplicate-idempotency rejection visibility
 - LLM-authored live apply is blocked unless `WM_LLM_DIRECT_APPLY=1`
 
 ### Runtime DLL guard
@@ -118,6 +122,7 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - persistent WM combat proficiency repo and live path are `WORKING` for player `5406`: high-ID `skillraceclassinfo_dbc` / `skilllineability_dbc` override SQL makes Shield `433`, Leather `414`, and Dual Wield skill `118` login-valid, `python -m wm.spells.shield_proficiency --player-guid 5406 --mode apply --summary` grants only explicit player GUIDs, Dual Wield persists through spell `674`, `mod-wm-spells` syncs the volatile Dual Wield flag only for active `combat_proficiency` grants, offhand one-handed sword equip works, Dual Wield displays in the spellbook, and `passive_intellect_block_v1` shell `944000` remains separate as an intellect/spellpower block-rating passive
 - Bonebound Alpha visible spell lifecycle remains `PARTIAL` until the client shell patch and spellbook/action-bar path are proven end-to-end
 - combat proficiency playerbot proof remains `PARTIAL`: Shield, Leather, and Dual Wield are confirmed live for player `5406`, but playerbot maintenance is still unchecked for no inheritance
+- control-native convergence live proof is `PARTIAL`: BridgeLab proved control-driven `debug_ping` through `wm.control.validate/apply/audit` with native request `36` reaching `done`; the fresh source-event bounty grant on event `1551` / quest `910020` linked through audit but native request `37` failed with `player_not_online`
 
 ### IPP cleanup work
 
