@@ -42,7 +42,7 @@ Rules:
 - If the client must show the spell in the spellbook, action bar, tooltip, or icon, a client shell or client patch is required.
 - If the work is server-only and invisible to the player, a server-side debug or action path may be enough.
 - If you skip client work for a test, label it `testing only, not shippable`.
-- Do not ship hidden server mechanics with no player-facing indication. If a hidden C++ effect changes combat, resources, movement, stats, or quest state, pair it with a visible aura, buff, debuff, combat-log/system message, or explicit tooltip path. Hidden effects without an indicator are testing-only.
+- Do not ship hidden server mechanics with no player-facing indication. If a hidden C++ effect changes combat, resources, movement, stats, or quest state, pair it with a visible aura, buff, debuff, combat-log/system message, or explicit tooltip path, and gate the hidden behavior on that visible state/duration. Hidden effects without an indicator are testing-only.
 - Do not attach unrelated stock effects just to get a tooltip. A stock aura may be used as a visible marker only when its visible meaning fits the mechanic and WM-owned code remains the real behavior owner.
 
 ### 3. State assumptions before risky native work

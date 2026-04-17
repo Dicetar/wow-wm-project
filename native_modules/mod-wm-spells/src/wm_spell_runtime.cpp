@@ -5,11 +5,13 @@
 #include "CreatureAI.h"
 #include "DatabaseEnv.h"
 #include "Item.h"
+#include "ItemTemplate.h"
 #include "MotionMaster.h"
 #include "ObjectAccessor.h"
 #include "PetDefines.h"
 #include "Random.h"
 #include "SpellAuras.h"
+#include "SpellInfo.h"
 #include "TemporarySummon.h"
 
 #include <algorithm>
@@ -1370,6 +1372,34 @@ namespace
         return true;
     }
 
+    bool IsNightWatchersLensWandShot(SpellInfo const* spellInfo)
+    {
+        return spellInfo
+            && spellInfo->EquippedItemClass == ITEM_CLASS_WEAPON
+            && (spellInfo->EquippedItemSubClassMask & (1 << ITEM_SUBCLASS_WEAPON_WAND)) != 0
+            && spellInfo->HasAttribute(SPELL_ATTR2_AUTO_REPEAT);
+    }
+
+    bool TryProcNightWatchersLensMark(Unit* attacker, Unit* victim, uint32 damage)
+    {
+        if (!attacker || !victim || damage == 0 || attacker == victim)
+            return false;
+
+        Player* player = attacker->ToPlayer();
+        if (!HasNightWatchersLensReady(player))
+            return false;
+
+        if (!roll_chance_f(NIGHT_WATCHERS_LENS_PROC_CHANCE_PCT))
+            return false;
+
+        return RefreshNightWatchersLensMark(player, victim);
+    }
+
+    int32 HalveNightWatchersLensDefenseValue(int32 value)
+    {
+        return std::max<int32>(0, value / 2);
+    }
+
     void UpdateNightWatchersLensMarks(uint32 diff)
     {
         if (diff == 0 || gNightWatchersLensMarksByTarget.empty())
@@ -1819,34 +1849,28 @@ namespace WmSpells
         return aura && aura->GetDuration() > 0;
     }
 
-    void HandleNightWatchersLensDamage(Unit* attacker, Unit* victim, uint32& damage)
+    void HandleNightWatchersLensWeaponDamage(Unit* attacker, Unit* victim, uint32& damage)
     {
-        if (!attacker || !victim || damage == 0 || attacker == victim)
-            return;
-
-        Player* player = attacker->ToPlayer();
-        if (!HasNightWatchersLensReady(player))
-            return;
-
-        float procChance = NIGHT_WATCHERS_LENS_PROC_CHANCE_PCT;
-        if (IsNightWatchersLensMarked(victim))
-            procChance *= NIGHT_WATCHERS_LENS_MARK_PROC_MULTIPLIER;
-
-        if (!roll_chance_f(std::clamp(procChance, 0.0f, 100.0f)))
-            return;
-
-        RefreshNightWatchersLensMark(player, victim);
+        TryProcNightWatchersLensMark(attacker, victim, damage);
     }
 
-    void HandleNightWatchersLensDefenseBypass(
+    void HandleNightWatchersLensSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo)
+    {
+        if (damage <= 0 || !IsNightWatchersLensWandShot(spellInfo))
+            return;
+
+        TryProcNightWatchersLensMark(attacker, victim, static_cast<uint32>(damage));
+    }
+
+    void HandleNightWatchersLensDefenseExposure(
         Unit const* /*attacker*/,
         Unit const* victim,
         WeaponAttackType /*attType*/,
         int32& /*attackerMaxSkillValueForLevel*/,
         int32& victimMaxSkillValueForLevel,
-        int32& attackerWeaponSkill,
+        int32& /*attackerWeaponSkill*/,
         int32& victimDefenseSkill,
-        int32& /*crit_chance*/,
+        int32& crit_chance,
         int32& miss_chance,
         int32& dodge_chance,
         int32& parry_chance,
@@ -1855,12 +1879,13 @@ namespace WmSpells
         if (!IsNightWatchersLensMarked(victim))
             return;
 
-        victimMaxSkillValueForLevel = attackerWeaponSkill;
-        victimDefenseSkill = 0;
-        miss_chance = 0;
-        dodge_chance = 0;
-        parry_chance = 0;
-        block_chance = 0;
+        victimMaxSkillValueForLevel = HalveNightWatchersLensDefenseValue(victimMaxSkillValueForLevel);
+        victimDefenseSkill = HalveNightWatchersLensDefenseValue(victimDefenseSkill);
+        miss_chance = HalveNightWatchersLensDefenseValue(miss_chance);
+        dodge_chance = HalveNightWatchersLensDefenseValue(dodge_chance);
+        parry_chance = HalveNightWatchersLensDefenseValue(parry_chance);
+        block_chance = HalveNightWatchersLensDefenseValue(block_chance);
+        crit_chance = std::clamp<int32>(crit_chance * 2, 0, 10000);
     }
 
     void ReapplyBoneboundOverlay(Pet* pet)

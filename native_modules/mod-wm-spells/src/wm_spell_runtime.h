@@ -11,6 +11,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+class SpellInfo;
+
 namespace WmSpells
 {
     struct RuntimeConfig
@@ -147,8 +149,9 @@ namespace WmSpells
     void MaintainNightWatchersLens(Player* player, uint32 diff);
     void ForgetNightWatchersLens(Player* player);
     bool IsNightWatchersLensMarked(Unit const* unit);
-    void HandleNightWatchersLensDamage(Unit* attacker, Unit* victim, uint32& damage);
-    void HandleNightWatchersLensDefenseBypass(
+    void HandleNightWatchersLensWeaponDamage(Unit* attacker, Unit* victim, uint32& damage);
+    void HandleNightWatchersLensSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo);
+    void HandleNightWatchersLensDefenseExposure(
         Unit const* attacker,
         Unit const* victim,
         WeaponAttackType attType,

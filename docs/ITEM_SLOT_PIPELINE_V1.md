@@ -44,9 +44,9 @@ This matches the slot-based architecture established earlier for WM item work.
   - +6 Stamina
   - +12 spell power
   - equip spell `132` with trigger `1`, used as the visible `Detect Invisibility` marker aura for the lens
-  - native effect in `mod-wm-spells`: while the lens is equipped and the visible aura is present, direct player attacks and wand/direct damage hits have a 10% chance to apply or refresh a visible 10-second target debuff (`770`, Faerie Fire)
-  - while the WM-tracked target debuff is active, melee/ranged attack outcome rolls against that target ignore miss, dodge, parry, block, and defense/glancing checks covered by the current hook
-  - WM-owned proc hooks can opt into the "effect chance x2" rule; Bonebound Alpha Echo proc chance now doubles against a WM-marked target
+  - native effect in `mod-wm-spells`: while the lens is equipped and the visible aura is present, player weapon auto-attacks and wand auto-repeat shots have a 10% chance to apply or refresh a visible 10-second target debuff (`770`, Faerie Fire)
+  - while the WM-tracked target debuff is active, melee/ranged attack outcome rolls against that target halve the defense/miss/dodge/parry/block values covered by the current hook and double the attack crit chance in that hook
+  - WM-owned proc hooks can opt into the "effect chance x2" rule while the visible debuff is active; Bonebound Alpha Echo proc chance now doubles against a WM-marked target
 - Quest `910024` (`Bounty: Nightbane Dark Runner - Lens`) rewards item `910006` x1 plus the existing 12 silver.
 - Retired test slot `910021` was not a valid visual proof after reward mutation because the player had already accepted/rewarded that quest ID before the item reward was attached; use a fresh quest slot when changing visible quest rewards.
 - BridgeLab commands on 2026-04-17:
@@ -71,9 +71,9 @@ python -m wm.quests.edit_live \
 
 `PARTIAL`: client-visible behavior of the item passive still needs in-game confirmation after accepting/turning in the fresh quest, equipping the lens, and seeing the target debuff apply/refresh in combat. If the item aura/effect is stale, publish a fresh item slot or restart worldserver; item reload behavior and client item cache behavior are core/module-specific.
 
-`PARTIAL`: arbitrary stock/core proc chance doubling is not proven. The current implementation doubles WM-owned proc hooks that explicitly opt in; adding true global proc-doubling needs a deeper proc-event hook.
+`PARTIAL`: arbitrary stock/core proc chance doubling is not proven. The current implementation doubles attack crit chance in the available attack-outcome hook and WM-owned proc hooks that explicitly opt in; adding true global proc-doubling needs a deeper proc-event hook.
 
-Design rule: hidden server-side item effects are allowed only when the player gets an effect indication. For this lens, the visible indications are the `Detect Invisibility` wearer aura and the target debuff. Do not repeat the retired `13890` boot-enchant-on-headgear mistake, and do not ship a silent resource/stat/combat mutation.
+Design rule: hidden server-side item effects are allowed only when the player gets an effect indication, and the hidden effect must be gated by that visible aura/buff/debuff state and duration. For this lens, the visible indications are the `Detect Invisibility` wearer aura and the target debuff. Do not repeat the retired `13890` boot-enchant-on-headgear mistake, and do not ship a silent resource/stat/combat mutation.
 
 ---
 
@@ -230,7 +230,7 @@ Not yet:
 - copy-on-publish retirement discipline for item slots
 - spell-slot registry governance
 - a dedicated managed spell / passive / ability pipeline
-- hidden server-side item mechanics without a visible aura, buff, debuff, combat-log/system message, or tooltip indicator
+- hidden server-side item mechanics without a visible aura, buff, debuff, combat-log/system message, or tooltip indicator that owns the live duration gate
 - unrelated stock spell reuse for tooltip text or passive flavor
 - custom item mechanics such as "wand can fire while moving"; that is a native combat/action feature, not a safe item-template-only reward
 - reusing a quest ID after changing visible rewards in the same client session; the client/server runtime can keep showing the old reward packet, so iterate with a fresh reserved quest slot

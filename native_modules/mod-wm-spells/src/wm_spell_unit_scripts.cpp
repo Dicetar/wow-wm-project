@@ -10,21 +10,22 @@ public:
         "wm_spells_unit_script",
         true,
         {
-            UNITHOOK_ON_DAMAGE,
             UNITHOOK_MODIFY_MELEE_DAMAGE,
+            UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN,
             UNITHOOK_ON_BEFORE_ROLL_MELEE_OUTCOME_AGAINST
         })
     {
     }
 
-    void OnDamage(Unit* attacker, Unit* victim, uint32& damage) override
-    {
-        WmSpells::HandleNightWatchersLensDamage(attacker, victim, damage);
-    }
-
     void ModifyMeleeDamage(Unit* target, Unit* attacker, uint32& damage) override
     {
+        WmSpells::HandleNightWatchersLensWeaponDamage(attacker, target, damage);
         WmSpells::HandleBoneboundMeleeDamage(attacker, target, damage);
+    }
+
+    void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo) override
+    {
+        WmSpells::HandleNightWatchersLensSpellDamage(attacker, target, damage, spellInfo);
     }
 
     void OnBeforeRollMeleeOutcomeAgainst(
@@ -41,7 +42,7 @@ public:
         int32& parry_chance,
         int32& block_chance) override
     {
-        WmSpells::HandleNightWatchersLensDefenseBypass(
+        WmSpells::HandleNightWatchersLensDefenseExposure(
             attacker,
             victim,
             attType,

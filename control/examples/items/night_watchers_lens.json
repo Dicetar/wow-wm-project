@@ -2,7 +2,7 @@
   "item_entry": 910006,
   "base_item_entry": 2994,
   "name": "Night Watcher's Lens",
-  "description": "A WM-managed bounty reward. Attacks and wand shots have a 10% chance to expose the target for 10 sec; exposed targets lose avoidance against attacks and WM-owned proc hooks roll twice.",
+  "description": "Weapon auto-attacks and wand shots have a 10% chance to mark the target for 10 sec. The visible mark cuts defenses by 50% and doubles attack crit/proc chances; reapplying refreshes it.",
   "item_class": 4,
   "item_subclass": 1,
   "inventory_type": 1,
@@ -51,6 +51,6 @@
     "night_watchers_lens",
     "visible_aura_marker",
     "target_debuff_proc",
-    "native_hidden_effect"
+    "native_indicated_effect"
   ]
 }
