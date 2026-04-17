@@ -1,0 +1,23 @@
+{
+  "kind": "spell",
+  "template": "passive_slot",
+  "draft": {
+    "spell_entry": 940000,
+    "slot_kind": "passive_slot",
+    "name": "Defias Pursuit Instinct",
+    "base_visible_spell_id": null,
+    "helper_spell_id": 26542,
+    "trigger_item_entry": null,
+    "aura_description": "Reserved passive slot for future Goldshire pursuit content and Defias chase reactions.",
+    "proc_rules": [],
+    "linked_spells": [],
+    "tags": [
+      "wm_generated",
+      "spell_slot",
+      "passive_slot",
+      "example",
+      "goldshire",
+      "defias"
+    ]
+  }
+}

@@ -284,10 +284,7 @@ After validating the item slot loop on the real server, the next best continuati
    - publishes a managed item
    - rewards it from a live quest
    - edits that reward cleanly
-3. then build **Spell Slot Pipeline V1** for:
-   - visible spell slots
-   - passive/helper slots
-   - item-trigger and quest-reward integration
+3. then prove **Spell Slot Pipeline V1** live in BridgeLab for one managed spell slot publish/learn/rollback loop
 
 That gives the WM a coherent progression:
 

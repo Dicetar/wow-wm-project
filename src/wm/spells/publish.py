@@ -483,15 +483,22 @@ def _demo_draft() -> ManagedSpellDraft:
 def _render_summary(result: SpellPublishResult) -> str:
     preflight = result.preflight
     validation = result.validation
-    return "\n".join(
-        [
-            f"mode: {result.mode}",
-            f"applied: {str(bool(result.applied)).lower()}",
-            f"validation.ok: {str(bool(validation.get('ok', False))).lower()}",
-            f"preflight.ok: {str(bool(preflight.get('ok', False))).lower()}",
-            f"detected_tables: {', '.join(sorted(k for k, v in (preflight.get('detected_tables') or {}).items() if v)) or '(none)'}",
-        ]
-    )
+    lines = [
+        f"mode: {result.mode}",
+        f"applied: {str(bool(result.applied)).lower()}",
+        f"validation.ok: {str(bool(validation.get('ok', False))).lower()}",
+        f"preflight.ok: {str(bool(preflight.get('ok', False))).lower()}",
+        f"detected_tables: {', '.join(sorted(k for k, v in (preflight.get('detected_tables') or {}).items() if v)) or '(none)'}",
+        "",
+        "issues:",
+    ]
+    issues = list(validation.get("issues", [])) + list(preflight.get("issues", []))
+    if not issues:
+        lines.append("- none")
+    else:
+        for issue in issues:
+            lines.append(f"- {issue.get('path')} | {issue.get('severity')} | {issue.get('message')}")
+    return "\n".join(lines)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -499,6 +506,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--draft-json", type=Path)
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
+    parser.add_argument("--summary", action="store_true")
     parser.add_argument("--output-json", type=Path)
     return parser
 

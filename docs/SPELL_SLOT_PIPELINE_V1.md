@@ -1,22 +1,50 @@
+Status: PARTIAL
+Last verified: 2026-04-17
+Verified by: Codex
+Doc type: reference
+
 # Spell Slot Pipeline V1
 
-This note fixes the contract for the next WM live-content slice after the managed item-slot loop.
+This note defines the first managed spell-slot pipeline for WM.
 
-The goal is **not** fully freeform spell invention.
-The goal is to manage spell / passive / helper behavior through **reserved spell slots** and controlled server-side tables.
+The goal is not freeform client spell invention.
+The goal is to manage spell-side behavior through reserved spell slots, server-side helper tables, publish logs, rollback snapshots, and explicit learn/grant discipline.
 
 ---
 
-## Why this slice exists
+## What this pipeline is for
 
-The item pipeline can already assign spell slots on an item row, but the repo still lacks a dedicated WM-side contract for:
+This pipeline is for:
 
-- visible player-facing spell slots
-- passive aura slots
-- helper / backend trigger slots
-- item-triggered spell behavior
+- reserving a WM-owned spell slot
+- validating one managed spell draft before any live mutation
+- discovering the live spell-helper schema instead of assuming one exact core shape
+- publishing controlled `spell_linked_spell` and `spell_proc` rows for that slot
+- snapshotting the previous state before replacement
+- rolling the slot back cleanly to either:
+  - `staged` when no previous rows existed
+  - `active` when previous rows are restored
 
-Without a spell-slot contract, the item slice can only point at hard-coded spell IDs and cannot safely evolve into a broader WM ability pipeline.
+This keeps spell-side helper/proc work inside the same slot-governed lifecycle already used for quests and items.
+
+---
+
+## Current repo proof
+
+`WORKING`: repo-tested spell publish/rollback lane.
+
+- `python -m wm.spells.publish` validates managed spell drafts, checks required tables, discovers supported live column names for `spell_linked_spell` and `spell_proc`, captures rollback previews, and builds deterministic SQL plans.
+- `python -m wm.spells.rollback` reads the latest spell rollback snapshot, restores or clears spell-side rows, updates `wm_reserved_slot`, and returns structured issues for missing snapshots, malformed snapshot payloads, missing live tables, unsupported live columns, or MySQL failures.
+- `python -m wm.content.workbench` can already allocate passive, item-trigger, and visible spell-slot drafts and can optionally learn/unlearn a published spell on a player through the existing runtime lane.
+
+`PARTIAL`: BridgeLab live proof is not yet complete for a spell-side publish -> learn/grant -> rollback loop on `127.0.0.1:33307`.
+
+Do not mark the spell pipeline fully live-proven until one managed spell slot is:
+
+1. published on BridgeLab
+2. granted or learned on the validation player
+3. inspected in the live DB/runtime
+4. rolled back successfully
 
 ---
 
@@ -25,55 +53,72 @@ Without a spell-slot contract, the item slice can only point at hard-coded spell
 Spell Slot Pipeline V1 uses four slot kinds:
 
 ### 1. `visible_spell_slot`
-For player-facing spells that should be treated as curated visible slots.
 
-Expected use:
+For player-facing spells that must bind to a curated visible slot.
+
+Use it for:
+
 - pre-seeded visible spell entries
-- controlled tuning around a known base visible spell
-- launcher/client patch discipline stays outside the WM repo
+- controlled tuning around a known client-known visible spell
+- visible shell-bank or learnable spell lanes where client truth already exists
 
 ### 2. `passive_slot`
+
 For passives and aura-like behavior.
 
-Expected use:
+Use it for:
+
 - passives granted by items or quests
-- passives represented by known visible or helper spell IDs
-- server-side proc and link rules
+- helper/passive grants tracked in `wm_spell_grant`
+- server-side proc and link rules behind a managed slot
 
 ### 3. `helper_slot`
+
 For backend-only glue behavior.
 
-Expected use:
+Use it for:
+
 - linked spell chains
-- internal aura glue
 - proc carrier helpers
-- invisible server-side reactions
+- internal aura glue
+- hidden server-side reactions that still stay under WM ownership
 
 ### 4. `item_trigger_slot`
-For item-driven behavior that should be tracked as a WM artifact.
 
-Expected use:
+For item-driven behavior tracked as a WM artifact.
+
+Use it for:
+
 - on-use item spells
 - proc-on-hit item behavior
-- item-trigger wrapper logic tied to a managed item slot
+- item-trigger wrapper logic bound to a managed item slot
 
 ---
 
-## Current repo groundwork added now
+## Live tables and contracts
 
-The repo now has the first managed spell draft layer:
+Required tables:
 
-- `src/wm/spells/models.py`
-- `src/wm/spells/validator.py`
+- `wm_publish_log`
+- `wm_rollback_snapshot`
 
-This is not the full publish pipeline yet.
-It is the contract layer that lets the next implementation step stay disciplined.
+Optional/live-discovered tables:
+
+- `wm_reserved_slot`
+- `spell_linked_spell`
+- `spell_proc`
+
+Design rule:
+
+- the pipeline discovers live helper-table column names at preflight time
+- it does not assume one exact emulator schema
+- if the live realm does not expose the required table or supported columns for the requested behavior, publish/rollback must stop with explicit issues instead of partially mutating
 
 ---
 
 ## Draft shape
 
-Example:
+Example draft:
 
 ```json
 {
@@ -104,91 +149,116 @@ Example:
 }
 ```
 
----
+Bundled repo example:
 
-## Validation goals already fixed
-
-The new validator enforces:
-
-- positive `spell_entry`
-- allowed `slot_kind`
-- non-empty operator-facing name
-- `visible_spell_slot` requires `base_visible_spell_id`
-- `item_trigger_slot` requires `trigger_item_entry`
-- proc rules and linked spells must reference positive spell IDs
-
-That is enough to keep future publish work from being built on garbage inputs.
+- `control/examples/spells/defias_pursuit_instinct.json`
 
 ---
 
-## Planned publish scope for the next spell slice
+## Publish behavior
 
-The next implementation step should publish controlled WM spell behavior through server-side tables only.
+On publish, the spell pipeline:
 
-Target tables should be discovered live during preflight and treated as optional/required depending on the path:
+1. validates the managed spell draft
+2. checks live table presence and supported column names
+3. inspects the reserved slot when `wm_reserved_slot` exists
+4. captures a rollback snapshot preview from the live spell-side tables
+5. builds deterministic delete/insert SQL for the requested helper/proc rows
+6. on apply:
+   - logs publish start
+   - stores a rollback snapshot
+   - replaces live rows for the managed spell slot
+   - logs publish success
+   - marks the reserved slot `active` when slot tracking is present
 
-- `spell_linked_spell`
-- `spell_proc`
-- any other installed server-side spell helper tables present on the real realm
+Dry-run example:
 
-The spell slice should remain:
+```bash
+python -m wm.spells.publish \
+  --draft-json control/examples/spells/defias_pursuit_instinct.json \
+  --mode dry-run \
+  --summary
+```
 
-- lookup-first
-- validation-first
-- runtime-aware
-- slot-governed
+Demo draft example:
 
-It should **not** assume free live mutation of client-defined visible spells.
-
----
-
-## Recommended implementation order
-
-### Phase A — spell contract and validation
-Done now.
-
-### Phase B — server-side helper/proc publish
-Next step.
-
-Build:
-- `wm.spells.publish`
-- preflight for supported live tables
-- rollback snapshots / publish logs
-- managed reserved slot checks for `EntityType = 'spell'`
-
-### Phase C — item-trigger integration
-After helper/proc publish works.
-
-Build one straight-through proof:
-- managed item slot
-- managed spell/item-trigger slot
-- quest rewards the managed item
-- item uses or procs the managed spell behavior
-
-### Phase D — passive/quest-granted ability integration
-After item-trigger flow is proven.
+```bash
+python -m wm.spells.publish --demo --mode dry-run --summary
+```
 
 ---
 
-## Operational rule
+## Rollback behavior
 
-Spell Slot Pipeline V1 should follow the same repo rules already used elsewhere:
+Rollback uses the latest `wm_rollback_snapshot` row for `artifact_type = 'spell'`.
 
-- concise output only
-- summary-first terminal output
-- JSON artifacts for details
-- dry-run before apply
-- rollback path defined before live mutation
+Apply behavior:
+
+- if the snapshot had no previous `spell_linked_spell` or `spell_proc` rows, rollback clears current managed rows and marks the reserved slot `staged`
+- if the snapshot had previous helper/proc rows, rollback restores them and keeps the reserved slot `active`
+- malformed snapshots, missing snapshot ids, unsupported live restore tables/columns, and MySQL failures return structured issues
+- rollback must not silently treat malformed sections as “empty slot” and delete live rows
+
+Dry-run:
+
+```bash
+python -m wm.spells.rollback \
+  --spell-entry 940000 \
+  --mode dry-run \
+  --runtime-sync off \
+  --summary
+```
+
+Apply:
+
+```bash
+python -m wm.spells.rollback \
+  --spell-entry 940000 \
+  --mode apply \
+  --runtime-sync soap \
+  --soap-command ".reload spell_linked_spell" \
+  --summary
+```
+
+Runtime note:
+
+- there is no universal spell-helper reload contract across cores/modules
+- if the realm does not have a known live reload path for the changed tables, restart worldserver before judging rollback state
 
 ---
 
-## What is intentionally not claimed yet
+## Content workbench integration
+
+The content workbench is already the fast operator lane around this pipeline.
+
+Draft allocation:
+
+```bash
+python -m wm.content.workbench new-passive --name "Defias Pursuit Instinct"
+python -m wm.content.workbench new-trigger-spell --name "Marshal Token Trigger" --trigger-item-entry 910000
+python -m wm.content.workbench new-visible-spell --name "Lantern Burst" --base-visible-spell-id 133
+```
+
+Publish and optionally learn:
+
+```bash
+python -m wm.content.workbench publish-spell \
+  --draft-json control/examples/spells/defias_pursuit_instinct.json \
+  --mode dry-run
+```
+
+The workbench may learn/unlearn a published spell on a player, but that runtime learn/grant proof is still separate from proving the underlying publish/rollback lane.
+
+---
+
+## What this slice does not claim yet
 
 Not yet:
 
-- a finished live spell publisher
-- client patch management
-- dynamic creation of truly new client-visible spell definitions
-- guaranteed universal support for every emulator-side spell helper table
+- full BridgeLab publish -> learn -> rollback proof for one managed spell slot
+- automatic client patch management for truly new visible spells
+- arbitrary live mutation of client-defined spell rows
+- universal live reload support for every helper table on every core
+- shell-bank proof being complete just because helper/proc tables publish cleanly
 
-This note exists to lock down the next safe target, not to pretend the spell slice is already finished.
+Those are later layers after the current spell-side helper/proc loop is proven live.
