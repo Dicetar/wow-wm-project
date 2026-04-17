@@ -240,6 +240,13 @@ Expose nearby context as snapshots and package deterministic world state for ope
 
 Front-load reusable typed verbs and operator scenes so later WM features do not require constant full rebuild churn or a second execution path.
 
+### Current checkpoint (2026-04-17)
+
+- `PARTIAL`
+- Primitive Pack 1 is `WORKING` in BridgeLab for player `5406` behind policy-disabled defaults
+- Primitive Pack 2 is repo/build `WORKING` and live `PARTIAL`: `player_cast_spell`, `player_set_display_id`, `creature_cast_spell`, `creature_set_display_id`, and `creature_set_scale` now have typed native bodies, payload contracts, disabled policy seed SQL, repo tests, and a successful BridgeLab native build; live `arcane_marker_demo` apply stopped at request `83` with `player_not_online`
+- The next proof step is to log player `5406` into BridgeLab, enable the Pack 2 policies for the scoped player, run `python -m wm.control.scene_play --scene arcane_marker_demo --player-guid 5406 --mode apply --confirm-live-apply --summary`, and audit the resulting native requests
+
 ### Native action order
 
 1. `world_announce_to_player`
@@ -251,6 +258,8 @@ Front-load reusable typed verbs and operator scenes so later WM features do not 
    - `player_apply_aura`
    - `player_remove_aura`
    - `player_restore_health_power`
+   - `player_cast_spell`
+   - `player_set_display_id`
 4. reward verbs:
    - `player_add_item`
    - `player_add_money`
@@ -264,6 +273,9 @@ Front-load reusable typed verbs and operator scenes so later WM features do not 
    - `creature_despawn`
    - `creature_say`
    - `creature_emote`
+   - `creature_cast_spell`
+   - `creature_set_display_id`
+   - `creature_set_scale`
    - `creature_follow_player`
 7. environment verbs:
    - `zone_set_weather`
@@ -277,6 +289,7 @@ Front-load reusable typed verbs and operator scenes so later WM features do not 
   - `field_medic_pulse`
   - `bonebound_battle_cry`
   - `summon_marker`
+  - `arcane_marker_demo`
 - audit output that links proposal -> native request -> result for scene steps and direct primitive use
 
 ### Rules

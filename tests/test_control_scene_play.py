@@ -84,7 +84,7 @@ class ControlScenePlayTests(unittest.TestCase):
         self.assertEqual(proposal.idempotency_key, "control:scene:summon_marker:5406:test-run:0:spawn")
 
     def test_bundled_scenes_use_only_registered_native_payload_shape(self) -> None:
-        for scene_id in ("field_medic_pulse", "bonebound_battle_cry", "summon_marker"):
+        for scene_id in ("field_medic_pulse", "bonebound_battle_cry", "summon_marker", "arcane_marker_demo"):
             with self.subTest(scene_id=scene_id):
                 scene = load_scene(scene_ref=scene_id, control_root=Path("control"))
                 for index, step in enumerate(scene.steps):
@@ -145,8 +145,8 @@ class ControlScenePlayTests(unittest.TestCase):
                         "schema_version": "control.scene.v1",
                         "steps": [
                             {
-                                "native_action_kind": "player_cast_spell",
-                                "payload": {"spell_id": 133},
+                                "native_action_kind": "player_teleport",
+                                "payload": {"map_id": 0},
                             }
                         ],
                     }

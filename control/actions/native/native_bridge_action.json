@@ -26,6 +26,16 @@
       "optional": ["target_player_guid"],
       "notes": "Applies spell_id as an aura to the scoped online player. target_player_guid must equal the scoped request PlayerGUID in Primitive Pack 1."
     },
+    "player_cast_spell": {
+      "required": ["spell_id"],
+      "optional": ["target", "target_kind", "triggered", "target_player_guid"],
+      "notes": "Makes the scoped online player cast spell_id. target defaults to self and may be selected/player_target. triggered defaults true so operator scenes can use server-side instant casts."
+    },
+    "player_set_display_id": {
+      "required": ["display_id"],
+      "optional": ["native_display_id", "scale", "restore", "target_player_guid"],
+      "notes": "Temporarily sets the scoped player's display/native display and optional scale. restore=true calls RestoreDisplayId instead of setting a new model."
+    },
     "player_remove_aura": {
       "required": ["spell_id"],
       "optional": ["target_player_guid"],
@@ -68,6 +78,23 @@
       "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
       "optional": ["emote_id", "text"],
       "notes": "Runs an emote id and/or text emote on only a scoped WM-owned creature."
+    },
+    "creature_cast_spell": {
+      "required": ["spell_id"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "optional": ["target", "target_kind", "triggered"],
+      "notes": "Makes only a scoped WM-owned creature cast spell_id. target defaults to the scoped player and may be self/creature or selected/player_target."
+    },
+    "creature_set_display_id": {
+      "required": ["display_id"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "optional": ["native_display_id", "restore"],
+      "notes": "Sets or restores display/native display for only a scoped WM-owned live creature."
+    },
+    "creature_set_scale": {
+      "required": ["scale"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Sets object scale for only a scoped WM-owned live creature. Native clamps scale to 0.10-5.00."
     }
   },
   "guardrails": [

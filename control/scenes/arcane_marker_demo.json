@@ -1,0 +1,78 @@
+{
+  "id": "arcane_marker_demo",
+  "schema_version": "control.scene.v1",
+  "description": "Primitive Pack 2 demo: a scoped player cast, a WM-owned marker model/scale change, a creature cast, then cleanup.",
+  "steps": [
+    {
+      "native_action_kind": "player_cast_spell",
+      "payload": {
+        "spell_id": 687,
+        "target": "self",
+        "triggered": true
+      },
+      "risk_level": "medium",
+      "idempotency_suffix": "player-cast",
+      "expected_effect": "The scoped player receives a visible self-cast spell effect through the native action bus."
+    },
+    {
+      "native_action_kind": "creature_spawn",
+      "payload": {
+        "creature_entry": 920101,
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "duration_ms": 20000,
+        "distance": 4.5,
+        "angle_offset": 0.4,
+        "follow_player": true,
+        "follow_distance": 4.5,
+        "follow_angle": 0.4
+      },
+      "risk_level": "medium",
+      "delay_seconds": 0.5,
+      "idempotency_suffix": "spawn",
+      "expected_effect": "A temporary WM-owned marker appears near the scoped player."
+    },
+    {
+      "native_action_kind": "creature_set_display_id",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "display_id": 734
+      },
+      "risk_level": "medium",
+      "idempotency_suffix": "display",
+      "expected_effect": "The WM-owned marker uses the requested display id."
+    },
+    {
+      "native_action_kind": "creature_set_scale",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "scale": 1.35
+      },
+      "risk_level": "medium",
+      "idempotency_suffix": "scale",
+      "expected_effect": "The WM-owned marker changes size."
+    },
+    {
+      "native_action_kind": "creature_cast_spell",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "spell_id": 132,
+        "target": "self",
+        "triggered": true
+      },
+      "risk_level": "medium",
+      "delay_seconds": 0.5,
+      "idempotency_suffix": "creature-cast",
+      "expected_effect": "The WM-owned marker casts a visible spell on itself."
+    },
+    {
+      "native_action_kind": "creature_despawn",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}"
+      },
+      "risk_level": "medium",
+      "delay_seconds": 3.0,
+      "idempotency_suffix": "despawn",
+      "expected_effect": "The marker despawns through the WM-owned creature guard."
+    }
+  ]
+}

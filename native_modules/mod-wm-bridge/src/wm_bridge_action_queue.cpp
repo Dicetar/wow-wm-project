@@ -15,6 +15,7 @@
 #include "ReputationMgr.h"
 #include "SpellMgr.h"
 #include "TemporarySummon.h"
+#include "Unit.h"
 #include "WorldSession.h"
 #include "wm_bridge_common.h"
 
@@ -415,6 +416,39 @@ namespace
         for (auto const& field : numberFields)
         {
             JsonAppendNumberField(json, firstField, field.first, field.second);
+        }
+        json += "}";
+        return json;
+    }
+
+    std::string ActionResultJson(
+        std::string const& status,
+        std::string const& actionKind,
+        std::string const& message,
+        std::initializer_list<std::pair<std::string, std::string>> stringFields,
+        std::initializer_list<std::pair<std::string, long long>> numberFields,
+        std::initializer_list<std::pair<std::string, float>> floatFields)
+    {
+        std::string json = "{";
+        bool firstField = true;
+        JsonAppendBoolField(json, firstField, "ok", status == "done");
+        JsonAppendStringField(json, firstField, "action_kind", actionKind);
+        JsonAppendStringField(json, firstField, "status", status);
+        if (!message.empty())
+        {
+            JsonAppendStringField(json, firstField, "message", message);
+        }
+        for (auto const& field : stringFields)
+        {
+            JsonAppendStringField(json, firstField, field.first, field.second);
+        }
+        for (auto const& field : numberFields)
+        {
+            JsonAppendNumberField(json, firstField, field.first, field.second);
+        }
+        for (auto const& field : floatFields)
+        {
+            JsonAppendFloatField(json, firstField, field.first, field.second);
         }
         json += "}";
         return json;
@@ -859,6 +893,80 @@ namespace
         return ObjectAccessor::GetCreature(*player, guid);
     }
 
+    std::string NormalizedJsonToken(std::string value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        return value;
+    }
+
+    bool ResolveTriggeredCastFlag(std::string const& payloadJson)
+    {
+        bool triggered = true;
+        TryExtractAnyBoolField(payloadJson, {"triggered", "is_triggered", "isTriggered"}, triggered);
+        return triggered;
+    }
+
+    Unit* ResolvePlayerCastTarget(Player* player, std::string const& payloadJson, std::string& errorText)
+    {
+        std::string target = NormalizedJsonToken(ExtractJsonStringField(payloadJson, "target"));
+        if (target.empty())
+        {
+            target = NormalizedJsonToken(ExtractJsonStringField(payloadJson, "target_kind"));
+        }
+
+        if (target.empty() || target == "self" || target == "player")
+        {
+            return player;
+        }
+
+        if (target == "selected" || target == "selection" || target == "target" || target == "player_target")
+        {
+            Unit* selected = ObjectAccessor::GetUnit(*player, player->GetTarget());
+            if (!selected)
+            {
+                errorText = "target_not_found";
+                return nullptr;
+            }
+            return selected;
+        }
+
+        errorText = "unsupported_target";
+        return nullptr;
+    }
+
+    Unit* ResolveCreatureCastTarget(Player* player, Creature* creature, std::string const& payloadJson, std::string& errorText)
+    {
+        std::string target = NormalizedJsonToken(ExtractJsonStringField(payloadJson, "target"));
+        if (target.empty())
+        {
+            target = NormalizedJsonToken(ExtractJsonStringField(payloadJson, "target_kind"));
+        }
+
+        if (target.empty() || target == "player" || target == "owner")
+        {
+            return player;
+        }
+
+        if (target == "self" || target == "creature" || target == "caster")
+        {
+            return creature;
+        }
+
+        if (target == "selected" || target == "selection" || target == "target" || target == "player_target")
+        {
+            Unit* selected = ObjectAccessor::GetUnit(*player, player->GetTarget());
+            if (!selected)
+            {
+                errorText = "target_not_found";
+                return nullptr;
+            }
+            return selected;
+        }
+
+        errorText = "unsupported_target";
+        return nullptr;
+    }
+
     void MarkOwnedCreatureDespawned(OwnedCreatureRef const& ref, std::string const& reason)
     {
         if (ref.objectId == 0)
@@ -1216,6 +1324,103 @@ namespace
         return true;
     }
 
+    bool ExecutePlayerCastSpell(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        uint32 spellId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"spell_id", "spellId"}, spellId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_spell_id"), "missing_spell_id");
+            return true;
+        }
+        if (!sSpellMgr->GetSpellInfo(spellId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_spell", {}, {{"spell_id", spellId}}), "invalid_spell");
+            return true;
+        }
+
+        std::string targetError;
+        Unit* target = ResolvePlayerCastTarget(player, payloadJson, targetError);
+        if (!target)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, targetError), targetError);
+            return true;
+        }
+
+        bool triggered = ResolveTriggeredCastFlag(payloadJson);
+        player->CastSpell(target, spellId, triggered);
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                "spell_cast",
+                {{"target_guid", target->GetGUID().ToString()}},
+                {{"spell_id", spellId}, {"player_guid", playerGuid}},
+                {{"target_distance", player->GetDistance(target)}}));
+        return true;
+    }
+
+    bool ExecutePlayerSetDisplayId(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        bool restoreDisplay = false;
+        if (TryExtractAnyBoolField(payloadJson, {"restore", "restore_display", "restoreDisplay"}, restoreDisplay) && restoreDisplay)
+        {
+            player->RestoreDisplayId();
+            CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "display_restored", {}, {{"player_guid", playerGuid}, {"display_id", player->GetDisplayId()}}));
+            return true;
+        }
+
+        uint32 displayId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"display_id", "displayId"}, displayId) || displayId == 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_display_id"), "missing_display_id");
+            return true;
+        }
+
+        uint32 nativeDisplayId = displayId;
+        TryExtractAnyUInt32Field(payloadJson, {"native_display_id", "nativeDisplayId"}, nativeDisplayId);
+        float scale = player->GetObjectScale();
+        bool hasScale = TryExtractAnyFloatField(payloadJson, {"scale", "object_scale", "objectScale"}, scale);
+        if (hasScale)
+        {
+            scale = std::clamp<float>(scale, 0.25f, 3.0f);
+        }
+
+        player->SetDisplayId(displayId);
+        player->SetNativeDisplayId(nativeDisplayId);
+        if (hasScale)
+        {
+            player->SetObjectScale(scale);
+        }
+
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                "display_set",
+                {},
+                {{"player_guid", playerGuid}, {"display_id", displayId}, {"native_display_id", nativeDisplayId}},
+                {{"scale", player->GetObjectScale()}}));
+        return true;
+    }
+
     bool ExecuteCreatureDespawn(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
     {
         Player* player = nullptr;
@@ -1338,6 +1543,158 @@ namespace
         }
 
         CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_emoted", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}, {"emote_id", emoteId}}));
+        return true;
+    }
+
+    bool ExecuteCreatureCastSpell(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        OwnedCreatureRef ref;
+        std::string errorText;
+        if (!LoadOwnedCreatureRef(playerGuid, payloadJson, ref, errorText))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, errorText), errorText);
+            return true;
+        }
+
+        Creature* creature = ResolveOwnedCreature(player, ref);
+        if (!creature)
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_live", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}), "creature_not_live");
+            return true;
+        }
+
+        uint32 spellId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"spell_id", "spellId"}, spellId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_spell_id"), "missing_spell_id");
+            return true;
+        }
+        if (!sSpellMgr->GetSpellInfo(spellId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_spell", {}, {{"spell_id", spellId}}), "invalid_spell");
+            return true;
+        }
+
+        std::string targetError;
+        Unit* target = ResolveCreatureCastTarget(player, creature, payloadJson, targetError);
+        if (!target)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, targetError), targetError);
+            return true;
+        }
+
+        bool triggered = ResolveTriggeredCastFlag(payloadJson);
+        creature->CastSpell(target, spellId, triggered);
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                "creature_spell_cast",
+                {{"arc_key", ref.arcKey}, {"target_guid", target->GetGUID().ToString()}},
+                {{"object_id", static_cast<long long>(ref.objectId)}, {"spell_id", spellId}, {"player_guid", playerGuid}},
+                {{"target_distance", creature->GetDistance(target)}}));
+        return true;
+    }
+
+    bool ExecuteCreatureSetDisplayId(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        OwnedCreatureRef ref;
+        std::string errorText;
+        if (!LoadOwnedCreatureRef(playerGuid, payloadJson, ref, errorText))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, errorText), errorText);
+            return true;
+        }
+
+        Creature* creature = ResolveOwnedCreature(player, ref);
+        if (!creature)
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_live", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}), "creature_not_live");
+            return true;
+        }
+
+        bool restoreDisplay = false;
+        if (TryExtractAnyBoolField(payloadJson, {"restore", "restore_display", "restoreDisplay"}, restoreDisplay) && restoreDisplay)
+        {
+            creature->RestoreDisplayId();
+            CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_display_restored", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}, {"display_id", creature->GetDisplayId()}}));
+            return true;
+        }
+
+        uint32 displayId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"display_id", "displayId"}, displayId) || displayId == 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_display_id"), "missing_display_id");
+            return true;
+        }
+
+        uint32 nativeDisplayId = displayId;
+        TryExtractAnyUInt32Field(payloadJson, {"native_display_id", "nativeDisplayId"}, nativeDisplayId);
+        creature->SetDisplayId(displayId);
+        creature->SetNativeDisplayId(nativeDisplayId);
+
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_display_set", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}, {"display_id", displayId}, {"native_display_id", nativeDisplayId}}));
+        return true;
+    }
+
+    bool ExecuteCreatureSetScale(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        OwnedCreatureRef ref;
+        std::string errorText;
+        if (!LoadOwnedCreatureRef(playerGuid, payloadJson, ref, errorText))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, errorText), errorText);
+            return true;
+        }
+
+        Creature* creature = ResolveOwnedCreature(player, ref);
+        if (!creature)
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_live", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}), "creature_not_live");
+            return true;
+        }
+
+        float scale = 0.0f;
+        if (!TryExtractAnyFloatField(payloadJson, {"scale", "object_scale", "objectScale"}, scale) || scale <= 0.0f)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_scale"), "missing_scale");
+            return true;
+        }
+
+        scale = std::clamp<float>(scale, 0.10f, 5.0f);
+        creature->SetObjectScale(scale);
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                "creature_scale_set",
+                {{"arc_key", ref.arcKey}},
+                {{"object_id", static_cast<long long>(ref.objectId)}},
+                {{"scale", scale}}));
         return true;
     }
 
@@ -1568,6 +1925,18 @@ namespace
             return;
         }
 
+        if (actionKind == "player_cast_spell")
+        {
+            ExecutePlayerCastSpell(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "player_set_display_id")
+        {
+            ExecutePlayerSetDisplayId(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
         if (actionKind == "player_remove_aura")
         {
             ExecutePlayerRemoveAura(requestId, playerGuid, actionKind, payloadJson);
@@ -1619,6 +1988,24 @@ namespace
         if (actionKind == "creature_emote")
         {
             ExecuteCreatureEmote(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "creature_cast_spell")
+        {
+            ExecuteCreatureCastSpell(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "creature_set_display_id")
+        {
+            ExecuteCreatureSetDisplayId(requestId, playerGuid, actionKind, payloadJson);
+            return;
+        }
+
+        if (actionKind == "creature_set_scale")
+        {
+            ExecuteCreatureSetScale(requestId, playerGuid, actionKind, payloadJson);
             return;
         }
 

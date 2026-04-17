@@ -120,6 +120,21 @@ class NativeBridgeActionTests(unittest.TestCase):
                 self.assertTrue(action.implemented)
                 self.assertFalse(action.default_enabled)
 
+    def test_primitive_pack_2_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
+        primitive_actions = {
+            "player_cast_spell",
+            "player_set_display_id",
+            "creature_cast_spell",
+            "creature_set_display_id",
+            "creature_set_scale",
+        }
+
+        for action_kind in primitive_actions:
+            with self.subTest(action_kind=action_kind):
+                action = NATIVE_ACTION_KIND_BY_ID[action_kind]
+                self.assertTrue(action.implemented)
+                self.assertFalse(action.default_enabled)
+
     def test_primitive_pack_1_contracts_are_documented(self) -> None:
         schema_path = Path("control/actions/native/native_bridge_action.json")
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -130,6 +145,20 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("LiveGUIDLow", contracts["creature_spawn"]["notes"])
         self.assertIn("arc_key", contracts["creature_despawn"]["required_any"])
 
+    def test_primitive_pack_2_contracts_are_documented(self) -> None:
+        schema_path = Path("control/actions/native/native_bridge_action.json")
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        contracts = schema["payload_contracts"]
+
+        self.assertEqual(contracts["player_cast_spell"]["required"], ["spell_id"])
+        self.assertIn("triggered", contracts["player_cast_spell"]["optional"])
+        self.assertEqual(contracts["player_set_display_id"]["required"], ["display_id"])
+        self.assertIn("restore", contracts["player_set_display_id"]["optional"])
+        self.assertEqual(contracts["creature_cast_spell"]["required"], ["spell_id"])
+        self.assertIn("arc_key", contracts["creature_cast_spell"]["required_any"])
+        self.assertEqual(contracts["creature_set_display_id"]["required"], ["display_id"])
+        self.assertEqual(contracts["creature_set_scale"]["required"], ["scale"])
+
     def test_primitive_pack_1_sql_keeps_mutations_disabled_and_tracks_low_guid(self) -> None:
         sql_path = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_16_00_wm_bridge_primitive_pack_1.sql")
         sql = sql_path.read_text(encoding="utf-8")
@@ -138,6 +167,17 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("idx_wm_bridge_world_object_live_low", sql)
         self.assertIn("('player_apply_aura', 'default', 0, 'medium'", sql)
         self.assertIn("('creature_spawn', 'default', 0, 'medium'", sql)
+        self.assertNotIn("Enabled = VALUES(Enabled)", sql)
+
+    def test_primitive_pack_2_sql_keeps_mutations_disabled(self) -> None:
+        sql_path = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_17_00_wm_bridge_primitive_pack_2.sql")
+        sql = sql_path.read_text(encoding="utf-8")
+
+        self.assertIn("('player_cast_spell', 'default', 0, 'medium'", sql)
+        self.assertIn("('player_set_display_id', 'default', 0, 'medium'", sql)
+        self.assertIn("('creature_cast_spell', 'default', 0, 'medium'", sql)
+        self.assertIn("('creature_set_display_id', 'default', 0, 'medium'", sql)
+        self.assertIn("('creature_set_scale', 'default', 0, 'medium'", sql)
         self.assertNotIn("Enabled = VALUES(Enabled)", sql)
 
     def test_primitive_pack_1_cpp_uses_scope_policy_and_wm_owned_creature_guard(self) -> None:
@@ -164,6 +204,31 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("DespawnPolicy <> 'despawned'", cpp)
         self.assertIn("WorldDatabase.DirectExecute(", cpp)
         self.assertIn("Spawn result payload needs the WM-owned ObjectID immediately", cpp)
+
+    def test_primitive_pack_2_cpp_uses_scope_policy_and_wm_owned_creature_guard(self) -> None:
+        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
+        cpp = cpp_path.read_text(encoding="utf-8")
+
+        for action_kind in (
+            "player_cast_spell",
+            "player_set_display_id",
+            "creature_cast_spell",
+            "creature_set_display_id",
+            "creature_set_scale",
+        ):
+            with self.subTest(action_kind=action_kind):
+                self.assertIn(f'actionKind == "{action_kind}"', cpp)
+
+        self.assertIn("ExecutePlayerCastSpell", cpp)
+        self.assertIn("ResolvePlayerCastTarget", cpp)
+        self.assertIn("player->CastSpell(target, spellId, triggered)", cpp)
+        self.assertIn("player->SetDisplayId(displayId)", cpp)
+        self.assertIn("LoadOwnedCreatureRef", cpp)
+        self.assertIn("ResolveCreatureCastTarget", cpp)
+        self.assertIn("creature->CastSpell(target, spellId, triggered)", cpp)
+        self.assertIn("creature->SetDisplayId(displayId)", cpp)
+        self.assertIn("creature->SetObjectScale(scale)", cpp)
+        self.assertIn("std::clamp<float>(scale, 0.10f, 5.0f)", cpp)
 
     def test_quest_add_cpp_matches_gm_add_semantics(self) -> None:
         cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp").read_text(encoding="utf-8")
