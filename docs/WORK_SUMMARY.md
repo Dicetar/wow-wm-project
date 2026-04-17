@@ -32,6 +32,7 @@ This repository is now a real WM platform baseline, not just an idea pile.
 - reactive bounty installs now default to a fresh reserved quest slot unless an explicit `quest_id` is pinned on purpose
 - reactive bounty dry-runs can preview a free reserved slot safely and keep apply-mode slot staging strict
 - opt-in dynamic 4-in-a-row bounty evaluation now fetches the newest bounded event-log slice before replaying it chronologically, fixing the long-running-lab bug where `ORDER BY EventID ASC LIMIT 400` made the watcher evaluate stale history instead of fresh kills; consecutive streaks now fire on threshold multiples like 4/8/12, not just exactly 4, so a missed pre-arm crossing does not permanently block the current streak
+- bounty drafts now centralize repeatable quest marking (`SpecialFlags |= 1`) so repeated WM bounty turn-ins are a template property instead of a per-installer accident; live quest `910024` was verified with repeatable addon state and the BridgeLab quest cache was reloaded on 2026-04-17
 - shared bounty drafts and publish SQL now carry richer reward fields:
   - item reward
   - spell reward / display spell

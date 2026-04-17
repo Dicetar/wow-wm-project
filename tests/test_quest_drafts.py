@@ -39,6 +39,19 @@ class BountyQuestDraftTests(unittest.TestCase):
         self.assertEqual(draft.objective.kill_count, 8)
         self.assertIn("Murloc Forager", draft.title)
         self.assertIn("bounty", draft.tags)
+        self.assertEqual(draft.template_defaults["SpecialFlags"], 1)
+
+    def test_bounty_draft_preserves_existing_special_flags_while_forcing_repeatable(self) -> None:
+        draft = build_bounty_quest_draft(
+            quest_id=910004,
+            questgiver_entry=1498,
+            questgiver_name="Bethor Iceshard",
+            target_profile=self._target(),
+            template_defaults={"SpecialFlags": 16, "QuestType": 2},
+        )
+
+        self.assertEqual(draft.template_defaults["SpecialFlags"], 17)
+        self.assertEqual(draft.template_defaults["QuestType"], 2)
 
     def test_validator_flags_invalid_ranges(self) -> None:
         draft = build_bounty_quest_draft(
@@ -85,8 +98,6 @@ class BountyQuestDraftTests(unittest.TestCase):
             end_npc_entry=197,
             grant_mode="direct_quest_add",
         )
-        draft.template_defaults["SpecialFlags"] = 1
-
         self.assertIsNone(draft.start_npc_entry)
         self.assertEqual(draft.end_npc_entry, 197)
         plan = compile_bounty_quest_sql_plan(

@@ -1,3 +1,8 @@
+Status: WORKING
+Last verified: 2026-04-17
+Verified by: Codex
+Doc type: reference
+
 # Quest Draft Pipeline V1
 
 ## Why this slice exists
@@ -30,6 +35,7 @@ V1 is intentionally narrow:
 - one quest giver / one quest ender
 - optional money reward
 - optional single existing item reward
+- bounty drafts force repeatable quest semantics with `SpecialFlags |= 1`, preserving existing special flags while preventing prior rewarded state from blocking later bounty turn-ins
 - SQL **plan preview**, not automatic publish
 
 That is on purpose.

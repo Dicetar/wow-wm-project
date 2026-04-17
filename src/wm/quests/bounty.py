@@ -61,6 +61,12 @@ def build_bounty_quest_draft(
     if target_profile.family:
         tags.append(target_profile.family.lower())
 
+    resolved_template_defaults = {str(k): v for k, v in (template_defaults or {}).items()}
+    resolved_template_defaults["SpecialFlags"] = _merge_int_flag(
+        resolved_template_defaults.get("SpecialFlags"),
+        1,
+    )
+
     return BountyQuestDraft(
         quest_id=int(quest_id),
         quest_level=resolved_quest_level,
@@ -120,5 +126,12 @@ def build_bounty_quest_draft(
         ),
         grant_mode=str(grant_mode),
         tags=tags,
-        template_defaults={str(k): v for k, v in (template_defaults or {}).items()},
+        template_defaults=resolved_template_defaults,
     )
+
+
+def _merge_int_flag(value: object, flag: int) -> int:
+    try:
+        return int(value or 0) | int(flag)
+    except (TypeError, ValueError):
+        return int(flag)
