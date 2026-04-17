@@ -73,7 +73,7 @@ Current architecture:
 - client patch workspace exists
 - `mod-wm-spells` exists as the stable native spell-behavior runtime
 - lab debug invoke exists for shell-bound behavior testing without a visible client shell
-- Bonebound Alpha native lane is `WORKING` at repo/build level on shell `940001`: bridge-lab SQL now binds `summon_bonebound_alpha_v3`, `spawn_omega=false`, stock carriers `697` / `49126` remain retired, and the native module builds with low physical bleed ticks plus a 7.5% Alpha echo melee-hook behavior
+- Bonebound Alpha native lane is `WORKING` at repo/build level on shell `940001`: bridge-lab SQL now binds `summon_bonebound_alpha_v3`, `spawn_omega=false`, stock carriers `697` / `49126` remain retired, and the native module builds with low physical bleed ticks plus a 7.5% Alpha echo melee-hook behavior capped at `40` active Echoes
 - Bonebound Alpha stat transfer is `WORKING` in native config/code: summoner total intellect is applied to Alpha stats and shadow spell power is applied to Alpha attack power
 - Bonebound Alpha fast release submitter is `WORKING`: `python -m wm.spells.summon_release --player-guid 5406 --summary` submits shell `940001` directly and now defaults to behavior `summon_bonebound_alpha_v3`
 - Bonebound Alpha Gorehowl weapon config is `WORKING` in BridgeLab: shell `940001` behavior config sets Alpha virtual item 1 to `28773`

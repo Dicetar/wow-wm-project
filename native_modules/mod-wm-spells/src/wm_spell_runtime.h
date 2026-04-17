@@ -106,7 +106,7 @@ namespace WmSpells
         bool alphaEchoEnabled = true;
         uint32 alphaEchoCreatureEntry = 920101;
         float alphaEchoProcChancePct = 7.5f;
-        uint32 alphaEchoMaxActive = 3;
+        uint32 alphaEchoMaxActive = 40;
         uint32 alphaEchoDamagePct = 100;
         float alphaEchoFollowDistance = 2.6f;
         float alphaEchoFollowAngle = PET_FOLLOW_ANGLE;

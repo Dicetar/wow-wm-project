@@ -28,6 +28,12 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
             "src",
             "wm_spell_runtime.h",
         ).read_text(encoding="utf-8"))
+        self.assertIn("uint32 alphaEchoMaxActive = 40;", self._repo_root().joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_runtime.h",
+        ).read_text(encoding="utf-8"))
         self.assertIn("uint32 shadowDotCooldownMs = 6000;", self._repo_root().joinpath(
             "native_modules",
             "mod-wm-spells",
@@ -108,6 +114,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn('"shadow_dot_damage_per_shadow_power_pct":0', sql)
         self.assertIn('"alpha_echo_creature_entry":920101', sql)
         self.assertIn('"alpha_echo_proc_chance_pct":7.5', sql)
+        self.assertIn('"alpha_echo_max_active":40', sql)
 
     def test_night_watchers_lens_tracks_refreshed_visible_target_debuff(self) -> None:
         repo_root = self._repo_root()
