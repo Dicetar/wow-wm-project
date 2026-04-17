@@ -14,19 +14,41 @@ from wm.runtime_sync import RuntimeCommandResult, RuntimeSyncResult, SoapRuntime
 
 
 @dataclass(slots=True)
+class ItemRollbackIssue:
+    path: str
+    message: str
+    severity: str = "error"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
 class ItemRollbackResult:
     item_entry: int
     mode: str
     snapshot_found: bool
+    snapshot_id: int | None
     restored_action: str
     applied: bool
     runtime_sync: dict[str, Any]
     restart_recommended: bool
     ok: bool
-    issues: list[str]
+    issues: list[ItemRollbackIssue]
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "item_entry": self.item_entry,
+            "mode": self.mode,
+            "snapshot_found": self.snapshot_found,
+            "snapshot_id": self.snapshot_id,
+            "restored_action": self.restored_action,
+            "applied": self.applied,
+            "runtime_sync": self.runtime_sync,
+            "restart_recommended": self.restart_recommended,
+            "ok": self.ok,
+            "issues": [issue.to_dict() for issue in self.issues],
+        }
 
 
 class ItemRollback:
@@ -42,9 +64,12 @@ class ItemRollback:
         runtime_sync_mode: str,
         soap_commands: list[str],
     ) -> ItemRollbackResult:
-        issues: list[str] = []
+        if mode not in {"dry-run", "apply"}:
+            raise ValueError(f"Unsupported rollback mode: {mode}")
+
+        issues: list[ItemRollbackIssue] = []
         snapshot_rows = self._query_world(
-            "SELECT `snapshot_json` FROM `wm_rollback_snapshot` "
+            "SELECT `id`, `snapshot_json` FROM `wm_rollback_snapshot` "
             "WHERE `artifact_type` = 'item' "
             f"AND `artifact_entry` = {int(item_entry)} "
             "ORDER BY `id` DESC LIMIT 1"
@@ -54,6 +79,7 @@ class ItemRollback:
                 item_entry=item_entry,
                 mode=mode,
                 snapshot_found=False,
+                snapshot_id=None,
                 restored_action="none",
                 applied=False,
                 runtime_sync=RuntimeSyncResult(
@@ -65,12 +91,115 @@ class ItemRollback:
                 ).to_dict(),
                 restart_recommended=False,
                 ok=False,
-                issues=[f"No rollback snapshot found for item {item_entry}."],
+                issues=[
+                    ItemRollbackIssue(
+                        path="snapshot",
+                        message=f"No rollback snapshot found for item {item_entry}.",
+                    )
+                ],
             )
 
-        snapshot_json = str(snapshot_rows[0]["snapshot_json"])
-        snapshot = json.loads(snapshot_json)
-        existing_rows = snapshot.get("existing_item_template") or []
+        try:
+            snapshot_id = int(snapshot_rows[0]["id"])
+        except (KeyError, TypeError, ValueError):
+            return ItemRollbackResult(
+                item_entry=item_entry,
+                mode=mode,
+                snapshot_found=True,
+                snapshot_id=None,
+                restored_action="none",
+                applied=False,
+                runtime_sync=RuntimeSyncResult(
+                    protocol="none",
+                    enabled=False,
+                    overall_ok=False,
+                    restart_recommended=False,
+                    note="Rollback snapshot row is missing a valid id.",
+                ).to_dict(),
+                restart_recommended=False,
+                ok=False,
+                issues=[
+                    ItemRollbackIssue(
+                        path="snapshot.id",
+                        message="Rollback snapshot row is missing a valid id.",
+                    )
+                ],
+            )
+
+        try:
+            snapshot = json.loads(str(snapshot_rows[0]["snapshot_json"]))
+        except json.JSONDecodeError:
+            return ItemRollbackResult(
+                item_entry=item_entry,
+                mode=mode,
+                snapshot_found=True,
+                snapshot_id=snapshot_id,
+                restored_action="none",
+                applied=False,
+                runtime_sync=RuntimeSyncResult(
+                    protocol="none",
+                    enabled=False,
+                    overall_ok=False,
+                    restart_recommended=False,
+                    note="Rollback snapshot is not valid JSON.",
+                ).to_dict(),
+                restart_recommended=False,
+                ok=False,
+                issues=[
+                    ItemRollbackIssue(
+                        path="snapshot",
+                        message=f"Rollback snapshot {snapshot_id} is not valid JSON.",
+                    )
+                ],
+            )
+
+        if not isinstance(snapshot, dict):
+            return ItemRollbackResult(
+                item_entry=item_entry,
+                mode=mode,
+                snapshot_found=True,
+                snapshot_id=snapshot_id,
+                restored_action="none",
+                applied=False,
+                runtime_sync=RuntimeSyncResult(
+                    protocol="none",
+                    enabled=False,
+                    overall_ok=False,
+                    restart_recommended=False,
+                    note="Rollback snapshot payload must be an object.",
+                ).to_dict(),
+                restart_recommended=False,
+                ok=False,
+                issues=[
+                    ItemRollbackIssue(
+                        path="snapshot",
+                        message=f"Rollback snapshot {snapshot_id} payload must be an object.",
+                    )
+                ],
+            )
+
+        existing_rows_issue = _snapshot_rows_issue(snapshot, "existing_item_template")
+        if existing_rows_issue is not None:
+            return ItemRollbackResult(
+                item_entry=item_entry,
+                mode=mode,
+                snapshot_found=True,
+                snapshot_id=snapshot_id,
+                restored_action="none",
+                applied=False,
+                runtime_sync=RuntimeSyncResult(
+                    protocol="none",
+                    enabled=False,
+                    overall_ok=False,
+                    restart_recommended=False,
+                    note="Rollback snapshot item_template section is malformed.",
+                ).to_dict(),
+                restart_recommended=False,
+                ok=False,
+                issues=[existing_rows_issue],
+            )
+
+        existing_rows = _snapshot_rows(snapshot, "existing_item_template")
         restored_action = "delete_slot" if not existing_rows else "restore_previous_row"
 
         runtime_sync = RuntimeSyncResult(
@@ -104,12 +233,13 @@ class ItemRollback:
                     f"('item', {int(item_entry)}, 'rollback', 'success', 'Managed item rollback completed successfully')"
                 )
             except MysqlCliError as exc:
-                issues.append(str(exc))
+                issues.append(ItemRollbackIssue(path="mysql", message=str(exc)))
                 self._log_failure(item_entry=item_entry, error_message=str(exc))
                 return ItemRollbackResult(
                     item_entry=item_entry,
                     mode=mode,
                     snapshot_found=True,
+                    snapshot_id=snapshot_id,
                     restored_action=restored_action,
                     applied=False,
                     runtime_sync=RuntimeSyncResult(
@@ -134,6 +264,7 @@ class ItemRollback:
             item_entry=item_entry,
             mode=mode,
             snapshot_found=True,
+            snapshot_id=snapshot_id,
             restored_action=restored_action,
             applied=(mode == "apply"),
             runtime_sync=runtime_sync.to_dict(),
@@ -251,30 +382,62 @@ def _sql_value(value: Any) -> str:
     return f"'{text}'"
 
 
+def _snapshot_rows(snapshot: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    rows = snapshot.get(key, [])
+    if rows is None:
+        rows = []
+    return [dict(row) for row in rows if isinstance(row, dict)]
+
+
+def _snapshot_rows_issue(snapshot: dict[str, Any], key: str) -> ItemRollbackIssue | None:
+    rows = snapshot.get(key, [])
+    if rows is None:
+        rows = []
+    if not isinstance(rows, list):
+        return ItemRollbackIssue(
+            path=f"snapshot.{key}",
+            message=f"Rollback snapshot `{key}` must be a list.",
+        )
+    if any(not isinstance(row, dict) for row in rows):
+        return ItemRollbackIssue(
+            path=f"snapshot.{key}",
+            message=f"Rollback snapshot `{key}` must contain only row objects.",
+        )
+    return None
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m wm.items.rollback")
     parser.add_argument("--item-entry", type=int, required=True)
     parser.add_argument("--mode", choices=["dry-run", "apply"], default="dry-run")
     parser.add_argument("--runtime-sync", choices=["auto", "off", "soap"], default="auto")
     parser.add_argument("--soap-command", action="append", default=[])
+    parser.add_argument("--summary", action="store_true")
     parser.add_argument("--output-json", type=Path)
     return parser
 
 
 def _render_summary(result: ItemRollbackResult) -> str:
     runtime = result.runtime_sync
-    return "\n".join(
-        [
-            f"item_entry: {result.item_entry}",
-            f"snapshot_found: {str(result.snapshot_found).lower()}",
-            f"restored_action: {result.restored_action}",
-            f"applied: {str(result.applied).lower()}",
-            f"ok: {str(result.ok).lower()}",
-            f"runtime_sync.enabled: {str(bool(runtime.get('enabled', False))).lower()}",
-            f"runtime_sync.overall_ok: {str(bool(runtime.get('overall_ok', False))).lower()}",
-            f"restart_recommended: {str(bool(result.restart_recommended)).lower()}",
-        ]
-    )
+    lines = [
+        f"item_entry: {result.item_entry}",
+        f"mode: {result.mode}",
+        f"snapshot_found: {str(result.snapshot_found).lower()}",
+        f"snapshot_id: {result.snapshot_id}",
+        f"restored_action: {result.restored_action}",
+        f"applied: {str(result.applied).lower()}",
+        f"ok: {str(result.ok).lower()}",
+        f"runtime_sync.enabled: {str(bool(runtime.get('enabled', False))).lower()}",
+        f"runtime_sync.overall_ok: {str(bool(runtime.get('overall_ok', False))).lower()}",
+        f"restart_recommended: {str(bool(result.restart_recommended)).lower()}",
+        "",
+        "issues:",
+    ]
+    if not result.issues:
+        lines.append("- none")
+    else:
+        lines.extend(f"- {issue.path} | {issue.severity} | {issue.message}" for issue in result.issues)
+    return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:

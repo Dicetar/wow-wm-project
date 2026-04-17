@@ -195,6 +195,42 @@ This mirrors the quest pipeline discipline.
 
 ---
 
+## Rollback behavior
+
+`WORKING`: managed item rollback is repo-tested through `python -m wm.items.rollback`.
+
+The rollback command reads the latest `wm_rollback_snapshot` row for `artifact_type = 'item'` and restores the managed slot according to the captured pre-publish state:
+
+- if the snapshot had no previous `item_template` row, rollback deletes the managed item row and marks the reserved slot `staged`
+- if the snapshot had a previous `item_template` row, rollback replaces the live row with that snapshot and keeps the reserved slot `active`
+- malformed or missing snapshots return structured `snapshot` issues instead of raising raw JSON errors
+- MySQL apply failures return structured `mysql` issues and recommend a restart/runtime check instead of silently claiming success
+
+Dry-run:
+
+```bash
+python -m wm.items.rollback \
+  --item-entry 910006 \
+  --mode dry-run \
+  --runtime-sync off \
+  --summary
+```
+
+Apply with an explicit runtime reload command when the core supports it:
+
+```bash
+python -m wm.items.rollback \
+  --item-entry 910006 \
+  --mode apply \
+  --runtime-sync soap \
+  --soap-command ".reload item_template" \
+  --summary
+```
+
+`PARTIAL`: live rollback of `910006` has not yet been exercised in BridgeLab after the repo tests. Do not mark item rollback fully live-proven until an operator runs dry-run, apply, reload/restart discipline, and verifies the item row/slot state on `127.0.0.1:33307`.
+
+---
+
 ## How to reward the item from a quest
 
 The quest pipeline already supports item rewards.
@@ -243,7 +279,7 @@ Those are the next layers after the first managed item slot loop is proven.
 
 After validating the item slot loop on the real server, the next best continuation is:
 
-1. add rollback command support for managed items
+1. prove `wm.items.rollback` live in BridgeLab for one managed item slot
 2. add one quest-demo flow that:
    - publishes a managed item
    - rewards it from a live quest

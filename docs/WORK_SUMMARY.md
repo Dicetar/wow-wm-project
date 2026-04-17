@@ -39,6 +39,7 @@ This repository is now a real WM platform baseline, not just an idea pile.
   - XP difficulty
   - reputation reward slots mapped to the current `quest_template` schema
 - BridgeLab bounty reward proof is `WORKING` at DB/runtime-reload level for fresh quest slot `910024`: managed item slot `910006` (`Night Watcher's Lens`) is published from `control/examples/items/night_watchers_lens.json`, rewards a cloth head item with Intellect, Stamina, spell power, visible wearer aura spell `132`, and a native 10% weapon-auto/wand-auto target debuff proc gated by equipped item plus visible aura, and is wired into `RewardItem1` / `RewardAmount1` alongside the old 12 silver
+- managed item rollback is `WORKING` at repo-test level through `python -m wm.items.rollback`: latest item snapshots can dry-run, apply delete-slot rollback, apply previous-row restore, update reserved slot state, and return structured failures for missing/malformed snapshots or MySQL errors; BridgeLab live rollback proof is still `PARTIAL`
 - direct quest grant through SOAP
 - runtime quest-state polling from the characters DB
 - suppression while a reactive quest is active, complete-but-not-turned-in, or cooling down after reward
