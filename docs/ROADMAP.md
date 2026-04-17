@@ -242,10 +242,9 @@ Front-load reusable typed verbs and operator scenes so later WM features do not 
 
 ### Current checkpoint (2026-04-17)
 
-- `PARTIAL`
+- `WORKING`
 - Primitive Pack 1 is `WORKING` in BridgeLab for player `5406` behind policy-disabled defaults
-- Primitive Pack 2 is repo/build `WORKING` and live `PARTIAL`: `player_cast_spell`, `player_set_display_id`, `creature_cast_spell`, `creature_set_display_id`, and `creature_set_scale` now have typed native bodies, payload contracts, disabled policy seed SQL, repo tests, and a successful BridgeLab native build; live `arcane_marker_demo` apply stopped at request `83` with `player_not_online`
-- The next proof step is to log player `5406` into BridgeLab, enable the Pack 2 policies for the scoped player, run `python -m wm.control.scene_play --scene arcane_marker_demo --player-guid 5406 --mode apply --confirm-live-apply --summary`, and audit the resulting native requests
+- Primitive Pack 2 is `WORKING` in BridgeLab for player `5406` behind policy-disabled defaults: `player_cast_spell`, `player_set_display_id`, `creature_cast_spell`, `creature_set_display_id`, and `creature_set_scale` have typed native bodies, payload contracts, disabled policy seed SQL, repo tests, a successful native build, and live `arcane_marker_demo` control/audit proof through requests `84-89` `done`
 
 ### Native action order
 

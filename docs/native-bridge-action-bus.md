@@ -40,14 +40,14 @@ Implemented native actions in the first safe slice:
   - `creature_despawn`
   - `creature_say`
   - `creature_emote`
-- Primitive Pack 2 is `PARTIAL` behind policy-disabled defaults:
+- Primitive Pack 2 is `WORKING` in BridgeLab behind policy-disabled defaults:
   - `player_cast_spell`
   - `player_set_display_id`
   - `creature_cast_spell`
   - `creature_set_display_id`
   - `creature_set_scale`
   - repo tests and BridgeLab native build are `WORKING`
-  - live scene proof is blocked until scoped player `5406` is online; request `83` failed with `player_not_online`
+  - live scene proof through `arcane_marker_demo` reached proposals `46-51` and native requests `84-89` `done`
 
 Everything risky should be proven in `D:\WOW\WM_BridgeLab` before promotion.
 
@@ -325,7 +325,7 @@ Current control-native convergence status:
   - `summon_marker` completed spawn -> say -> emote -> despawn with spawn result `object_id=4`
   - `bonebound_battle_cry` completed spawn -> say -> emote -> buff
   - direct control applies proved `player_remove_aura`, `player_add_money`, `player_add_reputation`, and `player_add_item`
-- `PARTIAL`: repo tests and BridgeLab native build cover Primitive Pack 2 contracts/guards for `player_cast_spell`, `player_set_display_id`, `creature_cast_spell`, `creature_set_display_id`, and `creature_set_scale`; `arcane_marker_demo` is available, but the first live apply stopped at request `83` with `player_not_online`, so visible behavior is not yet proven
+- `WORKING`: repo tests, BridgeLab native build, and live control/audit proof cover Primitive Pack 2 contracts/guards for `player_cast_spell`, `player_set_display_id`, `creature_cast_spell`, `creature_set_display_id`, and `creature_set_scale`; `arcane_marker_demo` completed through native requests `84-89` `done`
 - `WORKING`: fresh bounty `quest_grant` rerun on 2026-04-16 reached event `1599`, proposal `43`, and native `quest_add` request `74` `done`; `wm.control.audit` linked the source event to the native request/result, `wm.executor` recorded `quest_grant_issued` event `1601`, native bridge event `26505` recorded `quest/granted` for quest `910020`, and GM `.quest status 910020 Jecia` reported `Incomplete`
 
 ## Broad Action Vocabulary
@@ -355,7 +355,6 @@ Recommended order:
 1. Keep the current bounty loop stable with native `quest_add` as the preferred grant transport and SOAP as fallback.
 2. Harden `context_snapshot_request`, because it is observational and useful for debugging.
 3. Add quest completion/reward verbs only after the native quest-granted/rewarded event chain is verified end-to-end.
-4. Finish Primitive Pack 2 live proof for cast/display/scale through `arcane_marker_demo`.
-5. Add item/spell/player/object verbs only after each has a dedicated lab test and policy default.
+4. Add item/spell/player/object verbs only after each has a dedicated lab test and policy default.
 
 Do not enable broad mutation policy on the working realm until this sequence is green.

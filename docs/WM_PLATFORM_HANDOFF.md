@@ -59,7 +59,7 @@ Current architecture:
   - `RewardFactionID*` plus value/override slots
 - native action queue exists with DB-backed policy and player scoping
 - Primitive Pack 1 is `WORKING` in BridgeLab for player `5406`: `player_apply_aura`, `player_remove_aura`, `player_restore_health_power`, `player_add_item`, `player_add_money`, `player_add_reputation`, `creature_spawn`, `creature_despawn`, `creature_say`, and `creature_emote` are implemented in `mod-wm-bridge`, stay policy-disabled by default, and `python -m wm.control.scene_play` plus direct `wm.control.apply` proofs reached native requests `54-72` `done`; the bundled `field_medic_pulse`, `bonebound_battle_cry`, and `summon_marker` scenes all completed through control/audit, and the `creature_spawn` result payload now returns the real WM-owned `object_id`
-- Primitive Pack 2 is `PARTIAL`: repo tests and the BridgeLab native build are `WORKING` for `player_cast_spell`, `player_set_display_id`, `creature_cast_spell`, `creature_set_display_id`, and `creature_set_scale`; all stay policy-disabled by default, creature mutation still requires WM-owned `wm_bridge_world_object` ownership, and bundled scene `arcane_marker_demo` exists, but live apply request `83` failed with `player_not_online` before proving visible in-game behavior
+- Primitive Pack 2 is `WORKING` in BridgeLab for player `5406`: `player_cast_spell`, `player_set_display_id`, `creature_cast_spell`, `creature_set_display_id`, and `creature_set_scale` are implemented in `mod-wm-bridge`, stay policy-disabled by default, creature mutation still requires WM-owned `wm_bridge_world_object` ownership, and bundled scene `arcane_marker_demo` completed through control/audit with native requests `84-89` `done`
 - `context_snapshot_request` is `WORKING` for one-shot bridge-lab proof: scoped player `5406` online, native action request `31` reached `done`, `wm_bridge_context_snapshot` row `1` was written, and `wm.context.builder --event-id 603 --summary` consumed it with `native_snapshot: true`
 - native spell learn and unlearn actions exist
 - player-owned non-pet summon kill attribution is `WORKING` at repo and BridgeLab event-log level: `mod-wm-bridge` supplements the existing player/pet kill hooks with a guarded `UnitScript::OnUnitDeath` path for player-owned killers that are neither the player nor a real pet/totem, so Echo/guardian/temp-summon kills feed the same native watcher path without double-emitting Alpha pet kills
@@ -86,7 +86,7 @@ Current architecture:
   - `debug_ping` reached `done`
   - `wm.events.watch --adapter native_bridge --arm-from-end` advanced the live high-water mark
   - the full in-game `Kobold Vermin -> quest 910000 -> reward -> cooldown -> regrant` loop was not rerun because validation player `5406` was offline
-- broad native action vocabulary exists, but many verbs are still disabled or `not_implemented`; Pack 2 cast/display/scale verbs are implemented but not live-proven
+- broad native action vocabulary exists, but many verbs are still disabled or `not_implemented`; Pack 1 and Pack 2 scene primitives are the current proven mutation slices
 - subject recognition is only a first slice:
   - static lookup and live-target resolver wrapping exist
   - DB-backed journal read helpers and resolver-card fallback exist
