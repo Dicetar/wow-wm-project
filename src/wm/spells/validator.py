@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from wm.reserved.custom_id_registry import load_custom_id_registry
 from wm.spells.models import ManagedSpellDraft, ValidationIssue, ValidationResult
+from wm.spells.shell_bank import load_spell_shell_bank
 
 ALLOWED_SLOT_KINDS = {"visible_spell_slot", "passive_slot", "helper_slot", "item_trigger_slot"}
 
@@ -39,6 +41,31 @@ def validate_managed_spell_draft(draft: ManagedSpellDraft) -> ValidationResult:
         )
     if draft.helper_spell_id is not None and draft.helper_spell_id <= 0:
         issues.append(ValidationIssue(path="helper_spell_id", message="helper_spell_id must be > 0 when provided."))
+
+    named_shell = load_spell_shell_bank().shell_by_spell_id(draft.spell_entry)
+    if named_shell is not None:
+        issues.append(
+            ValidationIssue(
+                path="spell_entry",
+                message=(
+                    f"spell_entry {draft.spell_entry} is already claimed by named shell `{named_shell.shell_key}`. "
+                    "Managed spell drafts must not reuse named shell ids."
+                ),
+            )
+        )
+
+    managed_range = load_custom_id_registry().range_by_key(namespace="spell", range_key="managed_spell_slots")
+    if managed_range is not None and not (managed_range.start_id <= draft.spell_entry <= managed_range.end_id):
+        issues.append(
+            ValidationIssue(
+                path="spell_entry",
+                message=(
+                    f"spell_entry {draft.spell_entry} is outside the recommended managed spell-slot range "
+                    f"{managed_range.start_id}-{managed_range.end_id}."
+                ),
+                severity="warning",
+            )
+        )
 
     for index, rule in enumerate(draft.proc_rules, start=1):
         if rule.spell_id <= 0:

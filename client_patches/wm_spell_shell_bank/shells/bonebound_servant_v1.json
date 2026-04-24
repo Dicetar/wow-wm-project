@@ -1,7 +1,7 @@
 {
   "shell_key": "bonebound_servant_v1",
   "spell_id": 940000,
-  "family_id": "summon_pet",
+  "family_id": "summon_pet_compat",
   "label": "Bonebound Servant",
   "behavior_kind": "summon_bonebound_servant_v1",
   "targeting": "corpse_required",
@@ -22,6 +22,7 @@
     "Server behavior is executed by mod-wm-spells.",
     "Keep this shell isolated from stock warlock or DK summon spells.",
     "Use createdBySpellId 940000 on the server so reload and persistence stay on the WM shell.",
-    "This shell lives inside the 1000-slot summon_pet family block that starts at 940000."
+    "This shell lives inside the pinned compatibility summon block at 940000-940001.",
+    "Do not reuse this ID for managed spell slots or generic shell-bank entries."
   ]
 }

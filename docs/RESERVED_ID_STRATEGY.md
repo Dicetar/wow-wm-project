@@ -2,9 +2,9 @@
 
 ## Why this exists
 
-World Master needs a place to put **dummy slots** and **future mutable content**.
+World Master needs a place to put **allocator-managed slots** and **future mutable content**.
 
-Instead of inventing IDs ad hoc every time, reserve clean numeric ranges up front for WM-owned content.
+Instead of inventing IDs ad hoc every time, reserve clean numeric ranges up front for allocator-managed WM content.
 
 This supports the project requirement that WM should eventually be able to:
 - rewrite quest arcs
@@ -15,17 +15,19 @@ This supports the project requirement that WM should eventually be able to:
 
 ## Current reservation plan
 
-### Spell slots / wrappers
-- `900000` to `900999`
-- Use for: private spell reward slots, wrapper spells, alternate ability variants
+### Managed spell slots
+- `947000` to `947999`
+- Use for: managed spell publish/rollback slots allocated through `wm_reserved_slot`
+- Exact shell-bank spell claims do not live here; they are tracked in `data/specs/custom_id_registry.json`
 
 ### Quest slots
 - `910000` to `910999`
 - Use for: private quest arcs, branch quests, follow-up quests, test quests
 
 ### Item slots
-- `911000` to `911999`
+- `910000` to `910999`
 - Use for: private reward items, equipped-gate items, item prototypes
+- Numeric overlap with quest slots is allowed because namespace + id is the real uniqueness boundary
 
 ### Gossip menu slots
 - `912000` to `912499`
@@ -45,14 +47,15 @@ There are two stages:
 
 ## Why this is useful
 
-This matches the design direction you wanted earlier:
-- keep private content separate
-- avoid collisions with normal server content
-- allow a pool of dummy entries that WM can repurpose later
+This now has two layers:
+
+1. coarse allocator policy in `reserved_id_ranges.json`
+2. exact claims in `custom_id_registry.json`
 
 ## Current implementation in repo
 
 - `data/specs/reserved_id_ranges.json`
+- `data/specs/custom_id_registry.json`
 - `sql/bootstrap/wm_reserved_id_ranges.sql`
 
 ## Local commands
@@ -86,6 +89,8 @@ Get-Content .\sql\bootstrap\wm_reserved_id_ranges.sql | & "D:\WOW\Azerothcore_Wo
 
 ## Next implementation target
 
-The next future step after this strategy is:
-- create dummy row seeders for quest/item/spell/gossip/npc_text slots
-- track which reserved slot is free, staged, or active
+Current status:
+
+- `WORKING`: allocator-managed quest/item/spell ranges now match the active WM pipelines
+- `WORKING`: exact claim tracking moved into `docs/CUSTOM_ID_LEDGER.md` and `data/specs/custom_id_registry.json`
+- `PARTIAL`: older historical docs may still mention the retired `spell_dbc_or_spell_slots` / `900000-900999` spell range; trust the ledger and current-state docs instead

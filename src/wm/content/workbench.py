@@ -14,6 +14,7 @@ from wm.db.mysql_cli import MysqlCliClient
 from wm.items.models import ManagedItemDraft
 from wm.items.publish import ItemPublisher
 from wm.items.publish import load_managed_item_draft
+from wm.reserved.custom_id_registry import load_custom_id_registry
 from wm.reserved.db_allocator import ReservedSlotDbAllocator
 from wm.reserved.models import ReservedSlot
 from wm.runtime_sync import RuntimeCommandResult
@@ -243,14 +244,42 @@ def build_send_items_command(
     return f'.send items {player_name} "{safe_subject}" "{safe_body}" {int(item_entry)}:{int(count)}'
 
 
-def build_player_learn_command(*, player_name: str, spell_entry: int, all_ranks: bool = False) -> str:
+def build_player_learn_command(*, player: str, spell_entry: int, all_ranks: bool = False) -> str:
     suffix = " all" if all_ranks else ""
-    return f".player learn {player_name} {int(spell_entry)}{suffix}"
+    return f".player learn {player} {int(spell_entry)}{suffix}"
 
 
-def build_player_unlearn_command(*, player_name: str, spell_entry: int, all_ranks: bool = False) -> str:
+def build_player_unlearn_command(*, player: str, spell_entry: int, all_ranks: bool = False) -> str:
     suffix = " all" if all_ranks else ""
-    return f".player unlearn {player_name} {int(spell_entry)}{suffix}"
+    return f".player unlearn {player} {int(spell_entry)}{suffix}"
+
+
+def resolve_managed_spell_runtime_target(*, draft: ManagedSpellDraft) -> dict[str, Any]:
+    if draft.slot_kind == "visible_spell_slot":
+        if draft.base_visible_spell_id in (None, 0):
+            return {
+                "can_runtime_learn": False,
+                "artifact_spell_entry": int(draft.spell_entry),
+                "reason": (
+                    f"Visible spell slot {int(draft.spell_entry)} is missing base_visible_spell_id, "
+                    "so WM cannot resolve a learnable runtime spell identity."
+                ),
+            }
+        return {
+            "can_runtime_learn": True,
+            "artifact_spell_entry": int(draft.spell_entry),
+            "runtime_spell_entry": int(draft.base_visible_spell_id),
+            "runtime_source": "base_visible_spell_id",
+        }
+
+    return {
+        "can_runtime_learn": False,
+        "artifact_spell_entry": int(draft.spell_entry),
+        "reason": (
+            f"{draft.slot_kind} {int(draft.spell_entry)} is a managed spell-slot artifact, not a directly learnable spell identity. "
+            "Publish the helper/proc rows first, then bind a real visible base spell or shell when player learning is required."
+        ),
+    }
 
 
 def write_draft_file(
@@ -393,13 +422,13 @@ def execute_spell_runtime_action(
         raise ValueError(f"Unsupported spell runtime action kind: {action_kind}")
     fallback_command = (
         build_player_learn_command(
-            player_name=str(player_ref["player_name"]),
+            player=str(player_ref["command_player"]),
             spell_entry=spell_entry,
             all_ranks=all_ranks,
         )
         if action_kind == "player_learn_spell"
         else build_player_unlearn_command(
-            player_name=str(player_ref["player_name"]),
+            player=str(player_ref["command_player"]),
             spell_entry=spell_entry,
             all_ranks=all_ranks,
         )
@@ -418,13 +447,27 @@ def execute_spell_runtime_action(
     if all_ranks:
         result = execute_runtime_command(settings=settings, command=fallback_command, mode=mode)
         result.notes = list(result.notes or []) + ["Used SOAP fallback because native spell learn/unlearn does not support all-ranks mode."]
-        return result
+        return _verify_character_spell_runtime_state(
+            client=client,
+            settings=settings,
+            player_guid=int(player_ref["player_guid"]),
+            spell_entry=int(spell_entry),
+            action_kind=action_kind,
+            result=result,
+        )
 
     action_meta = NATIVE_ACTION_KIND_BY_ID.get(action_kind)
     if action_meta is None or not action_meta.implemented:
         result = execute_runtime_command(settings=settings, command=fallback_command, mode=mode)
         result.notes = list(result.notes or []) + ["Used SOAP fallback because the native bridge action is not implemented."]
-        return result
+        return _verify_character_spell_runtime_state(
+            client=client,
+            settings=settings,
+            player_guid=int(player_ref["player_guid"]),
+            spell_entry=int(spell_entry),
+            action_kind=action_kind,
+            result=result,
+        )
 
     action_client = NativeBridgeActionClient(client=client, settings=settings)
     request = action_client.submit(
@@ -440,16 +483,23 @@ def execute_spell_runtime_action(
     final = action_client.wait(request_id=request.request_id)
     native_ok = final.status == "done" and bool(final.result.get("ok", True))
     if native_ok:
-        return WorkbenchRuntimeResult(
-            mode=mode,
-            command=f"native:{action_kind} player_guid={player_ref['player_guid']} spell_id={int(spell_entry)}",
-            ok=True,
-            executed=True,
-            result=json.dumps(final.to_dict(), ensure_ascii=False),
-            notes=[
-                "transport=native_bridge_action",
-                f"native_request_id={final.request_id}",
-            ],
+        return _verify_character_spell_runtime_state(
+            client=client,
+            settings=settings,
+            player_guid=int(player_ref["player_guid"]),
+            spell_entry=int(spell_entry),
+            action_kind=action_kind,
+            result=WorkbenchRuntimeResult(
+                mode=mode,
+                command=f"native:{action_kind} player_guid={player_ref['player_guid']} spell_id={int(spell_entry)}",
+                ok=True,
+                executed=True,
+                result=json.dumps(final.to_dict(), ensure_ascii=False),
+                notes=[
+                    "transport=native_bridge_action",
+                    f"native_request_id={final.request_id}",
+                ],
+            ),
         )
 
     fallback_notes = [
@@ -461,7 +511,14 @@ def execute_spell_runtime_action(
     if settings.soap_enabled:
         fallback_result = execute_runtime_command(settings=settings, command=fallback_command, mode=mode)
         fallback_result.notes = fallback_notes + list(fallback_result.notes or []) + ["Used SOAP fallback after native bridge rejection/failure."]
-        return fallback_result
+        return _verify_character_spell_runtime_state(
+            client=client,
+            settings=settings,
+            player_guid=int(player_ref["player_guid"]),
+            spell_entry=int(spell_entry),
+            action_kind=action_kind,
+            result=fallback_result,
+        )
 
     return WorkbenchRuntimeResult(
         mode=mode,
@@ -473,6 +530,66 @@ def execute_spell_runtime_action(
         result=json.dumps(final.to_dict(), ensure_ascii=False),
         notes=fallback_notes,
     )
+
+
+def _verify_character_spell_runtime_state(
+    *,
+    client: MysqlCliClient,
+    settings: Settings,
+    player_guid: int,
+    spell_entry: int,
+    action_kind: str,
+    result: WorkbenchRuntimeResult,
+) -> WorkbenchRuntimeResult:
+    if result.mode != "apply" or not result.ok:
+        return result
+
+    should_exist = action_kind == "player_learn_spell"
+    if settings.soap_enabled and settings.soap_user and settings.soap_password:
+        save_result = execute_runtime_command(settings=settings, command=".saveall", mode="apply")
+        result.notes = list(result.notes or []) + [
+            f"saveall_ok={str(save_result.ok).lower()} executed={str(save_result.executed).lower()}"
+        ]
+        if save_result.fault_code not in (None, ""):
+            result.notes.append(f"saveall_fault_code={save_result.fault_code}")
+        if save_result.fault_string not in (None, ""):
+            result.notes.append(f"saveall_fault={save_result.fault_string}")
+
+    present = False
+    attempts = 0
+    for attempt in range(1, 6):
+        attempts = attempt
+        rows = client.query(
+            host=settings.char_db_host,
+            port=settings.char_db_port,
+            user=settings.char_db_user,
+            password=settings.char_db_password,
+            database=settings.char_db_name,
+            sql=(
+                "SELECT guid, spell FROM character_spell "
+                f"WHERE guid = {int(player_guid)} AND spell = {int(spell_entry)} LIMIT 1"
+            ),
+        )
+        present = bool(rows)
+        if present == should_exist:
+            break
+        if attempt < 5:
+            time.sleep(0.25)
+    result.notes = list(result.notes or []) + [
+        f"character_spell_verify_attempts={attempts}",
+        f"character_spell_present={str(present).lower()} expected_present={str(should_exist).lower()}"
+    ]
+    if present == should_exist:
+        return result
+
+    result.ok = False
+    result.fault_code = "runtime_verification_failed"
+    expectation = "present" if should_exist else "absent"
+    result.fault_string = (
+        f"character_spell verification failed for player {int(player_guid)} spell {int(spell_entry)}: "
+        f"expected row to be {expectation}."
+    )
+    return result
 
 
 def configure_twin_skeleton_runtime(
@@ -639,7 +756,120 @@ def resolve_shell_target(
     }
 
 
-def record_shell_grant_state(
+def describe_wm_spell_scope(*, spell_id: int) -> dict[str, Any] | None:
+    shell = load_spell_shell_bank().shell_by_spell_id(int(spell_id))
+    if shell is not None:
+        return {
+            "grant_scope": "spell_shell",
+            "claim_key": shell.shell_key,
+            "label": shell.label,
+            "family_id": shell.family_id,
+            "behavior_kind": shell.behavior_kind,
+        }
+
+    registry = load_custom_id_registry()
+    claim = registry.claim_by_id(namespace="spell", id=int(spell_id))
+    managed_range = registry.range_by_key(namespace="spell", range_key="managed_spell_slots")
+    if claim is None and managed_range is not None and managed_range.start_id <= int(spell_id) <= managed_range.end_id:
+        return {
+            "grant_scope": "managed_spell_slot",
+            "range_key": managed_range.range_key,
+            "range_status": managed_range.status,
+        }
+    if claim is None:
+        return None
+
+    grant_scope = "wm_custom_spell"
+    if managed_range is not None and managed_range.start_id <= claim.id <= managed_range.end_id:
+        grant_scope = "managed_spell_slot"
+    payload = {
+        "grant_scope": grant_scope,
+        "claim_key": claim.key,
+        "claim_kind": claim.kind,
+        "claim_status": claim.status,
+        "owner_system": claim.owner_system,
+    }
+    if managed_range is not None and managed_range.start_id <= claim.id <= managed_range.end_id:
+        payload["range_key"] = managed_range.range_key
+    return payload
+
+
+def build_managed_spell_grant_metadata(
+    *,
+    draft: ManagedSpellDraft,
+    draft_path: Path | None,
+    reserved_slot: dict[str, Any] | None,
+    source_command: str,
+    all_ranks: bool,
+) -> dict[str, Any]:
+    metadata = describe_wm_spell_scope(spell_id=draft.spell_entry) or {"grant_scope": "managed_spell_slot"}
+    runtime_target = resolve_managed_spell_runtime_target(draft=draft)
+    metadata.update(
+        {
+            "spell_entry": int(draft.spell_entry),
+            "spell_name": str(draft.name),
+            "slot_kind": str(draft.slot_kind),
+            "source_command": str(source_command),
+            "all_ranks": bool(all_ranks),
+            "runtime_can_learn": bool(runtime_target.get("can_runtime_learn", False)),
+            "runtime_spell_entry": _int_or_none(runtime_target.get("runtime_spell_entry")),
+            "runtime_source": _str_or_none(runtime_target.get("runtime_source")),
+        }
+    )
+    if draft_path is not None:
+        metadata["draft_path"] = str(draft_path)
+    if isinstance(reserved_slot, dict):
+        metadata["reserved_slot"] = {
+            "entity_type": _str_or_none(reserved_slot.get("entity_type")),
+            "reserved_id": _int_or_none(reserved_slot.get("reserved_id")),
+            "slot_status": _str_or_none(reserved_slot.get("slot_status")),
+            "arc_key": _str_or_none(reserved_slot.get("arc_key")),
+        }
+    return metadata
+
+
+def build_direct_spell_grant_metadata(
+    *,
+    spell_entry: int,
+    source_command: str,
+    all_ranks: bool,
+) -> dict[str, Any] | None:
+    metadata = describe_wm_spell_scope(spell_id=spell_entry)
+    if metadata is None:
+        return None
+    metadata.update(
+        {
+            "spell_entry": int(spell_entry),
+            "source_command": str(source_command),
+            "all_ranks": bool(all_ranks),
+        }
+    )
+    return metadata
+
+
+def publish_result_allows_runtime(*, publish_result: dict[str, Any]) -> bool:
+    validation_ok = bool(publish_result.get("validation", {}).get("ok", False))
+    preflight_ok = bool(publish_result.get("preflight", {}).get("ok", False))
+    if not validation_ok or not preflight_ok:
+        return False
+    if str(publish_result.get("mode") or "") == "apply":
+        return bool(publish_result.get("applied", False))
+    return True
+
+
+def build_skipped_runtime_result(*, mode: str, command: str, reason: str) -> WorkbenchRuntimeResult:
+    return WorkbenchRuntimeResult(
+        mode=mode,
+        command=command,
+        ok=False,
+        executed=False,
+        fault_code="runtime_skipped",
+        fault_string=reason,
+        notes=[reason],
+    )
+
+
+def record_spell_grant_state(
     *,
     client: MysqlCliClient,
     settings: Settings,
@@ -691,6 +921,29 @@ def record_shell_grant_state(
         "grant_kind": grant_kind,
         "revoked": False,
     }
+
+
+def record_shell_grant_state(
+    *,
+    client: MysqlCliClient,
+    settings: Settings,
+    player_guid: int,
+    spell_id: int,
+    grant_kind: str,
+    author: str,
+    metadata: dict[str, Any] | None = None,
+    revoked: bool = False,
+) -> dict[str, Any] | None:
+    return record_spell_grant_state(
+        client=client,
+        settings=settings,
+        player_guid=player_guid,
+        spell_id=spell_id,
+        grant_kind=grant_kind,
+        author=author,
+        metadata=metadata,
+        revoked=revoked,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -846,6 +1099,7 @@ def main(argv: list[str] | None = None) -> int:
         return _print_publish_summary(
             publish_result=publish_result.to_dict(),
             runtime_result=None if runtime_result is None else runtime_result.to_dict(),
+            grant_record=None,
             output_json=args.output_json,
         )
 
@@ -855,12 +1109,14 @@ def main(argv: list[str] | None = None) -> int:
         return _print_publish_summary(
             publish_result=publish_result.to_dict(),
             runtime_result=None,
+            grant_record=None,
             output_json=args.output_json,
         )
 
     if args.command == "publish-spell":
         draft = load_managed_spell_draft(args.draft_json)
         slot = _load_reserved_slot(args.draft_json)
+        runtime_target = resolve_managed_spell_runtime_target(draft=draft)
         if args.mode == "apply":
             _prepare_slot(
                 allocator=allocator,
@@ -869,40 +1125,78 @@ def main(argv: list[str] | None = None) -> int:
                 slot=slot,
             )
         publish_result = SpellPublisher(client=client, settings=settings).publish(draft=draft, mode=args.mode)
+        publish_payload = publish_result.to_dict()
         runtime_result = None
+        grant_record = None
         if args.learn_to_player_guid is not None or args.learn_to_player_name not in (None, ""):
-            player_ref = _resolve_player_reference(
-                client=client,
-                settings=settings,
-                player_guid=args.learn_to_player_guid,
-                player_name=args.learn_to_player_name,
-            )
-            wait_notes: list[str] = []
-            player_ref, wait_notes = _maybe_wait_for_player_online(
-                client=client,
-                settings=settings,
-                player_ref=player_ref,
-                player_guid=args.learn_to_player_guid,
-                player_name=args.learn_to_player_name,
-                mode=args.mode,
-                wait_for_player_online=bool(args.wait_for_player_online),
-                wait_timeout_seconds=args.wait_timeout_seconds,
-                wait_poll_seconds=args.wait_poll_seconds,
-            )
-            runtime_result = execute_spell_runtime_action(
-                client=client,
-                settings=settings,
-                player_ref=player_ref,
-                spell_entry=draft.spell_entry,
-                action_kind="player_learn_spell",
-                all_ranks=bool(args.all_ranks),
-                mode=args.mode,
-            )
-            if wait_notes:
-                runtime_result.notes = wait_notes + list(runtime_result.notes or [])
+            if publish_result_allows_runtime(publish_result=publish_payload):
+                if not bool(runtime_target.get("can_runtime_learn", False)):
+                    runtime_result = build_skipped_runtime_result(
+                        mode=args.mode,
+                        command=f"managed_spell_runtime spell_entry={int(draft.spell_entry)}",
+                        reason=str(runtime_target.get("reason") or "Managed spell draft does not expose a learnable runtime spell identity."),
+                    )
+                else:
+                    player_ref = _resolve_player_reference(
+                        client=client,
+                        settings=settings,
+                        player_guid=args.learn_to_player_guid,
+                        player_name=args.learn_to_player_name,
+                    )
+                    wait_notes: list[str] = []
+                    player_ref, wait_notes = _maybe_wait_for_player_online(
+                        client=client,
+                        settings=settings,
+                        player_ref=player_ref,
+                        player_guid=args.learn_to_player_guid,
+                        player_name=args.learn_to_player_name,
+                        mode=args.mode,
+                        wait_for_player_online=bool(args.wait_for_player_online),
+                        wait_timeout_seconds=args.wait_timeout_seconds,
+                        wait_poll_seconds=args.wait_poll_seconds,
+                    )
+                    runtime_result = execute_spell_runtime_action(
+                        client=client,
+                        settings=settings,
+                        player_ref=player_ref,
+                        spell_entry=int(runtime_target["runtime_spell_entry"]),
+                        action_kind="player_learn_spell",
+                        all_ranks=bool(args.all_ranks),
+                        mode=args.mode,
+                    )
+                    runtime_notes = list(runtime_result.notes or [])
+                    runtime_notes.append(
+                        f"Managed spell slot {int(draft.spell_entry)} used runtime spell {int(runtime_target['runtime_spell_entry'])} via {runtime_target.get('runtime_source')}."
+                    )
+                    runtime_result.notes = runtime_notes
+                    if wait_notes:
+                        runtime_result.notes = wait_notes + list(runtime_result.notes or [])
+                    if args.mode == "apply" and runtime_result.ok:
+                        grant_record = record_spell_grant_state(
+                            client=client,
+                            settings=settings,
+                            player_guid=int(player_ref["player_guid"]),
+                            spell_id=int(draft.spell_entry),
+                            grant_kind="managed_spell_slot_grant",
+                            author="wm.content.workbench",
+                            metadata=build_managed_spell_grant_metadata(
+                                draft=draft,
+                                draft_path=args.draft_json,
+                                reserved_slot=slot,
+                                source_command="publish-spell",
+                                all_ranks=bool(args.all_ranks),
+                            ),
+                        )
+            else:
+                runtime_result = build_skipped_runtime_result(
+                    mode=args.mode,
+                    command=f"native:player_learn_spell spell_id={int(draft.spell_entry)}",
+                    reason="Skipped runtime learn because spell publish validation, preflight, or apply did not succeed.",
+                )
         return _print_publish_summary(
-            publish_result=publish_result.to_dict(),
+            publish_result=publish_payload,
             runtime_result=None if runtime_result is None else runtime_result.to_dict(),
+            grant_record=grant_record,
             output_json=args.output_json,
         )
 
@@ -969,7 +1263,24 @@ def main(argv: list[str] | None = None) -> int:
         )
         if wait_notes:
             runtime_result.notes = wait_notes + list(runtime_result.notes or [])
-        return _print_runtime_summary(runtime_result, output_json=args.output_json)
+        grant_record = None
+        if args.mode == "apply" and runtime_result.ok:
+            metadata = build_direct_spell_grant_metadata(
+                spell_entry=int(args.spell_entry),
+                source_command="learn-spell",
+                all_ranks=bool(args.all_ranks),
+            )
+            if metadata is not None:
+                grant_record = record_spell_grant_state(
+                    client=client,
+                    settings=settings,
+                    player_guid=int(player_ref["player_guid"]),
+                    spell_id=int(args.spell_entry),
+                    grant_kind="manual_wm_spell_grant",
+                    author="wm.content.workbench",
+                    metadata=metadata,
+                )
+        return _print_runtime_summary(runtime_result, grant_record=grant_record, output_json=args.output_json)
 
     if args.command == "unlearn-spell":
         player_ref = _resolve_player_reference(
@@ -1001,7 +1312,25 @@ def main(argv: list[str] | None = None) -> int:
         )
         if wait_notes:
             runtime_result.notes = wait_notes + list(runtime_result.notes or [])
-        return _print_runtime_summary(runtime_result, output_json=args.output_json)
+        grant_record = None
+        if args.mode == "apply" and runtime_result.ok:
+            metadata = build_direct_spell_grant_metadata(
+                spell_entry=int(args.spell_entry),
+                source_command="unlearn-spell",
+                all_ranks=bool(args.all_ranks),
+            )
+            if metadata is not None:
+                grant_record = record_spell_grant_state(
+                    client=client,
+                    settings=settings,
+                    player_guid=int(player_ref["player_guid"]),
+                    spell_id=int(args.spell_entry),
+                    grant_kind="manual_wm_spell_revoke",
+                    author="wm.content.workbench",
+                    metadata=metadata,
+                    revoked=True,
+                )
+        return _print_runtime_summary(runtime_result, grant_record=grant_record, output_json=args.output_json)
 
     if args.command == "grant-shell":
         player_ref = _resolve_player_reference(
@@ -1045,7 +1374,7 @@ def main(argv: list[str] | None = None) -> int:
             runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         grant_record = None
         if args.mode == "apply" and runtime_result.ok:
-            grant_record = record_shell_grant_state(
+            grant_record = record_spell_grant_state(
                 client=client,
                 settings=settings,
                 player_guid=int(player_ref["player_guid"]),
@@ -1100,7 +1429,7 @@ def main(argv: list[str] | None = None) -> int:
             runtime_result.notes = wait_notes + list(runtime_result.notes or [])
         grant_record = None
         if args.mode == "apply" and runtime_result.ok:
-            grant_record = record_shell_grant_state(
+            grant_record = record_spell_grant_state(
                 client=client,
                 settings=settings,
                 player_guid=int(player_ref["player_guid"]),
@@ -1514,12 +1843,14 @@ def _print_publish_summary(
     *,
     publish_result: dict[str, Any],
     runtime_result: dict[str, Any] | None,
+    grant_record: dict[str, Any] | None,
     output_json: Path | None,
 ) -> int:
-    payload = {"publish": publish_result, "runtime_test": runtime_result}
+    payload = {"publish": publish_result, "runtime_test": runtime_result, "grant_record": grant_record}
     if output_json is not None:
         output_json.parent.mkdir(parents=True, exist_ok=True)
         output_json.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    mode = str(publish_result.get("mode") or "dry-run")
     validation_ok = bool(publish_result.get("validation", {}).get("ok", False))
     preflight_ok = bool(publish_result.get("preflight", {}).get("ok", False))
     applied = bool(publish_result.get("applied", False))
@@ -1535,15 +1866,28 @@ def _print_publish_summary(
         )
         for note in runtime_result.get("notes", []) or []:
             print(f"note={note}")
+    if grant_record is not None:
+        print(f"grant_recorded=true revoked={str(bool(grant_record.get('revoked', False))).lower()}")
     if output_json is not None:
         print(f"output_json={output_json}")
-    return 0 if validation_ok and preflight_ok and (runtime_result is None or bool(runtime_result.get("ok", False))) else 1
+    success = validation_ok and preflight_ok and (runtime_result is None or bool(runtime_result.get("ok", False)))
+    if mode == "apply":
+        success = success and applied
+    return 0 if success else 1
 
 
-def _print_runtime_summary(result: WorkbenchRuntimeResult, *, output_json: Path | None) -> int:
+def _print_runtime_summary(
+    result: WorkbenchRuntimeResult,
+    *,
+    grant_record: dict[str, Any] | None = None,
+    output_json: Path | None,
+) -> int:
     if output_json is not None:
         output_json.parent.mkdir(parents=True, exist_ok=True)
-        output_json.write_text(json.dumps(result.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+        output_json.write_text(
+            json.dumps({"runtime_test": result.to_dict(), "grant_record": grant_record}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
     print(
         f"mode={result.mode} ok={str(bool(result.ok)).lower()} executed={str(bool(result.executed)).lower()} "
         f"command={result.command}"
@@ -1552,6 +1896,8 @@ def _print_runtime_summary(result: WorkbenchRuntimeResult, *, output_json: Path 
         print(f"fault={result.fault_string}")
     for note in result.notes or []:
         print(f"note={note}")
+    if grant_record is not None:
+        print(f"grant_recorded=true revoked={str(bool(grant_record.get('revoked', False))).lower()}")
     if output_json is not None:
         print(f"output_json={output_json}")
     return 0 if result.ok else 1

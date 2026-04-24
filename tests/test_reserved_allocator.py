@@ -14,11 +14,11 @@ class ReservedAllocatorTests(unittest.TestCase):
         self.assertEqual(slots[-1].reserved_id, 910002)
 
     def test_allocate_next_free_slot_picks_lowest(self) -> None:
-        slots = build_slots_from_range("spell_slots", 900000, 900002)
-        slot = allocate_next_free_slot(slots, entity_type="spell_slots", character_guid=42)
+        slots = build_slots_from_range("spell", 947000, 947002)
+        slot = allocate_next_free_slot(slots, entity_type="spell", character_guid=42)
         self.assertIsNotNone(slot)
         assert slot is not None
-        self.assertEqual(slot.reserved_id, 900000)
+        self.assertEqual(slot.reserved_id, 947000)
         self.assertEqual(slot.slot_status, STAGED)
         self.assertEqual(slot.character_guid, 42)
 

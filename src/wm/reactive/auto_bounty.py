@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import argparse
+import json
 from dataclasses import dataclass
 
 from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient
 from wm.events.models import WMEvent
+from wm.quests.bounty import build_default_bounty_reward
 from wm.reactive.install_bounty import ReactiveBountyInstaller
 from wm.reactive.models import ReactiveQuestRule
 from wm.reactive.store import ReactiveQuestStore
 from wm.reactive.turn_in_selector import ZoneQuestTurnInSelector
+from wm.quests.reward_picker import BountyEquipmentRewardPicker
 from wm.refs import CreatureRef
 from wm.refs import NpcRef
 from wm.refs import PlayerRef
@@ -81,6 +85,7 @@ class ReactiveAutoBountyManager:
         resolver: LiveCreatureResolver | None = None,
         slot_allocator: ReservedSlotDbAllocator | None = None,
         turn_in_selector: ZoneQuestTurnInSelector | None = None,
+        reward_picker: BountyEquipmentRewardPicker | None = None,
         targets: tuple[AutoBountyTarget, ...] = AUTO_BOUNTY_TARGETS,
     ) -> None:
         self.client = client
@@ -94,6 +99,7 @@ class ReactiveAutoBountyManager:
         self.resolver = resolver or LiveCreatureResolver(client=client, settings=settings)
         self.slot_allocator = slot_allocator or ReservedSlotDbAllocator(client=client, settings=settings)
         self.turn_in_selector = turn_in_selector or ZoneQuestTurnInSelector(client=client, settings=settings)
+        self.reward_picker = reward_picker or BountyEquipmentRewardPicker(client=client, settings=settings)
         self.targets = tuple(targets)
 
     def ensure_rule_for_event(self, event: WMEvent) -> ReactiveQuestRule | None:
@@ -170,6 +176,10 @@ class ReactiveAutoBountyManager:
             fallback_name=subject.name,
         )
         quest_title = _resolved_quest_title(explicit_title=target.quest_title, target_name=objective_target_name)
+        reward_preview, reward_metadata = self._resolve_reward_metadata(
+            player_guid=int(event.player_guid or 0),
+            quest_level=max(int(subject.profile.level_max), 1),
+        )
         return ResolvedAutoBountyPlan(
             rule_key=target.resolved_rule_key(subject_entry=resolved_subject_entry, zone_id=zone_id),
             subject_entry=resolved_subject_entry,
@@ -193,7 +203,9 @@ class ReactiveAutoBountyManager:
                 "require_consecutive_kills": True,
                 "objective_target_name": objective_target_name,
                 "quest_title": quest_title,
+                "projected_reward": reward_preview,
                 "installer": "wm.reactive.auto_bounty",
+                **reward_metadata,
             },
         )
 
@@ -215,6 +227,10 @@ class ReactiveAutoBountyManager:
             fallback_name=subject.name,
         )
         quest_title = _resolved_quest_title(explicit_title=None, target_name=objective_target_name)
+        reward_preview, reward_metadata = self._resolve_reward_metadata(
+            player_guid=int(event.player_guid or 0),
+            quest_level=max(int(subject.profile.level_max), 1),
+        )
         return ResolvedAutoBountyPlan(
             rule_key=f"reactive_bounty:auto:zone:{int(zone_id or 0)}:subject:{resolved_subject_entry}",
             subject_entry=resolved_subject_entry,
@@ -247,7 +263,37 @@ class ReactiveAutoBountyManager:
                 "require_consecutive_kills": True,
                 "objective_target_name": objective_target_name,
                 "quest_title": quest_title,
+                "projected_reward": reward_preview,
                 "installer": "wm.reactive.auto_bounty",
+                **reward_metadata,
+            },
+        )
+
+    def _resolve_reward_metadata(
+        self,
+        *,
+        player_guid: int,
+        quest_level: int,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        selection = self.reward_picker.select_for_player(player_guid=int(player_guid))
+        if selection is None:
+            return (
+                build_default_bounty_reward(quest_level=int(quest_level)).to_dict(),
+                {"reward_policy": "default_supply_bundle_v1"},
+            )
+
+        return (
+            build_default_bounty_reward(
+                quest_level=int(quest_level),
+                reward_item_entry=int(selection.item_entry),
+                reward_item_name=selection.item_name,
+            ).to_dict(),
+            {
+                "reward_policy": selection.policy_key,
+                "reward_item_entry": int(selection.item_entry),
+                "reward_item_name": selection.item_name,
+                "reward_item_count": 1,
+                "reward_selection": selection.to_dict(),
             },
         )
 
@@ -334,3 +380,110 @@ def _resolved_quest_title(*, explicit_title: str | None, target_name: str) -> st
     if explicit_title not in (None, ""):
         return str(explicit_title).strip()
     return f"Bounty: {target_name}"
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Inspect or reset dynamic auto-bounty rules for one player.")
+    parser.add_argument("--player-guid", type=int, required=True)
+    parser.add_argument("--deactivate-existing", action="store_true")
+    parser.add_argument("--deactivate-existing-bounty-rules", action="store_true")
+    parser.add_argument("--summary", action="store_true")
+    return parser
+
+
+def _rule_rows_for_player(
+    store: ReactiveQuestStore,
+    *,
+    player_guid: int,
+    rule_prefix: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for rule in store.list_active_rules(player_guid=int(player_guid)):
+        if not str(rule.rule_key).startswith(str(rule_prefix)):
+            continue
+        rows.append(
+            {
+                "rule_key": rule.rule_key,
+                "quest_id": int(rule.quest_id),
+                "subject_entry": int(rule.subject_entry),
+                "turn_in_npc_entry": int(rule.turn_in_npc_entry),
+                "objective_target_name": rule.metadata.get("objective_target_name"),
+                "quest_title": rule.metadata.get("quest_title"),
+                "reward_policy": rule.metadata.get("reward_policy"),
+                "projected_reward": rule.metadata.get("projected_reward"),
+            }
+        )
+    return rows
+
+
+def _render_summary(
+    *,
+    player_guid: int,
+    deactivated_existing_auto_rules: bool,
+    deactivated_existing_bounty_rules: bool,
+    active_auto_rules: list[dict[str, object]],
+    active_bounty_rules: list[dict[str, object]],
+) -> str:
+    lines = [
+        f"player_guid: {int(player_guid)}",
+        f"deactivated_existing_auto_rules: {str(bool(deactivated_existing_auto_rules)).lower()}",
+        f"deactivated_existing_bounty_rules: {str(bool(deactivated_existing_bounty_rules)).lower()}",
+        f"active_auto_rules: {len(active_auto_rules)}",
+        f"active_bounty_rules: {len(active_bounty_rules)}",
+    ]
+    if not active_bounty_rules:
+        lines.append("rules: none")
+        return "\n".join(lines)
+
+    lines.append("rules:")
+    for rule in active_bounty_rules:
+        lines.append(
+            f"- {rule['rule_key']} | quest_id={rule['quest_id']} | subject_entry={rule['subject_entry']} | turn_in_npc_entry={rule['turn_in_npc_entry']}"
+        )
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    settings = Settings.from_env()
+    client = MysqlCliClient()
+    store = ReactiveQuestStore(client=client, settings=settings)
+
+    if args.deactivate_existing:
+        store.deactivate_player_auto_bounty_rules(player_guid=int(args.player_guid))
+    if args.deactivate_existing_bounty_rules:
+        store.deactivate_player_bounty_rules(player_guid=int(args.player_guid))
+
+    payload = {
+        "player_guid": int(args.player_guid),
+        "deactivated_existing_auto_rules": bool(args.deactivate_existing),
+        "deactivated_existing_bounty_rules": bool(args.deactivate_existing_bounty_rules),
+        "active_auto_rules": _rule_rows_for_player(
+            store,
+            player_guid=int(args.player_guid),
+            rule_prefix="reactive_bounty:auto:",
+        ),
+        "active_bounty_rules": _rule_rows_for_player(
+            store,
+            player_guid=int(args.player_guid),
+            rule_prefix="reactive_bounty:",
+        ),
+    }
+    raw = json.dumps(payload, indent=2, ensure_ascii=False)
+    if args.summary:
+        print(
+            _render_summary(
+                player_guid=int(args.player_guid),
+                deactivated_existing_auto_rules=bool(args.deactivate_existing),
+                deactivated_existing_bounty_rules=bool(args.deactivate_existing_bounty_rules),
+                active_auto_rules=payload["active_auto_rules"],
+                active_bounty_rules=payload["active_bounty_rules"],
+            )
+        )
+    else:
+        print(raw)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

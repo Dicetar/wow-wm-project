@@ -56,14 +56,14 @@ class RecordingSpellPublisher(SpellPublisher):
 
 def _draft() -> ManagedSpellDraft:
     return ManagedSpellDraft(
-        spell_entry=940020,
+        spell_entry=947020,
         slot_kind="item_trigger_slot",
         name="WM Trigger Burst",
         helper_spell_id=133,
         trigger_item_entry=910020,
         proc_rules=[
             ManagedSpellProcRule(
-                spell_id=940020,
+                spell_id=947020,
                 proc_flags=4,
                 chance=25.0,
                 cooldown=6000,
@@ -72,7 +72,7 @@ def _draft() -> ManagedSpellDraft:
         ],
         linked_spells=[
             ManagedSpellLink(
-                trigger_spell_id=940020,
+                trigger_spell_id=947020,
                 effect_spell_id=133,
                 link_type=0,
                 comment="Prototype trigger link",
@@ -89,7 +89,7 @@ class SpellPublishTests(unittest.TestCase):
                 "reserved_slot": [
                     {
                         "EntityType": "spell",
-                        "ReservedID": "940020",
+                        "ReservedID": "947020",
                         "SlotStatus": "staged",
                         "ArcKey": "wm_content:item_trigger:wm-trigger-burst",
                         "CharacterGUID": "5406",
@@ -97,8 +97,8 @@ class SpellPublishTests(unittest.TestCase):
                         "NotesJSON": None,
                     }
                 ],
-                "spell_linked_spell": [{"spell_trigger": "940020", "spell_effect": "133", "type": "0"}],
-                "spell_proc": [{"SpellId": "940020", "ProcFlags": "4", "Chance": "25", "Cooldown": "6000"}],
+                "spell_linked_spell": [{"spell_trigger": "947020", "spell_effect": "133", "type": "0"}],
+                "spell_proc": [{"SpellId": "947020", "ProcFlags": "4", "Chance": "25", "Cooldown": "6000"}],
             }
         )
 
@@ -122,7 +122,7 @@ class SpellPublishTests(unittest.TestCase):
                 "reserved_slot": [
                     {
                         "EntityType": "spell",
-                        "ReservedID": "940020",
+                        "ReservedID": "947020",
                         "SlotStatus": "staged",
                         "ArcKey": "wm_content:item_trigger:wm-trigger-burst",
                         "CharacterGUID": "5406",
@@ -160,7 +160,7 @@ class SpellPublishTests(unittest.TestCase):
                 "reserved_slot": [
                     {
                         "EntityType": "spell",
-                        "ReservedID": "940020",
+                        "ReservedID": "947020",
                         "SlotStatus": "staged",
                         "ArcKey": "wm_content:item_trigger:wm-trigger-burst",
                         "CharacterGUID": "5406",

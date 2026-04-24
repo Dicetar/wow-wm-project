@@ -84,14 +84,17 @@ class DeterministicContentFactory:
 
         if slot is not None:
             kill_count = max(1, int(self.settings.event_followup_kill_count))
-            reward_money = max(0, int(self.settings.event_default_reward_money_copper))
             draft = build_bounty_quest_draft(
                 quest_id=slot.reserved_id,
                 questgiver_entry=questgiver.entry,
                 questgiver_name=questgiver.name,
                 target_profile=target.profile,
                 kill_count=kill_count,
-                reward_money_copper=reward_money,
+                reward_money_copper=(
+                    int(self.settings.event_default_reward_money_copper)
+                    if int(self.settings.event_default_reward_money_copper) > 0
+                    else None
+                ),
                 template_defaults=template_defaults,
             )
             payload = draft.to_dict()

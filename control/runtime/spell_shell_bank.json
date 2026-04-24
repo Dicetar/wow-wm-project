@@ -1,106 +1,59 @@
 {
-  "schema_version": "wm.spell_shell_bank.v1",
-  "description": "Prepared client-visible spell shell families for true custom WM abilities on a patched 3.3.5 client.",
+  "schema_version": "wm.spell_shell_bank.v2",
+  "description": "Prepared client-visible spell shells for true custom WM abilities on a patched 3.3.5 client, split between pinned compatibility shells and generic cast-shape families.",
   "client_patch_required": true,
   "patch": {
-    "artifact_version": "wm_spell_shell_bank.v1",
+    "artifact_version": "wm_spell_shell_bank.v2",
     "workspace": "client_patches/wm_spell_shell_bank",
     "target_client": "WoW 3.3.5a",
     "generation_mode": "range_driven",
-    "slots_per_family": 1000
+    "slots_per_family": 100,
+    "reserve_gap_slots": 100
   },
   "notes": [
     "These shells are a planning/control contract until a matching client patch ships.",
     "Stock 3.3.5 clients cannot display truly new spellbook abilities without pre-seeded client spell definitions.",
-    "Do not reuse stock live spell IDs for WM abilities once a shell exists in this bank."
+    "Do not reuse stock live spell IDs for WM abilities once a shell exists in this bank.",
+    "Generic V2 families stay cast-shape generic; bespoke server behavior is bound through WM runtime metadata, not hidden in the client shell family."
   ],
   "families": [
     {
-      "family_id": "summon_pet",
-      "label": "Permanent Pet Summon",
+      "family_id": "summon_pet_compat",
+      "family_kind": "compatibility",
+      "label": "Compatibility Summon Pet",
       "slot_range_start": 940000,
-      "slot_count": 1000,
+      "slot_count": 2,
       "targeting": "self_cast",
       "cooldown_family": "warlock_pet",
       "supports_true_pet": true,
       "supports_multi_pet": false,
       "patch_seed_template": "wm_summon_pet",
       "behavior_kinds": [
-        "warlock_pet_skeleton",
-        "warlock_pet_void",
-        "warlock_pet_fel"
+        "summon_bonebound_servant_v1",
+        "summon_bonebound_alpha_v3"
       ]
     },
     {
-      "family_id": "summon_companion",
-      "label": "Companion Or Guardian Summon",
-      "slot_range_start": 941000,
-      "slot_count": 1000,
-      "targeting": "self_cast",
-      "cooldown_family": "summon_companion",
-      "supports_true_pet": false,
-      "supports_multi_pet": true,
-      "patch_seed_template": "wm_summon_companion",
-      "behavior_kinds": [
-        "guardian_skeleton_pair",
-        "companion_follow",
-        "scene_companion_spawn"
-      ]
-    },
-    {
-      "family_id": "self_buff",
-      "label": "Self Buff",
-      "slot_range_start": 942000,
-      "slot_count": 1000,
-      "targeting": "self_cast",
-      "cooldown_family": "self_buff",
-      "supports_true_pet": false,
-      "supports_multi_pet": false,
-      "patch_seed_template": "wm_self_buff",
-      "behavior_kinds": [
-        "scaled_aura",
-        "burst_haste",
-        "shield_override"
-      ]
-    },
-    {
-      "family_id": "offensive_bolt",
-      "label": "Offensive Bolt",
-      "slot_range_start": 943000,
-      "slot_count": 1000,
-      "targeting": "unit_enemy",
-      "cooldown_family": "offensive_bolt",
-      "supports_true_pet": false,
-      "supports_multi_pet": false,
-      "patch_seed_template": "wm_offensive_bolt",
-      "behavior_kinds": [
-        "scaled_projectile",
-        "drain_life_variant",
-        "shadow_burst"
-      ]
-    },
-    {
-      "family_id": "passive_aura",
-      "label": "Passive Aura",
+      "family_id": "passive_aura_compat",
+      "family_kind": "compatibility",
+      "label": "Compatibility Passive Aura",
       "slot_range_start": 944000,
-      "slot_count": 1000,
+      "slot_count": 1,
       "targeting": "passive",
       "cooldown_family": "passive",
       "supports_true_pet": false,
       "supports_multi_pet": false,
       "patch_seed_template": "wm_passive_aura",
       "behavior_kinds": [
-        "passive_stat_bonus",
-        "passive_proc",
-        "conditional_aura",
         "passive_intellect_block_v1"
       ]
     },
     {
-      "family_id": "pet_active",
-      "label": "Pet Active",
+      "family_id": "pet_active_compat",
+      "family_kind": "compatibility",
+      "label": "Compatibility Pet Active",
       "slot_range_start": 945000,
-      "slot_count": 1000,
+      "slot_count": 1,
       "targeting": "pet_action",
       "cooldown_family": "pet_active",
       "supports_true_pet": true,
@@ -109,13 +62,88 @@
       "behavior_kinds": [
         "bonebound_pet_active_v1"
       ]
+    },
+    {
+      "family_id": "unit_target_projectile",
+      "family_kind": "generic",
+      "label": "Unit Target Projectile",
+      "slot_range_start": 946000,
+      "slot_count": 100,
+      "targeting": "unit_enemy",
+      "cooldown_family": "unit_target_projectile",
+      "supports_true_pet": false,
+      "supports_multi_pet": false,
+      "patch_seed_template": "wm_unit_target_projectile",
+      "behavior_kinds": [
+        "generic_projectile"
+      ]
+    },
+    {
+      "family_id": "unit_target_effect",
+      "family_kind": "generic",
+      "label": "Unit Target Effect",
+      "slot_range_start": 946200,
+      "slot_count": 100,
+      "targeting": "unit_target",
+      "cooldown_family": "unit_target_effect",
+      "supports_true_pet": false,
+      "supports_multi_pet": false,
+      "patch_seed_template": "wm_unit_target_effect",
+      "behavior_kinds": [
+        "generic_effect"
+      ]
+    },
+    {
+      "family_id": "ground_target_aoe",
+      "family_kind": "generic",
+      "label": "Ground Target AOE",
+      "slot_range_start": 946400,
+      "slot_count": 100,
+      "targeting": "ground_target",
+      "cooldown_family": "ground_target_aoe",
+      "supports_true_pet": false,
+      "supports_multi_pet": false,
+      "patch_seed_template": "wm_ground_target_aoe",
+      "behavior_kinds": [
+        "generic_ground_aoe"
+      ]
+    },
+    {
+      "family_id": "self_aura",
+      "family_kind": "generic",
+      "label": "Self Aura",
+      "slot_range_start": 946600,
+      "slot_count": 100,
+      "targeting": "self_cast",
+      "cooldown_family": "self_aura",
+      "supports_true_pet": false,
+      "supports_multi_pet": false,
+      "patch_seed_template": "wm_self_aura",
+      "behavior_kinds": [
+        "generic_self_aura"
+      ]
+    },
+    {
+      "family_id": "passive_aura",
+      "family_kind": "generic",
+      "label": "Passive Aura",
+      "slot_range_start": 946800,
+      "slot_count": 100,
+      "targeting": "passive",
+      "cooldown_family": "passive",
+      "supports_true_pet": false,
+      "supports_multi_pet": false,
+      "patch_seed_template": "wm_passive_aura",
+      "behavior_kinds": [
+        "generic_passive_aura"
+      ]
     }
   ],
   "shells": [
     {
       "shell_key": "bonebound_servant_v1",
       "spell_id": 940000,
-      "family_id": "summon_pet",
+      "family_id": "summon_pet_compat",
       "label": "Bonebound Servant",
       "behavior_kind": "summon_bonebound_servant_v1",
       "targeting": "corpse_required",
@@ -131,13 +159,24 @@
     {
       "shell_key": "bonebound_twins_v1",
       "spell_id": 940001,
-      "family_id": "summon_pet",
+      "family_id": "summon_pet_compat",
       "label": "Bonebound Alpha",
       "behavior_kind": "summon_bonebound_alpha_v3",
       "targeting": "self_cast",
       "required_level": 1,
       "icon_hint": "Spell_Shadow_AnimateDead",
       "tooltip": "Raise Bonebound Alpha with WM-controlled bleed and echo behavior.",
+      "client_presentation": {
+        "cast_time_index": 14,
+        "power_type": 0,
+        "mana_cost": 180,
+        "mana_cost_percentage": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 4054,
+        "spell_icon_id": 221,
+        "spellbook_seed_spell_id": 697,
+        "spellbook_ability_id": 1940001
+      },
       "patch_state": "planned",
       "notes": [
         "Legacy key kept for operator compatibility; this shell now runs the single-Alpha behavior.",
@@ -147,7 +186,7 @@
     {
       "shell_key": "bonebound_servant_slash_v1",
       "spell_id": 945000,
-      "family_id": "pet_active",
+      "family_id": "pet_active_compat",
       "label": "Bonebound Slash",
       "behavior_kind": "bonebound_pet_active_v1",
       "targeting": "pet_action",
@@ -162,7 +201,7 @@
     {
       "shell_key": "jecia_intellect_block_v1",
       "spell_id": 944000,
-      "family_id": "passive_aura",
+      "family_id": "passive_aura_compat",
       "label": "Jecia's Guarded Mind",
       "behavior_kind": "passive_intellect_block_v1",
       "targeting": "passive",

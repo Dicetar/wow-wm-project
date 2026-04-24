@@ -249,7 +249,7 @@ class ReactionExecutor:
             if mode == "apply":
                 if selected_transport == "native_bridge":
                     request = self.native_bridge_actions.submit(
-                        idempotency_key=f"{plan.plan_key}:native:quest_add:{quest_id}",
+                        idempotency_key=_native_quest_grant_idempotency_key(plan=plan, quest_id=quest_id),
                         player_guid=player_guid,
                         action_kind="quest_add",
                         payload={"quest_id": quest_id},
@@ -579,6 +579,16 @@ def _build_quest_draft(payload: dict[str, Any]) -> BountyQuestDraft:
             reward_item_entry=reward_item_entry,
             reward_item_name=reward_item_name,
             reward_item_count=int(reward_payload.get("reward_item_count") or 1),
+            reward_xp_difficulty=_int_or_none(reward_payload.get("reward_xp_difficulty")),
+            reward_spell_id=_int_or_none(reward_payload.get("reward_spell_id")),
+            reward_spell_display_id=_int_or_none(reward_payload.get("reward_spell_display_id")),
+            reward_reputations=[
+                {
+                    "faction_id": int(reward["faction_id"]),
+                    "value": int(reward["value"]),
+                }
+                for reward in reward_payload.get("reward_reputations", [])
+            ],
             reward_item=reward_item_ref,
         ),
         tags=[str(tag) for tag in payload.get("tags", [])],
@@ -715,6 +725,19 @@ def _risk_rank(value: str) -> int:
     if normalized == "high":
         return 2
     return 99
+
+
+def _native_quest_grant_idempotency_key(*, plan: ReactionPlan, quest_id: int) -> str:
+    source_event_key = _str_or_none(plan.metadata.get("source_event_key"))
+    opportunity_metadata = plan.metadata.get("opportunity_metadata")
+    if source_event_key is None and isinstance(opportunity_metadata, dict):
+        source_event_key = _str_or_none(opportunity_metadata.get("source_event_key"))
+        if source_event_key is None:
+            trigger_event_id = _int_or_none(opportunity_metadata.get("trigger_event_id"))
+            if trigger_event_id is not None:
+                source_event_key = f"trigger_event:{trigger_event_id}"
+    trigger_scope = source_event_key or "no_source_event"
+    return f"{plan.plan_key}:{trigger_scope}:native:quest_add:{int(quest_id)}"
 
 
 def _strip_internal_payload_fields(payload: dict[str, Any]) -> dict[str, Any]:

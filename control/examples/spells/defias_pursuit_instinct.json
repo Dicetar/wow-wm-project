@@ -2,7 +2,7 @@
   "kind": "spell",
   "template": "passive_slot",
   "draft": {
-    "spell_entry": 940000,
+    "spell_entry": 947000,
     "slot_kind": "passive_slot",
     "name": "Defias Pursuit Instinct",
     "base_visible_spell_id": null,

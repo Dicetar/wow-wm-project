@@ -16,6 +16,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
 
         self.assertIn('behaviorKind == "summon_bonebound_alpha_v3"', runtime)
         self.assertIn("config.spawnOmega = false;", runtime)
+        self.assertIn("gConfig.boneboundCreatureEntry = sConfigMgr->GetOption<uint32>(\"WmSpells.BoneboundServant.CreatureEntry\", 920100u);", runtime)
         self.assertIn("MaintainBoneboundAlphaAbilities(owner, alphaPet, *runtimeConfig, 1000u)", runtime)
         self.assertIn("StartBoneboundShadowDot(owner, alphaPet, victim, config)", runtime)
         self.assertIn("TrySpawnBoneboundAlphaEcho(owner, alphaPet, victim, *runtimeConfig)", runtime)
@@ -72,6 +73,19 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("WmSpells::HandleBoneboundMeleeDamage(attacker, target, damage)", unit_script)
         self.assertIn("AddSC_mod_wm_spells_unit_scripts", loader)
 
+    def test_bonebound_pet_identity_does_not_fallback_to_stock_voidwalker_entry(self) -> None:
+        runtime = self._repo_root().joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_runtime.cpp",
+        ).read_text(encoding="utf-8")
+        self.assertIn("Do not fall back to stock entry/display heuristics here.", runtime)
+        self.assertNotIn(
+            "if (pet->GetEntry() == gConfig.boneboundCreatureEntry && gConfig.boneboundDisplayId != 0 && pet->GetDisplayId() == gConfig.boneboundDisplayId)",
+            runtime,
+        )
+
     def test_alpha_echoes_survive_mount_temporary_unsummon(self) -> None:
         runtime = self._repo_root().joinpath(
             "native_modules",
@@ -115,6 +129,30 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn('"alpha_echo_creature_entry":920101', sql)
         self.assertIn('"alpha_echo_proc_chance_pct":7.5', sql)
         self.assertIn('"alpha_echo_max_active":40', sql)
+
+    def test_alpha_sql_separates_bonebound_from_stock_voidwalker_entry(self) -> None:
+        sql = self._repo_root().joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "data",
+            "sql",
+            "world",
+            "updates",
+            "2026_04_17_00_wm_spell_bonebound_alpha_creature_truth.sql",
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("SET @wm_bonebound_alpha_creature_entry := 920100;", sql)
+        self.assertIn("name = 'Bonebound Alpha'", sql)
+        self.assertIn('"creature_entry":920100', sql)
+
+        cleanup_sql = self._repo_root().joinpath(
+            "sql",
+            "dev",
+            "clear_jecia_legacy_summon_state_characters.sql",
+        ).read_text(encoding="utf-8")
+        self.assertIn("UPDATE character_pet", cleanup_sql)
+        self.assertIn("CreatedBySpell = 940001", cleanup_sql)
+        self.assertIn("entry = 920100", cleanup_sql)
 
     def test_night_watchers_lens_tracks_refreshed_visible_target_debuff(self) -> None:
         repo_root = self._repo_root()

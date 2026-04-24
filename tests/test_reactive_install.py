@@ -246,7 +246,7 @@ class ReactiveInstallTests(unittest.TestCase):
     def test_install_builds_direct_grant_turnin_only_quest(self) -> None:
         installer = ReactiveBountyInstaller(
             client=_DummyClient(),  # type: ignore[arg-type]
-            settings=Settings(event_default_reward_money_copper=1200),
+            settings=Settings(),
             reactive_store=FakeReactiveStore(),  # type: ignore[arg-type]
             slot_allocator=FakeSlotAllocator(),  # type: ignore[arg-type]
             quest_publisher=FakeQuestPublisher(),  # type: ignore[arg-type]
@@ -279,6 +279,10 @@ class ReactiveInstallTests(unittest.TestCase):
         self.assertIsNone(draft.start_npc_entry)
         self.assertEqual(draft.end_npc_entry, 197)
         self.assertEqual(int(draft.template_defaults["SpecialFlags"]), 1)
+        self.assertEqual(draft.reward.money_copper, 175)
+        self.assertEqual(draft.reward.reward_item_entry, 6827)
+        self.assertEqual(draft.reward.reward_item_name, "Box of Supplies")
+        self.assertEqual(draft.reward.reward_xp_difficulty, 4)
         self.assertEqual(reloaded_quest_ids, [910000])
 
     def test_install_refreshes_active_slot_in_place_when_publish_preflight_blocks(self) -> None:

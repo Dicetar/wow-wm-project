@@ -2,14 +2,19 @@ import unittest
 import subprocess
 import sys
 import tempfile
+import io
+from contextlib import redirect_stdout
 from pathlib import Path
 
 from wm.content.workbench import build_additem_command
+from wm.content.workbench import build_direct_spell_grant_metadata
+from wm.content.workbench import build_managed_spell_grant_metadata
 from wm.content.workbench import build_player_learn_command
 from wm.content.workbench import build_player_unlearn_command
 from wm.content.workbench import build_send_items_command
 from wm.content.workbench import configure_bonebound_servant_runtime
 from wm.content.workbench import configure_twin_skeleton_runtime
+from wm.content.workbench import describe_wm_spell_scope
 from wm.content.workbench import execute_runtime_command
 from wm.content.workbench import execute_item_delivery_command
 from wm.content.workbench import execute_spell_runtime_action
@@ -17,10 +22,16 @@ from wm.content.workbench import create_item_draft
 from wm.content.workbench import create_passive_draft
 from wm.content.workbench import create_trigger_spell_draft
 from wm.content.workbench import create_visible_spell_draft
+from wm.content.workbench import publish_result_allows_runtime
+from wm.content.workbench import record_spell_grant_state
+from wm.content.workbench import resolve_managed_spell_runtime_target
 from wm.content.workbench import resolve_shell_target
 from wm.content.workbench import _maybe_wait_for_player_online
+from wm.content.workbench import _print_publish_summary
 from wm.content.workbench import _resolve_player_reference
+from wm.content.workbench import _verify_character_spell_runtime_state
 from wm.content.workbench import WorkbenchRuntimeResult
+from wm.spells.models import ManagedSpellDraft
 from wm.reserved.models import ReservedSlot
 from wm.runtime_sync import RuntimeCommandResult
 
@@ -29,7 +40,7 @@ class FakeAllocator:
     def __init__(self) -> None:
         self.calls = []
         self.next_item = 910020
-        self.next_spell = 940020
+        self.next_spell = 947020
 
     def allocate_next_free_slot(self, **kwargs):
         self.calls.append(kwargs)
@@ -137,6 +148,313 @@ class RuntimeCommandTests(unittest.TestCase):
         self.assertIsNone(result.fault_string)
         self.assertTrue(any("idempotent" in note.lower() for note in (result.notes or [])))
 
+    def test_verify_character_spell_runtime_state_marks_missing_learn_as_failure(self) -> None:
+        class FakeClient:
+            def query(self, **kwargs):
+                return []
+
+        settings = type(
+            "SettingsStub",
+            (),
+            {
+                "char_db_host": "127.0.0.1",
+                "char_db_port": 33307,
+                "char_db_user": "acore",
+                "char_db_password": "acore",
+                "char_db_name": "acore_characters",
+                "soap_enabled": False,
+                "soap_user": "",
+                "soap_password": "",
+            },
+        )()
+
+        result = _verify_character_spell_runtime_state(
+            client=FakeClient(),  # type: ignore[arg-type]
+            settings=settings,  # type: ignore[arg-type]
+            player_guid=5406,
+            spell_entry=133,
+            action_kind="player_learn_spell",
+            result=WorkbenchRuntimeResult(mode="apply", command=".player learn 5406 133", ok=True, executed=True),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.fault_code, "runtime_verification_failed")
+        self.assertIn("expected row to be present", result.fault_string)
+
+    def test_verify_character_spell_runtime_state_accepts_present_learn_row(self) -> None:
+        class FakeClient:
+            def query(self, **kwargs):
+                return [{"guid": "5406", "spell": "133"}]
+
+        settings = type(
+            "SettingsStub",
+            (),
+            {
+                "char_db_host": "127.0.0.1",
+                "char_db_port": 33307,
+                "char_db_user": "acore",
+                "char_db_password": "acore",
+                "char_db_name": "acore_characters",
+                "soap_enabled": False,
+                "soap_user": "",
+                "soap_password": "",
+            },
+        )()
+
+        result = _verify_character_spell_runtime_state(
+            client=FakeClient(),  # type: ignore[arg-type]
+            settings=settings,  # type: ignore[arg-type]
+            player_guid=5406,
+            spell_entry=133,
+            action_kind="player_learn_spell",
+            result=WorkbenchRuntimeResult(mode="apply", command=".player learn 5406 133", ok=True, executed=True),
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIn("character_spell_present=true expected_present=true", " ".join(result.notes or []))
+
+    def test_verify_character_spell_runtime_state_runs_saveall_before_db_check_when_soap_is_available(self) -> None:
+        commands = []
+
+        class FakeClient:
+            def query(self, **kwargs):
+                return [{"guid": "5406", "spell": "133"}]
+
+        settings = type(
+            "SettingsStub",
+            (),
+            {
+                "char_db_host": "127.0.0.1",
+                "char_db_port": 33307,
+                "char_db_user": "acore",
+                "char_db_password": "acore",
+                "char_db_name": "acore_characters",
+                "soap_enabled": True,
+                "soap_user": "soap",
+                "soap_password": "soap",
+            },
+        )()
+
+        def fake_execute_runtime_command(*, settings, command, mode):
+            commands.append(command)
+            return WorkbenchRuntimeResult(mode=mode, command=command, ok=True, executed=True, result="saved")
+
+        original = _verify_character_spell_runtime_state.__globals__["execute_runtime_command"]
+        _verify_character_spell_runtime_state.__globals__["execute_runtime_command"] = fake_execute_runtime_command
+        try:
+            result = _verify_character_spell_runtime_state(
+                client=FakeClient(),  # type: ignore[arg-type]
+                settings=settings,  # type: ignore[arg-type]
+                player_guid=5406,
+                spell_entry=133,
+                action_kind="player_learn_spell",
+                result=WorkbenchRuntimeResult(mode="apply", command=".player learn 5406 133", ok=True, executed=True),
+            )
+        finally:
+            _verify_character_spell_runtime_state.__globals__["execute_runtime_command"] = original
+
+        self.assertEqual(commands, [".saveall"])
+        self.assertTrue(result.ok)
+        self.assertIn("saveall_ok=true executed=true", " ".join(result.notes or []))
+
+    def test_verify_character_spell_runtime_state_retries_until_unlearn_row_disappears(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def query(self, **kwargs):
+                self.calls += 1
+                if self.calls < 3:
+                    return [{"guid": "5406", "spell": "940001"}]
+                return []
+
+        settings = type(
+            "SettingsStub",
+            (),
+            {
+                "char_db_host": "127.0.0.1",
+                "char_db_port": 33307,
+                "char_db_user": "acore",
+                "char_db_password": "acore",
+                "char_db_name": "acore_characters",
+                "soap_enabled": False,
+                "soap_user": "",
+                "soap_password": "",
+            },
+        )()
+
+        result = _verify_character_spell_runtime_state(
+            client=FakeClient(),  # type: ignore[arg-type]
+            settings=settings,  # type: ignore[arg-type]
+            player_guid=5406,
+            spell_entry=940001,
+            action_kind="player_unlearn_spell",
+            result=WorkbenchRuntimeResult(mode="apply", command=".player unlearn Jecia 940001", ok=True, executed=True),
+        )
+
+        self.assertTrue(result.ok)
+        joined = " ".join(result.notes or [])
+        self.assertIn("character_spell_verify_attempts=3", joined)
+        self.assertIn("character_spell_present=false expected_present=false", joined)
+
+
+class SpellGrantGovernanceTests(unittest.TestCase):
+    def test_describe_wm_spell_scope_recognizes_named_shell(self) -> None:
+        metadata = describe_wm_spell_scope(spell_id=940000)
+
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["grant_scope"], "spell_shell")
+        self.assertEqual(metadata["claim_key"], "bonebound_servant_v1")
+
+    def test_describe_wm_spell_scope_recognizes_managed_slot_range(self) -> None:
+        metadata = describe_wm_spell_scope(spell_id=947000)
+
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["grant_scope"], "managed_spell_slot")
+        self.assertEqual(metadata["range_key"], "managed_spell_slots")
+
+    def test_direct_spell_grant_metadata_ignores_stock_spell(self) -> None:
+        self.assertIsNone(build_direct_spell_grant_metadata(spell_entry=133, source_command="learn-spell", all_ranks=False))
+
+    def test_resolve_managed_spell_runtime_target_uses_base_visible_spell(self) -> None:
+        target = resolve_managed_spell_runtime_target(
+            draft=ManagedSpellDraft(
+                spell_entry=947020,
+                slot_kind="visible_spell_slot",
+                name="Visible Proof",
+                base_visible_spell_id=133,
+            )
+        )
+
+        self.assertTrue(target["can_runtime_learn"])
+        self.assertEqual(target["artifact_spell_entry"], 947020)
+        self.assertEqual(target["runtime_spell_entry"], 133)
+        self.assertEqual(target["runtime_source"], "base_visible_spell_id")
+
+    def test_resolve_managed_spell_runtime_target_rejects_nonvisible_managed_slot(self) -> None:
+        target = resolve_managed_spell_runtime_target(
+            draft=ManagedSpellDraft(
+                spell_entry=947000,
+                slot_kind="passive_slot",
+                name="Passive Proof",
+            )
+        )
+
+        self.assertFalse(target["can_runtime_learn"])
+        self.assertIn("not a directly learnable spell identity", target["reason"])
+
+    def test_publish_result_allows_runtime_requires_apply_success(self) -> None:
+        self.assertFalse(
+            publish_result_allows_runtime(
+                publish_result={
+                    "mode": "apply",
+                    "validation": {"ok": True},
+                    "preflight": {"ok": True},
+                    "applied": False,
+                }
+            )
+        )
+        self.assertTrue(
+            publish_result_allows_runtime(
+                publish_result={
+                    "mode": "dry-run",
+                    "validation": {"ok": True},
+                    "preflight": {"ok": True},
+                    "applied": False,
+                }
+            )
+        )
+
+    def test_managed_spell_grant_metadata_records_runtime_target(self) -> None:
+        metadata = build_managed_spell_grant_metadata(
+            draft=ManagedSpellDraft(
+                spell_entry=947020,
+                slot_kind="visible_spell_slot",
+                name="Visible Proof",
+                base_visible_spell_id=133,
+            ),
+            draft_path=None,
+            reserved_slot=None,
+            source_command="publish-spell",
+            all_ranks=False,
+        )
+
+        self.assertEqual(metadata["grant_scope"], "managed_spell_slot")
+        self.assertEqual(metadata["spell_entry"], 947020)
+        self.assertTrue(metadata["runtime_can_learn"])
+        self.assertEqual(metadata["runtime_spell_entry"], 133)
+        self.assertEqual(metadata["runtime_source"], "base_visible_spell_id")
+
+    def test_record_spell_grant_state_inserts_and_revokes(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.queries = []
+
+            def query(self, **kwargs):
+                self.queries.append(kwargs)
+                return []
+
+        client = FakeClient()
+        settings = type(
+            "SettingsStub",
+            (),
+            {
+                "world_db_host": "127.0.0.1",
+                "world_db_port": 33307,
+                "world_db_user": "acore",
+                "world_db_password": "acore",
+                "world_db_name": "acore_world",
+            },
+        )()
+
+        original = record_spell_grant_state.__globals__["_world_table_exists"]
+        record_spell_grant_state.__globals__["_world_table_exists"] = lambda **_kwargs: True
+        try:
+            granted = record_spell_grant_state(
+                client=client,  # type: ignore[arg-type]
+                settings=settings,  # type: ignore[arg-type]
+                player_guid=5406,
+                spell_id=947000,
+                grant_kind="managed_spell_slot_grant",
+                author="wm.content.workbench",
+                metadata={"grant_scope": "managed_spell_slot"},
+            )
+            revoked = record_spell_grant_state(
+                client=client,  # type: ignore[arg-type]
+                settings=settings,  # type: ignore[arg-type]
+                player_guid=5406,
+                spell_id=947000,
+                grant_kind="managed_spell_slot_revoke",
+                author="wm.content.workbench",
+                metadata={"grant_scope": "managed_spell_slot"},
+                revoked=True,
+            )
+        finally:
+            record_spell_grant_state.__globals__["_world_table_exists"] = original
+
+        self.assertFalse(granted["revoked"])
+        self.assertTrue(revoked["revoked"])
+        self.assertIn("INSERT INTO wm_spell_grant", client.queries[0]["sql"])
+        self.assertIn("ShellSpellID = 947000", client.queries[1]["sql"])
+
+    def test_print_publish_summary_requires_apply_mutation_success(self) -> None:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            exit_code = _print_publish_summary(
+                publish_result={
+                    "mode": "apply",
+                    "validation": {"ok": True},
+                    "preflight": {"ok": True},
+                    "applied": False,
+                },
+                runtime_result=None,
+                grant_record=None,
+                output_json=None,
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("publish_applied=false", output.getvalue())
+
 
 class ContentWorkbenchTests(unittest.TestCase):
     def test_module_entrypoint_prints_help(self) -> None:
@@ -186,8 +504,8 @@ class ContentWorkbenchTests(unittest.TestCase):
             aura_description="Temporary passive test hook.",
         )
 
-        self.assertEqual(slot.reserved_id, 940020)
-        self.assertEqual(draft.spell_entry, 940020)
+        self.assertEqual(slot.reserved_id, 947020)
+        self.assertEqual(draft.spell_entry, 947020)
         self.assertEqual(draft.slot_kind, "passive_slot")
         self.assertEqual(draft.helper_spell_id, 48161)
         self.assertIn("passive_slot", draft.tags)
@@ -204,7 +522,7 @@ class ContentWorkbenchTests(unittest.TestCase):
             helper_spell_id=133,
         )
 
-        self.assertEqual(slot.reserved_id, 940020)
+        self.assertEqual(slot.reserved_id, 947020)
         self.assertEqual(draft.slot_kind, "item_trigger_slot")
         self.assertEqual(draft.trigger_item_entry, 910020)
         self.assertEqual(draft.helper_spell_id, 133)
@@ -220,7 +538,7 @@ class ContentWorkbenchTests(unittest.TestCase):
             player_guid=5406,
         )
 
-        self.assertEqual(slot.reserved_id, 940020)
+        self.assertEqual(slot.reserved_id, 947020)
         self.assertEqual(draft.slot_kind, "visible_spell_slot")
         self.assertEqual(draft.base_visible_spell_id, 133)
         self.assertIn("visible_spell_slot", draft.tags)
@@ -237,10 +555,10 @@ class ContentWorkbenchTests(unittest.TestCase):
             ),
             '.send items Jecia "WM \'Loot\'" "Fast prototype delivery. Use it well." 910020:2',
         )
-        self.assertEqual(build_player_learn_command(player_name="Jecia", spell_entry=940020), ".player learn Jecia 940020")
+        self.assertEqual(build_player_learn_command(player="5406", spell_entry=947020), ".player learn 5406 947020")
         self.assertEqual(
-            build_player_unlearn_command(player_name="Jecia", spell_entry=940020, all_ranks=True),
-            ".player unlearn Jecia 940020 all",
+            build_player_unlearn_command(player="5406", spell_entry=947020, all_ranks=True),
+            ".player unlearn 5406 947020 all",
         )
 
     def test_configure_twin_skeleton_runtime_can_preview_without_writing(self) -> None:
@@ -291,7 +609,7 @@ class ContentWorkbenchTests(unittest.TestCase):
         result = execute_spell_runtime_action(
             client=None,  # type: ignore[arg-type]
             settings=object(),  # type: ignore[arg-type]
-            player_ref={"player_guid": 5406, "player_name": "Jecia"},
+            player_ref={"player_guid": 5406, "player_name": "Jecia", "command_player": "5406"},
             spell_entry=940000,
             action_kind="player_learn_spell",
             mode="dry-run",

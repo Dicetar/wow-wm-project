@@ -38,6 +38,7 @@ class FakeCompatMysqlClient:
                 "RewardMoney",
                 "RewardItem1",
                 "RewardAmount1",
+                "RewardXPDifficulty",
                 "RequiredNpcOrGo1",
                 "RequiredNpcOrGoCount1",
             ]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from wm.quests.bounty import build_default_bounty_reward
 from wm.quests.bounty import build_bounty_quest_draft
 from wm.quests.compiler import compile_bounty_quest_sql_plan
 from wm.quests.validator import validate_bounty_quest_draft
@@ -52,6 +53,15 @@ class BountyQuestDraftTests(unittest.TestCase):
 
         self.assertEqual(draft.template_defaults["SpecialFlags"], 17)
         self.assertEqual(draft.template_defaults["QuestType"], 2)
+
+    def test_default_bounty_reward_scales_money_and_adds_supply_box(self) -> None:
+        reward = build_default_bounty_reward(quest_level=25)
+
+        self.assertEqual(reward.money_copper, 2500)
+        self.assertEqual(reward.reward_item_entry, 6827)
+        self.assertEqual(reward.reward_item_name, "Box of Supplies")
+        self.assertEqual(reward.reward_item_count, 1)
+        self.assertEqual(reward.reward_xp_difficulty, 5)
 
     def test_validator_flags_invalid_ranges(self) -> None:
         draft = build_bounty_quest_draft(

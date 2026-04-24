@@ -199,7 +199,16 @@ class ReactionExecutorTests(unittest.TestCase):
                         "offer_reward_text": "Well done.",
                         "request_items_text": "Did you do it?",
                         "objective": {"target_entry": 46, "target_name": "Murloc Forager", "kill_count": 8},
-                        "reward": {"money_copper": 1200, "reward_item_count": 1},
+                        "reward": {
+                            "money_copper": 1200,
+                            "reward_item_entry": 6827,
+                            "reward_item_name": "Box of Supplies",
+                            "reward_item_count": 1,
+                            "reward_xp_difficulty": 4,
+                            "reward_spell_id": 22888,
+                            "reward_spell_display_id": 22888,
+                            "reward_reputations": [{"faction_id": 72, "value": 75}],
+                        },
                         "_wm_reserved_slot": {"entity_type": "quest", "reserved_id": 910001, "arc_key": "wm_event:repeat_hunt_followup"},
                     },
                 ),
@@ -209,7 +218,7 @@ class ReactionExecutorTests(unittest.TestCase):
                 ),
                 PlannedAction(
                     kind="spell_publish",
-                    payload={"spell_entry": 940000, "slot_kind": "visible_spell_slot", "name": "WM Passive", "base_visible_spell_id": 133},
+                    payload={"spell_entry": 947000, "slot_kind": "visible_spell_slot", "name": "WM Passive", "base_visible_spell_id": 133},
                 ),
             ],
             cooldown_key=ReactionCooldownKey(
@@ -241,6 +250,11 @@ class ReactionExecutorTests(unittest.TestCase):
         self.assertEqual(quest_details["slot_preparation"]["current_status"], "free")
         self.assertTrue(quest_details["slot_preparation"]["will_stage_on_apply"])
         self.assertTrue(any("would be staged automatically" in note for note in quest_details["dry_run_notes"]))
+        quest_draft = executor.quest_publisher.calls[0][0]
+        self.assertEqual(quest_draft.reward.reward_item_entry, 6827)
+        self.assertEqual(quest_draft.reward.reward_xp_difficulty, 4)
+        self.assertEqual(quest_draft.reward.reward_spell_id, 22888)
+        self.assertEqual(quest_draft.reward.reward_reputations[0].faction_id, 72)
 
     def test_preview_is_read_only(self) -> None:
         store = FakeExecutionStore()
@@ -377,6 +391,67 @@ class ReactionExecutorTests(unittest.TestCase):
         self.assertEqual(runtime_manager.grant_calls, [])
         self.assertEqual(native_actions.submissions[0]["action_kind"], "quest_add")
         self.assertEqual(native_actions.submissions[0]["payload"]["quest_id"], 910000)
+
+    def test_native_quest_grant_idempotency_includes_trigger_identity(self) -> None:
+        store = FakeExecutionStore()
+        runtime_manager = FakeQuestRuntimeManager()
+        native_actions = FakeNativeBridgeActions()
+        config_path = Path("artifacts") / "test-bridge-config-idempotency.conf"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "[worldserver]",
+                        "WmBridge.Enable = 1",
+                        "WmBridge.ActionQueue.Enable = 1",
+                        "WmBridge.DbControl.Enable = 1",
+                        'WmBridge.PlayerGuidAllowList = ""',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            executor = ReactionExecutor(
+                client=_DummyClient(),
+                settings=Settings(wm_bridge_config_path=str(config_path), quest_grant_transport="auto"),
+                store=store,
+                reactive_store=FakeReactiveStore(),  # type: ignore[arg-type]
+                reactive_runtime=runtime_manager,  # type: ignore[arg-type]
+                native_bridge_actions=native_actions,  # type: ignore[arg-type]
+            )
+
+            def plan_for(source_event_key: str) -> ReactionPlan:
+                return ReactionPlan(
+                    plan_key="reactive_bounty:auto:zone:11:subject:1043:5406:creature:1043",
+                    opportunity_type="reactive_bounty_grant",
+                    rule_type="reactive_bounty:auto:zone:11:subject:1043",
+                    player_guid=5406,
+                    subject=SubjectRef(subject_type="creature", subject_entry=1043),
+                    metadata={"source_event_key": source_event_key},
+                    actions=[
+                        PlannedAction(
+                            kind="quest_grant",
+                            payload={
+                                "quest_id": 910046,
+                                "player_guid": 5406,
+                                "rule_key": "reactive_bounty:auto:zone:11:subject:1043",
+                            },
+                        )
+                    ],
+                )
+
+            executor.execute(plan=plan_for("native_bridge:27665"), mode="apply")
+            executor.execute(plan=plan_for("native_bridge:27670"), mode="apply")
+        finally:
+            if config_path.exists():
+                config_path.unlink()
+
+        keys = [submission["idempotency_key"] for submission in native_actions.submissions]
+        self.assertEqual(len(keys), 2)
+        self.assertNotEqual(keys[0], keys[1])
+        self.assertIn("native_bridge:27665", keys[0])
+        self.assertIn("native_bridge:27670", keys[1])
 
     def test_structured_ref_payloads_are_accepted(self) -> None:
         store = FakeExecutionStore()

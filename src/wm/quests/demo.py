@@ -31,7 +31,6 @@ def main() -> None:
         questgiver_name="Bethor Iceshard",
         target_profile=target,
         kill_count=8,
-        reward_money_copper=1200,
     )
     validation = validate_bounty_quest_draft(draft)
     plan = compile_bounty_quest_sql_plan(draft)

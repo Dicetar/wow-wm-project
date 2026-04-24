@@ -24,6 +24,7 @@ The repo uses a Diataxis-style split:
 ## Current State / Handoff
 
 - [WM Platform Handoff](WM_PLATFORM_HANDOFF.md) - best first-read for current WM platform state
+- [Next Chat Handoff](NEXT_CHAT_HANDOFF.md) - compact continuation brief for a fresh chat
 - [Work Summary](WORK_SUMMARY.md) - compact summary of what the repo has built
 - [Summon and Spell Platform Status](SUMMON_SPELL_PLATFORM_STATUS.md) - current summon/spell truth source
 - [Roadmap](ROADMAP.md) - intended direction, not current truth
@@ -51,12 +52,14 @@ The repo uses a Diataxis-style split:
 
 ## Reference / Contracts
 
+- [Custom ID Ledger](CUSTOM_ID_LEDGER.md)
 - [Content Workbench V1](CONTENT_WORKBENCH_V1.md)
 - [Journal Layer V1 / V2](JOURNAL_LAYER_V1.md) - current subject-memory reader and inspect status
 - [Prompt Package V1](PROMPT_PACKAGE_V1.md) - historical prompt-package reference; check status header before trusting
 - [Context Pack V1](CONTEXT_PACK_V1.md) - current deterministic context-pack reference
 - [Item Slot Pipeline V1](ITEM_SLOT_PIPELINE_V1.md)
 - [Quest Draft Pipeline V1](QUEST_DRAFT_PIPELINE_V1.md)
+- [Spell Slot Pipeline V1](SPELL_SLOT_PIPELINE_V1.md)
 
 ## Templates
 

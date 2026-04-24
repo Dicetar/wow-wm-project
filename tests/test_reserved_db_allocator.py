@@ -1,4 +1,5 @@
-from pathlib import Path
+from __future__ import annotations
+
 import unittest
 
 from wm.config import Settings
@@ -6,71 +7,145 @@ from wm.reserved.db_allocator import ReservedSlotDbAllocator
 
 
 class FakeMysqlClient:
-    def __init__(self) -> None:
-        self.mysql_bin_path = Path("mysql")
-        self.rows = {
-            ("quest", 910001): {
-                "EntityType": "quest",
-                "ReservedID": "910001",
-                "SlotStatus": "free",
-                "ArcKey": None,
-                "CharacterGUID": None,
-                "SourceQuestID": None,
-                "NotesJSON": None,
-            }
-        }
+    mysql_bin_path = "mysql"
 
-    def query(self, *, host: str, port: int, user: str, password: str, database: str, sql: str):
-        del host, port, user, password, database
-        if "WHERE EntityType = 'quest' AND SlotStatus = 'free'" in sql:
-            return [self.rows[("quest", 910001)]]
-        if "WHERE EntityType = 'quest' AND ReservedID = 910001" in sql:
-            return [self.rows[("quest", 910001)]]
-        raise AssertionError(f"Unexpected SQL: {sql}")
+    def __init__(self, rows: list[dict[str, str]]) -> None:
+        self.rows = rows
+
+    def query(self, **kwargs):
+        sql = str(kwargs.get("sql") or "")
+        if "SlotStatus = 'free'" in sql:
+            return list(self.rows)
+        if "AND ReservedID = 947001" in sql:
+            return [
+                {
+                    "EntityType": "spell",
+                    "ReservedID": "947001",
+                    "SlotStatus": "staged",
+                    "ArcKey": "wm_content:visible_spell:test",
+                    "CharacterGUID": "5406",
+                    "SourceQuestID": None,
+                    "NotesJSON": '["test"]',
+                }
+            ]
+        return []
 
 
-class RecordingReservedSlotAllocator(ReservedSlotDbAllocator):
-    def __init__(self, client: FakeMysqlClient, settings: Settings) -> None:
-        super().__init__(client=client, settings=settings)
-        self.executed_sql: list[str] = []
+class RecordingReservedSlotDbAllocator(ReservedSlotDbAllocator):
+    def __init__(self, rows: list[dict[str, str]]) -> None:
+        super().__init__(client=FakeMysqlClient(rows), settings=Settings(world_db_name="acore_world"))  # type: ignore[arg-type]
+        self.executed: list[str] = []
 
     def _execute(self, sql: str) -> None:
-        self.executed_sql.append(sql)
-        if "UPDATE wm_reserved_slot SET SlotStatus = 'staged'" in sql:
-            row = self.client.rows[("quest", 910001)]
-            row["SlotStatus"] = "staged"
-            row["ArcKey"] = "wm_event:repeat_hunt_followup"
-            row["CharacterGUID"] = "42"
-            row["SourceQuestID"] = "910001"
+        self.executed.append(sql)
 
 
-class ReservedSlotDbAllocatorTests(unittest.TestCase):
-    def test_peek_next_free_slot_returns_lowest_free_slot(self) -> None:
-        allocator = RecordingReservedSlotAllocator(FakeMysqlClient(), Settings(world_db_name="acore_world"))
+class ReservedDbAllocatorTests(unittest.TestCase):
+    def test_peek_next_free_spell_slot_skips_shell_band_rows(self) -> None:
+        allocator = RecordingReservedSlotDbAllocator(
+            [
+                {
+                    "EntityType": "spell",
+                    "ReservedID": "940001",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                },
+                {
+                    "EntityType": "spell",
+                    "ReservedID": "947000",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                },
+                {
+                    "EntityType": "spell",
+                    "ReservedID": "947001",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                },
+            ]
+        )
+
+        slot = allocator.peek_next_free_slot(entity_type="spell")
+
+        self.assertIsNotNone(slot)
+        assert slot is not None
+        self.assertEqual(slot.reserved_id, 947001)
+
+    def test_allocate_next_free_spell_slot_uses_managed_range_row(self) -> None:
+        allocator = RecordingReservedSlotDbAllocator(
+            [
+                {
+                    "EntityType": "spell",
+                    "ReservedID": "940001",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                },
+                {
+                    "EntityType": "spell",
+                    "ReservedID": "947000",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                },
+                {
+                    "EntityType": "spell",
+                    "ReservedID": "947001",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                },
+            ]
+        )
+
+        slot = allocator.allocate_next_free_slot(
+            entity_type="spell",
+            arc_key="wm_content:visible_spell:test",
+            character_guid=5406,
+            notes=["test"],
+        )
+
+        self.assertIsNotNone(slot)
+        assert slot is not None
+        self.assertEqual(slot.reserved_id, 947001)
+        self.assertEqual(len(allocator.executed), 1)
+        self.assertIn("ReservedID = 947001", allocator.executed[0])
+
+    def test_non_spell_slots_are_not_filtered_by_spell_registry_rules(self) -> None:
+        allocator = RecordingReservedSlotDbAllocator(
+            [
+                {
+                    "EntityType": "quest",
+                    "ReservedID": "910000",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                }
+            ]
+        )
 
         slot = allocator.peek_next_free_slot(entity_type="quest")
 
         self.assertIsNotNone(slot)
         assert slot is not None
-        self.assertEqual(slot.reserved_id, 910001)
-        self.assertEqual(slot.slot_status, "free")
-
-    def test_ensure_slot_prepared_stages_free_slot(self) -> None:
-        allocator = RecordingReservedSlotAllocator(FakeMysqlClient(), Settings(world_db_name="acore_world"))
-
-        slot = allocator.ensure_slot_prepared(
-            entity_type="quest",
-            reserved_id=910001,
-            arc_key="wm_event:repeat_hunt_followup",
-            character_guid=42,
-            source_quest_id=910001,
-            notes=["rule:repeat_hunt_followup"],
-        )
-
-        self.assertIsNotNone(slot)
-        assert slot is not None
-        self.assertEqual(slot.slot_status, "staged")
-        self.assertTrue(any("UPDATE wm_reserved_slot SET SlotStatus = 'staged'" in sql for sql in allocator.executed_sql))
+        self.assertEqual(slot.reserved_id, 910000)
 
 
 if __name__ == "__main__":

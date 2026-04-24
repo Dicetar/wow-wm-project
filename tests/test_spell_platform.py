@@ -56,10 +56,10 @@ class SpellPlatformDraftTests(unittest.TestCase):
         draft = create_shell_draft(shell_key="bonebound_servant_v1", player_guid=5406)
 
         self.assertEqual(draft.spell_id, 940000)
-        self.assertEqual(draft.family_id, "summon_pet")
+        self.assertEqual(draft.family_id, "summon_pet_compat")
         self.assertEqual(draft.behavior_kind, "summon_bonebound_servant_v1")
         self.assertTrue(draft.behavior_config["require_corpse"])
-        self.assertEqual(draft.behavior_config["creature_entry"], 1860)
+        self.assertEqual(draft.behavior_config["creature_entry"], 920100)
 
     def test_shell_draft_round_trips_via_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -88,14 +88,16 @@ class SpellPlatformDraftTests(unittest.TestCase):
         self.assertEqual(draft.behavior_config["shadow_dot_tick_ms"], 1000)
         self.assertEqual(draft.behavior_config["shadow_dot_damage_per_shadow_power_pct"], 0)
         self.assertTrue(draft.behavior_config["alpha_echo_enabled"])
+        self.assertEqual(draft.behavior_config["creature_entry"], 920100)
         self.assertEqual(draft.behavior_config["alpha_echo_creature_entry"], 920101)
-        self.assertEqual(draft.behavior_config["alpha_echo_proc_chance_pct"], 5.0)
+        self.assertEqual(draft.behavior_config["alpha_echo_proc_chance_pct"], 7.5)
+        self.assertEqual(draft.behavior_config["alpha_echo_max_active"], 40)
 
     def test_intellect_block_shell_draft_is_rating_only(self) -> None:
         draft = create_shell_draft(shell_key="jecia_intellect_block_v1", player_guid=5406)
 
         self.assertEqual(draft.spell_id, 944000)
-        self.assertEqual(draft.family_id, "passive_aura")
+        self.assertEqual(draft.family_id, "passive_aura_compat")
         self.assertEqual(draft.behavior_kind, "passive_intellect_block_v1")
         self.assertEqual(draft.targeting, "passive")
         self.assertEqual(draft.behavior_config["intellect_to_block_rating_scale"], 1.0)

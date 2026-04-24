@@ -20,19 +20,23 @@ class RecordingSpellRollback(SpellRollback):
         rows: list[dict[str, Any]] | None = None,
         tables: dict[str, bool] | None = None,
         columns: dict[str, set[str]] | None = None,
+        active_grant_count: int = 0,
     ) -> None:
         super().__init__(client=FakeMysqlClient(), settings=Settings(world_db_name="acore_world"))  # type: ignore[arg-type]
         self.rows = rows or []
-        self.tables = tables or {"spell_linked_spell": True, "spell_proc": True}
+        self.tables = tables or {"spell_linked_spell": True, "spell_proc": True, "wm_spell_grant": True}
         self.columns = columns or {
             "spell_linked_spell": {"spell_trigger", "spell_effect", "type", "comment"},
             "spell_proc": {"SpellId", "ProcFlags", "Chance", "Cooldown", "Charges"},
         }
+        self.active_grant_count = active_grant_count
         self.executed: list[str] = []
 
     def _query_world(self, sql: str) -> list[dict[str, Any]]:
         if "wm_rollback_snapshot" in sql:
             return self.rows
+        if "ActiveGrantCount" in sql:
+            return [{"ActiveGrantCount": str(self.active_grant_count)}]
         raise AssertionError(f"Unexpected SQL: {sql}")
 
     def _table_exists(self, table_name: str) -> bool:
@@ -62,7 +66,7 @@ class SpellRollbackTests(unittest.TestCase):
         rollback = RecordingSpellRollback(rows=[_snapshot_row({"spell_linked_spell": [], "spell_proc": []})])
 
         result = rollback.rollback(
-            spell_entry=940020,
+            spell_entry=947020,
             mode="dry-run",
             runtime_sync_mode="off",
             soap_commands=[],
@@ -73,14 +77,19 @@ class SpellRollbackTests(unittest.TestCase):
         self.assertEqual(result.snapshot_id, 9)
         self.assertEqual(result.restored_action, "clear_slot")
         self.assertFalse(result.applied)
+        self.assertFalse(result.grant_cleanup["enabled"])
         self.assertEqual(rollback.executed, [])
         self.assertIn("snapshot_id: 9", _render_summary(result))
+        self.assertIn("grant_cleanup.revoked_count: 0", _render_summary(result))
 
     def test_apply_empty_snapshot_clears_rows_and_stages_slot(self) -> None:
-        rollback = RecordingSpellRollback(rows=[_snapshot_row({"spell_linked_spell": [], "spell_proc": []})])
+        rollback = RecordingSpellRollback(
+            rows=[_snapshot_row({"spell_linked_spell": [], "spell_proc": []})],
+            active_grant_count=2,
+        )
 
         result = rollback.rollback(
-            spell_entry=940020,
+            spell_entry=947020,
             mode="apply",
             runtime_sync_mode="off",
             soap_commands=[],
@@ -91,17 +100,19 @@ class SpellRollbackTests(unittest.TestCase):
         self.assertIn("DELETE FROM `spell_linked_spell`", joined)
         self.assertIn("DELETE FROM `spell_proc`", joined)
         self.assertIn("UPDATE `wm_reserved_slot` SET `SlotStatus` = 'staged'", joined)
+        self.assertIn("UPDATE `wm_spell_grant` SET `RevokedAt` = CURRENT_TIMESTAMP", joined)
+        self.assertEqual(result.grant_cleanup["revoked_count"], 2)
         self.assertTrue(result.restart_recommended)
 
     def test_apply_restores_previous_rows_and_keeps_slot_active(self) -> None:
         snapshot = {
-            "spell_linked_spell": [{"spell_trigger": "940020", "spell_effect": "133", "type": "0"}],
-            "spell_proc": [{"SpellId": "940020", "ProcFlags": "4", "Chance": "25", "Cooldown": "6000"}],
+            "spell_linked_spell": [{"spell_trigger": "947020", "spell_effect": "133", "type": "0"}],
+            "spell_proc": [{"SpellId": "947020", "ProcFlags": "4", "Chance": "25", "Cooldown": "6000"}],
         }
         rollback = RecordingSpellRollback(rows=[_snapshot_row(snapshot)])
 
         result = rollback.rollback(
-            spell_entry=940020,
+            spell_entry=947020,
             mode="apply",
             runtime_sync_mode="off",
             soap_commands=[],
@@ -113,12 +124,13 @@ class SpellRollbackTests(unittest.TestCase):
         self.assertIn("INSERT INTO `spell_linked_spell`", joined)
         self.assertIn("INSERT INTO `spell_proc`", joined)
         self.assertIn("UPDATE `wm_reserved_slot` SET `SlotStatus` = 'active'", joined)
+        self.assertEqual(result.grant_cleanup["revoked_count"], 0)
 
     def test_missing_snapshot_is_structured_failure(self) -> None:
         rollback = RecordingSpellRollback(rows=[])
 
         result = rollback.rollback(
-            spell_entry=940020,
+            spell_entry=947020,
             mode="dry-run",
             runtime_sync_mode="off",
             soap_commands=[],
@@ -133,7 +145,7 @@ class SpellRollbackTests(unittest.TestCase):
         rollback = RecordingSpellRollback(rows=[_snapshot_row({"spell_linked_spell": "bad", "spell_proc": []})])
 
         result = rollback.rollback(
-            spell_entry=940020,
+            spell_entry=947020,
             mode="apply",
             runtime_sync_mode="off",
             soap_commands=[],
@@ -147,7 +159,7 @@ class SpellRollbackTests(unittest.TestCase):
 
     def test_missing_live_restore_table_is_explicit_failure(self) -> None:
         snapshot = {
-            "spell_linked_spell": [{"spell_trigger": "940020", "spell_effect": "133", "type": "0"}],
+            "spell_linked_spell": [{"spell_trigger": "947020", "spell_effect": "133", "type": "0"}],
             "spell_proc": [],
         }
         rollback = RecordingSpellRollback(
@@ -156,7 +168,7 @@ class SpellRollbackTests(unittest.TestCase):
         )
 
         result = rollback.rollback(
-            spell_entry=940020,
+            spell_entry=947020,
             mode="apply",
             runtime_sync_mode="off",
             soap_commands=[],
@@ -167,11 +179,29 @@ class SpellRollbackTests(unittest.TestCase):
         self.assertTrue(any(issue.path == "table.spell_linked_spell" for issue in result.issues))
         self.assertEqual(rollback.executed, [])
 
+    def test_missing_spell_grant_table_is_non_fatal(self) -> None:
+        rollback = RecordingSpellRollback(
+            rows=[_snapshot_row({"spell_linked_spell": [], "spell_proc": []})],
+            tables={"spell_linked_spell": True, "spell_proc": True, "wm_spell_grant": False},
+        )
+
+        result = rollback.rollback(
+            spell_entry=947020,
+            mode="apply",
+            runtime_sync_mode="off",
+            soap_commands=[],
+        )
+
+        self.assertTrue(result.ok)
+        self.assertFalse(result.grant_cleanup["enabled"])
+        self.assertFalse(result.grant_cleanup["table_present"])
+        self.assertEqual(result.grant_cleanup["revoked_count"], 0)
+
     def test_mysql_failure_reports_structured_issue(self) -> None:
         rollback = FailingSpellRollback(rows=[_snapshot_row({"spell_linked_spell": [], "spell_proc": []})])
 
         result = rollback.rollback(
-            spell_entry=940020,
+            spell_entry=947020,
             mode="apply",
             runtime_sync_mode="off",
             soap_commands=[],

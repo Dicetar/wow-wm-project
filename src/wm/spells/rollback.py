@@ -40,6 +40,7 @@ class SpellRollbackResult:
     snapshot_id: int | None
     restored_action: str
     applied: bool
+    grant_cleanup: dict[str, Any]
     runtime_sync: dict[str, Any]
     restart_recommended: bool
     ok: bool
@@ -53,6 +54,7 @@ class SpellRollbackResult:
             "snapshot_id": self.snapshot_id,
             "restored_action": self.restored_action,
             "applied": self.applied,
+            "grant_cleanup": self.grant_cleanup,
             "runtime_sync": self.runtime_sync,
             "restart_recommended": self.restart_recommended,
             "ok": self.ok,
@@ -89,6 +91,7 @@ class SpellRollback:
                 snapshot_id=None,
                 restored_action="none",
                 applied=False,
+                grant_cleanup=_grant_cleanup_result(enabled=False, table_present=False, revoked_count=0, note="No rollback snapshot exists."),
                 runtime_sync=RuntimeSyncResult(
                     protocol="none",
                     enabled=False,
@@ -116,6 +119,7 @@ class SpellRollback:
                 snapshot_id=None,
                 restored_action="none",
                 applied=False,
+                grant_cleanup=_grant_cleanup_result(enabled=False, table_present=False, revoked_count=0, note="Rollback snapshot row is missing a valid id."),
                 runtime_sync=RuntimeSyncResult(
                     protocol="none",
                     enabled=False,
@@ -143,6 +147,7 @@ class SpellRollback:
                 snapshot_id=snapshot_id,
                 restored_action="none",
                 applied=False,
+                grant_cleanup=_grant_cleanup_result(enabled=False, table_present=False, revoked_count=0, note="Rollback snapshot is not valid JSON."),
                 runtime_sync=RuntimeSyncResult(
                     protocol="none",
                     enabled=False,
@@ -168,6 +173,7 @@ class SpellRollback:
                 snapshot_id=snapshot_id,
                 restored_action="none",
                 applied=False,
+                grant_cleanup=_grant_cleanup_result(enabled=False, table_present=False, revoked_count=0, note="Rollback snapshot payload must be an object."),
                 runtime_sync=RuntimeSyncResult(
                     protocol="none",
                     enabled=False,
@@ -201,6 +207,7 @@ class SpellRollback:
                 snapshot_id=snapshot_id,
                 restored_action="none",
                 applied=False,
+                grant_cleanup=_grant_cleanup_result(enabled=False, table_present=False, revoked_count=0, note="Rollback snapshot spell sections are malformed."),
                 runtime_sync=RuntimeSyncResult(
                     protocol="none",
                     enabled=False,
@@ -223,6 +230,12 @@ class SpellRollback:
             restart_recommended=False,
             note="Dry-run mode does not touch the live runtime.",
         )
+        grant_cleanup = _grant_cleanup_result(
+            enabled=False,
+            table_present=self._table_exists("wm_spell_grant"),
+            revoked_count=0,
+            note="Dry-run mode does not revoke active wm_spell_grant rows.",
+        )
         issues: list[SpellRollbackIssue] = []
 
         if mode == "apply":
@@ -235,6 +248,7 @@ class SpellRollback:
                     snapshot_id=snapshot_id,
                     restored_action=restored_action,
                     applied=False,
+                    grant_cleanup=_grant_cleanup_result(enabled=False, table_present=self._table_exists("wm_spell_grant"), revoked_count=0, note="Rollback preflight failed before grant cleanup."),
                     runtime_sync=RuntimeSyncResult(
                         protocol="none",
                         enabled=False,
@@ -257,6 +271,7 @@ class SpellRollback:
                     spell_entry=spell_entry,
                     slot_status="staged" if restored_action == "clear_slot" else "active",
                 )
+                grant_cleanup = self._cleanup_grant_state(spell_entry=spell_entry)
                 self._execute_world(
                     "INSERT INTO wm_publish_log (artifact_type, artifact_entry, action, status, notes) VALUES "
                     f"('spell', {int(spell_entry)}, 'rollback', 'success', 'Managed spell rollback completed successfully')"
@@ -271,6 +286,7 @@ class SpellRollback:
                     snapshot_id=snapshot_id,
                     restored_action=restored_action,
                     applied=False,
+                    grant_cleanup=_grant_cleanup_result(enabled=False, table_present=self._table_exists("wm_spell_grant"), revoked_count=0, note="Rollback failed before grant cleanup completed."),
                     runtime_sync=RuntimeSyncResult(
                         protocol="none",
                         enabled=False,
@@ -296,6 +312,7 @@ class SpellRollback:
             snapshot_id=snapshot_id,
             restored_action=restored_action,
             applied=(mode == "apply"),
+            grant_cleanup=grant_cleanup,
             runtime_sync=runtime_sync.to_dict(),
             restart_recommended=bool(runtime_sync.restart_recommended),
             ok=not issues and bool(runtime_sync.overall_ok),
@@ -460,6 +477,40 @@ class SpellRollback:
         except MysqlCliError:
             pass
 
+    def _cleanup_grant_state(self, *, spell_entry: int) -> dict[str, Any]:
+        if not self._table_exists("wm_spell_grant"):
+            return _grant_cleanup_result(
+                enabled=False,
+                table_present=False,
+                revoked_count=0,
+                note="wm_spell_grant does not exist on the live realm.",
+            )
+        rows = self._query_world(
+            "SELECT COUNT(*) AS ActiveGrantCount FROM `wm_spell_grant` "
+            f"WHERE `ShellSpellID` = {int(spell_entry)} AND `RevokedAt` IS NULL"
+        )
+        active_count = 0
+        if rows:
+            try:
+                active_count = int(rows[0].get("ActiveGrantCount") or 0)
+            except (TypeError, ValueError, AttributeError):
+                active_count = 0
+        if active_count > 0:
+            self._execute_world(
+                "UPDATE `wm_spell_grant` SET `RevokedAt` = CURRENT_TIMESTAMP "
+                f"WHERE `ShellSpellID` = {int(spell_entry)} AND `RevokedAt` IS NULL"
+            )
+        return _grant_cleanup_result(
+            enabled=True,
+            table_present=True,
+            revoked_count=active_count,
+            note=(
+                f"Revoked {active_count} active wm_spell_grant row(s) for spell {int(spell_entry)}."
+                if active_count > 0
+                else "No active wm_spell_grant rows existed for this spell entry."
+            ),
+        )
+
     def _log_failure(self, *, spell_entry: int, error_message: str) -> None:
         safe_error = error_message.replace("'", "''")
         try:
@@ -529,6 +580,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _render_summary(result: SpellRollbackResult) -> str:
     runtime = result.runtime_sync
+    grant_cleanup = result.grant_cleanup
     lines = [
         f"spell_entry: {result.spell_entry}",
         f"mode: {result.mode}",
@@ -537,6 +589,9 @@ def _render_summary(result: SpellRollbackResult) -> str:
         f"restored_action: {result.restored_action}",
         f"applied: {str(result.applied).lower()}",
         f"ok: {str(result.ok).lower()}",
+        f"grant_cleanup.enabled: {str(bool(grant_cleanup.get('enabled', False))).lower()}",
+        f"grant_cleanup.table_present: {str(bool(grant_cleanup.get('table_present', False))).lower()}",
+        f"grant_cleanup.revoked_count: {int(grant_cleanup.get('revoked_count', 0) or 0)}",
         f"runtime_sync.enabled: {str(bool(runtime.get('enabled', False))).lower()}",
         f"runtime_sync.overall_ok: {str(bool(runtime.get('overall_ok', False))).lower()}",
         f"restart_recommended: {str(bool(result.restart_recommended)).lower()}",
@@ -547,7 +602,18 @@ def _render_summary(result: SpellRollbackResult) -> str:
         lines.append("- none")
     else:
         lines.extend(f"- {issue.path} | {issue.severity} | {issue.message}" for issue in result.issues)
+    if grant_cleanup.get("note"):
+        lines.extend(["", f"grant_cleanup.note: {grant_cleanup['note']}"])
     return "\n".join(lines)
+
+
+def _grant_cleanup_result(*, enabled: bool, table_present: bool, revoked_count: int, note: str) -> dict[str, Any]:
+    return {
+        "enabled": bool(enabled),
+        "table_present": bool(table_present),
+        "revoked_count": int(revoked_count),
+        "note": str(note),
+    }
 
 
 def _snapshot_rows(snapshot: dict[str, Any], key: str) -> list[dict[str, Any]]:

@@ -33,8 +33,9 @@ V1 is intentionally narrow:
 - bounty-style quests only
 - one kill objective
 - one quest giver / one quest ender
-- optional money reward
-- optional single existing item reward
+- level-scaled default money reward with optional explicit override
+- default stock supply-box item reward (`6827`, `Box of Supplies`) with optional explicit single-item override
+- optional XP difficulty reward, defaulting to the current bounty policy tier when the quest schema supports it
 - bounty drafts force repeatable quest semantics with `SpecialFlags |= 1`, preserving existing special flags while preventing prior rewarded state from blocking later bounty turn-ins
 - SQL **plan preview**, not automatic publish
 

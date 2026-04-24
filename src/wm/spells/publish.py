@@ -468,14 +468,14 @@ def load_managed_spell_draft(path: str | Path) -> ManagedSpellDraft:
 
 def _demo_draft() -> ManagedSpellDraft:
     return ManagedSpellDraft(
-        spell_entry=940000,
+        spell_entry=947000,
         slot_kind="item_trigger_slot",
         name="WM Prototype Item Trigger",
         helper_spell_id=133,
         trigger_item_entry=910000,
         aura_description="Prototype managed trigger used by a WM item reward.",
-        proc_rules=[ManagedSpellProcRule(spell_id=940000, chance=25.0)],
-        linked_spells=[ManagedSpellLink(trigger_spell_id=940000, effect_spell_id=133, link_type=0, comment="Prototype trigger link")],
+        proc_rules=[ManagedSpellProcRule(spell_id=947000, chance=25.0)],
+        linked_spells=[ManagedSpellLink(trigger_spell_id=947000, effect_spell_id=133, link_type=0, comment="Prototype trigger link")],
         tags=["wm_generated", "spell_slot", "item_trigger"],
     )
 

@@ -132,9 +132,9 @@ Get-Content .\sql\dev\generated_seed_reserved_slots.sql | & "D:\WOW\Azerothcore_
 ## Expected result
 
 You should see free slot counts for:
-- `quest_template`
-- `item_template`
-- `spell_dbc_or_spell_slots`
+- `quest`
+- `item`
+- `spell`
 - `gossip_menu`
 - `npc_text`
 

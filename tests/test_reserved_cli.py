@@ -22,13 +22,13 @@ class ReservedCliTests(unittest.TestCase):
 
     def test_render_summary(self) -> None:
         rows = [
-            {"EntityType": "spell_slots", "SlotStatus": "free", "CountRows": "10"},
-            {"EntityType": "spell_slots", "SlotStatus": "active", "CountRows": "1"},
+            {"EntityType": "spell", "SlotStatus": "free", "CountRows": "10"},
+            {"EntityType": "spell", "SlotStatus": "active", "CountRows": "1"},
             {"EntityType": "item_template", "SlotStatus": "free", "CountRows": "5"},
         ]
         summary = render_summary(rows)
-        self.assertEqual(summary["spell_slots"]["free"], 10)
-        self.assertEqual(summary["spell_slots"]["active"], 1)
+        self.assertEqual(summary["spell"]["free"], 10)
+        self.assertEqual(summary["spell"]["active"], 1)
         self.assertEqual(summary["item_template"]["free"], 5)
 
     def test_ensure_status(self) -> None:

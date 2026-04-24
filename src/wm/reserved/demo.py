@@ -22,7 +22,7 @@ def main() -> None:
 
     first_spell = allocate_next_free_slot(
         slots,
-        entity_type="spell_dbc_or_spell_slots",
+        entity_type="spell",
         arc_key="wm_ironforge_arcane_incident",
         character_guid=42,
         source_quest_id=910001,

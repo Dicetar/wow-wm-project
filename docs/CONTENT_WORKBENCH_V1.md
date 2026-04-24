@@ -22,6 +22,13 @@ This remains lighter than the full control lane. It is for rapid iteration while
 - lab-only WM spell behavior debug invocation
 - fast release summon submitter for already-proven Bonebound Alpha behavior
 - native-bridge-first spell learn / unlearn with SOAP fallback
+- `wm_spell_grant` tracking for WM-owned spell learns and revokes:
+  - shell grants are recorded as active/revoked rows
+  - managed spell-slot learns and unlearns are now also recorded
+  - arbitrary stock spell learns are not recorded
+- managed visible spell-slot grants now resolve runtime learn through `base_visible_spell_id`; passive/helper/item-trigger slots are not treated as directly learnable identities
+- apply-mode spell learn / unlearn now verifies the expected `character_spell` row before reporting success, so SOAP no-fault or `already know that spell` is not accepted blindly
+- stale-lab spell allocation is now guarded: the DB allocator skips shell-band rows and exact claimed spell ids, so managed spell drafts will not reallocate `940000`, `940001`, `944000`, or `945000`
 - direct item delivery helpers:
   - `.additem`
   - `.send items`
@@ -115,10 +122,17 @@ Publish a managed spell and learn it on Jecia:
 
 ```powershell
 python -m wm.content.workbench publish-spell `
-  --draft-json .wm-bootstrap\state\content-drafts\spell-940020-jecia-passive-surge.json `
+  --draft-json .wm-bootstrap\state\content-drafts\spell-947020-jecia-passive-surge.json `
   --mode apply `
   --learn-to-player-guid 5406
 ```
+
+Runtime rule:
+
+- `visible_spell_slot`: publish may learn the declared `base_visible_spell_id`
+- `passive_slot`, `helper_slot`, `item_trigger_slot`: publish may stage helper/proc rows, but a direct player learn is structurally unsupported unless the draft is later bound to a real learnable spell identity
+
+If publish validation, preflight, or apply fails, the workbench does not continue into the runtime learn step.
 
 Publish a WM shell draft:
 
@@ -144,16 +158,21 @@ Teach a spell directly:
 
 ```powershell
 python -m wm.content.workbench learn-spell `
-  --spell-entry 940020 `
+  --spell-entry 947020 `
   --player-guid 5406 `
   --mode apply
 ```
+
+For `learn-spell` and `unlearn-spell`, `wm_spell_grant` is updated only when the spell id is WM-owned:
+
+- named shell-bank shell ids such as `940000`, `940001`, `944000`, `945000`
+- managed spell-slot ids in `947000-947999`
 
 Remove a spell directly:
 
 ```powershell
 python -m wm.content.workbench unlearn-spell `
-  --spell-entry 940020 `
+  --spell-entry 947020 `
   --player-guid 5406 `
   --mode apply
 ```
@@ -214,6 +233,7 @@ Current lab default:
 - `mod-wm-prototypes` is legacy and disabled by default
 - `bonebound_servant_v1` is the first stable summon shell target
 - `bonebound_twins_v1` / shell `940001` is the current fast release summon target
+- managed spell slots now live in `947000-947999`; do not use shell ids like `940000` for managed publish drafts
 - the client patch workspace lives under `client_patches\wm_spell_shell_bank\`
 
 ## Recommended workflow

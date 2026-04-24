@@ -31,7 +31,7 @@ class DeterministicReactionPlannerTests(unittest.TestCase):
             metadata={
                 "quest_draft": {"quest_id": 910001, "quest_level": 10, "min_level": 8, "questgiver_entry": 1498, "questgiver_name": "Bethor Iceshard", "title": "Bounty: Murloc Forager", "quest_description": "Cull them.", "objective_text": "Slay them.", "offer_reward_text": "Well done.", "request_items_text": "Did you do it?", "objective": {"target_entry": 46, "target_name": "Murloc Forager", "kill_count": 8}, "reward": {"money_copper": 1200, "reward_item_count": 1}, "tags": []},
                 "item_draft": {"item_entry": 910100, "base_item_entry": 6948, "name": "WM Token"},
-                "spell_draft": {"spell_entry": 940000, "slot_kind": "visible_spell_slot", "name": "WM Passive", "base_visible_spell_id": 133},
+                "spell_draft": {"spell_entry": 947000, "slot_kind": "visible_spell_slot", "name": "WM Passive", "base_visible_spell_id": 133},
                 "announcement_text": "The shoreline stirs again.",
             },
             cooldown_seconds=3600,

@@ -384,7 +384,7 @@ class SpellBehaviorDebugClient:
 def _default_behavior_config(shell: SpellShellDefinition) -> dict[str, Any]:
     if shell.behavior_kind == "summon_bonebound_servant_v1":
         return {
-            "creature_entry": 1860,
+            "creature_entry": 920100,
             "display_id": 734,
             "name": "Bonebound Servant",
             "require_corpse": True,
@@ -411,7 +411,7 @@ def _default_behavior_config(shell: SpellShellDefinition) -> dict[str, Any]:
         }
     if shell.behavior_kind == "summon_bonebound_alpha_v3":
         return {
-            "creature_entry": 1860,
+            "creature_entry": 920100,
             "display_id": 734,
             "name": "Bonebound Alpha",
             "require_corpse": False,
@@ -435,8 +435,8 @@ def _default_behavior_config(shell: SpellShellDefinition) -> dict[str, Any]:
             "shadow_dot_damage_per_shadow_power_pct": 0,
             "alpha_echo_enabled": True,
             "alpha_echo_creature_entry": 920101,
-            "alpha_echo_proc_chance_pct": 5.0,
-            "alpha_echo_max_active": 3,
+            "alpha_echo_proc_chance_pct": 7.5,
+            "alpha_echo_max_active": 40,
             "alpha_echo_damage_pct": 100,
             "alpha_echo_follow_distance": 2.6,
             "alpha_echo_follow_angle": -1.5708,

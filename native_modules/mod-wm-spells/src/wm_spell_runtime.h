@@ -25,7 +25,7 @@ namespace WmSpells
         bool boneboundServantEnabled = true;
         std::unordered_set<uint32> boneboundShellSpellIds;
         bool boneboundRequireCorpse = true;
-        uint32 boneboundCreatureEntry = 1860;
+        uint32 boneboundCreatureEntry = 920100;
         std::string boneboundName = "Bonebound Servant";
         uint32 boneboundDisplayId = 734;
         uint32 boneboundVirtualItem1 = 1897;
@@ -60,7 +60,7 @@ namespace WmSpells
         bool requireCorpse = true;
         bool spawnOmega = false;
         bool preserveBaseStats = false;
-        uint32 creatureEntry = 1860;
+        uint32 creatureEntry = 920100;
         std::string name = "Bonebound Servant";
         uint32 displayId = 734;
         uint32 virtualItem1 = 1897;
@@ -84,7 +84,7 @@ namespace WmSpells
         bool ownerShadowPowerToAttackPower = true;
         float ownerIntellectToAllStatsScale = 1.0f;
         float ownerShadowPowerToAttackPowerScale = 1.0f;
-        uint32 omegaCreatureEntry = 1860;
+        uint32 omegaCreatureEntry = 920100;
         std::string omegaName = "Bonebound Raider";
         uint32 omegaDisplayId = 734;
         uint32 omegaVirtualItem1 = 1897;

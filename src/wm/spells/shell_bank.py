@@ -9,6 +9,7 @@ from typing import Any
 @dataclass(slots=True)
 class SpellShellFamily:
     family_id: str
+    family_kind: str
     label: str
     slot_range_start: int
     slot_count: int
@@ -38,6 +39,7 @@ class SpellShellDefinition:
     required_level: int
     icon_hint: str | None
     tooltip: str | None
+    client_presentation: dict[str, Any] | None
     patch_state: str | None
     notes: list[str]
 
@@ -55,6 +57,10 @@ class SpellShellBank:
     @property
     def total_family_slots(self) -> int:
         return sum(family.slot_count for family in self.families)
+
+    @property
+    def generic_families(self) -> list[SpellShellFamily]:
+        return [family for family in self.families if family.family_kind == "generic"]
 
     def family_for_spell(self, spell_id: int) -> SpellShellFamily | None:
         for family in self.families:
@@ -96,6 +102,7 @@ class SpellShellPatchRow:
     required_level: int | None = None
     icon_hint: str | None = None
     tooltip: str | None = None
+    client_presentation: dict[str, Any] | None = None
     patch_state: str | None = None
     notes: list[str] | None = None
 
@@ -114,6 +121,7 @@ class SpellShellPatchRow:
             "required_level": self.required_level,
             "icon_hint": self.icon_hint,
             "tooltip": self.tooltip,
+            "client_presentation": dict(self.client_presentation or {}),
             "patch_state": self.patch_state,
             "notes": list(self.notes or []),
         }
@@ -129,6 +137,7 @@ def load_spell_shell_bank(path: str | Path | None = None) -> SpellShellBank:
     families = [
         SpellShellFamily(
             family_id=str(entry["family_id"]),
+            family_kind=str(entry.get("family_kind") or "generic"),
             label=str(entry["label"]),
             slot_range_start=int(entry["slot_range_start"]),
             slot_count=int(entry["slot_count"]),
@@ -152,6 +161,11 @@ def load_spell_shell_bank(path: str | Path | None = None) -> SpellShellBank:
             required_level=int(entry.get("required_level") or 1),
             icon_hint=(str(entry["icon_hint"]) if entry.get("icon_hint") not in (None, "") else None),
             tooltip=(str(entry["tooltip"]) if entry.get("tooltip") not in (None, "") else None),
+            client_presentation=(
+                dict(entry["client_presentation"])
+                if isinstance(entry.get("client_presentation"), dict)
+                else None
+            ),
             patch_state=(str(entry["patch_state"]) if entry.get("patch_state") not in (None, "") else None),
             notes=[str(note) for note in entry.get("notes", [])],
         )
@@ -170,6 +184,7 @@ def load_spell_shell_bank(path: str | Path | None = None) -> SpellShellBank:
 
 def generate_patch_rows(path: str | Path | None = None) -> list[SpellShellPatchRow]:
     bank = load_spell_shell_bank(path)
+    _validate_bank(bank)
     rows_by_spell_id: dict[int, SpellShellPatchRow] = {}
 
     for family in bank.families:
@@ -210,11 +225,37 @@ def generate_patch_rows(path: str | Path | None = None) -> list[SpellShellPatchR
             required_level=shell.required_level,
             icon_hint=shell.icon_hint,
             tooltip=shell.tooltip,
+            client_presentation=dict(shell.client_presentation or {}),
             patch_state=shell.patch_state,
             notes=list(shell.notes),
         )
 
     return [rows_by_spell_id[spell_id] for spell_id in sorted(rows_by_spell_id)]
+
+
+def _validate_bank(bank: SpellShellBank) -> None:
+    seen_family_ids: set[str] = set()
+    for family in bank.families:
+        if family.family_id in seen_family_ids:
+            raise ValueError(f"Duplicate shell family id `{family.family_id}`.")
+        seen_family_ids.add(family.family_id)
+    ordered_families = sorted(bank.families, key=lambda family: family.slot_range_start)
+    previous_end: int | None = None
+    previous_id: str | None = None
+    for family in ordered_families:
+        if previous_end is not None and family.slot_range_start <= previous_end:
+            raise ValueError(f"Shell family `{family.family_id}` overlaps `{previous_id}`.")
+        previous_end = family.slot_range_end
+        previous_id = family.family_id
+    seen_shell_keys: set[str] = set()
+    seen_shell_ids: set[int] = set()
+    for shell in bank.shells:
+        if shell.shell_key in seen_shell_keys:
+            raise ValueError(f"Duplicate shell key `{shell.shell_key}`.")
+        if shell.spell_id in seen_shell_ids:
+            raise ValueError(f"Duplicate shell spell id `{shell.spell_id}`.")
+        seen_shell_keys.add(shell.shell_key)
+        seen_shell_ids.add(shell.spell_id)
 
 
 def build_patch_plan(path: str | Path | None = None) -> dict[str, Any]:
@@ -226,12 +267,15 @@ def build_patch_plan(path: str | Path | None = None) -> dict[str, Any]:
         "artifact_version": bank.patch.get("artifact_version", "wm_spell_shell_bank.v1"),
         "generation_mode": bank.patch.get("generation_mode", "explicit"),
         "family_count": len(bank.families),
+        "generic_family_count": len(bank.generic_families),
         "slots_per_family": int(bank.patch.get("slots_per_family", "0") or 0),
+        "reserve_gap_slots": int(bank.patch.get("reserve_gap_slots", "0") or 0),
         "total_rows": len(rows),
         "named_override_count": sum(1 for row in rows if row.is_named_override),
         "families": [
             {
                 "family_id": family.family_id,
+                "family_kind": family.family_kind,
                 "slot_range_start": family.slot_range_start,
                 "slot_range_end": family.slot_range_end,
                 "slot_count": family.slot_count,

@@ -1,7 +1,7 @@
 {
-  "schema_version": "wm.client_patch_shell_bank.v1",
+  "schema_version": "wm.client_patch_shell_bank.v2",
   "source_contract": "../../control/runtime/spell_shell_bank.json",
-  "artifact_version": "wm_spell_shell_bank.v1",
+  "artifact_version": "wm_spell_shell_bank.v2",
   "target_client": "WoW 3.3.5a",
   "artifact_status": "planned",
   "artifact_kind": "client_patch_package",
@@ -9,56 +9,70 @@
   "default_install_path": "D:\\WOW\\world of warcraft 3.3.5a hd\\Data\\patch-z.mpq",
   "artifact_commit_policy": "local_only_do_not_commit",
   "generation_mode": "range_driven",
-  "slots_per_family": 1000,
+  "slots_per_family": 100,
+  "reserve_gap_slots": 100,
   "notes": [
     "Shell rows must be WM-only client identities.",
     "Do not copy stock summon spell rows for WM abilities.",
     "If server-side DBC rows are required, stage matching files into D:\\WOW\\WM_BridgeLab\\run\\data\\dbc\\ before testing.",
-    "The client patch should generate shell rows from family ranges instead of hand-maintaining thousands of explicit entries."
+    "The client patch should generate shell rows from family ranges instead of hand-maintaining thousands of explicit entries.",
+    "Generic V2 families stay cast-shape generic; pinned compatibility shells are listed separately and must not be reused as managed spell slots."
   ],
   "family_generation": [
     {
-      "family_id": "summon_pet",
+      "family_id": "summon_pet_compat",
       "slot_range_start": 940000,
-      "slot_count": 1000,
+      "slot_count": 2,
       "seed_template": "wm_summon_pet"
     },
     {
-      "family_id": "summon_companion",
-      "slot_range_start": 941000,
-      "slot_count": 1000,
-      "seed_template": "wm_summon_companion"
-    },
-    {
-      "family_id": "self_buff",
-      "slot_range_start": 942000,
-      "slot_count": 1000,
-      "seed_template": "wm_self_buff"
-    },
-    {
-      "family_id": "offensive_bolt",
-      "slot_range_start": 943000,
-      "slot_count": 1000,
-      "seed_template": "wm_offensive_bolt"
-    },
-    {
-      "family_id": "passive_aura",
+      "family_id": "passive_aura_compat",
       "slot_range_start": 944000,
-      "slot_count": 1000,
+      "slot_count": 1,
       "seed_template": "wm_passive_aura"
     },
     {
-      "family_id": "pet_active",
+      "family_id": "pet_active_compat",
       "slot_range_start": 945000,
-      "slot_count": 1000,
+      "slot_count": 1,
       "seed_template": "wm_pet_active"
+    },
+    {
+      "family_id": "unit_target_projectile",
+      "slot_range_start": 946000,
+      "slot_count": 100,
+      "seed_template": "wm_unit_target_projectile"
+    },
+    {
+      "family_id": "unit_target_effect",
+      "slot_range_start": 946200,
+      "slot_count": 100,
+      "seed_template": "wm_unit_target_effect"
+    },
+    {
+      "family_id": "ground_target_aoe",
+      "slot_range_start": 946400,
+      "slot_count": 100,
+      "seed_template": "wm_ground_target_aoe"
+    },
+    {
+      "family_id": "self_aura",
+      "slot_range_start": 946600,
+      "slot_count": 100,
+      "seed_template": "wm_self_aura"
+    },
+    {
+      "family_id": "passive_aura",
+      "slot_range_start": 946800,
+      "slot_count": 100,
+      "seed_template": "wm_passive_aura"
     }
   ],
   "shells": [
     {
       "shell_key": "bonebound_servant_v1",
       "spell_id": 940000,
-      "family_id": "summon_pet",
+      "family_id": "summon_pet_compat",
       "label": "Bonebound Servant",
       "behavior_kind": "summon_bonebound_servant_v1",
       "tooltip": "Raise a Bonebound Servant from a nearby corpse.",
@@ -80,11 +94,22 @@
     {
       "shell_key": "bonebound_twins_v1",
       "spell_id": 940001,
-      "family_id": "summon_pet",
-      "label": "Bonebound Twins",
-      "behavior_kind": "summon_bonebound_twin_v2",
-      "tooltip": "Raise Bonebound Alpha and Bonebound Omega under WM control.",
+      "family_id": "summon_pet_compat",
+      "label": "Bonebound Alpha",
+      "behavior_kind": "summon_bonebound_alpha_v3",
+      "tooltip": "Raise Bonebound Alpha with WM-controlled bleed and echo behavior.",
       "icon_hint": "Spell_Shadow_AnimateDead",
+      "client_presentation": {
+        "cast_time_index": 14,
+        "power_type": 0,
+        "mana_cost": 180,
+        "mana_cost_percentage": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 4054,
+        "spell_icon_id": 221,
+        "spellbook_seed_spell_id": 697,
+        "spellbook_ability_id": 1940001
+      },
       "shell_row_requirements": {
         "effect_model": "dummy_script",
         "allow_class_restriction": false,
@@ -94,14 +119,14 @@
         "cooldown_family": "wm_owned"
       },
       "implementation_notes": [
-        "Use the same generic WM shell dispatch as 940000.",
-        "Server-side behavior owns Alpha pet creation and Omega guardian sync."
+        "Legacy key kept for operator compatibility; this shell now runs the single-Alpha behavior.",
+        "Server-side behavior owns Alpha pet creation, bleed, and echo handling."
       ]
     },
     {
       "shell_key": "bonebound_servant_slash_v1",
       "spell_id": 945000,
-      "family_id": "pet_active",
+      "family_id": "pet_active_compat",
       "label": "Bonebound Slash",
       "behavior_kind": "bonebound_pet_active_v1",
       "tooltip": "Order your Bonebound Servant to use its WM-owned pet action.",
@@ -112,6 +137,26 @@
       },
       "implementation_notes": [
         "Reserved for later. Do not ship until the base servant lifecycle is stable."
+      ]
+    },
+    {
+      "shell_key": "jecia_intellect_block_v1",
+      "spell_id": 944000,
+      "family_id": "passive_aura_compat",
+      "label": "Jecia's Guarded Mind",
+      "behavior_kind": "passive_intellect_block_v1",
+      "tooltip": "Convert intellect and spell power into block rating while Shield proficiency is explicitly WM-granted.",
+      "icon_hint": "Ability_Defend",
+      "shell_row_requirements": {
+        "effect_model": "passive",
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "passive"
+      },
+      "implementation_notes": [
+        "Compatibility passive shell kept pinned for the combat proficiency lane.",
+        "Do not use this id for generic passive shells; allocate those from the 946800+ family."
       ]
     }
   ]

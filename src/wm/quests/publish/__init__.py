@@ -660,7 +660,6 @@ def _demo_draft() -> BountyQuestDraft:
             has_gossip_menu=False,
         ),
         kill_count=8,
-        reward_money_copper=1200,
     )
 
 

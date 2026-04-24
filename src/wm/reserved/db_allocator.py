@@ -6,6 +6,7 @@ from typing import Any
 
 from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient, MysqlCliError
+from wm.reserved.custom_id_registry import load_custom_id_registry
 from wm.reserved.models import ReservedSlot
 
 
@@ -25,12 +26,14 @@ class ReservedSlotDbAllocator:
                 "SELECT EntityType, ReservedID, SlotStatus, ArcKey, CharacterGUID, SourceQuestID, NotesJSON "
                 "FROM wm_reserved_slot "
                 f"WHERE EntityType = {_sql_string(entity_type)} AND SlotStatus = 'free' "
-                "ORDER BY ReservedID LIMIT 1"
+                "ORDER BY ReservedID"
             ),
         )
-        if not rows:
-            return None
-        return _build_slot(rows[0])
+        for row in rows:
+            slot = _build_slot(row)
+            if _slot_is_allocatable(slot):
+                return slot
+        return None
 
     def allocate_next_free_slot(
         self,
@@ -196,6 +199,18 @@ def _build_slot(row: dict[str, Any]) -> ReservedSlot:
         source_quest_id=int(row["SourceQuestID"]) if row.get("SourceQuestID") not in (None, "") else None,
         notes=notes,
     )
+
+
+def _slot_is_allocatable(slot: ReservedSlot) -> bool:
+    if slot.entity_type != "spell":
+        return True
+
+    registry = load_custom_id_registry()
+    managed_range = registry.range_by_key(namespace="spell", range_key="managed_spell_slots")
+    if managed_range is not None and not (managed_range.start_id <= int(slot.reserved_id) <= managed_range.end_id):
+        return False
+
+    return registry.claim_by_id(namespace="spell", id=int(slot.reserved_id)) is None
 
 
 def _sql_string(value: str) -> str:

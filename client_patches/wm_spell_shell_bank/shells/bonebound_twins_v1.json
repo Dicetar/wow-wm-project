@@ -1,16 +1,28 @@
 {
   "shell_key": "bonebound_twins_v1",
   "spell_id": 940001,
-  "family_id": "summon_pet",
-  "label": "Bonebound Twins",
-  "behavior_kind": "summon_bonebound_twin_v2",
+  "family_id": "summon_pet_compat",
+  "label": "Bonebound Alpha",
+  "behavior_kind": "summon_bonebound_alpha_v3",
   "targeting": "self_cast",
   "required_level": 1,
-  "tooltip": "Raise Bonebound Alpha and Bonebound Omega under WM control.",
+  "tooltip": "Raise Bonebound Alpha with WM-controlled bleed and echo behavior.",
   "icon_hint": "Spell_Shadow_AnimateDead",
+  "client_presentation": {
+    "cast_time_index": 14,
+    "power_type": 0,
+    "mana_cost": 180,
+    "mana_cost_percentage": 0,
+    "spell_visual_id_1": 0,
+    "spell_visual_id_2": 4054,
+    "spell_icon_id": 221,
+    "spellbook_seed_spell_id": 697,
+    "spellbook_ability_id": 1940001
+  },
   "patch_state": "planned",
   "notes": [
-    "Lives inside the 1000-slot summon_pet block starting at 940000.",
-    "This is the first dual-summon shell built on the broad WM spell runtime instead of stock carrier hijacks."
+    "Legacy key retained for operator compatibility; this shell now runs the single-Alpha behavior.",
+    "Lives inside the pinned compatibility summon block at 940000-940001.",
+    "Do not reuse this ID for managed spell slots or generic shell-bank entries."
   ]
 }

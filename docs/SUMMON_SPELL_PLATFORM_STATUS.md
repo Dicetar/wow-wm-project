@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-16
+Last verified: 2026-04-17
 Verified by: Codex
 Doc type: status
 
@@ -23,7 +23,7 @@ The supported path is:
    - `wm_spell_behavior`
    - `wm_spell_grant`
 5. grant or revoke the shell through the workbench
-6. use the debug/native lane for behavior tuning until the client shell is installed
+6. use the debug/native lane for behavior tuning until the client shell is installed and validated in-game
 
 Current supported iteration lane:
 
@@ -48,8 +48,15 @@ Visible stock-carrier testing is not supported.
 
 - shell-bank contract exists
 - client patch workspace exists
-- default bank size is 1000 slots per family across 6 families
-- named shell entries exist for `940000`, `940001`, and `944000`
+- generic V2 bank uses five 100-slot cast-shape families under `946000-946999`, with 100-id reserve gaps between families
+- named shell entries exist for `940000`, `940001`, `944000`, and `945000`
+- `WORKING`: server-side Spell.dbc materialization now exists for named compatibility shells through `python -m wm.spells.server_dbc materialize` and `scripts/bridge_lab/Stage-BridgeLabServerSpellDbc.ps1`; the current BridgeLab proof stages `940000`, `940001`, `944000`, and `945000` into `D:\WOW\Azerothcore_WoTLK_Rebuild\run\data\dbc\Spell.dbc`
+- `WORKING`: named shell `940001` is now proven as a server-known learnable identity on BridgeLab after the DBC stage: `grant-shell` writes `character_spell(5406, 940001)` plus active `wm_spell_grant`, and `ungrant-shell` removes the row and revokes the grant after `.saveall` and retry-backed verification
+- `WORKING`: client patch packaging is repo-owned through `python -m wm.spells.client_patch`. On 2026-04-17, Codex downloaded official Ladik MPQ Editor into `.wm-bootstrap\tools\mpqeditor`, built and verified `.wm-bootstrap\state\client-patches\wm_spell_shell_bank\patch-z.mpq`, and the builder now emits both `DBFilesClient\Spell.dbc` and `DBFilesClient\SkillLineAbility.dbc`.
+- `WORKING`: shell presentation metadata is explicit for `940001`: Animate Dead icon `221`, 3 second cast time through `SpellCastTimes` index `14`, 180 mana cost, Summon Voidwalker visual `4054`, and a Warlock/Demonology spellbook mapping cloned from Summon Voidwalker skill-line ability row `697 -> 354`.
+- `WORKING`: server DBC materialization now has separate profiles. `learnable` keeps the neutral grant/revoke proof seed. `castable` uses the client cast-shape seed for visible-shell tests; repo tests now verify `940001` carries visual field `SpellVisualID_2 = 4054`, and the previous 2026-04-17 BridgeLab stage verified the server row has effect `(28,0,0)`, target `(32,0,0)`, range `1`, cast time `14`, icon `221`, and mana cost `180`.
+- `WORKING`: the refreshed client MPQ package is installed at `D:\WOW\world of warcraft 3.3.5a hd\Data\patch-z.mpq`, and BridgeLab worldserver was restarted on pid `8580` so the staged server DBC is loaded. In-game proof on 2026-04-17 showed `940001` in the Warlock/Demonology spellbook with the intended icon, 180 mana cost, and 3 second cast time.
+- `PARTIAL`: caster animation/visual polish is still open. The shell contract now pins `940001` to Summon Voidwalker visual `4054` instead of Raise Ghoul visual `749`, but the refreshed client/server DBC artifacts still need to be rebuilt, restaged, and proven in-game.
 
 ### Native spell runtime
 
@@ -58,6 +65,8 @@ Visible stock-carrier testing is not supported.
 - debug invoke resolves shell-bound config from `wm_spell_behavior`
 - `WORKING`: Bonebound Alpha debug/native lane uses WM shell `940001`, not stock `697` or `49126`
 - `WORKING`: lab DB proof on 2026-04-15 retired `49126`, disabled its behavior row, removed stock WM spell-script bindings, and left only `940001 -> spell_wm_shell_dispatch`
+- `WORKING`: repo/runtime separation now moves Bonebound off stock creature truth. Alpha uses WM creature template `920100`, stock Voidwalker remains `1860`, and `IsBoneboundPet()` no longer falls back to stock entry/display heuristics.
+- `PARTIAL`: stock Summon Voidwalker separation is deployed but not yet re-proven in-game after the structural fix. BridgeLab DB proof on 2026-04-17 now shows `character_spell(5406,697)` and `character_spell(5406,940001)` present, `49126` absent, Jecia's saved Alpha row migrated to `character_pet.entry=920100`, `wm_spell_behavior(940001)` repointed to `creature_entry=920100`, and only `940001 -> spell_wm_shell_dispatch` in `spell_script_names`. The prior cleanup-only state was still broken because Alpha shared stock creature entry `1860`.
 - `WORKING`: historical lab invoke request `7` for player `5406` executed the old twin behavior and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
 - `WORKING`: Bonebound Alpha behavior config transfers the summoner's total intellect to all Alpha stats and shadow spell power to Alpha attack power
 - `WORKING`: Bonebound Alpha v3 repo/native implementation builds in BridgeLab: shell `940001` maps to `summon_bonebound_alpha_v3`, `spawn_omega=false`, Alpha keeps Gorehowl visual item `28773`, the native periodic is now a low physical bleed despite legacy `shadow_dot_*` config key names, and temporary Alpha echo damage is enforced through the `UnitScript::ModifyMeleeDamage` hook instead of TempSummon visible field copying
@@ -65,6 +74,7 @@ Visible stock-carrier testing is not supported.
 - `PARTIAL`: Alpha echo mount/dismount restore is implemented, repo/static-tested, native-built, and deployed to BridgeLab worldserver pid `31208`. The runtime now preserves missing Echo state while the owner pet is temporarily unsummoned by mounting, prevents player maintenance from erasing that state while the main pet is absent, then respawns the Echo from the saved template/follow slot with its remaining lifetime after the Bonebound pet returns. Live in-game BridgeLab proof is still pending.
 - `WORKING`: Bonebound Alpha release submitter exists at `python -m wm.spells.summon_release`; it now defaults to behavior `summon_bonebound_alpha_v3` and shell `940001`
 - `WORKING`: live post-restart Alpha v3 smoke was accepted on 2026-04-16 after request `11` completed for online player `5406`; repo evidence proves the active pet row is `Bonebound Alpha` on shell `940001`, and user validation reported the bleed/echo behavior acceptable
+- `PARTIAL`: Demonology passive compatibility is not globally proven. Alpha now uses WM creature entry `920100`, cloned from the Voidwalker template so family/type truth stays demon-like, but anything hardcoded to stock spell `697`, stock creature entry `1860`, or stock CreatedBySpell semantics is unverified because Alpha is created by WM shell `940001`.
 - `BROKEN`: Bonebound Omega TempSummon parity is retired for the release lane. Live evidence showed Alpha melee around `120`, Omega melee around `9`, and Omega mana around `20`; copying Alpha-visible fields onto a Creature/TempSummon did not affect the actual combat path reliably.
 - `WORKING`: persistent combat proficiency repo path exists through DBC override SQL plus explicit GUID grant:
   - `native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_02_wm_spell_shield_proficiency.sql` seeds high-ID `skillraceclassinfo_dbc` and `skilllineability_dbc` rows for Shield skill `433`
@@ -92,12 +102,14 @@ Visible stock-carrier testing is not supported.
 
 ### Visible player-facing shell proof
 
-Still blocked on the client patch being built and installed from repo instructions:
+No longer blocked on MPQ packaging. The repo can now build the client shell-bank patch with `Spell.dbc` plus `SkillLineAbility.dbc`, and BridgeLab has a matching cast-shape server row for `940001`.
 
-- `940000` visible in spellbook
-- `940001` visible in spellbook
-- real action-bar and tooltip proof
+Still open:
+
+- action-bar and tooltip proof beyond the spellbook screenshot
+- visible-shell cast produces Bonebound Alpha through `spell_wm_shell_dispatch`
 - final cast/recast/dismiss/relog lifecycle proof on the visible shell path
+- one generic shell from each `946000-946999` V2 family verified in BridgeLab
 
 ### Bonebound Alpha v3
 
@@ -111,10 +123,10 @@ Current classification:
 - `WORKING`: single Alpha true-pet summon model; `spawn_omega=false`
 - `WORKING`: Gorehowl visual weapon config for Alpha through `virtual_item_1=28773`
 - `WORKING`: native Alpha bleed implementation exists with default 6 second cooldown, 4 second duration, 1 second tick, low level/intellect scaling, and no shadow spell-power scaling
-- `WORKING`: Alpha passive echo implementation exists with 7.5% melee proc chance, maximum 3 active echoes, WM creature template `920101`, randomized follow slots around the player, and echo lifetime equal to summoner total intellect in seconds
+- `WORKING`: Alpha passive echo implementation exists with 7.5% melee proc chance, maximum 40 active echoes, WM creature template `920101`, randomized follow slots around the player, and echo lifetime equal to summoner total intellect in seconds
 - `WORKING`: live in-game smoke for the release lane was accepted after the 2026-04-16 deploy; exact combat-log numbers were not captured, so future tuning should still record tick and melee values before changing damage
 - `PARTIAL`: Echo temporary-unsummon restore after player mounting is repo-tested and rebuilt/deployed to BridgeLab, but not yet proven in-game. The intended behavior is that active Echoes keep counting down while mounted and reappear after dismount if lifetime remains. The first live attempt failed because `MaintainBoneboundSummons()` still called `RemoveBoneboundAlphaEchoes()` while the pet was temporarily unsummoned; this cleanup path is now guarded.
-- `PARTIAL`: visible client spellbook/action-bar path until the client shell-bank patch is installed and validated
+- `PARTIAL`: visible client spellbook/action-bar path until the installed client shell-bank patch is validated in-game
 
 What to do:
 
@@ -129,6 +141,8 @@ What not to do:
 - Do not describe 940001 as a working dual-summon/twins behavior until a true second-pet or hook-backed companion model is designed and proven.
 - Do not revive TempSummon field-copy attempts for Omega damage parity.
 - Do not spawn Alpha echoes from stock creature entry `1860`; target frame/nameplate text comes from creature template truth, not just `SetName()`.
+- Do not remove stock Summon Voidwalker `697` from `character_spell` while cleaning WM summon experiments. Retired prototype carriers are cleanup targets; the real warlock spell is not.
+- Do not claim every Demonology passive works on Alpha until the passive is tested. Template/family-based behavior and spell-id-specific behavior are different server truths.
 - Do not copy Alpha health/power/damage onto a Creature/TempSummon before `ApplyOwnerTransferBonuses()` / `UpdateAllStats()`.
 - Do not erase missing Echo state immediately after mounting; mount is a temporary-unsummon lifecycle event, not proof that the Echo was killed or expired.
 - Do not preserve Echo state in only one updater path; player maintenance can still erase it unless the temporary-unsummon branch returns before `RemoveBoneboundAlphaEchoes()`.
@@ -250,9 +264,10 @@ Retired implementation patterns:
 3. record Alpha melee, bleed tick values, and at least one 7.5% Alpha echo proc with `Bonebound Alpha Echo` name and non-template health
 4. mount after an Echo exists, dismount before its intellect-based lifetime expires, and confirm the Echo reappears without a new proc
 5. observe one playerbot maintenance/level-up cycle and confirm bots did not inherit combat proficiencies
-6. build and install the local shell-bank client patch
-7. grant `940000` or `940001` through the workbench
-8. validate the visible shell path:
+6. build and install the local shell-bank client patch with `python -m wm.spells.client_patch build --install --summary`
+7. stage a castable server DBC row with `.\scripts\bridge_lab\Stage-BridgeLabServerSpellDbc.ps1 -SeedProfile castable -SpellId 940001`
+8. grant `940000` or `940001` through the workbench or native `player_learn_spell`; if native learn succeeds but SOAP `.saveall` is unavailable, persist `character_spell` explicitly before relog testing
+9. validate the visible shell path:
    - spellbook entry
    - cast behavior
    - clean failure UX when gated

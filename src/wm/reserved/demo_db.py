@@ -13,7 +13,7 @@ def main() -> None:
     allocator = ReservedSlotDbAllocator(client=client, settings=settings)
 
     slot = allocator.allocate_next_free_slot(
-        entity_type="spell_dbc_or_spell_slots",
+        entity_type="spell",
         arc_key="wm_demo_db_allocation",
         character_guid=42,
         source_quest_id=910123,

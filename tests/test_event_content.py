@@ -104,6 +104,33 @@ class DeterministicContentFactoryTests(unittest.TestCase):
         self.assertEqual(actions[0].payload["quest_id"], 910010)
         self.assertEqual(actions[0].payload["_wm_reserved_slot"]["reserved_id"], 910010)
         self.assertEqual(actions[0].payload["reward"]["money_copper"], 1400)
+        self.assertEqual(actions[0].payload["reward"]["reward_item_entry"], 6827)
+        self.assertEqual(actions[0].payload["reward"]["reward_xp_difficulty"], 4)
+        self.assertEqual(notes["quest_generation"], "ready")
+
+    def test_repeat_hunt_uses_scaled_default_rewards_when_no_override_is_configured(self) -> None:
+        factory = DeterministicContentFactory(
+            client=None,  # type: ignore[arg-type]
+            settings=Settings(event_default_questgiver_entry=1498, event_followup_kill_count=6),
+            slot_allocator=FakeAllocator(FakeSlot(910010)),  # type: ignore[arg-type]
+            resolver=FakeResolver(),  # type: ignore[arg-type]
+        )
+        opportunity = ReactionOpportunity(
+            opportunity_type="repeat_hunt_followup",
+            rule_type="repeat_hunt_followup",
+            player_guid=42,
+            subject=SubjectRef(subject_type="creature", subject_entry=46),
+            source_event_key="evt-100",
+            metadata={"subject_name": "Murloc Forager", "kill_count": 10},
+        )
+
+        actions, notes = factory.build_actions(opportunity)
+
+        reward = actions[0].payload["reward"]
+        self.assertEqual(reward["money_copper"], 400)
+        self.assertEqual(reward["reward_item_entry"], 6827)
+        self.assertEqual(reward["reward_item_name"], "Box of Supplies")
+        self.assertEqual(reward["reward_xp_difficulty"], 4)
         self.assertEqual(notes["quest_generation"], "ready")
 
     def test_repeat_hunt_falls_back_to_announcement_without_questgiver(self) -> None:

@@ -162,7 +162,11 @@ class ReactiveBountyInstaller:
             target_name=target_name,
             title=quest_title,
             kill_count=rule.kill_threshold,
-            reward_money_copper=max(0, int(self.settings.event_default_reward_money_copper)),
+            reward_money_copper=(
+                int(self.settings.event_default_reward_money_copper)
+                if int(self.settings.event_default_reward_money_copper) > 0
+                else None
+            ),
             reward_item_entry=reward_item_entry,
             reward_item_name=reward_item_name,
             reward_item_count=reward_item_count,

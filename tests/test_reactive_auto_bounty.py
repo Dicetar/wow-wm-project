@@ -1,12 +1,17 @@
+import contextlib
+import io
 import unittest
+from unittest.mock import patch
 
 from wm.config import Settings
 from wm.events.models import WMEvent
 from wm.reactive.auto_bounty import AutoBountyTarget
 from wm.reactive.auto_bounty import ReactiveAutoBountyManager
+from wm.reactive.auto_bounty import main
 from wm.reactive.models import ReactiveQuestRule
 from wm.reactive.turn_in_selector import ZoneQuestTurnInCandidate
 from wm.reactive.turn_in_selector import ZoneQuestTurnInSelector
+from wm.quests.reward_picker import BountyRewardSelection
 
 
 class _SelectorClient:
@@ -98,6 +103,84 @@ class _FakeReactiveStore:
         self.deactivated.append((int(player_guid), except_rule_key))
 
 
+class _CliReactiveStore:
+    def __init__(self) -> None:
+        self.deactivated_auto_rules: list[int] = []
+        self.deactivated_bounty_rules: list[int] = []
+        self.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:auto:zone:10:subject:533",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=533,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=300,
+                quest_id=910321,
+                turn_in_npc_entry=264,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={
+                    "objective_target_name": "Nightbane Shadow Weaver",
+                    "quest_title": "Bounty: Nightbane Shadow Weaver",
+                    "reward_policy": "default_supply_bundle_v1",
+                },
+                notes=["auto_bounty"],
+            ),
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:template:defias_bandit",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=116,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=300,
+                quest_id=910049,
+                turn_in_npc_entry=261,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={
+                    "objective_target_name": "Defias Bandits",
+                    "quest_title": "Bounty: Defias Bandits",
+                },
+                notes=["template"],
+            ),
+        ]
+
+    def list_active_rules(self, *, player_guid: int):
+        return [
+            rule
+            for rule in self.rules
+            if rule.player_guid_scope in (None, int(player_guid))
+        ]
+
+    def deactivate_player_auto_bounty_rules(self, *, player_guid: int, except_rule_key: str | None = None) -> None:
+        del except_rule_key
+        self.deactivated_auto_rules.append(int(player_guid))
+        self.rules = [
+            rule
+            for rule in self.rules
+            if not (
+                rule.player_guid_scope == int(player_guid)
+                and str(rule.rule_key).startswith("reactive_bounty:auto:")
+            )
+        ]
+
+    def deactivate_player_bounty_rules(self, *, player_guid: int, except_rule_key: str | None = None) -> None:
+        del except_rule_key
+        self.deactivated_bounty_rules.append(int(player_guid))
+        self.rules = [
+            rule
+            for rule in self.rules
+            if not (
+                rule.player_guid_scope == int(player_guid)
+                and str(rule.rule_key).startswith("reactive_bounty:")
+            )
+        ]
+
+
 class _FakeSlotAllocator:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
@@ -115,6 +198,16 @@ class _FakeTurnInSelector:
     def select(self, *, player_guid: int, zone_id: int | None):
         self.calls.append((int(player_guid), zone_id))
         return self.candidate
+
+
+class _FakeRewardPicker:
+    def __init__(self, selection: BountyRewardSelection | None) -> None:
+        self.selection = selection
+        self.calls: list[int] = []
+
+    def select_for_player(self, *, player_guid: int):
+        self.calls.append(int(player_guid))
+        return self.selection
 
 
 class ReactiveAutoBountyTests(unittest.TestCase):
@@ -155,6 +248,16 @@ class ReactiveAutoBountyTests(unittest.TestCase):
             resolver=_FakeResolver(),  # type: ignore[arg-type]
             slot_allocator=slot_allocator,  # type: ignore[arg-type]
             turn_in_selector=turn_in_selector,  # type: ignore[arg-type]
+            reward_picker=_FakeRewardPicker(
+                BountyRewardSelection(
+                    item_entry=910005,
+                    item_name="Ice-Layered Barrier",
+                    player_level=26,
+                    required_level_min=22,
+                    required_level_max=27,
+                    candidate_count=14,
+                )
+            ),  # type: ignore[arg-type]
         )
         event = WMEvent(
             event_class="observed",
@@ -178,6 +281,14 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         self.assertEqual(rule.quest.title, "Bounty: Nightbane Shadow Weaver")
         self.assertTrue(bool(rule.metadata.get("require_consecutive_kills")))
         self.assertEqual(rule.metadata.get("auto_bounty_turn_in_strategy"), "zone_quest_ties")
+        self.assertEqual(rule.metadata.get("reward_policy"), "random_suitable_equipment_v1")
+        projected_reward = rule.metadata.get("projected_reward")
+        assert isinstance(projected_reward, dict)
+        self.assertEqual(projected_reward.get("money_copper"), 2304)
+        self.assertEqual(projected_reward.get("reward_item_entry"), 910005)
+        self.assertEqual(projected_reward.get("reward_item_name"), "Ice-Layered Barrier")
+        self.assertEqual(rule.metadata.get("reward_item_entry"), 910005)
+        self.assertEqual(rule.metadata.get("reward_item_name"), "Ice-Layered Barrier")
         self.assertEqual(installer.calls[0][1], "apply")
         self.assertEqual(turn_in_selector.calls, [(5406, 10)])
         self.assertEqual(reactive_store.deactivated, [(5406, "reactive_bounty:auto:zone:10:subject:533")])
@@ -195,6 +306,7 @@ class ReactiveAutoBountyTests(unittest.TestCase):
             resolver=_FakeResolver(),  # type: ignore[arg-type]
             slot_allocator=slot_allocator,  # type: ignore[arg-type]
             turn_in_selector=turn_in_selector,  # type: ignore[arg-type]
+            reward_picker=_FakeRewardPicker(None),  # type: ignore[arg-type]
             targets=(
                 AutoBountyTarget(
                     subject_entry=533,
@@ -227,6 +339,33 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         self.assertEqual(rule.quest.title, "Bounty: Shadow Weavers")
         self.assertEqual(turn_in_selector.calls, [])
         self.assertEqual(slot_allocator.calls, [])
+
+    def test_cli_can_deactivate_all_player_bounty_rules_before_dynamic_run(self) -> None:
+        store = _CliReactiveStore()
+        output = io.StringIO()
+
+        with (
+            patch("wm.reactive.auto_bounty.Settings.from_env", return_value=Settings()),
+            patch("wm.reactive.auto_bounty.MysqlCliClient", return_value=object()),
+            patch("wm.reactive.auto_bounty.ReactiveQuestStore", return_value=store),
+            contextlib.redirect_stdout(output),
+        ):
+            exit_code = main(
+                [
+                    "--player-guid",
+                    "5406",
+                    "--deactivate-existing-bounty-rules",
+                    "--summary",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(store.deactivated_bounty_rules, [5406])
+        self.assertEqual(store.deactivated_auto_rules, [])
+        rendered = output.getvalue()
+        self.assertIn("deactivated_existing_bounty_rules: true", rendered)
+        self.assertIn("active_auto_rules: 0", rendered)
+        self.assertIn("active_bounty_rules: 0", rendered)
 
 
 if __name__ == "__main__":

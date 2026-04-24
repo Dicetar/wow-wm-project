@@ -1,0 +1,317 @@
+{
+  "schema_version": "wm.custom_id_registry.v1",
+  "description": "Authoritative exact-claim ledger for WM-owned custom IDs plus coarse spell namespace subranges.",
+  "notes": [
+    "This file is the exact-claim authority for custom IDs already used by WM.",
+    "Exact duplicate ids are forbidden only within the same namespace.",
+    "reserved_id_ranges.json remains coarse allocator policy only; do not use it as the exact-claim ledger."
+  ],
+  "ranges": [
+    {
+      "namespace": "spell",
+      "range_key": "shell_bank_compatibility_space",
+      "start_id": 940000,
+      "end_id": 945999,
+      "purpose": "Pinned compatibility space for current named WM spell shells and legacy shell-bank ids.",
+      "status": "WORKING",
+      "allocation_rule": "Do not allocate managed spell slots from this range; only claim explicit named shell ids here."
+    },
+    {
+      "namespace": "spell",
+      "range_key": "generic_shell_bank_v2",
+      "start_id": 946000,
+      "end_id": 946999,
+      "purpose": "Generic cast-shape shell-bank V2 space for client-prepatched WM spell shells.",
+      "status": "WORKING",
+      "allocation_rule": "Use for generic client-visible cast shapes only; keep behavior generic and bind bespoke logic server-side."
+    },
+    {
+      "namespace": "spell",
+      "range_key": "managed_spell_slots",
+      "start_id": 947000,
+      "end_id": 947999,
+      "purpose": "Managed spell publish and rollback slots used by wm.spells.publish and workbench-generated spell drafts.",
+      "status": "WORKING",
+      "allocation_rule": "Allocate through wm_reserved_slot entity type `spell`; never reuse named shell ids from the shell-bank ranges."
+    },
+    {
+      "namespace": "quest",
+      "range_key": "managed_quest_slots",
+      "start_id": 910000,
+      "end_id": 910999,
+      "purpose": "Managed WM quest slots, including repeatable bounties and test quests.",
+      "status": "WORKING",
+      "allocation_rule": "Allocate through wm_reserved_slot entity type `quest`."
+    },
+    {
+      "namespace": "item",
+      "range_key": "managed_item_slots",
+      "start_id": 910000,
+      "end_id": 910999,
+      "purpose": "Managed WM item slots for generated rewards and equipped artifacts.",
+      "status": "WORKING",
+      "allocation_rule": "Allocate through wm_reserved_slot entity type `item`."
+    },
+    {
+      "namespace": "gossip_menu",
+      "range_key": "wm_gossip_menu_slots",
+      "start_id": 912000,
+      "end_id": 912499,
+      "purpose": "WM-authored conversation menus and branching nodes.",
+      "status": "UNKNOWN",
+      "allocation_rule": "Reserve for future WM gossip work; current repo usage is limited."
+    },
+    {
+      "namespace": "npc_text",
+      "range_key": "wm_npc_text_slots",
+      "start_id": 912500,
+      "end_id": 912999,
+      "purpose": "WM-authored dialogue text blocks.",
+      "status": "UNKNOWN",
+      "allocation_rule": "Reserve for future WM dialogue work; current repo usage is limited."
+    }
+  ],
+  "claims": [
+    {
+      "namespace": "spell",
+      "id": 940000,
+      "key": "bonebound_servant_v1",
+      "kind": "shell_spell",
+      "purpose": "Pinned WM compatibility summon shell for Bonebound Servant experiments.",
+      "status": "PARTIAL",
+      "owner_system": "spell_shell_bank",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "docs/SPELL_SHELL_BANK_V1.md"
+      ],
+      "notes": [
+        "Keep pinned for compatibility; do not reuse as a managed spell slot."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 940001,
+      "key": "bonebound_twins_v1",
+      "kind": "shell_spell",
+      "purpose": "Pinned WM compatibility summon shell for the current Bonebound Alpha release lane.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "src/wm/spells/summon_release.py",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Legacy key retained for operator compatibility; this shell now maps to summon_bonebound_alpha_v3."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 944000,
+      "key": "jecia_intellect_block_v1",
+      "kind": "shell_spell",
+      "purpose": "Pinned WM compatibility passive shell for intellect/spellpower to block-rating behavior.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_02_wm_spell_shield_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ],
+      "player_guid_scope": 5406
+    },
+    {
+      "namespace": "spell",
+      "id": 945000,
+      "key": "bonebound_servant_slash_v1",
+      "kind": "shell_spell",
+      "purpose": "Pinned WM compatibility pet-active shell reserved for Bonebound pet action work.",
+      "status": "PARTIAL",
+      "owner_system": "spell_shell_bank",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "docs/SPELL_SHELL_BANK_V1.md"
+      ],
+      "notes": [
+        "Reserved but not promoted as a stable live operator lane."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 947000,
+      "key": "defias_pursuit_instinct",
+      "kind": "managed_spell_slot",
+      "purpose": "Bundled managed spell-slot example for publish and rollback documentation/tests.",
+      "status": "PARTIAL",
+      "owner_system": "spell_slot_pipeline",
+      "source_paths": [
+        "control/examples/spells/defias_pursuit_instinct.json",
+        "docs/SPELL_SLOT_PIPELINE_V1.md"
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910000,
+      "key": "reactive_bounty_kobold_vermin",
+      "kind": "quest_template",
+      "purpose": "Phase 1 reactive bounty benchmark quest used for native parity proofs.",
+      "status": "PARTIAL",
+      "owner_system": "reactive_bounty",
+      "source_paths": [
+        "control/examples/proposals/manual_kill_burst_bounty.json",
+        "control/recipes/kill_burst_bounty.json",
+        "docs/WM_PLATFORM_HANDOFF.md"
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910020,
+      "key": "control_native_grant_proof",
+      "kind": "quest_template",
+      "purpose": "Control-native convergence proof quest used for audit and fresh source-event grant validation.",
+      "status": "WORKING",
+      "owner_system": "control_native_convergence",
+      "source_paths": [
+        "docs/WM_PLATFORM_HANDOFF.md",
+        "docs/native-bridge-action-bus.md"
+      ],
+      "player_guid_scope": 5406
+    },
+    {
+      "namespace": "quest",
+      "id": 910024,
+      "key": "bounty_nightbane_dark_runner_lens",
+      "kind": "quest_template",
+      "purpose": "Managed bounty reward proof quest for Night Watcher's Lens.",
+      "status": "WORKING",
+      "owner_system": "item_slot_pipeline",
+      "source_paths": [
+        "docs/ITEM_SLOT_PIPELINE_V1.md",
+        "docs/WORK_SUMMARY.md"
+      ],
+      "player_guid_scope": 5406
+    },
+    {
+      "namespace": "item",
+      "id": 910006,
+      "key": "night_watchers_lens",
+      "kind": "managed_item_slot",
+      "purpose": "Managed WM reward item with visible wearer marker and tracked target debuff behavior.",
+      "status": "WORKING",
+      "owner_system": "item_slot_pipeline",
+      "source_paths": [
+        "control/examples/items/night_watchers_lens.json",
+        "docs/ITEM_SLOT_PIPELINE_V1.md",
+        "docs/WM_PLATFORM_HANDOFF.md"
+      ]
+    },
+    {
+      "namespace": "creature_template",
+      "id": 920100,
+      "key": "bonebound_alpha",
+      "kind": "wm_creature_entry",
+      "purpose": "WM creature template used by Bonebound Alpha so stock Summon Voidwalker can remain separate.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_17_00_wm_spell_bonebound_alpha_creature_truth.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md",
+        "docs/WM_PLATFORM_HANDOFF.md"
+      ]
+    },
+    {
+      "namespace": "creature_template",
+      "id": 920101,
+      "key": "bonebound_alpha_echo",
+      "kind": "wm_creature_entry",
+      "purpose": "WM creature template used by Bonebound Alpha echo summons.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md",
+        "docs/WM_PLATFORM_HANDOFF.md"
+      ]
+    },
+    {
+      "namespace": "skillraceclassinfo_dbc",
+      "id": 100118,
+      "key": "dual_wield_skill_validity",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that makes Dual Wield skill 118 login-valid before explicit grant handling.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_04_wm_spell_dual_wield_skill_validity.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skillraceclassinfo_dbc",
+      "id": 100414,
+      "key": "leather_skill_validity",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that makes Leather skill 414 login-valid before explicit grant handling.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_03_wm_spell_leather_dual_wield_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skillraceclassinfo_dbc",
+      "id": 100433,
+      "key": "shield_skill_validity",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that makes Shield skill 433 login-valid before explicit grant handling.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_02_wm_spell_shield_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skilllineability_dbc",
+      "id": 100414,
+      "key": "leather_passive_spellline",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that binds stock passive 9077 to Leather skill 414.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_03_wm_spell_leather_dual_wield_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skilllineability_dbc",
+      "id": 100433,
+      "key": "shield_block_passive_spellline",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that binds stock passive 9116 to Shield skill 433.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_02_wm_spell_shield_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skilllineability_dbc",
+      "id": 100434,
+      "key": "shield_skillline_display_spellline",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that binds stock passive 107 to Shield skill 433 for client visibility.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_02_wm_spell_shield_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    }
+  ]
+}

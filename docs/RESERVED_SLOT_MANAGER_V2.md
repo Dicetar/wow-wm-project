@@ -45,7 +45,7 @@ python -m wm.reserved.commands summary
 ```powershell
 cd D:\WOW\wm-project
 .\.venv\Scripts\Activate.ps1
-python -m wm.reserved.commands allocate --entity-type spell_dbc_or_spell_slots --arc-key wm_demo --character-guid 42 --source-quest-id 910123 --note "Allocated from CLI"
+python -m wm.reserved.commands allocate --entity-type spell --arc-key wm_demo --character-guid 42 --source-quest-id 910123 --note "Allocated from CLI"
 ```
 
 ### Get a specific slot
@@ -53,7 +53,7 @@ python -m wm.reserved.commands allocate --entity-type spell_dbc_or_spell_slots -
 ```powershell
 cd D:\WOW\wm-project
 .\.venv\Scripts\Activate.ps1
-python -m wm.reserved.commands get --entity-type spell_dbc_or_spell_slots --reserved-id 900000
+python -m wm.reserved.commands get --entity-type spell --reserved-id 947000
 ```
 
 ### Transition a slot
@@ -61,7 +61,7 @@ python -m wm.reserved.commands get --entity-type spell_dbc_or_spell_slots --rese
 ```powershell
 cd D:\WOW\wm-project
 .\.venv\Scripts\Activate.ps1
-python -m wm.reserved.commands transition --entity-type spell_dbc_or_spell_slots --reserved-id 900000 --status active
+python -m wm.reserved.commands transition --entity-type spell --reserved-id 947000 --status active
 ```
 
 ### Release a slot
@@ -69,7 +69,7 @@ python -m wm.reserved.commands transition --entity-type spell_dbc_or_spell_slots
 ```powershell
 cd D:\WOW\wm-project
 .\.venv\Scripts\Activate.ps1
-python -m wm.reserved.commands release --entity-type spell_dbc_or_spell_slots --reserved-id 900000
+python -m wm.reserved.commands release --entity-type spell --reserved-id 947000
 ```
 
 ### Release a slot as archived
@@ -77,7 +77,7 @@ python -m wm.reserved.commands release --entity-type spell_dbc_or_spell_slots --
 ```powershell
 cd D:\WOW\wm-project
 .\.venv\Scripts\Activate.ps1
-python -m wm.reserved.commands release --entity-type spell_dbc_or_spell_slots --reserved-id 900000 --archive
+python -m wm.reserved.commands release --entity-type spell --reserved-id 947000 --archive
 ```
 
 ## Live DB demo
