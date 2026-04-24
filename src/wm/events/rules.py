@@ -119,6 +119,8 @@ class DeterministicRuleEngine:
         )
         rules = [rule for rule in rules if _rule_matches_event(rule=rule, event=event)]
         if not rules and not preview and self.auto_bounty is not None:
+            if not _event_is_fresh_for_auto_bounty(event=event, settings=self.settings):
+                return True
             auto_rule = self.auto_bounty.ensure_rule_for_event(event)
             if auto_rule is not None:
                 rules = self.reactive_store.list_active_rules(
@@ -317,6 +319,12 @@ class DeterministicRuleEngine:
         )
 
         current_state = self.reactive_store.fetch_character_quest_status(
+            player_guid=int(event.player_guid or 0),
+            quest_id=rule.quest_id,
+        )
+        current_state = _resolve_reactive_runtime_state(
+            store=self.store,
+            current_state=current_state,
             player_guid=int(event.player_guid or 0),
             quest_id=rule.quest_id,
         )
@@ -648,3 +656,77 @@ def _parse_timestamp(value: str | None) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _event_is_fresh_for_auto_bounty(*, event: WMEvent, settings: Settings | None) -> bool:
+    max_age_seconds = int(getattr(settings, "reactive_auto_bounty_max_event_age_seconds", 0) or 0)
+    if max_age_seconds <= 0:
+        return True
+    event_at = _parse_timestamp(event.occurred_at)
+    if event_at is None:
+        return False
+    age_seconds = (datetime.now(timezone.utc) - event_at).total_seconds()
+    return age_seconds <= max_age_seconds
+
+
+def _resolve_reactive_runtime_state(
+    *,
+    store: EventStore,
+    current_state: str,
+    player_guid: int,
+    quest_id: int,
+) -> str:
+    event_state = _latest_quest_event_state(store=store, player_guid=player_guid, quest_id=quest_id)
+    if event_state in {"incomplete", "complete"}:
+        return event_state
+    if current_state == "none" and event_state == "rewarded":
+        return event_state
+    return current_state
+
+
+def _latest_quest_event_state(*, store: EventStore, player_guid: int, quest_id: int) -> str | None:
+    for candidate in store.list_recent_events(
+        event_class="observed",
+        player_guid=int(player_guid),
+        limit=400,
+        newest_first=True,
+    ):
+        if candidate.event_type not in {"quest_accept", "quest_granted", "quest_completed", "quest_rewarded"}:
+            continue
+        if _quest_id_from_event(candidate) != int(quest_id):
+            continue
+        if candidate.event_type in {"quest_accept", "quest_granted"}:
+            return "incomplete"
+        if candidate.event_type == "quest_completed":
+            return "complete"
+        if candidate.event_type == "quest_rewarded":
+            return "rewarded"
+    return None
+
+
+def _quest_id_from_event(event: WMEvent) -> int | None:
+    for value in (
+        event.subject_entry,
+        event.metadata.get("quest_id"),
+        event.metadata.get("object_entry"),
+        event.event_value,
+    ):
+        parsed = _int_from_value(value)
+        if parsed is not None:
+            return parsed
+    payload = event.metadata.get("payload")
+    if isinstance(payload, dict):
+        for key in ("quest_id", "object_entry"):
+            parsed = _int_from_value(payload.get(key))
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _int_from_value(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return None

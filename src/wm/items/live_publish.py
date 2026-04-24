@@ -10,7 +10,7 @@ from typing import Any
 from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient
 from wm.items.publish import ItemPublisher, _demo_draft, load_managed_item_draft
-from wm.runtime_sync import RuntimeCommandResult, RuntimeSyncResult, SoapRuntimeClient
+from wm.runtime_sync import RuntimeSyncResult, sync_runtime_after_publish
 
 
 @dataclass(slots=True)
@@ -25,54 +25,16 @@ class LiveItemPublishResult:
 
 
 def _sync_runtime(*, settings: Settings, mode: str, runtime_sync_mode: str, soap_commands: list[str]) -> RuntimeSyncResult:
-    if mode != "apply":
-        return RuntimeSyncResult(
-            protocol="none",
-            enabled=False,
-            overall_ok=True,
-            restart_recommended=False,
-            note="Dry-run mode does not touch the live runtime.",
-        )
-
-    enabled = runtime_sync_mode == "soap" or (runtime_sync_mode == "auto" and settings.soap_enabled and bool(soap_commands))
-    if not enabled:
-        return RuntimeSyncResult(
-            protocol="none",
-            enabled=False,
-            overall_ok=True,
-            restart_recommended=True,
-            note=(
-                "Item rows were published to the live DB. "
-                "No runtime reload command was sent; use your server-specific item reload flow or restart worldserver."
-            ),
-        )
-
-    if not settings.soap_user or not settings.soap_password:
-        return RuntimeSyncResult(
-            protocol="soap",
-            enabled=True,
-            overall_ok=False,
-            restart_recommended=True,
-            note="SOAP runtime sync was requested but WM_SOAP_USER / WM_SOAP_PASSWORD are not configured.",
-        )
-
-    client = SoapRuntimeClient(settings=settings)
-    results: list[RuntimeCommandResult] = []
-    overall_ok = True
-    for command in soap_commands:
-        result = client.execute_command(command)
-        result.command = command
-        results.append(result)
-        if not result.ok:
-            overall_ok = False
-
-    return RuntimeSyncResult(
-        protocol="soap",
-        enabled=True,
-        overall_ok=overall_ok,
-        commands=results,
-        restart_recommended=True,
-        note=(
+    return sync_runtime_after_publish(
+        settings=settings,
+        mode=mode,
+        runtime_sync_mode=runtime_sync_mode,
+        soap_commands=soap_commands,
+        no_sync_note=(
+            "Item rows were published to the live DB. "
+            "No runtime reload command was sent; use your server-specific item reload flow or restart worldserver."
+        ),
+        synced_note=(
             "Managed item rows were published and the supplied runtime command(s) were sent. "
             "Because item reload behavior is repack/module-specific, restart worldserver if the client or server state stays stale."
         ),

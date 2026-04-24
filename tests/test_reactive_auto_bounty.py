@@ -47,6 +47,24 @@ class _SelectorClient:
         raise AssertionError(f"Unexpected SQL for {database}: {sql}")
 
 
+class _AutoBountyGateClient:
+    def __init__(self, *, quest_ids: list[int], latest_event_type: str | None = None) -> None:
+        self.quest_ids = list(quest_ids)
+        self.latest_event_type = latest_event_type
+        self.sql_calls: list[str] = []
+
+    def query(self, *, host: str, port: int, user: str, password: str, database: str, sql: str):
+        del host, port, user, password, database
+        self.sql_calls.append(sql)
+        if "FROM wm_reactive_quest_rule" in sql:
+            return [{"QuestID": str(quest_id)} for quest_id in self.quest_ids]
+        if "FROM wm_event_log" in sql:
+            if self.latest_event_type is None:
+                return []
+            return [{"EventType": self.latest_event_type}]
+        raise AssertionError(f"Unexpected SQL: {sql}")
+
+
 class _FakeResolveResult:
     def __init__(self, *, entry: int, name: str) -> None:
         self.entry = entry
@@ -90,6 +108,7 @@ class _FakeReactiveStore:
     def __init__(self) -> None:
         self.rules_by_key: dict[str, ReactiveQuestRule] = {}
         self.deactivated: list[tuple[int, str | None]] = []
+        self.character_status = "none"
 
     def get_rule_by_key(self, *, rule_key: str) -> ReactiveQuestRule | None:
         return self.rules_by_key.get(rule_key)
@@ -98,6 +117,10 @@ class _FakeReactiveStore:
         if int(player_guid) == 5406:
             return "Jecia"
         return None
+
+    def fetch_character_quest_status(self, *, player_guid: int, quest_id: int) -> str:
+        del player_guid, quest_id
+        return self.character_status
 
     def deactivate_player_auto_bounty_rules(self, *, player_guid: int, except_rule_key: str | None = None) -> None:
         self.deactivated.append((int(player_guid), except_rule_key))
@@ -242,7 +265,7 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         )
         manager = ReactiveAutoBountyManager(
             client=object(),  # type: ignore[arg-type]
-            settings=Settings(),
+            settings=Settings(reactive_auto_bounty_single_open_per_player=False),
             reactive_store=reactive_store,  # type: ignore[arg-type]
             installer=installer,  # type: ignore[arg-type]
             resolver=_FakeResolver(),  # type: ignore[arg-type]
@@ -300,7 +323,7 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         turn_in_selector = _FakeTurnInSelector(None)
         manager = ReactiveAutoBountyManager(
             client=object(),  # type: ignore[arg-type]
-            settings=Settings(),
+            settings=Settings(reactive_auto_bounty_single_open_per_player=False),
             reactive_store=reactive_store,  # type: ignore[arg-type]
             installer=installer,  # type: ignore[arg-type]
             resolver=_FakeResolver(),  # type: ignore[arg-type]
@@ -338,6 +361,97 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         self.assertEqual(rule.turn_in_npc_entry, 240)
         self.assertEqual(rule.quest.title, "Bounty: Shadow Weavers")
         self.assertEqual(turn_in_selector.calls, [])
+        self.assertEqual(slot_allocator.calls, [])
+
+    def test_dynamic_auto_bounty_does_not_create_new_rule_when_existing_auto_bounty_is_open(self) -> None:
+        reactive_store = _FakeReactiveStore()
+        reactive_store.character_status = "incomplete"
+        installer = _FakeInstaller()
+        slot_allocator = _FakeSlotAllocator()
+        turn_in_selector = _FakeTurnInSelector(
+            ZoneQuestTurnInCandidate(
+                entry=264,
+                name="Commander Althea Ebonlocke",
+                subname=None,
+                faction_id=84,
+                faction_label="Stormwind Guard",
+                starter_count=6,
+                ender_count=4,
+                spawn_count=1,
+            )
+        )
+        manager = ReactiveAutoBountyManager(
+            client=_AutoBountyGateClient(quest_ids=[910090]),  # type: ignore[arg-type]
+            settings=Settings(),
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+            installer=installer,  # type: ignore[arg-type]
+            resolver=_FakeResolver(),  # type: ignore[arg-type]
+            slot_allocator=slot_allocator,  # type: ignore[arg-type]
+            turn_in_selector=turn_in_selector,  # type: ignore[arg-type]
+            reward_picker=_FakeRewardPicker(None),  # type: ignore[arg-type]
+        )
+        event = WMEvent(
+            event_class="observed",
+            event_type="kill",
+            source="native_bridge",
+            source_event_key="native_bridge:kill:3",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=533,
+            zone_id=10,
+            metadata={"payload": {"subject_name": "Nightbane Shadow Weaver"}},
+        )
+
+        rule = manager.ensure_rule_for_event(event)
+
+        self.assertIsNone(rule)
+        self.assertEqual(installer.calls, [])
+        self.assertEqual(slot_allocator.calls, [])
+        self.assertEqual(turn_in_selector.calls, [])
+
+    def test_recent_quest_grant_event_blocks_new_dynamic_rule_when_character_db_lags(self) -> None:
+        reactive_store = _FakeReactiveStore()
+        reactive_store.character_status = "none"
+        installer = _FakeInstaller()
+        slot_allocator = _FakeSlotAllocator()
+        turn_in_selector = _FakeTurnInSelector(
+            ZoneQuestTurnInCandidate(
+                entry=264,
+                name="Commander Althea Ebonlocke",
+                subname=None,
+                faction_id=84,
+                faction_label="Stormwind Guard",
+                starter_count=6,
+                ender_count=4,
+                spawn_count=1,
+            )
+        )
+        manager = ReactiveAutoBountyManager(
+            client=_AutoBountyGateClient(quest_ids=[910090], latest_event_type="quest_granted"),  # type: ignore[arg-type]
+            settings=Settings(),
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+            installer=installer,  # type: ignore[arg-type]
+            resolver=_FakeResolver(),  # type: ignore[arg-type]
+            slot_allocator=slot_allocator,  # type: ignore[arg-type]
+            turn_in_selector=turn_in_selector,  # type: ignore[arg-type]
+            reward_picker=_FakeRewardPicker(None),  # type: ignore[arg-type]
+        )
+        event = WMEvent(
+            event_class="observed",
+            event_type="kill",
+            source="native_bridge",
+            source_event_key="native_bridge:kill:4",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=533,
+            zone_id=10,
+            metadata={"payload": {"subject_name": "Nightbane Shadow Weaver"}},
+        )
+
+        rule = manager.ensure_rule_for_event(event)
+
+        self.assertIsNone(rule)
+        self.assertEqual(installer.calls, [])
         self.assertEqual(slot_allocator.calls, [])
 
     def test_cli_can_deactivate_all_player_bounty_rules_before_dynamic_run(self) -> None:

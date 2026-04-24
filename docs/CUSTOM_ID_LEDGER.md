@@ -50,6 +50,7 @@ Repo-backed current claims include:
 - quest `910020`: control-native grant proof - `WORKING`
 - quest `910024`: `Bounty: Nightbane Dark Runner - Lens` - `WORKING`
 - item `910006`: `Night Watcher's Lens` - `WORKING`
+- item `910007`: `Unstable Enchanting Vellum` random-enchant consumable - `PARTIAL`
 - creature `920100`: Bonebound Alpha template - `PARTIAL`
 - creature `920101`: Bonebound Alpha Echo template - `WORKING`
 - DBC override rows `100118`, `100414`, `100433`, `100434`: combat proficiency support - `WORKING`

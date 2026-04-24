@@ -1,4 +1,5 @@
 from argparse import Namespace
+from dataclasses import dataclass
 import unittest
 from unittest.mock import patch
 
@@ -28,6 +29,8 @@ class FakeSpineStore:
         self.recorded_batches: list[list[WMEvent]] = []
         self.cursor_updates: list[tuple[str, str, str]] = []
         self.marked_evaluated: list[int] = []
+        self.unprojected_calls: list[tuple[int, int | None]] = []
+        self.unevaluated_calls: list[tuple[int, int | None]] = []
         self._observed_events: list[WMEvent] = []
         self._next_event_id = 1
 
@@ -46,11 +49,19 @@ class FakeSpineStore:
     def set_cursor(self, *, adapter_name: str, cursor_key: str = "last_seen", cursor_value: str) -> None:
         self.cursor_updates.append((adapter_name, cursor_key, cursor_value))
 
-    def list_unprojected_observed_events(self, *, limit: int = 100) -> list[WMEvent]:
-        return list(self._observed_events[:limit])
+    def list_unprojected_observed_events(self, *, limit: int = 100, player_guid: int | None = None) -> list[WMEvent]:
+        self.unprojected_calls.append((limit, player_guid))
+        rows = list(self._observed_events)
+        if player_guid is not None:
+            rows = [event for event in rows if event.player_guid == player_guid]
+        return rows[:limit]
 
-    def list_unevaluated_observed_events(self, *, limit: int = 100) -> list[WMEvent]:
-        return [event for event in self._observed_events if event.event_id not in self.marked_evaluated][:limit]
+    def list_unevaluated_observed_events(self, *, limit: int = 100, player_guid: int | None = None) -> list[WMEvent]:
+        self.unevaluated_calls.append((limit, player_guid))
+        rows = [event for event in self._observed_events if event.event_id not in self.marked_evaluated]
+        if player_guid is not None:
+            rows = [event for event in rows if event.player_guid == player_guid]
+        return rows[:limit]
 
     def mark_evaluated(self, *, event_id: int) -> None:
         self.marked_evaluated.append(event_id)
@@ -58,11 +69,17 @@ class FakeSpineStore:
 
 class FakeAdapter:
     name = "native_bridge"
-    cursor_key = "last_seen"
 
-    def __init__(self, events: list[WMEvent], *, cursor_value: str = "44") -> None:
+    def __init__(
+        self,
+        events: list[WMEvent],
+        *,
+        cursor_value: str = "44",
+        cursor_key: str = "last_seen:player:5406",
+    ) -> None:
         self._events = list(events)
         self.last_cursor_value = cursor_value
+        self.cursor_key = cursor_key
 
     def poll(self) -> list[WMEvent]:
         return list(self._events)
@@ -98,9 +115,11 @@ class FakeRuleEngine:
         self.derived_event = derived_event
         self.opportunity = opportunity
         self.calls: list[tuple[str, bool, bool]] = []
+        self.events: list[WMEvent] = []
 
     def _evaluate(self, event: WMEvent, *, preview: bool = False, mark_evaluated: bool = False) -> RuleEvaluationResult:
         self.calls.append((event.event_type, preview, mark_evaluated))
+        self.events.append(event)
         if event.event_type == "kill":
             return RuleEvaluationResult(
                 derived_events=[self.derived_event],
@@ -137,6 +156,24 @@ class FakeExecutor:
                 )
             ],
         )
+
+
+@dataclass(slots=True)
+class FakeRandomEnchantRoll:
+    selected: bool
+    request_id: int | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {"selected": self.selected, "request_id": self.request_id}
+
+
+class FakeRandomEnchantRoller:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def process_events(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.calls.append(dict(kwargs))
+        return [FakeRandomEnchantRoll(selected=True, request_id=77)]
 
 
 class EventRunValidationTests(unittest.TestCase):
@@ -204,6 +241,15 @@ class EventRunValidationTests(unittest.TestCase):
             _validate_run_arguments(args=args, settings=settings)
 
         self.assertIn("Native bridge runs require --player-guid", str(ctx.exception))
+
+    def test_random_enchant_consumable_on_kill_requires_player_scope_even_for_dry_run(self) -> None:
+        settings = Settings(random_enchant_on_kill_enabled=True)
+        args = Namespace(mode="dry-run", confirm_live_apply=False, player_guid=None, adapter="db")
+
+        with self.assertRaises(SystemExit) as ctx:
+            _validate_run_arguments(args=args, settings=settings)
+
+        self.assertIn("Random enchant consumable grants require --player-guid", str(ctx.exception))
 
     def test_apply_allows_single_scoped_plan(self) -> None:
         plan = ReactionPlan(
@@ -329,7 +375,7 @@ class EventRunValidationTests(unittest.TestCase):
         self.assertEqual(payload["plan_count"], 1)
         self.assertEqual(payload["execution_count"], 1)
         self.assertEqual(payload["executions"][0]["steps"][0]["details"]["selected_transport"], "native_bridge")
-        self.assertEqual(store.cursor_updates, [("native_bridge", "last_seen", "44")])
+        self.assertEqual(store.cursor_updates, [("native_bridge", "last_seen:player:5406", "44")])
         self.assertEqual(runtime_synchronizer.calls, [(5406, False)])
         self.assertEqual(engine.calls, [("kill", False, False), ("quest_granted", False, False)])
         self.assertEqual(len(planner.calls), 1)
@@ -339,6 +385,206 @@ class EventRunValidationTests(unittest.TestCase):
         self.assertEqual([event.event_type for event in store.recorded_batches[2]], ["kill_burst_detected"])
         self.assertEqual(store.marked_evaluated, [1, 2])
         self.assertEqual(projector.calls, [1, 2])
+        self.assertEqual(store.unprojected_calls, [(25, 5406)])
+        self.assertEqual(store.unevaluated_calls, [(25, 5406)])
+
+    def test_execute_event_spine_scopes_projection_and_evaluation_to_player_guid(self) -> None:
+        foreign_event = WMEvent(
+            event_id=900,
+            event_class="observed",
+            event_type="kill",
+            source="native_bridge",
+            source_event_key="native_bridge:900",
+            occurred_at="2026-04-13 09:59:00",
+            player_guid=9999,
+            subject_type="creature",
+            subject_entry=6,
+        )
+        observed_kill = WMEvent(
+            event_class="observed",
+            event_type="kill",
+            source="native_bridge",
+            source_event_key="native_bridge:101",
+            occurred_at="2026-04-13 10:00:00",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=6,
+        )
+        runtime_transition = WMEvent(
+            event_class="observed",
+            event_type="quest_granted",
+            source="quest_state_poll",
+            source_event_key="5406:910000:quest_granted:2026-04-13T10:00:01Z",
+            occurred_at="2026-04-13 10:00:01",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=6,
+            event_value="910000",
+            metadata={"quest_id": 910000},
+        )
+        derived_event = WMEvent(
+            event_class="derived",
+            event_type="kill_burst_detected",
+            source="wm.rules",
+            source_event_key="native_bridge:native_bridge:101:kill_burst_detected",
+            occurred_at="2026-04-13 10:00:00",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=6,
+            metadata={"quest_id": 910000},
+        )
+        opportunity = ReactionOpportunity(
+            opportunity_type="reactive_bounty_grant",
+            rule_type="reactive_bounty:kobold_vermin",
+            player_guid=5406,
+            subject=SubjectRef(subject_type="creature", subject_entry=6),
+            source_event_key=observed_kill.source_event_key,
+            metadata={"quest_id": 910000},
+        )
+        plan = ReactionPlan(
+            plan_key="reactive_bounty:kobold_vermin:5406:creature:6",
+            opportunity_type="reactive_bounty_grant",
+            rule_type="reactive_bounty:kobold_vermin",
+            player_guid=5406,
+            subject=SubjectRef(subject_type="creature", subject_entry=6),
+            actions=[PlannedAction(kind="quest_grant", payload={"quest_id": 910000, "player_guid": 5406})],
+        )
+
+        store = FakeSpineStore()
+        store._observed_events.append(foreign_event)
+        adapter = FakeAdapter([observed_kill])
+        projector = FakeProjector()
+        runtime_synchronizer = FakeRuntimeSynchronizer(runtime_transition)
+        engine = FakeRuleEngine(derived_event=derived_event, opportunity=opportunity)
+        planner = FakePlanner(plan)
+        executor = FakeExecutor()
+
+        with (
+            patch("wm.events.run.MysqlCliClient", return_value=_DummyClient()),
+            patch("wm.events.run.EventStore", return_value=store),
+            patch("wm.events.run.ReactiveQuestStore", return_value=object()),
+            patch("wm.events.run.build_event_adapter", return_value=adapter),
+            patch("wm.events.run.JournalProjector", return_value=projector),
+            patch("wm.events.run.ReactiveQuestRuntimeSynchronizer", return_value=runtime_synchronizer),
+            patch("wm.events.run.DeterministicRuleEngine", return_value=engine),
+            patch("wm.events.run.DeterministicContentFactory", return_value=object()),
+            patch("wm.events.run.DeterministicReactionPlanner", return_value=planner),
+            patch("wm.events.run.ReactionExecutor", return_value=executor),
+        ):
+            payload = execute_event_spine(
+                settings=Settings(),
+                adapter_name="native_bridge",
+                mode="apply",
+                player_guid=5406,
+                batch_size=25,
+            )
+
+        self.assertEqual(payload["execution_count"], 1)
+        self.assertEqual([event.player_guid for event in engine.events], [5406, 5406])
+        self.assertEqual(projector.calls, [1, 2])
+        self.assertEqual(store.marked_evaluated, [1, 2])
+        self.assertEqual(store.unprojected_calls, [(25, 5406)])
+        self.assertEqual(store.unevaluated_calls, [(25, 5406)])
+
+    def test_execute_event_spine_runs_random_enchant_on_recorded_scoped_kills_when_enabled(self) -> None:
+        observed_kill = WMEvent(
+            event_class="observed",
+            event_type="kill",
+            source="native_bridge",
+            source_event_key="native_bridge:201",
+            occurred_at="2026-04-13 10:00:00",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=6,
+        )
+        runtime_transition = WMEvent(
+            event_class="observed",
+            event_type="quest_granted",
+            source="quest_state_poll",
+            source_event_key="5406:910000:quest_granted:2026-04-13T10:00:01Z",
+            occurred_at="2026-04-13 10:00:01",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=6,
+            event_value="910000",
+            metadata={"quest_id": 910000},
+        )
+        derived_event = WMEvent(
+            event_class="derived",
+            event_type="kill_burst_detected",
+            source="wm.rules",
+            source_event_key="native_bridge:native_bridge:201:kill_burst_detected",
+            occurred_at="2026-04-13 10:00:00",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=6,
+            metadata={"quest_id": 910000},
+        )
+        opportunity = ReactionOpportunity(
+            opportunity_type="reactive_bounty_grant",
+            rule_type="reactive_bounty:kobold_vermin",
+            player_guid=5406,
+            subject=SubjectRef(subject_type="creature", subject_entry=6),
+            source_event_key=observed_kill.source_event_key,
+            metadata={"quest_id": 910000},
+        )
+        plan = ReactionPlan(
+            plan_key="reactive_bounty:kobold_vermin:5406:creature:6",
+            opportunity_type="reactive_bounty_grant",
+            rule_type="reactive_bounty:kobold_vermin",
+            player_guid=5406,
+            subject=SubjectRef(subject_type="creature", subject_entry=6),
+            actions=[PlannedAction(kind="quest_grant", payload={"quest_id": 910000, "player_guid": 5406})],
+        )
+
+        store = FakeSpineStore()
+        adapter = FakeAdapter([observed_kill])
+        projector = FakeProjector()
+        runtime_synchronizer = FakeRuntimeSynchronizer(runtime_transition)
+        engine = FakeRuleEngine(derived_event=derived_event, opportunity=opportunity)
+        planner = FakePlanner(plan)
+        executor = FakeExecutor()
+        random_roller = FakeRandomEnchantRoller()
+
+        with (
+            patch("wm.events.run.MysqlCliClient", return_value=_DummyClient()),
+            patch("wm.events.run.EventStore", return_value=store),
+            patch("wm.events.run.ReactiveQuestStore", return_value=object()),
+            patch("wm.events.run.build_event_adapter", return_value=adapter),
+            patch("wm.events.run.JournalProjector", return_value=projector),
+            patch("wm.events.run.ReactiveQuestRuntimeSynchronizer", return_value=runtime_synchronizer),
+            patch("wm.events.run.DeterministicRuleEngine", return_value=engine),
+            patch("wm.events.run.DeterministicContentFactory", return_value=object()),
+            patch("wm.events.run.DeterministicReactionPlanner", return_value=planner),
+            patch("wm.events.run.ReactionExecutor", return_value=executor),
+            patch("wm.events.run.RandomEnchantKillRoller", return_value=random_roller),
+        ):
+            payload = execute_event_spine(
+                settings=Settings(
+                    random_enchant_on_kill_enabled=True,
+                    random_enchant_on_kill_chance_pct=2.5,
+                    random_enchant_preserve_existing_chance_pct=15.0,
+                ),
+                adapter_name="native_bridge",
+                mode="apply",
+                player_guid=5406,
+                batch_size=25,
+            )
+
+        self.assertEqual(payload["random_enchant_consumable_on_kill"]["enabled"], True)
+        self.assertEqual(payload["random_enchant_consumable_on_kill"]["processed_kills"], 1)
+        self.assertEqual(payload["random_enchant_consumable_on_kill"]["selected"], 1)
+        self.assertEqual(payload["random_enchant_consumable_on_kill"]["submitted"], 1)
+        self.assertEqual(len(random_roller.calls), 1)
+        call = random_roller.calls[0]
+        self.assertEqual(call["player_guid"], 5406)
+        self.assertEqual(call["chance_pct"], 2.5)
+        self.assertEqual(call["preserve_existing_chance_pct"], 15.0)
+        self.assertEqual(call["selector"], "random_equipped")
+        self.assertEqual(call["item_entry"], 910007)
+        self.assertEqual(call["count"], 1)
+        self.assertEqual(call["mode"], "apply")
+        self.assertEqual([event.event_id for event in call["events"]], [1])
 
     def test_execute_event_spine_leaves_events_unevaluated_when_apply_scope_validation_fails(self) -> None:
         observed_kills = [

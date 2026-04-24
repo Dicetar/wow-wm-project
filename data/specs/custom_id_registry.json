@@ -209,6 +209,25 @@
       ]
     },
     {
+      "namespace": "item",
+      "id": 910007,
+      "key": "unstable_enchanting_vellum",
+      "kind": "managed_item_slot",
+      "purpose": "Consumable item that opens a server-side menu to apply random enchants to an eligible equipped item.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-bridge",
+      "source_paths": [
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_24_02_wm_bridge_random_enchant_consumable.sql",
+        "native_modules/mod-wm-bridge/src/wm_bridge_random_enchant_item.cpp",
+        "src/wm/reactive/random_enchant.py",
+        "docs/WM_PLATFORM_HANDOFF.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Server-owned item-use path; no per-iteration client patch. Right-click uses a known item spell only to make the item client-usable, then native ItemScript cancels default casting and owns the target menu/effect."
+      ]
+    },
+    {
       "namespace": "creature_template",
       "id": 920100,
       "key": "bonebound_alpha",

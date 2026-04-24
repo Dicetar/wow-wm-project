@@ -38,15 +38,17 @@ class _FakeClient:
 class _CursorStore:
     def __init__(self, value: str | None = None) -> None:
         self.value = value
+        self.get_calls: list[tuple[str, str]] = []
+        self.set_calls: list[tuple[str, str, str]] = []
 
     def get_cursor(self, *, adapter_name: str, cursor_key: str = "last_seen"):
-        del adapter_name, cursor_key
+        self.get_calls.append((adapter_name, cursor_key))
         if self.value is None:
             return None
         return type("Cursor", (), {"cursor_value": self.value})()
 
     def set_cursor(self, *, adapter_name: str, cursor_key: str = "last_seen", cursor_value: str) -> None:
-        del adapter_name, cursor_key
+        self.set_calls.append((adapter_name, cursor_key, cursor_value))
         self.value = cursor_value
 
 
@@ -296,7 +298,51 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertEqual(result.previous_last_seen, 7)
         self.assertEqual(result.armed_last_seen, 44)
         self.assertEqual(store.value, "44")
+        self.assertEqual(store.get_calls, [("native_bridge", "last_seen:player:5406")])
+        self.assertEqual(store.set_calls, [("native_bridge", "last_seen:player:5406", "44")])
         self.assertTrue(any("WHERE PlayerGUID = 5406" in sql for sql in client.sql_calls))
+
+    def test_native_bridge_adapter_uses_player_scoped_cursor_key(self) -> None:
+        store = _CursorStore("7")
+        adapter = NativeBridgeAdapter(
+            client=_FakeClient(rows=[]),  # type: ignore[arg-type]
+            settings=Settings(world_db_name="acore_world", native_bridge_batch_size=20),
+            store=store,  # type: ignore[arg-type]
+            player_guid_filter=5406,
+        )
+
+        adapter.poll()
+
+        self.assertEqual(adapter.cursor_key, "last_seen:player:5406")
+        self.assertEqual(store.get_calls[0], ("native_bridge", "last_seen:player:5406"))
+
+    def test_native_bridge_adapter_falls_back_to_legacy_cursor_once(self) -> None:
+        class LegacyCursorStore:
+            def __init__(self) -> None:
+                self.get_calls: list[tuple[str, str]] = []
+
+            def get_cursor(self, *, adapter_name: str, cursor_key: str = "last_seen"):
+                self.get_calls.append((adapter_name, cursor_key))
+                if cursor_key == "last_seen":
+                    return type("Cursor", (), {"cursor_value": "7"})()
+                return None
+
+        store = LegacyCursorStore()
+        client = _FakeClient(rows=[])
+        adapter = NativeBridgeAdapter(
+            client=client,  # type: ignore[arg-type]
+            settings=Settings(world_db_name="acore_world", native_bridge_batch_size=20),
+            store=store,  # type: ignore[arg-type]
+            player_guid_filter=5406,
+        )
+
+        adapter.poll()
+
+        self.assertEqual(
+            store.get_calls,
+            [("native_bridge", "last_seen:player:5406"), ("native_bridge", "last_seen")],
+        )
+        self.assertTrue(any("BridgeEventID > 7" in sql for sql in client.sql_calls))
 
     def test_configure_updates_allowlist_without_touching_other_options(self) -> None:
         original = (

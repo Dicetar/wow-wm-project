@@ -5,10 +5,20 @@ param(
     [ValidateSet("apply", "dry-run")]
     [string]$Mode = "apply",
     [double]$IntervalSeconds = 1.0,
+    [int]$BatchSize = 1,
+    [int]$ReactiveAutoBountyMaxEventAgeSeconds = 3600,
+    [bool]$ReactiveAutoBountySingleOpenPerPlayer = $true,
     [int]$LabMySqlPort = 33307,
     [int]$SoapPort = 7879,
     [ValidateSet("auto", "native", "soap")]
     [string]$QuestGrantTransport = "auto",
+    [switch]$EnableRandomEnchantOnKill,
+    [double]$RandomEnchantOnKillChancePct = 2.5,
+    [double]$RandomEnchantPreserveExistingChancePct = 15.0,
+    [int]$RandomEnchantMaxEnchants = 3,
+    [string]$RandomEnchantSelector = "random_equipped",
+    [int]$RandomEnchantConsumableItemEntry = 910007,
+    [int]$RandomEnchantConsumableCount = 1,
     [switch]$EnableReactiveAutoBounty,
     [switch]$ArmFromEnd,
     [switch]$PrintIdle
@@ -84,7 +94,9 @@ $argumentsLiteral = @(
     (Convert-ToPsLiteral ([string]$PlayerGuid)),
     "'--summary'",
     "'--interval-seconds'",
-    (Convert-ToPsLiteral ([string]$IntervalSeconds))
+    (Convert-ToPsLiteral ([string]$IntervalSeconds)),
+    "'--batch-size'",
+    (Convert-ToPsLiteral ([string]$BatchSize))
 )
 if ($Mode -eq "apply") {
     $argumentsLiteral += "'--confirm-live-apply'"
@@ -105,6 +117,15 @@ $runnerLines = @(
     ('$env:WM_BRIDGE_CONFIG_PATH = ' + (Convert-ToPsLiteral $bridgeConfig)),
     ('$env:WM_QUEST_GRANT_TRANSPORT = ' + (Convert-ToPsLiteral $QuestGrantTransport)),
     ('$env:WM_REACTIVE_AUTO_BOUNTY_ENABLED = ' + (Convert-ToPsLiteral $(if ($EnableReactiveAutoBounty.IsPresent) { '1' } else { '0' }))),
+    ('$env:WM_REACTIVE_AUTO_BOUNTY_MAX_EVENT_AGE_SECONDS = ' + (Convert-ToPsLiteral ([string]$ReactiveAutoBountyMaxEventAgeSeconds))),
+    ('$env:WM_REACTIVE_AUTO_BOUNTY_SINGLE_OPEN_PER_PLAYER = ' + (Convert-ToPsLiteral $(if ($ReactiveAutoBountySingleOpenPerPlayer) { '1' } else { '0' }))),
+    ('$env:WM_RANDOM_ENCHANT_ON_KILL_ENABLED = ' + (Convert-ToPsLiteral $(if ($EnableRandomEnchantOnKill.IsPresent) { '1' } else { '0' }))),
+    ('$env:WM_RANDOM_ENCHANT_ON_KILL_CHANCE_PCT = ' + (Convert-ToPsLiteral ([string]$RandomEnchantOnKillChancePct))),
+    ('$env:WM_RANDOM_ENCHANT_PRESERVE_EXISTING_CHANCE_PCT = ' + (Convert-ToPsLiteral ([string]$RandomEnchantPreserveExistingChancePct))),
+    ('$env:WM_RANDOM_ENCHANT_MAX_ENCHANTS = ' + (Convert-ToPsLiteral ([string]$RandomEnchantMaxEnchants))),
+    ('$env:WM_RANDOM_ENCHANT_SELECTOR = ' + (Convert-ToPsLiteral $RandomEnchantSelector)),
+    ('$env:WM_RANDOM_ENCHANT_CONSUMABLE_ITEM_ENTRY = ' + (Convert-ToPsLiteral ([string]$RandomEnchantConsumableItemEntry))),
+    ('$env:WM_RANDOM_ENCHANT_CONSUMABLE_COUNT = ' + (Convert-ToPsLiteral ([string]$RandomEnchantConsumableCount))),
     ('Set-Location ' + (Convert-ToPsLiteral $WorkspaceRoot)),
     ('$arguments = @(' + ($argumentsLiteral -join ', ') + ')'),
     ('& ' + (Convert-ToPsLiteral $pythonExe) + ' @arguments 1>> ' + (Convert-ToPsLiteral $paths.Stdout) + ' 2>> ' + (Convert-ToPsLiteral $paths.Stderr))
@@ -147,6 +168,16 @@ $metadata = @{
     player_guid = $PlayerGuid
     mode = $Mode
     interval_seconds = $IntervalSeconds
+    batch_size = $BatchSize
+    reactive_auto_bounty_max_event_age_seconds = $ReactiveAutoBountyMaxEventAgeSeconds
+    reactive_auto_bounty_single_open_per_player = $ReactiveAutoBountySingleOpenPerPlayer
+    random_enchant_consumable_on_kill_enabled = [bool]$EnableRandomEnchantOnKill.IsPresent
+    random_enchant_on_kill_chance_pct = $RandomEnchantOnKillChancePct
+    random_enchant_preserve_existing_chance_pct = $RandomEnchantPreserveExistingChancePct
+    random_enchant_max_enchants = $RandomEnchantMaxEnchants
+    random_enchant_selector = $RandomEnchantSelector
+    random_enchant_consumable_item_entry = $RandomEnchantConsumableItemEntry
+    random_enchant_consumable_count = $RandomEnchantConsumableCount
     arm_from_end = [bool]$ArmFromEnd.IsPresent
     print_idle = [bool]$PrintIdle.IsPresent
     reactive_auto_bounty_enabled = [bool]$EnableReactiveAutoBounty.IsPresent

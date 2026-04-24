@@ -57,6 +57,15 @@ class Settings:
     event_followup_kill_count: int = 6
     event_default_reward_money_copper: int = 0
     reactive_auto_bounty_enabled: bool = False
+    reactive_auto_bounty_max_event_age_seconds: int = 3600
+    reactive_auto_bounty_single_open_per_player: bool = True
+    random_enchant_on_kill_enabled: bool = False
+    random_enchant_on_kill_chance_pct: float = 2.5
+    random_enchant_preserve_existing_chance_pct: float = 15.0
+    random_enchant_selector: str = "random_equipped"
+    random_enchant_max_enchants: int = 3
+    random_enchant_consumable_item_entry: int = 910007
+    random_enchant_consumable_count: int = 1
     addon_log_path: str = _default_bootstrap_path("run", "logs", "WMOps.log")
     addon_log_batch_size: int = 200
     addon_channel_name: str = "WMBridgePrivate"
@@ -106,6 +115,26 @@ class Settings:
             event_default_reward_money_copper=int(os.getenv("WM_EVENT_DEFAULT_REWARD_MONEY_COPPER", "0")),
             reactive_auto_bounty_enabled=os.getenv("WM_REACTIVE_AUTO_BOUNTY_ENABLED", "0").strip().lower()
             in {"1", "true", "yes", "on"},
+            reactive_auto_bounty_max_event_age_seconds=int(
+                os.getenv("WM_REACTIVE_AUTO_BOUNTY_MAX_EVENT_AGE_SECONDS", "3600")
+            ),
+            reactive_auto_bounty_single_open_per_player=os.getenv(
+                "WM_REACTIVE_AUTO_BOUNTY_SINGLE_OPEN_PER_PLAYER",
+                "1",
+            ).strip().lower()
+            in {"1", "true", "yes", "on"},
+            random_enchant_on_kill_enabled=os.getenv("WM_RANDOM_ENCHANT_ON_KILL_ENABLED", "0").strip().lower()
+            in {"1", "true", "yes", "on"},
+            random_enchant_on_kill_chance_pct=float(os.getenv("WM_RANDOM_ENCHANT_ON_KILL_CHANCE_PCT", "2.5")),
+            random_enchant_preserve_existing_chance_pct=float(
+                os.getenv("WM_RANDOM_ENCHANT_PRESERVE_EXISTING_CHANCE_PCT", "15.0")
+            ),
+            random_enchant_selector=os.getenv("WM_RANDOM_ENCHANT_SELECTOR", "random_equipped"),
+            random_enchant_max_enchants=int(os.getenv("WM_RANDOM_ENCHANT_MAX_ENCHANTS", "3")),
+            random_enchant_consumable_item_entry=int(
+                os.getenv("WM_RANDOM_ENCHANT_CONSUMABLE_ITEM_ENTRY", "910007")
+            ),
+            random_enchant_consumable_count=int(os.getenv("WM_RANDOM_ENCHANT_CONSUMABLE_COUNT", "1")),
             addon_log_path=os.getenv(
                 "WM_ADDON_LOG_PATH",
                 _default_bootstrap_path("run", "logs", "WMOps.log"),

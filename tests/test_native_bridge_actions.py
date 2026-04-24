@@ -79,6 +79,8 @@ class NativeBridgeActionTests(unittest.TestCase):
         expected = {
             "player_apply_aura",
             "player_add_item",
+            "player_remove_item",
+            "player_random_enchant_item",
             "quest_add",
             "creature_spawn",
             "gossip_override_set",
@@ -98,6 +100,8 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["debug_ping"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["quest_add"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["world_announce_to_player"].implemented)
+        self.assertTrue(NATIVE_ACTION_KIND_BY_ID["player_remove_item"].implemented)
+        self.assertTrue(NATIVE_ACTION_KIND_BY_ID["player_random_enchant_item"].implemented)
         self.assertFalse(NATIVE_ACTION_KIND_BY_ID["player_teleport"].default_enabled)
 
     def test_primitive_pack_1_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
@@ -135,6 +139,12 @@ class NativeBridgeActionTests(unittest.TestCase):
                 self.assertTrue(action.implemented)
                 self.assertFalse(action.default_enabled)
 
+    def test_cleanup_primitive_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
+        action = NATIVE_ACTION_KIND_BY_ID["player_remove_item"]
+
+        self.assertTrue(action.implemented)
+        self.assertFalse(action.default_enabled)
+
     def test_primitive_pack_1_contracts_are_documented(self) -> None:
         schema_path = Path("control/actions/native/native_bridge_action.json")
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -142,6 +152,13 @@ class NativeBridgeActionTests(unittest.TestCase):
 
         self.assertEqual(contracts["player_apply_aura"]["required"], ["spell_id"])
         self.assertIn("soulbound", contracts["player_add_item"]["optional"])
+        self.assertEqual(contracts["player_remove_item"]["required"], ["item_id", "count"])
+        self.assertIn("admin_override", contracts["player_remove_item"]["optional"])
+        self.assertIn("item_guid_low", contracts["player_random_enchant_item"]["required_any"])
+        self.assertIn("equipment_slot", contracts["player_random_enchant_item"]["required_any"])
+        self.assertIn("selector", contracts["player_random_enchant_item"]["required_any"])
+        self.assertIn("preserve_existing_chance_pct", contracts["player_random_enchant_item"]["optional"])
+        self.assertIn("default 15% preserve chance", contracts["player_random_enchant_item"]["notes"])
         self.assertIn("LiveGUIDLow", contracts["creature_spawn"]["notes"])
         self.assertIn("arc_key", contracts["creature_despawn"]["required_any"])
 
@@ -180,6 +197,20 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("('creature_set_scale', 'default', 0, 'medium'", sql)
         self.assertNotIn("Enabled = VALUES(Enabled)", sql)
 
+    def test_player_remove_item_sql_keeps_mutation_disabled(self) -> None:
+        sql_path = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_24_00_wm_bridge_player_remove_item.sql")
+        sql = sql_path.read_text(encoding="utf-8")
+
+        self.assertIn("('player_remove_item', 'default', 0, 'medium'", sql)
+        self.assertNotIn("Enabled = VALUES(Enabled)", sql)
+
+    def test_player_random_enchant_item_sql_keeps_mutation_disabled(self) -> None:
+        sql_path = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_24_01_wm_bridge_random_enchant_item.sql")
+        sql = sql_path.read_text(encoding="utf-8")
+
+        self.assertIn("('player_random_enchant_item', 'default', 0, 'medium'", sql)
+        self.assertNotIn("Enabled = VALUES(Enabled)", sql)
+
     def test_primitive_pack_1_cpp_uses_scope_policy_and_wm_owned_creature_guard(self) -> None:
         cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
         cpp = cpp_path.read_text(encoding="utf-8")
@@ -188,6 +219,8 @@ class NativeBridgeActionTests(unittest.TestCase):
             "player_apply_aura",
             "player_restore_health_power",
             "player_add_item",
+            "player_remove_item",
+            "player_random_enchant_item",
             "player_add_reputation",
             "creature_spawn",
             "creature_despawn",
@@ -204,6 +237,90 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("DespawnPolicy <> 'despawned'", cpp)
         self.assertIn("WorldDatabase.DirectExecute(", cpp)
         self.assertIn("Spawn result payload needs the WM-owned ObjectID immediately", cpp)
+
+    def test_player_remove_item_cpp_uses_scope_policy_and_managed_item_guard(self) -> None:
+        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
+        cpp = cpp_path.read_text(encoding="utf-8")
+        start = cpp.index("bool ExecutePlayerRemoveItem")
+        end = cpp.index("bool ExecuteCreatureSpawn", start)
+        block = cpp[start:end]
+
+        self.assertIn("ResolveScopedOnlinePlayer", block)
+        self.assertIn("missing_positive_count", block)
+        self.assertIn("non_managed_item_remove_denied", block)
+        self.assertIn("wm_reserved_slot", block)
+        self.assertIn("admin_override", block)
+        self.assertIn("player->GetItemCount(itemId, false)", block)
+        self.assertIn("insufficient_item_count", block)
+        self.assertIn("player->DestroyItemCount(itemId, count, true, true)", block)
+        self.assertIn("player->SaveInventoryAndGoldToDB(trans)", block)
+        self.assertIn("CharacterDatabase.CommitTransaction(trans)", block)
+        self.assertIn('actionKind == "player_remove_item"', cpp)
+
+    def test_player_random_enchant_item_cpp_uses_scope_policy_existing_item_and_preserve_chance(self) -> None:
+        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
+        cpp = cpp_path.read_text(encoding="utf-8")
+        helper = Path("native_modules/mod-wm-bridge/src/wm_bridge_random_enchant.cpp").read_text(encoding="utf-8")
+        header = Path("native_modules/mod-wm-bridge/src/wm_bridge_random_enchant.h").read_text(encoding="utf-8")
+        start = cpp.index("bool ExecutePlayerRandomEnchantItem")
+        end = cpp.index("bool ExecuteCreatureSpawn", start)
+        block = cpp[start:end]
+
+        self.assertIn("ResolveScopedOnlinePlayer", block)
+        self.assertIn("ResolveRandomEnchantTargetItem", block)
+        self.assertIn("item_guid_low", cpp)
+        self.assertIn("selector", cpp)
+        self.assertIn("random_equipped", cpp)
+        self.assertIn("IsRandomEnchantEligibleItem", block)
+        self.assertIn("WmBridge::RandomEnchant::ApplyToItem(player, item, options)", block)
+        self.assertIn("preserveExistingChancePct", block)
+        self.assertIn("item_enchantment_random_tiers", helper)
+        self.assertIn("sSpellItemEnchantmentStore.LookupEntry(enchantId)", helper)
+        self.assertIn("preserveExistingChancePct = 15.0f", header)
+        self.assertIn("roll_chance_f(options.preserveExistingChancePct)", helper)
+        self.assertIn("player->ApplyEnchantment(item, slot, false)", helper)
+        self.assertIn("item->SetEnchantment(slot, enchantId, 0, 0, player->GetGUID())", helper)
+        self.assertIn("player->ApplyEnchantment(item, slot, true)", helper)
+        self.assertIn("player->SaveInventoryAndGoldToDB(trans)", block)
+        self.assertIn("CharacterDatabase.CommitTransaction(trans)", block)
+        self.assertIn('actionKind == "player_random_enchant_item"', cpp)
+
+    def test_random_enchant_consumable_item_sql_and_script_are_wired(self) -> None:
+        sql_path = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_24_02_wm_bridge_random_enchant_consumable.sql")
+        sql = sql_path.read_text(encoding="utf-8")
+        script_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_random_enchant_item.cpp")
+        script = script_path.read_text(encoding="utf-8")
+        loader = Path("native_modules/mod-wm-bridge/src/mod_wm_bridge_loader.cpp").read_text(encoding="utf-8")
+
+        self.assertIn("entry = 910007", sql)
+        self.assertIn("Unstable Enchanting Vellum", sql)
+        self.assertIn("ScriptName = 'wm_random_enchant_consumable'", sql)
+        self.assertIn("wm_reserved_slot", sql)
+        self.assertIn("wm_random_enchant_consumable", script)
+        self.assertIn("ItemScript(\"wm_random_enchant_consumable\")", script)
+        self.assertIn("WM_RANDOM_ENCHANT_CONSUMABLE_ITEM_ENTRY = 910007", script)
+        self.assertIn("SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, item->GetGUID())", script)
+        self.assertIn("OnGossipSelect(Player* player, Item* item", script)
+        self.assertIn("WmBridge::RandomEnchant::ApplyToItem(player, targetItem, options)", script)
+        self.assertIn("options.preserveExistingChancePct = 15.0f", script)
+        self.assertIn("player->DestroyItemCount(item, destroyCount, true)", script)
+        self.assertIn("player->SaveInventoryAndGoldToDB(trans)", script)
+        self.assertIn("AddSC_mod_wm_bridge_random_enchant_item", loader)
+
+    def test_player_add_item_cpp_persists_inventory_after_grant(self) -> None:
+        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
+        cpp = cpp_path.read_text(encoding="utf-8")
+        start = cpp.index("bool ExecutePlayerAddItem")
+        end = cpp.index("bool ExecutePlayerRemoveItem", start)
+        block = cpp[start:end]
+
+        self.assertIn("ResolveScopedOnlinePlayer", block)
+        self.assertIn("player->CanStoreNewItem", block)
+        self.assertIn("player->StoreNewItem", block)
+        self.assertIn("player->SendNewItem", block)
+        self.assertIn("player->SaveInventoryAndGoldToDB(trans)", block)
+        self.assertIn("CharacterDatabase.CommitTransaction(trans)", block)
+        self.assertIn('actionKind == "player_add_item"', cpp)
 
     def test_primitive_pack_2_cpp_uses_scope_policy_and_wm_owned_creature_guard(self) -> None:
         cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")

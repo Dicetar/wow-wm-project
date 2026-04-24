@@ -18,11 +18,17 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("config.spawnOmega = false;", runtime)
         self.assertIn("gConfig.boneboundCreatureEntry = sConfigMgr->GetOption<uint32>(\"WmSpells.BoneboundServant.CreatureEntry\", 920100u);", runtime)
         self.assertIn("MaintainBoneboundAlphaAbilities(owner, alphaPet, *runtimeConfig, 1000u)", runtime)
-        self.assertIn("StartBoneboundShadowDot(owner, alphaPet, victim, config)", runtime)
+        self.assertIn("BONEBOUND_ALPHA_BLEED_VISIBLE_AURA_SPELL_ID = 772", runtime)
+        self.assertIn("StartBoneboundAlphaBleed(owner, alphaPet, victim, *runtimeConfig)", runtime)
+        self.assertIn("ApplyBoneboundBleedVisibleAura(caster, target, durationMs)", runtime)
+        self.assertIn("effect->SetAmount(0);", runtime)
+        self.assertIn("effect->SetPeriodic(false);", runtime)
+        self.assertIn("HasBoneboundBleedVisibleAura(caster, target)", runtime)
         self.assertIn("TrySpawnBoneboundAlphaEcho(owner, alphaPet, victim, *runtimeConfig)", runtime)
         self.assertIn("roll_chance_f(procChance)", runtime)
         self.assertIn("Unit::DealDamage(caster, target, it->tickDamage, nullptr, DOT, SPELL_SCHOOL_MASK_NORMAL", runtime)
-        self.assertIn("config.shadowDotCooldownMs = *value;", runtime)
+        self.assertIn("config.bleedCooldownMs = *value;", runtime)
+        self.assertIn('ExtractJsonUInt(configJson, "shadow_dot_cooldown_ms")', runtime)
         self.assertIn("float alphaEchoProcChancePct = 7.5f;", self._repo_root().joinpath(
             "native_modules",
             "mod-wm-spells",
@@ -35,7 +41,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
             "src",
             "wm_spell_runtime.h",
         ).read_text(encoding="utf-8"))
-        self.assertIn("uint32 shadowDotCooldownMs = 6000;", self._repo_root().joinpath(
+        self.assertIn("uint32 bleedCooldownMs = 6000;", self._repo_root().joinpath(
             "native_modules",
             "mod-wm-spells",
             "src",
@@ -123,9 +129,9 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
 
         self.assertIn("SET @wm_alpha_echo_creature_entry := 920101;", sql)
         self.assertIn("name = 'Bonebound Alpha Echo'", sql)
-        self.assertIn('"shadow_dot_cooldown_ms":6000', sql)
-        self.assertIn('"shadow_dot_tick_ms":1000', sql)
-        self.assertIn('"shadow_dot_damage_per_shadow_power_pct":0', sql)
+        self.assertIn('"bleed_cooldown_ms":6000', sql)
+        self.assertIn('"bleed_tick_ms":1000', sql)
+        self.assertIn('"bleed_damage_per_shadow_power_pct":0', sql)
         self.assertIn('"alpha_echo_creature_entry":920101', sql)
         self.assertIn('"alpha_echo_proc_chance_pct":7.5', sql)
         self.assertIn('"alpha_echo_max_active":40', sql)
@@ -212,6 +218,72 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("WmSpells::HandleNightWatchersLensWeaponDamage(attacker, target, damage)", unit_script)
         self.assertIn("WmSpells::HandleNightWatchersLensSpellDamage(attacker, target, damage, spellInfo)", unit_script)
         self.assertIn("WmSpells::HandleNightWatchersLensDefenseExposure(", unit_script)
+
+    def test_bridge_lab_runtime_config_scopes_wm_spells_to_jecia(self) -> None:
+        repo_root = self._repo_root()
+        configure_script = repo_root.joinpath(
+            "scripts",
+            "bridge_lab",
+            "Configure-BridgeLabRuntime.ps1",
+        ).read_text(encoding="utf-8")
+        deploy_script = repo_root.joinpath(
+            "scripts",
+            "bridge_lab",
+            "Deploy-BridgeLabWorldServer.ps1",
+        ).read_text(encoding="utf-8")
+
+        for script in (configure_script, deploy_script):
+            self.assertIn('[string]$WmSpellsPlayerGuidAllowList = "5406"', script)
+            self.assertIn(
+                'Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """$WmSpellsPlayerGuidAllowList"""',
+                script,
+            )
+            self.assertIn(
+                'Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.CreatureEntry" -Value "920100"',
+                script,
+            )
+            self.assertNotIn(
+                'Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """"""',
+                script,
+            )
+
+    def test_bridge_lab_runtime_config_sets_solo_5man_tuning(self) -> None:
+        configure_script = self._repo_root().joinpath(
+            "scripts",
+            "bridge_lab",
+            "Configure-BridgeLabRuntime.ps1",
+        ).read_text(encoding="utf-8")
+
+        expected_config_lines = [
+            'Ensure-ConfigFile -Path $autoBalanceConfig -DistPath (Join-Path $buildModuleConfigRoot "AutoBalance.conf.dist")',
+            'Ensure-ConfigFile -Path $soloLfgConfig -DistPath (Join-Path $buildModuleConfigRoot "SoloLfg.conf.dist")',
+            'Ensure-ConfigFile -Path $dynamicLootRatesConfig -DistPath (Join-Path $buildModuleConfigRoot "mod_dynamic_loot_rates.conf.dist")',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.Enable.Global" -Value "1"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.MinPlayers" -Value "1"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.MinPlayers.Heroic" -Value "1"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.InflectionPoint.CurveFloor" -Value "1.0"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.InflectionPoint.CurveCeiling" -Value "1.0"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.InflectionPointHeroic.CurveFloor" -Value "1.0"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.InflectionPointHeroic.CurveCeiling" -Value "1.0"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifier.Health" -Value "0.75"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifier.Damage" -Value "0.50"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifier.Boss.Health" -Value "0.75"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifier.Boss.Damage" -Value "0.50"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifierHeroic.Health" -Value "0.75"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifierHeroic.Damage" -Value "0.50"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifierHeroic.Boss.Health" -Value "0.75"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifierHeroic.Boss.Damage" -Value "0.50"',
+            'Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.RewardScaling.XP" -Value "0"',
+            'Set-ConfigValue -Path $soloLfgConfig -Key "SoloLFG.Enable" -Value "1"',
+            'Set-ConfigValue -Path $soloLfgConfig -Key "SoloLFG.FixedXP" -Value "1"',
+            'Set-ConfigValue -Path $soloLfgConfig -Key "SoloLFG.FixedXPRate" -Value "0.75"',
+            'Set-ConfigValue -Path $dynamicLootRatesConfig -Key "DynamicLootRates.Enable" -Value "1"',
+            'Set-ConfigValue -Path $dynamicLootRatesConfig -Key "DynamicLootRates.Dungeon.Rate.GroupAmount" -Value "2"',
+            'Set-ConfigValue -Path $dynamicLootRatesConfig -Key "DynamicLootRates.Dungeon.Rate.ReferencedAmount" -Value "2"',
+        ]
+
+        for expected_line in expected_config_lines:
+            self.assertIn(expected_line, configure_script)
 
 
 if __name__ == "__main__":

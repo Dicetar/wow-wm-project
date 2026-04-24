@@ -3,7 +3,8 @@ param(
     [int]$LabMySqlPort = 33307,
     [int]$WorldServerPort = 8095,
     [int]$SoapPort = 7879,
-    [string]$DataDir = "D:\WOW\Azerothcore_WoTLK_Rebuild\run\data"
+    [string]$DataDir = "D:\WOW\Azerothcore_WoTLK_Rebuild\run\data",
+    [string]$WmSpellsPlayerGuidAllowList = "5406"
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,14 +42,18 @@ function Set-ConfigValue {
 function Ensure-ConfigFile {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Path
+        [string]$Path,
+        [string]$DistPath = ""
     )
 
     if (Test-Path -LiteralPath $Path) {
         return
     }
 
-    $distPath = $Path + ".dist"
+    if ([string]::IsNullOrWhiteSpace($DistPath)) {
+        $DistPath = $Path + ".dist"
+    }
+
     if (-not (Test-Path -LiteralPath $distPath)) {
         throw "Config file was not found and no .dist template exists: $Path"
     }
@@ -58,6 +63,7 @@ function Ensure-ConfigFile {
 
 $configRoot = Join-Path $WorkspaceRoot "run\configs"
 $moduleConfigRoot = Join-Path $configRoot "modules"
+$buildModuleConfigRoot = Join-Path $WorkspaceRoot "build\bin\RelWithDebInfo\configs\modules"
 $authConfig = Join-Path $configRoot "authserver.conf"
 $worldConfig = Join-Path $configRoot "worldserver.conf"
 $playerbotsConfig = Join-Path $moduleConfigRoot "playerbots.conf"
@@ -65,6 +71,9 @@ $bridgeConfig = Join-Path $moduleConfigRoot "mod_wm_bridge.conf"
 $spellsConfig = Join-Path $moduleConfigRoot "mod_wm_spells.conf"
 $prototypeConfig = Join-Path $moduleConfigRoot "mod_wm_prototypes.conf"
 $weatherVibeConfig = Join-Path $moduleConfigRoot "mod_weather_vibe.conf"
+$autoBalanceConfig = Join-Path $moduleConfigRoot "AutoBalance.conf"
+$soloLfgConfig = Join-Path $moduleConfigRoot "SoloLfg.conf"
+$dynamicLootRatesConfig = Join-Path $moduleConfigRoot "mod_dynamic_loot_rates.conf"
 
 if (-not (Test-Path $DataDir)) {
     throw "DataDir was not found: $DataDir"
@@ -78,6 +87,10 @@ $playerbotsDb = """127.0.0.1;$LabMySqlPort;acore;acore;acore_playerbots"""
 foreach ($moduleConfig in @($bridgeConfig, $spellsConfig, $prototypeConfig, $weatherVibeConfig)) {
     Ensure-ConfigFile -Path $moduleConfig
 }
+
+Ensure-ConfigFile -Path $autoBalanceConfig -DistPath (Join-Path $buildModuleConfigRoot "AutoBalance.conf.dist")
+Ensure-ConfigFile -Path $soloLfgConfig -DistPath (Join-Path $buildModuleConfigRoot "SoloLfg.conf.dist")
+Ensure-ConfigFile -Path $dynamicLootRatesConfig -DistPath (Join-Path $buildModuleConfigRoot "mod_dynamic_loot_rates.conf.dist")
 
 Set-ConfigValue -Path $authConfig -Key "LoginDatabaseInfo" -Value $loginDb
 Set-ConfigValue -Path $worldConfig -Key "LoginDatabaseInfo" -Value $loginDb
@@ -98,11 +111,12 @@ Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.ActionQueue.Enable" -Value "1
 
 if (Test-Path $spellsConfig) {
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.Enable" -Value "1"
-    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """"""
+    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """$WmSpellsPlayerGuidAllowList"""
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.LabOnlyDebugInvokeEnable" -Value "1"
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.DebugPollIntervalMs" -Value "50"
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.Enable" -Value "1"
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value """940000,940001"""
+    Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.CreatureEntry" -Value "920100"
 }
 
 if (Test-Path $prototypeConfig) {
@@ -117,5 +131,31 @@ if (Test-Path $prototypeConfig) {
 if (Test-Path $weatherVibeConfig) {
     Set-ConfigValue -Path $weatherVibeConfig -Key "WeatherVibe.Debug" -Value "0"
 }
+
+# Solo 5-player dungeons: start from the original 5-man baseline, then apply explicit WM tuning.
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.Enable.Global" -Value "1"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.MinPlayers" -Value "1"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.MinPlayers.Heroic" -Value "1"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.InflectionPoint.CurveFloor" -Value "1.0"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.InflectionPoint.CurveCeiling" -Value "1.0"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.InflectionPointHeroic.CurveFloor" -Value "1.0"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.InflectionPointHeroic.CurveCeiling" -Value "1.0"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifier.Health" -Value "0.75"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifier.Damage" -Value "0.50"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifier.Boss.Health" -Value "0.75"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifier.Boss.Damage" -Value "0.50"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifierHeroic.Health" -Value "0.75"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifierHeroic.Damage" -Value "0.50"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifierHeroic.Boss.Health" -Value "0.75"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.StatModifierHeroic.Boss.Damage" -Value "0.50"
+Set-ConfigValue -Path $autoBalanceConfig -Key "AutoBalance.RewardScaling.XP" -Value "0"
+
+Set-ConfigValue -Path $soloLfgConfig -Key "SoloLFG.Enable" -Value "1"
+Set-ConfigValue -Path $soloLfgConfig -Key "SoloLFG.FixedXP" -Value "1"
+Set-ConfigValue -Path $soloLfgConfig -Key "SoloLFG.FixedXPRate" -Value "0.75"
+
+Set-ConfigValue -Path $dynamicLootRatesConfig -Key "DynamicLootRates.Enable" -Value "1"
+Set-ConfigValue -Path $dynamicLootRatesConfig -Key "DynamicLootRates.Dungeon.Rate.GroupAmount" -Value "2"
+Set-ConfigValue -Path $dynamicLootRatesConfig -Key "DynamicLootRates.Dungeon.Rate.ReferencedAmount" -Value "2"
 
 Write-Host "bridge_lab_configured=true workspace=$WorkspaceRoot mysql_port=$LabMySqlPort world_port=$WorldServerPort soap_port=$SoapPort data_dir=$DataDir"

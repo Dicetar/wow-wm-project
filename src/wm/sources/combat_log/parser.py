@@ -61,10 +61,10 @@ def _actor_from_row(row: list[str], *, start_index: int) -> CombatActor | None:
 def _combat_timestamp_to_iso(raw_timestamp: str) -> str:
     now_local = datetime.now().astimezone()
     if "." in raw_timestamp:
-        parsed = datetime.strptime(raw_timestamp, "%m/%d %H:%M:%S.%f")
+        parsed = datetime.strptime(f"{now_local.year}/{raw_timestamp}", "%Y/%m/%d %H:%M:%S.%f")
     else:
-        parsed = datetime.strptime(raw_timestamp, "%m/%d %H:%M:%S")
-    parsed = parsed.replace(year=now_local.year, tzinfo=now_local.tzinfo)
+        parsed = datetime.strptime(f"{now_local.year}/{raw_timestamp}", "%Y/%m/%d %H:%M:%S")
+    parsed = parsed.replace(tzinfo=now_local.tzinfo)
     return parsed.isoformat(timespec="milliseconds")
 
 

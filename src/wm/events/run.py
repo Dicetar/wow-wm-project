@@ -11,13 +11,17 @@ from wm.events.adapters import ADAPTER_CHOICES
 from wm.events.adapters import build_event_adapter
 from wm.events.content import DeterministicContentFactory
 from wm.events.executor import ReactionExecutor
+from wm.events.models import WMEvent
 from wm.events.planner import DeterministicReactionPlanner
 from wm.events.projector import JournalProjector
 from wm.events.reporting import build_execution_summary_lines
 from wm.events.rules import DeterministicRuleEngine
 from wm.events.store import EventStore
+from wm.reactive.random_enchant import RandomEnchantKillRoll
+from wm.reactive.random_enchant import RandomEnchantKillRoller
 from wm.reactive.state import ReactiveQuestRuntimeSynchronizer
 from wm.reactive.store import ReactiveQuestStore
+from wm.sources.native_bridge.actions import NativeBridgeActionClient
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -96,15 +100,23 @@ def execute_event_spine(
 
     polled_events = adapter.poll()
     record_result = store.record(polled_events)
+    random_enchant_results = _process_random_enchant_on_kill(
+        settings=settings,
+        client=client,
+        store=store,
+        recorded_events=record_result.recorded,
+        player_guid=player_guid,
+        mode=mode,
+    )
     runtime_sync_result = runtime_synchronizer.poll(player_guid=player_guid, preview=False)
     runtime_record_result = store.record(runtime_sync_result.observed_transitions)
     if adapter.last_cursor_value is not None:
         store.set_cursor(adapter_name=adapter.name, cursor_key=adapter.cursor_key, cursor_value=adapter.last_cursor_value)
 
-    projection_events = store.list_unprojected_observed_events(limit=resolved_batch_size)
+    projection_events = store.list_unprojected_observed_events(limit=resolved_batch_size, player_guid=player_guid)
     projection_results = [projector.apply(event) for event in projection_events]
 
-    evaluation_events = store.list_unevaluated_observed_events(limit=resolved_batch_size)
+    evaluation_events = store.list_unevaluated_observed_events(limit=resolved_batch_size, player_guid=player_guid)
     evaluations = [engine._evaluate(event, preview=False, mark_evaluated=False) for event in evaluation_events]
 
     derived_events = []
@@ -137,6 +149,13 @@ def execute_event_spine(
         "plan_count": len(plans),
         "execution_count": len(execution_results),
         "executions": [result.to_dict() for result in execution_results],
+        "random_enchant_consumable_on_kill": {
+            "enabled": bool(settings.random_enchant_on_kill_enabled),
+            "processed_kills": len(random_enchant_results),
+            "selected": sum(1 for result in random_enchant_results if result.selected),
+            "submitted": sum(1 for result in random_enchant_results if result.request_id is not None),
+            "results": [result.to_dict() for result in random_enchant_results],
+        },
     }
 
 
@@ -160,6 +179,15 @@ def _emit_output(*, payload: dict[str, object], summary: bool, output_json: Path
         if isinstance(executions, list):
             for line in build_execution_summary_lines(executions):
                 print(line, flush=True)
+        random_enchant = payload.get("random_enchant_consumable_on_kill")
+        if isinstance(random_enchant, dict) and random_enchant.get("enabled"):
+            print(
+                "random_enchant_consumable_on_kill="
+                f"processed={random_enchant.get('processed_kills', 0)} "
+                f"selected={random_enchant.get('selected', 0)} "
+                f"submitted={random_enchant.get('submitted', 0)}",
+                flush=True,
+            )
     else:
         print(raw, flush=True)
 
@@ -179,6 +207,8 @@ def _validate_run_arguments(*, args: argparse.Namespace, settings: Settings) -> 
         }[adapter_name]
         raise SystemExit(f"{label} runs require --player-guid to resolve the source player.")
     if args.mode != "apply":
+        if settings.random_enchant_on_kill_enabled and args.player_guid is None:
+            raise SystemExit("Random enchant consumable grants require --player-guid to scope item grants.")
         return
     if not args.confirm_live_apply:
         raise SystemExit("Apply mode requires --confirm-live-apply.")
@@ -193,6 +223,37 @@ def _validate_apply_plan_scope(*, mode: str, plans: list[object]) -> None:
         raise SystemExit(
             f"Apply mode produced {len(plans)} plans. Narrow the run with --player-guid / --batch-size or rerun in dry-run mode."
         )
+
+
+def _process_random_enchant_on_kill(
+    *,
+    settings: Settings,
+    client: MysqlCliClient,
+    store: EventStore,
+    recorded_events: list[WMEvent],
+    player_guid: int | None,
+    mode: str,
+) -> list[RandomEnchantKillRoll]:
+    if not settings.random_enchant_on_kill_enabled:
+        return []
+    if player_guid is None:
+        raise ValueError("random enchant consumable grants require a scoped player_guid")
+    roller = RandomEnchantKillRoller(
+        settings=settings,
+        event_store=store,
+        native_actions=NativeBridgeActionClient(client=client, settings=settings),
+    )
+    return roller.process_events(
+        events=recorded_events,
+        player_guid=int(player_guid),
+        chance_pct=float(settings.random_enchant_on_kill_chance_pct),
+        preserve_existing_chance_pct=float(settings.random_enchant_preserve_existing_chance_pct),
+        selector=str(settings.random_enchant_selector),
+        max_enchants=int(settings.random_enchant_max_enchants),
+        item_entry=int(settings.random_enchant_consumable_item_entry),
+        count=int(settings.random_enchant_consumable_count),
+        mode=mode,
+    )
 
 
 def _resolve_batch_size(*, adapter_name: str, requested_batch_size: int | None, settings: Settings) -> int:

@@ -9,6 +9,7 @@ from wm.events.models import WMEvent
 from wm.events.store import EventStore
 from wm.sources.native_bridge.models import NativeBridgeRecord
 from wm.sources.native_bridge.models import NativeBridgeScanResult
+from wm.sources.native_bridge.models import native_bridge_cursor_key
 from wm.sources.native_bridge.scanner import NativeBridgeScanner
 
 
@@ -24,8 +25,14 @@ class NativeBridgeAdapter:
     last_cursor_value: str | None = field(default=None, init=False)
     last_scan_result: NativeBridgeScanResult | None = field(default=None, init=False)
 
+    def __post_init__(self) -> None:
+        if self.player_guid_filter is not None and self.cursor_key == "last_seen":
+            self.cursor_key = native_bridge_cursor_key(self.player_guid_filter)
+
     def poll(self) -> list[WMEvent]:
         cursor = self.store.get_cursor(adapter_name=self.name, cursor_key=self.cursor_key)
+        if cursor is None and self.player_guid_filter is not None:
+            cursor = self.store.get_cursor(adapter_name=self.name, cursor_key="last_seen")
         scanner = NativeBridgeScanner(client=self.client, settings=self.settings)
         scan_result = scanner.scan(
             cursor_value=cursor.cursor_value if cursor is not None else None,

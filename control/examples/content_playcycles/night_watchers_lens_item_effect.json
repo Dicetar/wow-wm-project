@@ -1,0 +1,51 @@
+{
+  "schema_version": "wm.content_playcycle.item_effect.v1",
+  "cycle_key": "night_watchers_lens_item_effect_v1",
+  "player_guid": 5406,
+  "item_draft_path": "control/examples/items/night_watchers_lens.json",
+  "item_entry": 910006,
+  "effect_label": "Night Watcher's Lens",
+  "runtime_sync": {
+    "mode": "auto",
+    "item_commands": [
+      ".reload item_template"
+    ],
+    "rollback_commands": [
+      ".reload item_template"
+    ],
+    "notes": [
+      "Worldserver restart remains the fallback if item_template reload does not refresh live state."
+    ]
+  },
+  "direct_grant": {
+    "enabled": true,
+    "count": 1,
+    "soulbound": true,
+    "wait": true,
+    "risk_level": "medium",
+    "max_attempts": 3,
+    "expires_seconds": 60,
+    "cleanup_on_rollback": false,
+    "remove_count": 1
+  },
+  "promotion_bounty_template": {
+    "template_key": "defias_bandit",
+    "rule_key": "content_playcycle:night_watchers_lens_item_effect_v1:bounty_reward",
+    "reward_item_entry": 910006,
+    "reward_item_name": "Night Watcher's Lens",
+    "reward_item_count": 1,
+    "quest_title": "Bounty: Defias Bandits - Lens"
+  },
+  "verify_expectations": {
+    "inventory_receipt": "optional",
+    "require_publish_log": true,
+    "require_rollback_snapshot": true,
+    "require_reserved_slot": true,
+    "visible_wearer_aura": "Existing client-known aura spell 132 on the wearer.",
+    "visible_target_debuff": "Existing client-known debuff spell 770 on the target."
+  },
+  "notes": [
+    "Use BridgeLab MySQL on 127.0.0.1:33307 for player 5406 / Jecia.",
+    "Do not patch the client per item iteration; this scenario uses existing visible aura/debuff assets."
+  ]
+}

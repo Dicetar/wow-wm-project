@@ -5,10 +5,20 @@ param(
     [ValidateSet("apply", "dry-run")]
     [string]$Mode = "apply",
     [double]$IntervalSeconds = 1.0,
+    [int]$BatchSize = 1,
+    [int]$ReactiveAutoBountyMaxEventAgeSeconds = 3600,
+    [bool]$ReactiveAutoBountySingleOpenPerPlayer = $true,
     [int]$LabMySqlPort = 33307,
     [int]$SoapPort = 7879,
     [ValidateSet("auto", "native", "soap")]
     [string]$QuestGrantTransport = "auto",
+    [switch]$EnableRandomEnchantOnKill,
+    [double]$RandomEnchantOnKillChancePct = 2.5,
+    [double]$RandomEnchantPreserveExistingChancePct = 15.0,
+    [int]$RandomEnchantMaxEnchants = 3,
+    [string]$RandomEnchantSelector = "random_equipped",
+    [int]$RandomEnchantConsumableItemEntry = 910007,
+    [int]$RandomEnchantConsumableCount = 1,
     [switch]$KeepExistingBountyRules,
     [switch]$PrintIdle,
     [switch]$DoNotArmFromEnd
@@ -66,10 +76,22 @@ $watchArgs = @{
     PlayerGuid = $PlayerGuid
     Mode = $Mode
     IntervalSeconds = $IntervalSeconds
+    BatchSize = $BatchSize
+    ReactiveAutoBountyMaxEventAgeSeconds = $ReactiveAutoBountyMaxEventAgeSeconds
+    ReactiveAutoBountySingleOpenPerPlayer = $ReactiveAutoBountySingleOpenPerPlayer
     LabMySqlPort = $LabMySqlPort
     SoapPort = $SoapPort
     QuestGrantTransport = $QuestGrantTransport
+    RandomEnchantOnKillChancePct = $RandomEnchantOnKillChancePct
+    RandomEnchantPreserveExistingChancePct = $RandomEnchantPreserveExistingChancePct
+    RandomEnchantMaxEnchants = $RandomEnchantMaxEnchants
+    RandomEnchantSelector = $RandomEnchantSelector
+    RandomEnchantConsumableItemEntry = $RandomEnchantConsumableItemEntry
+    RandomEnchantConsumableCount = $RandomEnchantConsumableCount
     EnableReactiveAutoBounty = $true
+}
+if ($EnableRandomEnchantOnKill.IsPresent) {
+    $watchArgs["EnableRandomEnchantOnKill"] = $true
 }
 if (-not $DoNotArmFromEnd.IsPresent) {
     $watchArgs["ArmFromEnd"] = $true

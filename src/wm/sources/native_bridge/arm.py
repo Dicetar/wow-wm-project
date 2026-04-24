@@ -9,6 +9,7 @@ from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient
 from wm.events.store import EventStore
 from wm.sources.native_bridge.models import NativeBridgeCursor
+from wm.sources.native_bridge.models import native_bridge_cursor_key
 
 
 @dataclass(slots=True)
@@ -35,13 +36,14 @@ def arm_native_bridge_cursor(
     client: MysqlCliClient | None = None,
 ) -> NativeBridgeArmResult:
     client = client or MysqlCliClient()
-    existing = store.get_cursor(adapter_name="native_bridge", cursor_key="last_seen")
+    cursor_key = native_bridge_cursor_key(player_guid)
+    existing = store.get_cursor(adapter_name="native_bridge", cursor_key=cursor_key)
     previous_last_seen: int | None = None
     if existing is not None:
         previous_last_seen = NativeBridgeCursor.from_cursor_value(existing.cursor_value).last_seen_id
 
     if not _bridge_table_exists(client=client, settings=settings):
-        store.set_cursor(adapter_name="native_bridge", cursor_key="last_seen", cursor_value="0")
+        store.set_cursor(adapter_name="native_bridge", cursor_key=cursor_key, cursor_value="0")
         return NativeBridgeArmResult(
             table_exists=False,
             previous_last_seen=previous_last_seen,
@@ -52,7 +54,7 @@ def arm_native_bridge_cursor(
     armed_last_seen = _latest_bridge_event_id(client=client, settings=settings, player_guid=player_guid)
     store.set_cursor(
         adapter_name="native_bridge",
-        cursor_key="last_seen",
+        cursor_key=cursor_key,
         cursor_value=NativeBridgeCursor(last_seen_id=armed_last_seen).to_cursor_value(),
     )
     return NativeBridgeArmResult(

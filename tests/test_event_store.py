@@ -222,6 +222,39 @@ class EventStoreTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].event_type, "kill")
 
+    def test_unprojected_and_unevaluated_lists_filter_by_player(self) -> None:
+        store = MemoryEventStore()
+        store.record(
+            [
+                WMEvent(
+                    event_class="observed",
+                    event_type="kill",
+                    source="native_bridge",
+                    source_event_key="jecia-kill",
+                    occurred_at="2026-04-08 12:00:00",
+                    player_guid=5406,
+                    subject_type="creature",
+                    subject_entry=6,
+                ),
+                WMEvent(
+                    event_class="observed",
+                    event_type="kill",
+                    source="native_bridge",
+                    source_event_key="other-kill",
+                    occurred_at="2026-04-08 12:00:01",
+                    player_guid=9999,
+                    subject_type="creature",
+                    subject_entry=6,
+                ),
+            ]
+        )
+
+        unprojected = store.list_unprojected_observed_events(player_guid=5406)
+        unevaluated = store.list_unevaluated_observed_events(player_guid=5406)
+
+        self.assertEqual([event.source_event_key for event in unprojected], ["jecia-kill"])
+        self.assertEqual([event.source_event_key for event in unevaluated], ["jecia-kill"])
+
     def test_list_recent_reaction_logs_parses_rows(self) -> None:
         store = MemoryEventStore()
         store._reaction_logs.append(

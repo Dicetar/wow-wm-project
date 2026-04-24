@@ -68,9 +68,9 @@ Visible stock-carrier testing is not supported.
 - `WORKING`: repo/runtime separation now moves Bonebound off stock creature truth. Alpha uses WM creature template `920100`, stock Voidwalker remains `1860`, and `IsBoneboundPet()` no longer falls back to stock entry/display heuristics.
 - `PARTIAL`: stock Summon Voidwalker separation is deployed but not yet re-proven in-game after the structural fix. BridgeLab DB proof on 2026-04-17 now shows `character_spell(5406,697)` and `character_spell(5406,940001)` present, `49126` absent, Jecia's saved Alpha row migrated to `character_pet.entry=920100`, `wm_spell_behavior(940001)` repointed to `creature_entry=920100`, and only `940001 -> spell_wm_shell_dispatch` in `spell_script_names`. The prior cleanup-only state was still broken because Alpha shared stock creature entry `1860`.
 - `WORKING`: historical lab invoke request `7` for player `5406` executed the old twin behavior and persisted `Bonebound Alpha` with `CreatedBySpell=940001`
-- `WORKING`: Bonebound Alpha behavior config transfers the summoner's total intellect to all Alpha stats and shadow spell power to Alpha attack power
-- `WORKING`: Bonebound Alpha v3 repo/native implementation builds in BridgeLab: shell `940001` maps to `summon_bonebound_alpha_v3`, `spawn_omega=false`, Alpha keeps Gorehowl visual item `28773`, the native periodic is now a low physical bleed despite legacy `shadow_dot_*` config key names, and temporary Alpha echo damage is enforced through the `UnitScript::ModifyMeleeDamage` hook instead of TempSummon visible field copying
-- `WORKING`: Alpha echoes use WM creature template `920101` (`Bonebound Alpha Echo`) instead of spawning from the Voidwalker template; runtime stat recalculation runs before Alpha health/power/damage is copied, each echo gets a randomized follow distance/angle around the player, and the active Echo cap is configured to `40`
+- `WORKING`: Bonebound Alpha behavior config transfers the summoner's total intellect to all Alpha stats and shadow spell power to Alpha attack power; BridgeLab live proof passed after the 2026-04-24 `WmSpells.PlayerGuidAllowList` fix
+- `PARTIAL`: Bonebound Alpha visible bleed fix is in repo/native code and BridgeLab compile passed on 2026-04-24 with `Build-BridgeLabIncremental.ps1 -NoStageRuntime`: shell `940001` maps to `summon_bonebound_alpha_v3`, `spawn_omega=false`, Alpha config keeps Gorehowl visual item `28773`, and Alpha bleed is now intended to apply only from the Alpha melee hook with visible client aura spell `772` (`Rend`) as the target status/duration marker while WM owns the physical tick damage. Legacy `shadow_dot_*` config keys still parse, but current drafts and SQL use `bleed_*`. Live status stays `PARTIAL` until runtime staging/restart, SQL migration, and in-game proof.
+- `WORKING`: Alpha echoes use WM creature template `920101` (`Bonebound Alpha Echo`) instead of spawning from the Voidwalker template; runtime stat recalculation runs before Alpha health/power/damage is copied, each echo gets a randomized follow distance/angle around the player, and the active Echo cap is configured to `40`; native bridge event `27941` recorded an owned-unit kill from object entry `920101`
 - `PARTIAL`: Alpha echo mount/dismount restore is implemented, repo/static-tested, native-built, and deployed to BridgeLab worldserver pid `31208`. The runtime now preserves missing Echo state while the owner pet is temporarily unsummoned by mounting, prevents player maintenance from erasing that state while the main pet is absent, then respawns the Echo from the saved template/follow slot with its remaining lifetime after the Bonebound pet returns. Live in-game BridgeLab proof is still pending.
 - `WORKING`: Bonebound Alpha release submitter exists at `python -m wm.spells.summon_release`; it now defaults to behavior `summon_bonebound_alpha_v3` and shell `940001`
 - `WORKING`: live post-restart Alpha v3 smoke was accepted on 2026-04-16 after request `11` completed for online player `5406`; repo evidence proves the active pet row is `Bonebound Alpha` on shell `940001`, and user validation reported the bleed/echo behavior acceptable
@@ -84,7 +84,7 @@ Visible stock-carrier testing is not supported.
   - `mod-wm-spells` materializes AzerothCore's volatile Dual Wield runtime flag only when the player is allowlisted, has an active `combat_proficiency` grant for shell `944000`, and already has persistent spell `674`
   - bridge-lab live proof on 2026-04-15 confirmed player `5406` can equip Shield, Leather, and a one-handed sword in offhand; Dual Wield is also visible in the spellbook
   - focused repo tests verify the SQL does not insert or update `playercreateinfo_skills`, `playercreateinfo_spell_custom`, or `mod_learnspells`
-- `WORKING`: `passive_intellect_block_v1` is rating-only; it reads an active `wm_spell_grant` and applies block rating from intellect plus spell power, but it no longer calls `SetSkill`, `SetCanBlock`, or overrides shield equip class checks
+- `WORKING`: `passive_intellect_block_v1` is rating-only; it reads an active `wm_spell_grant` and applies block rating from intellect plus spell power, but it no longer calls `SetSkill`, `SetCanBlock`, or overrides shield equip class checks. BridgeLab live proof passed after the 2026-04-24 `WmSpells.PlayerGuidAllowList` fix.
 
 ### Operator lane
 
@@ -121,8 +121,8 @@ Current classification:
 
 - `WORKING`: repo tests, native build, bridge-lab SQL binding, and worldserver restart for shell `940001`
 - `WORKING`: single Alpha true-pet summon model; `spawn_omega=false`
-- `WORKING`: Gorehowl visual weapon config for Alpha through `virtual_item_1=28773`
-- `WORKING`: native Alpha bleed implementation exists with default 6 second cooldown, 4 second duration, 1 second tick, low level/intellect scaling, and no shadow spell-power scaling
+- `WORKING`: Gorehowl visual weapon config for Alpha through `virtual_item_1=28773`; in-game display was confirmed after BridgeLab allowed `mod-wm-spells` for player `5406`
+- `PARTIAL`: native Alpha bleed implementation compiles with default 6 second cooldown, 4 second duration, 1 second tick, low level/intellect scaling, no shadow spell-power scaling, visible target aura `772`, and melee-hook-only application; live proof is pending after runtime staging/restart
 - `WORKING`: Alpha passive echo implementation exists with 7.5% melee proc chance, maximum 40 active echoes, WM creature template `920101`, randomized follow slots around the player, and echo lifetime equal to summoner total intellect in seconds
 - `WORKING`: live in-game smoke for the release lane was accepted after the 2026-04-16 deploy; exact combat-log numbers were not captured, so future tuning should still record tick and melee values before changing damage
 - `PARTIAL`: Echo temporary-unsummon restore after player mounting is repo-tested and rebuilt/deployed to BridgeLab, but not yet proven in-game. The intended behavior is that active Echoes keep counting down while mounted and reappear after dismount if lifetime remains. The first live attempt failed because `MaintainBoneboundSummons()` still called `RemoveBoneboundAlphaEchoes()` while the pet was temporarily unsummoned; this cleanup path is now guarded.
@@ -133,7 +133,7 @@ What to do:
 - Use shell `940001` with behavior `summon_bonebound_alpha_v3`.
 - Use `.\summon-bridge-lab-bonebound-alpha.bat -PlayerGuid 5406 -Wait` after the player is online.
 - Keep `summon-bridge-lab-bonebound-twins.bat` only as a compatibility alias.
-- Validate Alpha melee, 1-second bleed ticks, `Bonebound Alpha Echo` name/health, one echo proc in combat, and mount/dismount Echo restoration before calling the live ability proof `WORKING`.
+- Validate Alpha melee, visible target bleed aura `772` with duration, 1-second physical bleed ticks, `Bonebound Alpha Echo` name/health, one echo proc in combat, and mount/dismount Echo restoration before calling the live ability proof `WORKING`.
 
 What not to do:
 
@@ -260,14 +260,15 @@ Retired implementation patterns:
 ## Next verification step
 
 1. for any new Alpha tuning, clean the player pet state or resummon through the release wrapper
-2. run `.\summon-bridge-lab-bonebound-alpha.bat -PlayerGuid 5406 -Wait`
-3. record Alpha melee, bleed tick values, and at least one 7.5% Alpha echo proc with `Bonebound Alpha Echo` name and non-template health
-4. mount after an Echo exists, dismount before its intellect-based lifetime expires, and confirm the Echo reappears without a new proc
-5. observe one playerbot maintenance/level-up cycle and confirm bots did not inherit combat proficiencies
-6. build and install the local shell-bank client patch with `python -m wm.spells.client_patch build --install --summary`
-7. stage a castable server DBC row with `.\scripts\bridge_lab\Stage-BridgeLabServerSpellDbc.ps1 -SeedProfile castable -SpellId 940001`
-8. grant `940000` or `940001` through the workbench or native `player_learn_spell`; if native learn succeeds but SOAP `.saveall` is unavailable, persist `character_spell` explicitly before relog testing
-9. validate the visible shell path:
+2. verify `D:\WOW\WM_BridgeLab\run\configs\modules\mod_wm_spells.conf` has `WmSpells.PlayerGuidAllowList = "5406"`; `scripts/bridge_lab/Configure-BridgeLabRuntime.ps1` and `Deploy-BridgeLabWorldServer.ps1` now set this by default
+3. run `.\summon-bridge-lab-bonebound-alpha.bat -PlayerGuid 5406 -Wait`
+4. record Alpha melee, visible target bleed aura `772` with duration, bleed tick values, and at least one 7.5% Alpha echo proc with `Bonebound Alpha Echo` name and non-template health
+5. mount after an Echo exists, dismount before its intellect-based lifetime expires, and confirm the Echo reappears without a new proc
+6. observe one playerbot maintenance/level-up cycle and confirm bots did not inherit combat proficiencies
+7. build and install the local shell-bank client patch with `python -m wm.spells.client_patch build --install --summary`
+8. stage a castable server DBC row with `.\scripts\bridge_lab\Stage-BridgeLabServerSpellDbc.ps1 -SeedProfile castable -SpellId 940001`
+9. grant `940000` or `940001` through the workbench or native `player_learn_spell`; if native learn succeeds but SOAP `.saveall` is unavailable, persist `character_spell` explicitly before relog testing
+10. validate the visible shell path:
    - spellbook entry
    - cast behavior
    - clean failure UX when gated

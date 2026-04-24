@@ -35,6 +35,12 @@ class NativeBridgeCursor:
                 return cls()
 
 
+def native_bridge_cursor_key(player_guid: int | None) -> str:
+    if player_guid is None:
+        return "last_seen"
+    return f"last_seen:player:{int(player_guid)}"
+
+
 @dataclass(slots=True)
 class NativeBridgeRecord:
     bridge_event_id: int

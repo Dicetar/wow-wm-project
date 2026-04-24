@@ -699,6 +699,70 @@ class DeterministicRuleEngineTests(unittest.TestCase):
         rewarded_result = engine.evaluate(event, preview=True)
         self.assertEqual(rewarded_result.suppressed_opportunities[0].metadata["suppression_reason"], "post_reward_cooldown_active")
 
+    def test_recent_native_quest_grant_suppresses_duplicate_when_character_db_lags(self) -> None:
+        store = FakeRuleStore()
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key=f"native_bridge:kill:{index}",
+                occurred_at=f"2026-04-08 12:00:0{index}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=6,
+            )
+            for index in range(1, 9)
+        ]
+        store.subject_events.append(
+            WMEvent(
+                event_id=10,
+                event_class="observed",
+                event_type="quest_granted",
+                source="native_bridge",
+                source_event_key="native_bridge:quest:910000",
+                occurred_at="2026-04-08 12:00:05",
+                player_guid=5406,
+                subject_type=None,
+                subject_entry=None,
+                event_value="Bounty: Kobold Vermin",
+                metadata={"payload": {"quest_id": 910000, "quest_title": "Bounty: Kobold Vermin"}},
+            )
+        )
+        reactive_store = FakeReactiveStore()
+        reactive_store.runtime_state = "none"
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:kobold_vermin",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=6,
+                trigger_event_type="kill",
+                kill_threshold=4,
+                window_seconds=120,
+                quest_id=910000,
+                turn_in_npc_entry=197,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={"require_consecutive_kills": True},
+                notes=[],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[7], preview=True)
+
+        self.assertEqual(result.opportunities, [])
+        self.assertEqual(result.suppressed_opportunities[0].metadata["runtime_state"], "incomplete")
+        self.assertEqual(result.suppressed_opportunities[0].metadata["suppression_reason"], "quest_active")
+
     def test_rewarded_state_reopens_after_post_reward_cooldown_expires(self) -> None:
         store = FakeRuleStore()
         store.subject_events = [
@@ -839,7 +903,7 @@ class DeterministicRuleEngineTests(unittest.TestCase):
         auto_bounty = FakeAutoBountyManager(reactive_store=reactive_store, rule=auto_rule)
         engine = DeterministicRuleEngine(
             client=_DummyClient(),
-            settings=Settings(),
+            settings=Settings(reactive_auto_bounty_max_event_age_seconds=0),
             store=store,
             reactive_store=reactive_store,  # type: ignore[arg-type]
             auto_bounty=auto_bounty,  # type: ignore[arg-type]
@@ -1002,7 +1066,7 @@ class DeterministicRuleEngineTests(unittest.TestCase):
         auto_bounty = FakeAutoBountyManager(reactive_store=reactive_store, rule=family_rule)
         engine = DeterministicRuleEngine(
             client=_DummyClient(),
-            settings=Settings(),
+            settings=Settings(reactive_auto_bounty_max_event_age_seconds=0),
             store=store,
             reactive_store=reactive_store,  # type: ignore[arg-type]
             auto_bounty=auto_bounty,  # type: ignore[arg-type]
@@ -1013,6 +1077,38 @@ class DeterministicRuleEngineTests(unittest.TestCase):
         self.assertEqual(len(auto_bounty.calls), 1)
         self.assertEqual(len(result.opportunities), 1)
         self.assertEqual(result.opportunities[0].metadata["quest_id"], 910002)
+
+    def test_stale_event_does_not_create_dynamic_auto_bounty_rule(self) -> None:
+        stale_event = WMEvent(
+            event_id=99,
+            event_class="observed",
+            event_type="kill",
+            source="native_bridge",
+            source_event_key="native_bridge:old",
+            occurred_at="2026-04-08 12:00:00",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=116,
+            metadata={"payload": {"subject_name": "Defias Bandit"}},
+        )
+        store = FakeRuleStore()
+        store.subject_events = [stale_event]
+        reactive_store = FakeReactiveStore()
+        auto_bounty = FakeAutoBountyManager(reactive_store=reactive_store, rule=None)
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(reactive_auto_bounty_max_event_age_seconds=60),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+            auto_bounty=auto_bounty,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(stale_event)
+
+        self.assertEqual(auto_bounty.calls, [])
+        self.assertEqual(result.derived_events, [])
+        self.assertEqual(result.opportunities, [])
+        self.assertEqual(store.marked_evaluated, [99])
 
 
 if __name__ == "__main__":

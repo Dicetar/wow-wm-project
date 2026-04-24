@@ -113,12 +113,15 @@ class EventStore:
             return None
         return self._row_to_event(rows[0])
 
-    def list_unprojected_observed_events(self, *, limit: int = 100) -> list[WMEvent]:
+    def list_unprojected_observed_events(self, *, limit: int = 100, player_guid: int | None = None) -> list[WMEvent]:
+        predicates = ["EventClass = 'observed'", "ProjectedAt IS NULL"]
+        if player_guid is not None:
+            predicates.append(f"PlayerGUID = {int(player_guid)}")
         rows = self._query_world(
             "SELECT EventID, EventClass, EventType, Source, SourceEventKey, OccurredAt, PlayerGUID, SubjectType, "
             "SubjectEntry, MapID, ZoneID, AreaID, EventValue, MetadataJSON "
             "FROM wm_event_log "
-            "WHERE EventClass = 'observed' AND ProjectedAt IS NULL "
+            f"WHERE {' AND '.join(predicates)} "
             "ORDER BY EventID "
             f"LIMIT {int(limit)}"
         )
@@ -179,12 +182,15 @@ class EventStore:
         )
         return [self._row_to_event(row) for row in rows]
 
-    def list_unevaluated_observed_events(self, *, limit: int = 100) -> list[WMEvent]:
+    def list_unevaluated_observed_events(self, *, limit: int = 100, player_guid: int | None = None) -> list[WMEvent]:
+        predicates = ["EventClass = 'observed'", "EvaluatedAt IS NULL"]
+        if player_guid is not None:
+            predicates.append(f"PlayerGUID = {int(player_guid)}")
         rows = self._query_world(
             "SELECT EventID, EventClass, EventType, Source, SourceEventKey, OccurredAt, PlayerGUID, SubjectType, "
             "SubjectEntry, MapID, ZoneID, AreaID, EventValue, MetadataJSON "
             "FROM wm_event_log "
-            "WHERE EventClass = 'observed' AND EvaluatedAt IS NULL "
+            f"WHERE {' AND '.join(predicates)} "
             "ORDER BY EventID "
             f"LIMIT {int(limit)}"
         )

@@ -92,14 +92,16 @@ Run the Python test suite before touching the live DB.
 ### All tests
 
 ```powershell
-python -m unittest discover -s tests -p "test_*.py" -v
+python -m pytest -q
 ```
+
+`python -m pytest -q` is canonical. Plain `python -m unittest discover` can report zero tests on this repo layout, so do not use it as a green signal.
 
 ### Focused tests while iterating
 
 ```powershell
-python -m unittest tests.test_quest_drafts -v
-python -m unittest tests.test_item_pipeline -v
+python -m pytest tests/test_quest_drafts.py -q
+python -m pytest tests/test_item_pipeline.py -q
 ```
 
 If a new slice has no tests yet, add at least a smoke-level test for:
@@ -254,7 +256,7 @@ Before committing, run:
 
 ```powershell
 git status
-python -m unittest discover -s tests -p "test_*.py" -v
+python -m pytest -q
 ```
 
 Then commit:

@@ -10,6 +10,7 @@
 #include "ObjectAccessor.h"
 #include "PetDefines.h"
 #include "Random.h"
+#include "SpellAuraEffects.h"
 #include "SpellAuras.h"
 #include "SpellInfo.h"
 #include "TemporarySummon.h"
@@ -36,6 +37,8 @@ namespace
     constexpr uint32 NIGHT_WATCHERS_LENS_MARK_DURATION_MS = 10000;
     constexpr float NIGHT_WATCHERS_LENS_PROC_CHANCE_PCT = 10.0f;
     constexpr float NIGHT_WATCHERS_LENS_MARK_PROC_MULTIPLIER = 2.0f;
+    // Rend is a client-known bleed debuff. WM owns the damage; this aura is the visible status/timer.
+    constexpr uint32 BONEBOUND_ALPHA_BLEED_VISIBLE_AURA_SPELL_ID = 772;
     constexpr float WM_PI = 3.14159265358979323846f;
 
     WmSpells::RuntimeConfig gConfig;
@@ -50,7 +53,7 @@ namespace
         uint32 remainingMs = 0;
     };
 
-    struct BoneboundShadowDotState
+    struct BoneboundBleedState
     {
         ObjectGuid casterGuid;
         ObjectGuid targetGuid;
@@ -72,9 +75,9 @@ namespace
         float followAngle = PET_FOLLOW_ANGLE;
     };
 
-    std::vector<BoneboundShadowDotState> gBoneboundShadowDots;
+    std::vector<BoneboundBleedState> gBoneboundBleeds;
     std::unordered_map<uint32, BoneboundAlphaEchoState> gBoneboundAlphaEchoes;
-    std::unordered_map<uint32, uint32> gBoneboundShadowDotCooldownByPet;
+    std::unordered_map<uint32, uint32> gBoneboundBleedCooldownByPet;
     std::unordered_map<uint64, NightWatchersLensMarkState> gNightWatchersLensMarksByTarget;
 
     void ParseUIntSet(std::string const& raw, std::unordered_set<uint32>& target)
@@ -589,21 +592,37 @@ namespace
         if (std::optional<float> value = ExtractJsonFloat(configJson, "omega_follow_angle"))
             config.omegaFollowAngle = *value;
         if (std::optional<bool> value = ExtractJsonBool(configJson, "shadow_dot_enabled"))
-            config.shadowDotEnabled = *value;
+            config.bleedEnabled = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_cooldown_ms"))
-            config.shadowDotCooldownMs = *value;
+            config.bleedCooldownMs = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_duration_ms"))
-            config.shadowDotDurationMs = *value;
+            config.bleedDurationMs = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_tick_ms"))
-            config.shadowDotTickMs = *value;
+            config.bleedTickMs = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_base_damage"))
-            config.shadowDotBaseDamage = *value;
+            config.bleedBaseDamage = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_damage_per_level_pct"))
-            config.shadowDotDamagePerLevelPct = *value;
+            config.bleedDamagePerLevelPct = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_damage_per_intellect_pct"))
-            config.shadowDotDamagePerIntellectPct = *value;
+            config.bleedDamagePerIntellectPct = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_damage_per_shadow_power_pct"))
-            config.shadowDotDamagePerShadowPowerPct = *value;
+            config.bleedDamagePerShadowPowerPct = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "bleed_enabled"))
+            config.bleedEnabled = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "bleed_cooldown_ms"))
+            config.bleedCooldownMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "bleed_duration_ms"))
+            config.bleedDurationMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "bleed_tick_ms"))
+            config.bleedTickMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "bleed_base_damage"))
+            config.bleedBaseDamage = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "bleed_damage_per_level_pct"))
+            config.bleedDamagePerLevelPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "bleed_damage_per_intellect_pct"))
+            config.bleedDamagePerIntellectPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "bleed_damage_per_shadow_power_pct"))
+            config.bleedDamagePerShadowPowerPct = *value;
         if (std::optional<bool> value = ExtractJsonBool(configJson, "alpha_echo_enabled"))
             config.alphaEchoEnabled = *value;
         if (std::optional<float> value = ExtractJsonFloat(configJson, "alpha_echo_proc_chance_pct"))
@@ -816,7 +835,7 @@ namespace
         return BuildBoneboundBehaviorConfig(*behaviorRecord, persistPetFallback);
     }
 
-    uint32 ResolveShadowDotTickDamage(Player* owner, Unit* caster, WmSpells::BoneboundBehaviorConfig const& config)
+    uint32 ResolveBoneboundBleedTickDamage(Player* owner, Unit* caster, WmSpells::BoneboundBehaviorConfig const& config)
     {
         if (!owner)
             return 1u;
@@ -824,44 +843,81 @@ namespace
         float intellect = std::max(0.0f, owner->GetTotalStatValue(STAT_INTELLECT));
         int32 shadowPower = std::max<int32>(0, owner->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_SHADOW));
         uint32 level = caster ? caster->GetLevel() : owner->GetLevel();
-        float damage = static_cast<float>(config.shadowDotBaseDamage)
-            + static_cast<float>(level) * (static_cast<float>(config.shadowDotDamagePerLevelPct) / 100.0f)
-            + intellect * (static_cast<float>(config.shadowDotDamagePerIntellectPct) / 100.0f)
-            + static_cast<float>(shadowPower) * (static_cast<float>(config.shadowDotDamagePerShadowPowerPct) / 100.0f);
+        float damage = static_cast<float>(config.bleedBaseDamage)
+            + static_cast<float>(level) * (static_cast<float>(config.bleedDamagePerLevelPct) / 100.0f)
+            + intellect * (static_cast<float>(config.bleedDamagePerIntellectPct) / 100.0f)
+            + static_cast<float>(shadowPower) * (static_cast<float>(config.bleedDamagePerShadowPowerPct) / 100.0f);
         return std::max<uint32>(1u, static_cast<uint32>(std::round(damage)));
     }
 
-    void StartBoneboundShadowDot(Player* owner, Unit* caster, Unit* target, WmSpells::BoneboundBehaviorConfig const& config)
+    Aura* ApplyBoneboundBleedVisibleAura(Unit* caster, Unit* target, uint32 durationMs)
     {
-        if (!owner || !caster || !target || !target->IsAlive() || !config.shadowDotEnabled)
+        if (!caster || !target)
+            return nullptr;
+
+        Aura* aura = caster->AddAura(BONEBOUND_ALPHA_BLEED_VISIBLE_AURA_SPELL_ID, target);
+        if (!aura)
+            aura = target->GetAura(BONEBOUND_ALPHA_BLEED_VISIBLE_AURA_SPELL_ID, caster->GetGUID());
+        if (!aura)
+            return nullptr;
+
+        aura->SetMaxDuration(static_cast<int32>(durationMs));
+        aura->SetDuration(static_cast<int32>(durationMs));
+        for (uint8 effectIndex = 0; effectIndex < MAX_SPELL_EFFECTS; ++effectIndex)
+        {
+            if (AuraEffect* effect = aura->GetEffect(effectIndex))
+            {
+                effect->SetAmount(0);
+                effect->SetPeriodic(false);
+            }
+        }
+        return aura;
+    }
+
+    bool HasBoneboundBleedVisibleAura(Unit* caster, Unit* target)
+    {
+        if (!caster || !target)
+            return false;
+
+        Aura* aura = target->GetAura(BONEBOUND_ALPHA_BLEED_VISIBLE_AURA_SPELL_ID, caster->GetGUID());
+        return aura && aura->GetDuration() > 0;
+    }
+
+    void StartBoneboundAlphaBleed(Player* owner, Unit* caster, Unit* target, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!owner || !caster || !target || !target->IsAlive() || !config.bleedEnabled)
             return;
 
-        uint32 durationMs = std::max<uint32>(1000u, config.shadowDotDurationMs);
-        uint32 tickMs = std::max<uint32>(500u, config.shadowDotTickMs);
-        uint32 tickDamage = ResolveShadowDotTickDamage(owner, caster, config);
+        uint32 durationMs = std::max<uint32>(1000u, config.bleedDurationMs);
+        Aura* visibleAura = ApplyBoneboundBleedVisibleAura(caster, target, durationMs);
+        if (!visibleAura)
+            return;
 
-        for (BoneboundShadowDotState& dot : gBoneboundShadowDots)
+        uint32 tickMs = std::max<uint32>(500u, config.bleedTickMs);
+        uint32 tickDamage = ResolveBoneboundBleedTickDamage(owner, caster, config);
+
+        for (BoneboundBleedState& bleed : gBoneboundBleeds)
         {
-            if (dot.casterGuid == caster->GetGUID() && dot.targetGuid == target->GetGUID())
+            if (bleed.casterGuid == caster->GetGUID() && bleed.targetGuid == target->GetGUID())
             {
-                dot.ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
-                dot.remainingMs = durationMs;
-                dot.tickMs = tickMs;
-                dot.tickTimerMs = tickMs;
-                dot.tickDamage = tickDamage;
+                bleed.ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+                bleed.remainingMs = durationMs;
+                bleed.tickMs = tickMs;
+                bleed.tickTimerMs = tickMs;
+                bleed.tickDamage = tickDamage;
                 return;
             }
         }
 
-        BoneboundShadowDotState dot;
-        dot.casterGuid = caster->GetGUID();
-        dot.targetGuid = target->GetGUID();
-        dot.ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
-        dot.remainingMs = durationMs;
-        dot.tickMs = tickMs;
-        dot.tickTimerMs = tickMs;
-        dot.tickDamage = tickDamage;
-        gBoneboundShadowDots.push_back(dot);
+        BoneboundBleedState bleed;
+        bleed.casterGuid = caster->GetGUID();
+        bleed.targetGuid = target->GetGUID();
+        bleed.ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+        bleed.remainingMs = durationMs;
+        bleed.tickMs = tickMs;
+        bleed.tickTimerMs = tickMs;
+        bleed.tickDamage = tickDamage;
+        gBoneboundBleeds.push_back(bleed);
     }
 
     uint32 CountActiveBoneboundAlphaEchoes(uint32 ownerGuid)
@@ -1066,18 +1122,14 @@ namespace
             return;
 
         uint32 petGuid = static_cast<uint32>(alphaPet->GetGUID().GetCounter());
-        uint32& cooldown = gBoneboundShadowDotCooldownByPet[petGuid];
-        cooldown = cooldown > diff ? cooldown - diff : 0u;
-
-        Unit* victim = alphaPet->GetVictim();
-        if (!victim || !victim->IsAlive())
-            return;
-
-        if (config.shadowDotEnabled && cooldown == 0)
+        if (!config.bleedEnabled)
         {
-            StartBoneboundShadowDot(owner, alphaPet, victim, config);
-            cooldown = std::max<uint32>(1000u, config.shadowDotCooldownMs);
+            gBoneboundBleedCooldownByPet.erase(petGuid);
+            return;
         }
+
+        uint32& cooldown = gBoneboundBleedCooldownByPet[petGuid];
+        cooldown = cooldown > diff ? cooldown - diff : 0u;
     }
 
     void RemoveBoneboundAlphaEchoes(Player* owner)
@@ -1099,30 +1151,30 @@ namespace
             it = gBoneboundAlphaEchoes.erase(it);
         }
 
-        gBoneboundShadowDots.erase(
+        gBoneboundBleeds.erase(
             std::remove_if(
-                gBoneboundShadowDots.begin(),
-                gBoneboundShadowDots.end(),
-                [ownerGuid](BoneboundShadowDotState const& dot) { return dot.ownerGuid == ownerGuid; }),
-            gBoneboundShadowDots.end());
+                gBoneboundBleeds.begin(),
+                gBoneboundBleeds.end(),
+                [ownerGuid](BoneboundBleedState const& bleed) { return bleed.ownerGuid == ownerGuid; }),
+            gBoneboundBleeds.end());
     }
 
-    void UpdateBoneboundShadowDots(uint32 diff)
+    void UpdateBoneboundBleeds(uint32 diff)
     {
-        for (auto it = gBoneboundShadowDots.begin(); it != gBoneboundShadowDots.end();)
+        for (auto it = gBoneboundBleeds.begin(); it != gBoneboundBleeds.end();)
         {
             Player* owner = ObjectAccessor::FindPlayerByLowGUID(it->ownerGuid);
             if (!owner)
             {
-                it = gBoneboundShadowDots.erase(it);
+                it = gBoneboundBleeds.erase(it);
                 continue;
             }
 
             Unit* caster = ObjectAccessor::GetUnit(*owner, it->casterGuid);
             Unit* target = ObjectAccessor::GetUnit(*owner, it->targetGuid);
-            if (!caster || !target || !target->IsAlive())
+            if (!caster || !target || !target->IsAlive() || !HasBoneboundBleedVisibleAura(caster, target))
             {
-                it = gBoneboundShadowDots.erase(it);
+                it = gBoneboundBleeds.erase(it);
                 continue;
             }
 
@@ -1143,7 +1195,7 @@ namespace
             }
             else
             {
-                it = gBoneboundShadowDots.erase(it);
+                it = gBoneboundBleeds.erase(it);
             }
         }
     }
@@ -1630,7 +1682,7 @@ namespace WmSpells
 
     void UpdateTrackedCompanions(uint32 diff)
     {
-        UpdateBoneboundShadowDots(diff);
+        UpdateBoneboundBleeds(diff);
         UpdateBoneboundAlphaEchoes(diff);
         UpdateNightWatchersLensMarks(diff);
 
@@ -1733,7 +1785,18 @@ namespace WmSpells
                 return;
 
             std::optional<BoneboundBehaviorConfig> runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
-            if (!runtimeConfig.has_value() || !runtimeConfig->alphaEchoEnabled)
+            if (!runtimeConfig.has_value())
+                return;
+
+            uint32 petGuid = static_cast<uint32>(alphaPet->GetGUID().GetCounter());
+            uint32& bleedCooldown = gBoneboundBleedCooldownByPet[petGuid];
+            if (runtimeConfig->bleedEnabled && bleedCooldown == 0)
+            {
+                StartBoneboundAlphaBleed(owner, alphaPet, victim, *runtimeConfig);
+                bleedCooldown = std::max<uint32>(1000u, runtimeConfig->bleedCooldownMs);
+            }
+
+            if (!runtimeConfig->alphaEchoEnabled)
                 return;
 
             float procChance = std::clamp(runtimeConfig->alphaEchoProcChancePct, 0.0f, 100.0f);

@@ -2,7 +2,8 @@ param(
     [string]$WorkspaceRoot = "D:\WOW\WM_BridgeLab",
     [string]$Configuration = "RelWithDebInfo",
     [int]$GracefulWaitSeconds = 20,
-    [int]$ForceAfterSeconds = 5
+    [int]$ForceAfterSeconds = 5,
+    [string]$WmSpellsPlayerGuidAllowList = "5406"
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,8 +82,10 @@ foreach ($required in @($buildExe, $runExe, $spellsConfig)) {
     }
 }
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.Enable" -Value "1"
+Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """$WmSpellsPlayerGuidAllowList"""
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.Enable" -Value "1"
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.ShellSpellIds" -Value '"940000,940001"'
+Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.CreatureEntry" -Value "920100"
 Write-Host "bridge_lab_shell_module=mod-wm-spells shell_spell_ids=940000,940001"
 
 $existing = Get-LabWorldProcess -ExecutablePath $runExe

@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-17
+Last verified: 2026-04-24
 Verified by: Codex
 Doc type: reference
 
@@ -102,6 +102,23 @@ That keeps the first item slice practical and much safer than raw freeform item 
 ---
 
 ## New commands
+
+### Content playcycle wrapper
+
+The fastest supported item-effect iteration lane is now:
+
+```bash
+python -m wm.content.playcycle item-effect \
+  --scenario-json control/examples/content_playcycles/night_watchers_lens_item_effect.json \
+  --mode dry-run \
+  --summary
+```
+
+Supported modes are `dry-run`, `apply`, `verify`, `promote-quest`, and `rollback`.
+The v1 scenario contract is `wm.content_playcycle.item_effect.v1`; it composes the existing managed item publisher, runtime-sync wrapper, native `player_add_item`, fresh reactive bounty slot allocation, and item rollback.
+It does not accept freeform SQL, GM command generation fields, shell commands, or LLM mutation fields.
+
+`WORKING`: live BridgeLab proof passed on `127.0.0.1:33307` / player `5406` on 2026-04-24. The proof ran dry-run, apply, verify, visible Lens aura/debuff checks, fresh quest promotion into `910075`, reward-panel visibility proof, rollback from snapshot `110`, and optional native `player_remove_item` cleanup request `142`.
 
 ### Publish planning / apply
 

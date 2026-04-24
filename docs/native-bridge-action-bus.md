@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-17
+Last verified: 2026-04-24
 Verified by: Codex
 Doc type: reference
 
@@ -48,6 +48,25 @@ Implemented native actions in the first safe slice:
   - `creature_set_scale`
   - repo tests and BridgeLab native build are `WORKING`
   - live scene proof through `arcane_marker_demo` reached proposals `46-51` and native requests `84-89` `done`
+- Cleanup primitive is `WORKING` at repo/static-test level and `PARTIAL` for live proof:
+  - `player_remove_item`
+  - policy-disabled by default
+  - scoped to the online player
+  - requires `item_id` and positive `count`
+  - rejects non-`wm_reserved_slot` item entries unless `admin_override` is present
+- Existing-item random enchant primitive is `PARTIAL` and no longer the player-facing kill reward path:
+  - `player_random_enchant_item`
+  - repo/static tests, payload contract coverage, BridgeLab native compile, runtime deploy/restart, and SQL policy seed are `WORKING`
+  - policy-disabled by default in seed SQL; keep it disabled outside explicit admin/native tests
+  - scoped to the online player and owned weapon/armor items
+  - targets by `item_guid_low`, `equipment_slot`, or `selector=random_equipped`
+  - selects enchant IDs from `item_enchantment_random_tiers`
+  - defaults to a guaranteed first enchant plus 15% chance to preserve existing enchant slots
+- Random enchant consumable item path is `PARTIAL`:
+  - item `910007` (`Unstable Enchanting Vellum`)
+  - native `ItemScript` opens a menu of eligible equipped items and calls the same random-enchant helper
+  - selected scoped kill rolls now submit `player_add_item` for the consumable instead of mutating gear directly
+  - repo SQL/script/tests, BridgeLab native build, and lab SQL apply are `WORKING`; deploy/restart/use proof is pending
 
 Everything risky should be proven in `D:\WOW\WM_BridgeLab` before promotion.
 
@@ -324,8 +343,9 @@ Current control-native convergence status:
   - `field_medic_pulse` completed restore -> aura -> announce
   - `summon_marker` completed spawn -> say -> emote -> despawn with spawn result `object_id=4`
   - `bonebound_battle_cry` completed spawn -> say -> emote -> buff
-  - direct control applies proved `player_remove_aura`, `player_add_money`, `player_add_reputation`, and `player_add_item`
+  - direct control applies proved `player_remove_aura`, `player_add_money`, `player_add_reputation`, and `player_add_item`; `player_add_item` now explicitly flushes inventory through `SaveInventoryAndGoldToDB` after `StoreNewItem` / `SendNewItem`, with repo tests and BridgeLab build/deploy proof after request `144` exposed DB flush lag.
 - `WORKING`: repo tests, BridgeLab native build, and live control/audit proof cover Primitive Pack 2 contracts/guards for `player_cast_spell`, `player_set_display_id`, `creature_cast_spell`, `creature_set_display_id`, and `creature_set_scale`; `arcane_marker_demo` completed through native requests `84-89` `done`
+- `WORKING`: repo/static tests and BridgeLab live proof cover `player_remove_item`, disabled policy seeding, scoped player resolution, reserved-item guard, positive-count validation, `DestroyItemCount`, and explicit `SaveInventoryAndGoldToDB`; live request `142` removed managed item `910006` from player `5406`, and follow-up request `143` returned `insufficient_item_count` with `available_count=0`.
 - `WORKING`: fresh bounty `quest_grant` rerun on 2026-04-16 reached event `1599`, proposal `43`, and native `quest_add` request `74` `done`; `wm.control.audit` linked the source event to the native request/result, `wm.executor` recorded `quest_grant_issued` event `1601`, native bridge event `26505` recorded `quest/granted` for quest `910020`, and GM `.quest status 910020 Jecia` reported `Incomplete`
 
 ## Broad Action Vocabulary

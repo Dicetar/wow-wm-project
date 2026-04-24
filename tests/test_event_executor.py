@@ -442,16 +442,81 @@ class ReactionExecutorTests(unittest.TestCase):
                 )
 
             executor.execute(plan=plan_for("native_bridge:27665"), mode="apply")
+            executor.execute(plan=plan_for("native_bridge:27665"), mode="apply")
             executor.execute(plan=plan_for("native_bridge:27670"), mode="apply")
         finally:
             if config_path.exists():
                 config_path.unlink()
 
         keys = [submission["idempotency_key"] for submission in native_actions.submissions]
-        self.assertEqual(len(keys), 2)
-        self.assertNotEqual(keys[0], keys[1])
+        self.assertEqual(len(keys), 3)
+        self.assertEqual(keys[0], keys[1])
+        self.assertNotEqual(keys[1], keys[2])
         self.assertIn("native_bridge:27665", keys[0])
-        self.assertIn("native_bridge:27670", keys[1])
+        self.assertIn("native_bridge:27670", keys[2])
+
+    def test_native_quest_grant_idempotency_falls_back_to_trigger_event_id(self) -> None:
+        store = FakeExecutionStore()
+        runtime_manager = FakeQuestRuntimeManager()
+        native_actions = FakeNativeBridgeActions()
+        config_path = Path("artifacts") / "test-bridge-config-trigger-id.conf"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "[worldserver]",
+                        "WmBridge.Enable = 1",
+                        "WmBridge.ActionQueue.Enable = 1",
+                        "WmBridge.DbControl.Enable = 1",
+                        'WmBridge.PlayerGuidAllowList = ""',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            executor = ReactionExecutor(
+                client=_DummyClient(),
+                settings=Settings(wm_bridge_config_path=str(config_path), quest_grant_transport="auto"),
+                store=store,
+                reactive_store=FakeReactiveStore(),  # type: ignore[arg-type]
+                reactive_runtime=runtime_manager,  # type: ignore[arg-type]
+                native_bridge_actions=native_actions,  # type: ignore[arg-type]
+            )
+
+            def plan_for(trigger_event_id: int) -> ReactionPlan:
+                return ReactionPlan(
+                    plan_key="reactive_bounty:auto:zone:11:subject:1069:5406:creature:1069",
+                    opportunity_type="reactive_bounty_grant",
+                    rule_type="reactive_bounty:auto:zone:11:subject:1069",
+                    player_guid=5406,
+                    subject=SubjectRef(subject_type="creature", subject_entry=1069),
+                    metadata={"opportunity_metadata": {"trigger_event_id": trigger_event_id}},
+                    actions=[
+                        PlannedAction(
+                            kind="quest_grant",
+                            payload={
+                                "quest_id": 910047,
+                                "player_guid": 5406,
+                                "rule_key": "reactive_bounty:auto:zone:11:subject:1069",
+                            },
+                        )
+                    ],
+                )
+
+            executor.execute(plan=plan_for(27671), mode="apply")
+            executor.execute(plan=plan_for(27671), mode="apply")
+            executor.execute(plan=plan_for(27675), mode="apply")
+        finally:
+            if config_path.exists():
+                config_path.unlink()
+
+        keys = [submission["idempotency_key"] for submission in native_actions.submissions]
+        self.assertEqual(len(keys), 3)
+        self.assertEqual(keys[0], keys[1])
+        self.assertNotEqual(keys[1], keys[2])
+        self.assertIn("trigger_event:27671", keys[0])
+        self.assertIn("trigger_event:27675", keys[2])
 
     def test_structured_ref_payloads_are_accepted(self) -> None:
         store = FakeExecutionStore()

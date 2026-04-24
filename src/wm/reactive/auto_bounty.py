@@ -108,11 +108,17 @@ class ReactiveAutoBountyManager:
         if event.player_guid is None or event.subject_type != "creature" or event.subject_entry is None:
             return None
 
+        player_guid = int(event.player_guid)
+        if (
+            bool(getattr(self.settings, "reactive_auto_bounty_single_open_per_player", True))
+            and self._has_open_auto_bounty_for_player(player_guid=player_guid)
+        ):
+            return None
+
         plan = self._resolve_plan_for_event(event)
         if plan is None:
             return None
 
-        player_guid = int(event.player_guid)
         existing_rule = self.reactive_store.get_rule_by_key(rule_key=plan.rule_key)
         if existing_rule is not None and existing_rule.player_guid_scope not in (None, player_guid):
             return None
@@ -156,6 +162,75 @@ class ReactiveAutoBountyManager:
             except_rule_key=rule.rule_key,
         )
         return rule
+
+    def _has_open_auto_bounty_for_player(self, *, player_guid: int) -> bool:
+        for quest_id in self._player_auto_bounty_quest_ids(player_guid=player_guid):
+            character_state = self.reactive_store.fetch_character_quest_status(
+                player_guid=int(player_guid),
+                quest_id=int(quest_id),
+            )
+            if character_state in {"incomplete", "complete"}:
+                return True
+            event_state = self._latest_quest_event_state(player_guid=player_guid, quest_id=int(quest_id))
+            if event_state in {"incomplete", "complete"}:
+                return True
+        return False
+
+    def _player_auto_bounty_quest_ids(self, *, player_guid: int) -> list[int]:
+        rows = self.client.query(
+            host=self.settings.world_db_host,
+            port=self.settings.world_db_port,
+            user=self.settings.world_db_user,
+            password=self.settings.world_db_password,
+            database=self.settings.world_db_name,
+            sql=(
+                "SELECT QuestID FROM wm_reactive_quest_rule "
+                f"WHERE PlayerGUIDScope = {int(player_guid)} "
+                "AND RuleKey LIKE 'reactive_bounty:auto:%' "
+                "ORDER BY UpdatedAt DESC, QuestID DESC "
+                "LIMIT 50"
+            ),
+        )
+        result: list[int] = []
+        for row in rows:
+            raw_value = row.get("QuestID")
+            if raw_value in (None, ""):
+                continue
+            result.append(int(raw_value))
+        return result
+
+    def _latest_quest_event_state(self, *, player_guid: int, quest_id: int) -> str | None:
+        rows = self.client.query(
+            host=self.settings.world_db_host,
+            port=self.settings.world_db_port,
+            user=self.settings.world_db_user,
+            password=self.settings.world_db_password,
+            database=self.settings.world_db_name,
+            sql=(
+                "SELECT EventType FROM wm_event_log "
+                "WHERE EventClass = 'observed' "
+                f"AND PlayerGUID = {int(player_guid)} "
+                "AND EventType IN ('quest_accept', 'quest_granted', 'quest_completed', 'quest_rewarded') "
+                "AND ("
+                f"SubjectEntry = {int(quest_id)} "
+                f"OR JSON_UNQUOTE(JSON_EXTRACT(MetadataJSON, '$.quest_id')) = '{int(quest_id)}' "
+                f"OR JSON_UNQUOTE(JSON_EXTRACT(MetadataJSON, '$.object_entry')) = '{int(quest_id)}' "
+                f"OR JSON_UNQUOTE(JSON_EXTRACT(MetadataJSON, '$.payload.quest_id')) = '{int(quest_id)}' "
+                f"OR JSON_UNQUOTE(JSON_EXTRACT(MetadataJSON, '$.payload.object_entry')) = '{int(quest_id)}'"
+                ") "
+                "ORDER BY EventID DESC LIMIT 1"
+            ),
+        )
+        if not rows:
+            return None
+        event_type = str(rows[0].get("EventType") or "")
+        if event_type in {"quest_accept", "quest_granted"}:
+            return "incomplete"
+        if event_type == "quest_completed":
+            return "complete"
+        if event_type == "quest_rewarded":
+            return "rewarded"
+        return None
 
     def _resolve_plan_for_event(self, event: WMEvent) -> ResolvedAutoBountyPlan | None:
         target = self._target_for_event(event)

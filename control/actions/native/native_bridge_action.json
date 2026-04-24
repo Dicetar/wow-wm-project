@@ -51,6 +51,16 @@
       "optional": ["count", "soulbound"],
       "notes": "Stores the item in bags for the scoped online player and can mark the created stack soulbound."
     },
+    "player_remove_item": {
+      "required": ["item_id", "count"],
+      "optional": ["admin_override"],
+      "notes": "Removes a positive count of a WM-managed/reserved item from the scoped online player's inventory. Non-reserved item entries require explicit admin_override."
+    },
+    "player_random_enchant_item": {
+      "required_any": ["item_guid_low", "equipment_slot", "selector"],
+      "optional": ["max_enchants", "guarantee_first", "preserve_existing_chance_pct", "enchant_chance_1", "enchant_chance_2", "enchant_chance_3"],
+      "notes": "Applies random-enchant table effects to one existing scoped-player weapon/armor item. selector=random_equipped picks one eligible equipped item. Existing enchant slots have a default 15% preserve chance instead of being overwritten."
+    },
     "player_add_money": {
       "required": ["copper"],
       "notes": "Adds a positive copper amount to the scoped online player."

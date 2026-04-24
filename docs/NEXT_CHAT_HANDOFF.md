@@ -36,18 +36,20 @@ The repo is an external-first World Master platform for AzerothCore:
 - Control lane: `wm.control.new`, `wm.control.validate`, `wm.control.apply`, `wm.control.audit`, stale-event policy, idempotency, wrong-player rejection, and native request audit extraction.
 - Native bridge: typed action queue, player scope, policy rows, primitive action packs, and BridgeLab control/audit proof for the first scene primitives.
 - Reactive bounty templates: fast operator install path through bundled templates and reserved quest slots.
-- Dynamic auto-bounty: opt-in 4 consecutive same-entry kills within 300 seconds, zone-based turn-in NPC selection, and random suitable equipment reward selection.
+- Dynamic auto-bounty: opt-in 4 consecutive same-entry kills within 300 seconds, zone-based turn-in NPC selection, random suitable equipment reward selection, player-scoped native bridge cursor/evaluation, one-event BridgeLab apply batches, a one-hour dynamic-rule freshness gate, and one unresolved dynamic auto-bounty per player by default.
 - Bounty publishing: repeatable quest semantics through `quest_template_addon.SpecialFlags |= 1`, level-scaled money, XP difficulty, item rewards, spell rewards, and reputation rewards where schema supports them.
 - Custom ID governance: exact claims live in `data/specs/custom_id_registry.json`; docs mirror that ledger.
 - Spell shell path: named shell/client patch/server DBC pipeline is working at repo/artifact level, with `940001` as the Bonebound Alpha lane.
-- Bonebound Alpha: supported summon lane is single Alpha on shell `940001`, creature entry `920100`, echo entry `920101`; Omega is retired.
+- Bonebound Alpha: supported summon lane is single Alpha on shell `940001`, creature entry `920100`, echo entry `920101`; Omega is retired. Visible bleed fix is repo-patched, BridgeLab-compiled with `Build-BridgeLabIncremental.ps1 -NoStageRuntime`, SQL-migrated, and deployed on worldserver pid `8312`, but live `PARTIAL` until in-game proof of target aura `772` plus physical ticks.
 - Persistent combat proficiencies: Shield, Leather, and Dual Wield are explicit-GUID grants backed by DBC validity, not login hooks or class overrides.
+- BridgeLab solo dungeon tuning: active config files are staged for solo 5-player dungeons at 75% original 5-player HP, 50% damage, 75% XP, and 2x dungeon loot. Worldserver restarted to pid `8312`, so live dungeon behavior is still `PARTIAL` only until in-game check.
 
 ## Current Partial or Open Areas
 
 - Phase 1 native bounty parity remains `PARTIAL` until a full live trigger -> grant -> complete -> reward -> suppress -> cooldown -> regrant loop is rerun on current code.
-- Dynamic auto-bounty live proof is still `PARTIAL` after the latest idempotency fix until the user kills another same-entry streak and confirms a fresh quest appears.
-- Bonebound Alpha echo mount/dismount restore is repo/native-built but still needs live proof.
+- Dynamic auto-bounty live proof is `WORKING` for the trigger/grant leg and still `PARTIAL` for the full playcycle. On 2026-04-24, Jecia's `Mottled Scytheclaw` (`1022`) streak created quest `910076`, native `quest_add` request `147` reached `done`, and native bridge emitted `quest/granted` event `28031`; complete -> reward -> suppress -> cooldown -> regrant still needs proof.
+- Random enchant consumable lane is repo `WORKING` / live `PARTIAL`: native action `player_random_enchant_item` remains policy-disabled by default, but the player-facing path is item `910007` (`Unstable Enchanting Vellum`). `python -m wm.reactive.random_enchant --player-guid 5406 --chance-pct 2.5 --mode apply --summary` now deterministically rolls recent kill events and submits selected events as `player_add_item` grants for the consumable. The watcher path is opt-in through `WM_RANDOM_ENCHANT_ON_KILL_ENABLED=1` or `Start-BridgeLabNativeWatch.ps1 -EnableRandomEnchantOnKill`; it requires player scope and does not run globally. BridgeLab native build and SQL apply are done; next proof needs deploy/restart when Jecia can relog, consumable grant, in-game right-click menu, enchant application, and one selected kill-roll proof.
+- Bonebound Alpha visible bleed and echo mount/dismount restore still need live proof after the next native build/restart.
 - Bonebound Alpha Demonology passive compatibility is not globally proven.
 - Combat proficiency playerbot negative proof is still open.
 - Client-visible spell shell polish remains open for animation/action-bar/relog lifecycle.
@@ -55,7 +57,23 @@ The repo is an external-first World Master platform for AzerothCore:
 
 ## Immediate Bug Context
 
-The latest live failure was not missed perception.
+Latest live issue: Jecia killed `Mottled Scytheclaw` (`1022`) and initially got no quest. Native bridge perception was `WORKING`; the watcher had died and the event runner was projecting/evaluating unscoped global backlog. Fixes now in repo:
+
+- native bridge cursor key is per-player: `last_seen:player:<guid>`, with a legacy `last_seen` fallback.
+- `execute_event_spine()` passes `player_guid` into unprojected/unevaluated event reads, so a scoped run does not evaluate other characters' backlog.
+- BridgeLab auto-bounty watcher starts with `--batch-size 1` to avoid multiple apply plans in one iteration.
+- dynamic auto-bounty creation ignores stale queued kills by default via `WM_REACTIVE_AUTO_BOUNTY_MAX_EVENT_AGE_SECONDS=3600`.
+- dynamic auto-bounty creation is serial per player by default via `WM_REACTIVE_AUTO_BOUNTY_SINGLE_OPEN_PER_PLAYER=1`; this prevents fast pulls from stacking several fresh WM bounty quests before the player can complete or clear the first one.
+- repo scripts no longer write global `AiPlayerbot.EnableBroadcasts = 0`; that is a temporary runtime safety switch only, not a WM deployment behavior.
+
+Live recovery was applied:
+
+- stale April 17 Jecia backlog was flushed without creating plans.
+- quest `910076` (`Bounty: Mottled Scytheclaw`) was granted by native request `147`.
+- after the one-open dynamic-bounty gate landed, the watcher was restarted on pid `30580`; recheck with the status script instead of assuming it is still alive.
+- read-only DB check after restart showed old dynamic auto-bounty quests `910090`, `910097`, and `910098` still active on Jecia with `character_queststatus.status=3`. With `WM_REACTIVE_AUTO_BOUNTY_SINGLE_OPEN_PER_PLAYER=1`, these intentionally block new dynamic auto-bounty creation until they are completed, abandoned, or cleaned through a typed quest-cleanup path.
+
+Previous Whelp failure context:
 
 The user killed "Crimson Whelps", but the live event stream showed exact entries:
 
@@ -108,7 +126,7 @@ python -m wm.reactive.auto_bounty --player-guid 5406 --summary
 Start clean dynamic auto-bounty lane:
 
 ```powershell
-.\scripts\bridge_lab\Start-BridgeLabAutoBounty.ps1 -PlayerGuid 5406 -Mode apply
+.\scripts\bridge_lab\Start-BridgeLabAutoBounty.ps1 -PlayerGuid 5406 -Mode apply -BatchSize 1 -ReactiveAutoBountyMaxEventAgeSeconds 3600
 ```
 
 Check watcher:
@@ -120,13 +138,13 @@ Check watcher:
 Focused tests for the latest bounty/watch path:
 
 ```powershell
-python -m unittest tests.test_event_executor tests.test_event_rules tests.test_reactive_auto_bounty tests.test_bounty_reward_picker
+python -m pytest tests/test_event_executor.py tests/test_event_rules.py tests/test_reactive_auto_bounty.py tests/test_bounty_reward_picker.py -q
 ```
 
 Full tests:
 
 ```powershell
-python -m unittest discover -s tests
+python -m pytest -q
 ```
 
 ## Hard Rules
@@ -140,12 +158,13 @@ python -m unittest discover -s tests
 - Do not mutate accepted/rewarded quest IDs for visible reward iteration; allocate a fresh reserved quest slot.
 - Do not mix stale `reactive_bounty:template:*` rows with the dynamic auto-bounty lane.
 - Dynamic auto-bounty streaks are exact `subject_entry`, not display name, creature family, or dungeon pull.
+- Do not make WM BridgeLab scripts globally disable playerbot broadcasts as a permanent fix. Scope WM event capture through WM bridge allowlists/player scope, and fix playerbot broadcast crashes in the playerbot path.
 - Hidden server effects need player-facing indication through an aura, buff, debuff, message, or tooltip, and hidden logic must be gated by the visible state/duration.
 - After three failed attempts on the same approach, stop and document the structural reason before changing code again.
 
 ## Next Best Step
 
-Restart the clean dynamic auto-bounty watcher, have Jecia kill 4 of the same exact creature entry, then verify:
+Next best step is to clear or complete Jecia's currently active dynamic auto-bounty quests (`910090`, `910097`, `910098`), then run one clean new streak to prove the serial dynamic-bounty gate. Verify:
 
 - `wm.events.inspect` shows a fresh `kill_burst_detected`
 - `wm_reaction_log` has a fresh applied reaction
@@ -153,5 +172,6 @@ Restart the clean dynamic auto-bounty watcher, have Jecia kill 4 of the same exa
 - native bridge emits `quest/granted`
 - the quest appears in the client
 - turn-in works and reward state emits
+- immediate extra streaks do not create a second dynamic bounty while the first one is still unresolved
 - immediate retrigger is suppressed
 - cooldown reopens a new fresh request
