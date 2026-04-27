@@ -7,6 +7,25 @@ from wm.events.watch import _has_activity
 from wm.events.watch import main
 
 
+class _ArmBacklogStore:
+    def __init__(self) -> None:
+        self.max_calls: list[int | None] = []
+        self.mark_calls: list[tuple[int | None, int | None]] = []
+
+    def max_observed_event_id(self, *, player_guid: int | None = None) -> int:
+        self.max_calls.append(player_guid)
+        return 42
+
+    def mark_unevaluated_observed_events_evaluated(
+        self,
+        *,
+        player_guid: int | None = None,
+        max_event_id: int | None = None,
+    ) -> int:
+        self.mark_calls.append((player_guid, max_event_id))
+        return 3
+
+
 class EventWatchTests(unittest.TestCase):
     def test_has_activity_detects_nonzero_counts(self) -> None:
         self.assertTrue(_has_activity({"execution_count": 1}))
@@ -196,6 +215,76 @@ class EventWatchTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         arm_mock.assert_called_once()
+
+    def test_watch_can_mark_existing_backlog_evaluated_when_arming(self) -> None:
+        payload = {
+            "adapter": "native_bridge",
+            "mode": "apply",
+            "player_guid_filter": 5406,
+            "questgiver_entry": None,
+            "polled_count": 0,
+            "recorded_count": 0,
+            "runtime_state_event_count": 0,
+            "runtime_state_recorded_count": 0,
+            "projected_count": 0,
+            "derived_event_count": 0,
+            "opportunity_count": 0,
+            "plan_count": 0,
+            "execution_count": 0,
+            "executions": [],
+        }
+        store = _ArmBacklogStore()
+
+        with (
+            patch("wm.events.watch.EventStore", return_value=store),
+            patch("wm.events.watch.MysqlCliClient"),
+            patch("wm.events.watch.arm_native_bridge_cursor") as arm_mock,
+            patch("wm.events.watch.execute_event_spine", return_value=payload),
+            patch("wm.events.watch._emit_output"),
+        ):
+            arm_mock.return_value = type(
+                "ArmResult",
+                (),
+                {"table_exists": True, "player_guid": 5406, "previous_last_seen": 12, "armed_last_seen": 24},
+            )()
+            result = main(
+                [
+                    "--adapter",
+                    "native_bridge",
+                    "--mode",
+                    "apply",
+                    "--player-guid",
+                    "5406",
+                    "--confirm-live-apply",
+                    "--max-iterations",
+                    "1",
+                    "--arm-from-end",
+                    "--mark-existing-evaluated-on-arm",
+                ]
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(store.max_calls, [5406])
+        self.assertEqual(store.mark_calls, [(5406, 42)])
+
+    def test_watch_rejects_backlog_mark_without_arm_from_end(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            main(
+                [
+                    "--adapter",
+                    "native_bridge",
+                    "--mode",
+                    "apply",
+                    "--player-guid",
+                    "5406",
+                    "--confirm-live-apply",
+                    "--max-iterations",
+                    "1",
+                    "--mark-existing-evaluated-on-arm",
+                ]
+            )
+
+        self.assertIn("--arm-from-end", str(ctx.exception))
 
     def test_watch_prints_when_activity_present(self) -> None:
         payload = {

@@ -1,0 +1,86 @@
+{
+  "schema_version": "wm.character_journey.seed.v1",
+  "player_guid": 5406,
+  "profile": {
+    "character_name": "Jecia",
+    "wm_persona": "world_master_candidate",
+    "tone": "direct",
+    "preferred_themes": [
+      "visible combat powers",
+      "exclusive warlock experiments",
+      "strange field tools",
+      "companion-driven fights"
+    ],
+    "avoided_themes": [
+      "global bot rewards",
+      "invisible stat changes"
+    ]
+  },
+  "arc_states": [
+    {
+      "arc_key": "jecia_world_master_awakened",
+      "stage_key": "field_power_trials",
+      "status": "active",
+      "branch_key": "wild_powers_first",
+      "summary": "Jecia is becoming the first proof character for per-character WM progression: managed rewards, visible powers, companion behavior, and live scene tools."
+    }
+  ],
+  "unlocks": [
+    {
+      "unlock_kind": "shell_spell",
+      "unlock_id": 940001,
+      "source_arc_key": "jecia_world_master_awakened",
+      "grant_method": "shell_grant",
+      "bot_eligible": false
+    },
+    {
+      "unlock_kind": "combat_proficiency",
+      "unlock_id": 118,
+      "source_arc_key": "jecia_world_master_awakened",
+      "grant_method": "control",
+      "bot_eligible": false
+    }
+  ],
+  "reward_instances": [
+    {
+      "reward_kind": "item",
+      "template_id": 910006,
+      "source_arc_key": "jecia_world_master_awakened",
+      "source_quest_id": 910075,
+      "is_equipped_gate": true
+    }
+  ],
+  "conversation_steering": [
+    {
+      "steering_key": "wild_powers_visible_first",
+      "steering_kind": "player_preference",
+      "body": "Prioritize visible, character-exclusive powers and field tools over generic bounty repetition.",
+      "priority": 50,
+      "source": "operator",
+      "is_active": true,
+      "metadata": {
+        "roadmap_track": "wild_powers"
+      }
+    },
+    {
+      "steering_key": "no_invisible_mechanics",
+      "steering_kind": "safety_preference",
+      "body": "Any hidden server-side effect must be paired with a player-visible aura, debuff, message, tooltip, item, or scene state.",
+      "priority": 40,
+      "source": "operator",
+      "is_active": true,
+      "metadata": {
+        "roadmap_track": "personal_journey_spine"
+      }
+    }
+  ],
+  "prompt_queue": [
+    {
+      "prompt_kind": "roadmap_branch_choice",
+      "body": "Choose Jecia's next WM arc pressure: expand Bonebound companion behavior, unlock an item-granted alternate ability, or stage a live field scene."
+    }
+  ],
+  "metadata": {
+    "purpose": "Personal Journey Spine V1 seed for the default BridgeLab proof character."
+  }
+}

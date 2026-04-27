@@ -56,16 +56,25 @@ class Settings:
     event_default_questgiver_entry: int | None = None
     event_followup_kill_count: int = 6
     event_default_reward_money_copper: int = 0
+    event_area_pressure_scene_enabled: bool = False
+    event_area_pressure_scene_restore_health_percent: int = 20
+    event_area_pressure_scene_restore_power_percent: int = 20
+    event_area_pressure_scene_aura_spell_id: int = 687
+    event_area_pressure_scene_message: str = "WM senses rising pressure here. Hold the line."
     reactive_auto_bounty_enabled: bool = False
     reactive_auto_bounty_max_event_age_seconds: int = 3600
     reactive_auto_bounty_single_open_per_player: bool = True
     random_enchant_on_kill_enabled: bool = False
-    random_enchant_on_kill_chance_pct: float = 2.5
+    random_enchant_on_kill_chance_pct: float = 7.0
     random_enchant_preserve_existing_chance_pct: float = 15.0
     random_enchant_selector: str = "random_equipped"
     random_enchant_max_enchants: int = 3
     random_enchant_consumable_item_entry: int = 910007
     random_enchant_consumable_count: int = 1
+    random_enchant_focused_on_kill_enabled: bool = True
+    random_enchant_focused_on_kill_chance_pct: float = 3.5
+    random_enchant_focused_consumable_item_entry: int = 910008
+    random_enchant_focused_consumable_count: int = 1
     addon_log_path: str = _default_bootstrap_path("run", "logs", "WMOps.log")
     addon_log_batch_size: int = 200
     addon_channel_name: str = "WMBridgePrivate"
@@ -113,6 +122,19 @@ class Settings:
             ),
             event_followup_kill_count=int(os.getenv("WM_EVENT_FOLLOWUP_KILL_COUNT", "6")),
             event_default_reward_money_copper=int(os.getenv("WM_EVENT_DEFAULT_REWARD_MONEY_COPPER", "0")),
+            event_area_pressure_scene_enabled=os.getenv("WM_EVENT_AREA_PRESSURE_SCENE_ENABLED", "0").strip().lower()
+            in {"1", "true", "yes", "on"},
+            event_area_pressure_scene_restore_health_percent=int(
+                os.getenv("WM_EVENT_AREA_PRESSURE_SCENE_RESTORE_HEALTH_PERCENT", "20")
+            ),
+            event_area_pressure_scene_restore_power_percent=int(
+                os.getenv("WM_EVENT_AREA_PRESSURE_SCENE_RESTORE_POWER_PERCENT", "20")
+            ),
+            event_area_pressure_scene_aura_spell_id=int(os.getenv("WM_EVENT_AREA_PRESSURE_SCENE_AURA_SPELL_ID", "687")),
+            event_area_pressure_scene_message=os.getenv(
+                "WM_EVENT_AREA_PRESSURE_SCENE_MESSAGE",
+                "WM senses rising pressure here. Hold the line.",
+            ),
             reactive_auto_bounty_enabled=os.getenv("WM_REACTIVE_AUTO_BOUNTY_ENABLED", "0").strip().lower()
             in {"1", "true", "yes", "on"},
             reactive_auto_bounty_max_event_age_seconds=int(
@@ -125,7 +147,7 @@ class Settings:
             in {"1", "true", "yes", "on"},
             random_enchant_on_kill_enabled=os.getenv("WM_RANDOM_ENCHANT_ON_KILL_ENABLED", "0").strip().lower()
             in {"1", "true", "yes", "on"},
-            random_enchant_on_kill_chance_pct=float(os.getenv("WM_RANDOM_ENCHANT_ON_KILL_CHANCE_PCT", "2.5")),
+            random_enchant_on_kill_chance_pct=float(os.getenv("WM_RANDOM_ENCHANT_ON_KILL_CHANCE_PCT", "7.0")),
             random_enchant_preserve_existing_chance_pct=float(
                 os.getenv("WM_RANDOM_ENCHANT_PRESERVE_EXISTING_CHANCE_PCT", "15.0")
             ),
@@ -135,6 +157,20 @@ class Settings:
                 os.getenv("WM_RANDOM_ENCHANT_CONSUMABLE_ITEM_ENTRY", "910007")
             ),
             random_enchant_consumable_count=int(os.getenv("WM_RANDOM_ENCHANT_CONSUMABLE_COUNT", "1")),
+            random_enchant_focused_on_kill_enabled=os.getenv(
+                "WM_RANDOM_ENCHANT_FOCUSED_ON_KILL_ENABLED",
+                "1",
+            ).strip().lower()
+            in {"1", "true", "yes", "on"},
+            random_enchant_focused_on_kill_chance_pct=float(
+                os.getenv("WM_RANDOM_ENCHANT_FOCUSED_ON_KILL_CHANCE_PCT", "3.5")
+            ),
+            random_enchant_focused_consumable_item_entry=int(
+                os.getenv("WM_RANDOM_ENCHANT_FOCUSED_CONSUMABLE_ITEM_ENTRY", "910008")
+            ),
+            random_enchant_focused_consumable_count=int(
+                os.getenv("WM_RANDOM_ENCHANT_FOCUSED_CONSUMABLE_COUNT", "1")
+            ),
             addon_log_path=os.getenv(
                 "WM_ADDON_LOG_PATH",
                 _default_bootstrap_path("run", "logs", "WMOps.log"),

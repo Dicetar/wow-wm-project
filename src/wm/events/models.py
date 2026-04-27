@@ -16,6 +16,7 @@ OBSERVED_EVENT_TYPES = {
     "quest_granted",
     "quest_completed",
     "quest_rewarded",
+    "quest_removed",
     "loot_item",
     "item_use",
     "spell_cast",

@@ -213,6 +213,15 @@ class _FakeSlotAllocator:
         return type("Slot", (), {"reserved_id": 910321})()
 
 
+class _ExhaustedSlotAllocator:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def allocate_next_free_slot(self, **kwargs):
+        self.calls.append(kwargs)
+        return None
+
+
 class _FakeTurnInSelector:
     def __init__(self, candidate: ZoneQuestTurnInCandidate | None) -> None:
         self.candidate = candidate
@@ -426,8 +435,9 @@ class ReactiveAutoBountyTests(unittest.TestCase):
                 spawn_count=1,
             )
         )
+        client = _AutoBountyGateClient(quest_ids=[910090], latest_event_type="quest_granted")
         manager = ReactiveAutoBountyManager(
-            client=_AutoBountyGateClient(quest_ids=[910090], latest_event_type="quest_granted"),  # type: ignore[arg-type]
+            client=client,  # type: ignore[arg-type]
             settings=Settings(),
             reactive_store=reactive_store,  # type: ignore[arg-type]
             installer=installer,  # type: ignore[arg-type]
@@ -453,6 +463,100 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         self.assertIsNone(rule)
         self.assertEqual(installer.calls, [])
         self.assertEqual(slot_allocator.calls, [])
+        self.assertTrue(any("ORDER BY IsActive DESC, UpdatedAt DESC, QuestID DESC" in sql for sql in client.sql_calls))
+        self.assertFalse(any("LIMIT 50" in sql for sql in client.sql_calls if "FROM wm_reactive_quest_rule" in sql))
+        self.assertTrue(any("DATE_SUB(NOW(), INTERVAL 3600 SECOND)" in sql for sql in client.sql_calls))
+
+    def test_dynamic_auto_bounty_reports_exhausted_reserved_quest_slots(self) -> None:
+        reactive_store = _FakeReactiveStore()
+        installer = _FakeInstaller()
+        slot_allocator = _ExhaustedSlotAllocator()
+        turn_in_selector = _FakeTurnInSelector(
+            ZoneQuestTurnInCandidate(
+                entry=264,
+                name="Commander Althea Ebonlocke",
+                subname=None,
+                faction_id=84,
+                faction_label="Stormwind Guard",
+                starter_count=6,
+                ender_count=4,
+                spawn_count=1,
+            )
+        )
+        manager = ReactiveAutoBountyManager(
+            client=object(),  # type: ignore[arg-type]
+            settings=Settings(reactive_auto_bounty_single_open_per_player=False),
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+            installer=installer,  # type: ignore[arg-type]
+            resolver=_FakeResolver(),  # type: ignore[arg-type]
+            slot_allocator=slot_allocator,  # type: ignore[arg-type]
+            turn_in_selector=turn_in_selector,  # type: ignore[arg-type]
+            reward_picker=_FakeRewardPicker(None),  # type: ignore[arg-type]
+        )
+        event = WMEvent(
+            event_class="observed",
+            event_type="kill",
+            source="native_bridge",
+            source_event_key="native_bridge:kill:5",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=533,
+            zone_id=10,
+            metadata={"payload": {"subject_name": "Nightbane Shadow Weaver"}},
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "No free reserved quest slots"):
+            manager.ensure_rule_for_event(event)
+
+        self.assertEqual(installer.calls, [])
+        self.assertEqual(len(slot_allocator.calls), 1)
+
+    def test_recent_quest_removed_event_unblocks_dynamic_rule_after_cleanup(self) -> None:
+        reactive_store = _FakeReactiveStore()
+        reactive_store.character_status = "none"
+        installer = _FakeInstaller()
+        slot_allocator = _FakeSlotAllocator()
+        turn_in_selector = _FakeTurnInSelector(
+            ZoneQuestTurnInCandidate(
+                entry=264,
+                name="Commander Althea Ebonlocke",
+                subname=None,
+                faction_id=84,
+                faction_label="Stormwind Guard",
+                starter_count=6,
+                ender_count=4,
+                spawn_count=1,
+            )
+        )
+        manager = ReactiveAutoBountyManager(
+            client=_AutoBountyGateClient(quest_ids=[910090], latest_event_type="quest_removed"),  # type: ignore[arg-type]
+            settings=Settings(),
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+            installer=installer,  # type: ignore[arg-type]
+            resolver=_FakeResolver(),  # type: ignore[arg-type]
+            slot_allocator=slot_allocator,  # type: ignore[arg-type]
+            turn_in_selector=turn_in_selector,  # type: ignore[arg-type]
+            reward_picker=_FakeRewardPicker(None),  # type: ignore[arg-type]
+        )
+        event = WMEvent(
+            event_class="observed",
+            event_type="kill",
+            source="native_bridge",
+            source_event_key="native_bridge:kill:5",
+            player_guid=5406,
+            subject_type="creature",
+            subject_entry=533,
+            zone_id=10,
+            metadata={"payload": {"subject_name": "Nightbane Shadow Weaver"}},
+        )
+
+        rule = manager.ensure_rule_for_event(event)
+
+        self.assertIsNotNone(rule)
+        assert rule is not None
+        self.assertEqual(rule.quest_id, 910321)
+        self.assertEqual(installer.calls[0][1], "apply")
+        self.assertEqual(slot_allocator.calls[0]["entity_type"], "quest")
 
     def test_cli_can_deactivate_all_player_bounty_rules_before_dynamic_run(self) -> None:
         store = _CliReactiveStore()

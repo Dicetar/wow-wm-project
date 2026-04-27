@@ -197,6 +197,19 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertEqual(adapter.last_cursor_value, "10")
 
     def test_mapping_keeps_future_slice_b_types_ready(self) -> None:
+        quest_removed_event = _record_to_event(
+            NativeBridgeRecord(
+                bridge_event_id=20,
+                occurred_at="2026-04-09 12:00:02",
+                event_family="quest",
+                event_type="removed",
+                source="native_bridge",
+                player_guid=5406,
+                subject_type="quest",
+                subject_entry=910090,
+                payload={"quest_id": 910090, "quest_title": "Bounty: Mottled Scytheclaw"},
+            )
+        )
         spell_event = _record_to_event(
             NativeBridgeRecord(
                 bridge_event_id=21,
@@ -224,10 +237,13 @@ class NativeBridgeSourceTests(unittest.TestCase):
             )
         )
 
+        self.assertIsNotNone(quest_removed_event)
         self.assertIsNotNone(spell_event)
         self.assertIsNotNone(aura_event)
+        assert quest_removed_event is not None
         assert spell_event is not None
         assert aura_event is not None
+        self.assertEqual(quest_removed_event.event_type, "quest_removed")
         self.assertEqual(spell_event.event_type, "spell_cast")
         self.assertEqual(aura_event.event_type, "aura_applied")
 
@@ -415,9 +431,12 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertIn("sequence_prior_failed", source)
         self.assertIn("ORDER BY req.Priority ASC", source)
         self.assertIn("quest_add", source)
+        self.assertIn("quest_remove", source)
         self.assertIn("AddQuestAndCheckCompletion", source)
         self.assertIn('MakePlayerScopedEvent(player, "quest", "granted")', source)
+        self.assertIn('MakePlayerScopedEvent(player, "quest", "removed")', source)
         self.assertIn("grant_source", source)
+        self.assertIn("remove_source", source)
         self.assertIn("world_announce_to_player", source)
         self.assertNotIn("HandleCommand", source)
         self.assertNotIn("ChatHandler", source)

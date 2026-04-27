@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from wm.character.models import ArcState, CharacterProfile, CharacterUnlock, PromptQueueEntry, RewardInstance
+from wm.character.models import (
+    ArcState,
+    CharacterProfile,
+    CharacterUnlock,
+    ConversationSteeringNote,
+    PromptQueueEntry,
+    RewardInstance,
+)
 
 
 def main() -> None:
@@ -26,7 +33,7 @@ def main() -> None:
         unlock_id=900001,
         source_arc_key="ironforge_arcane_incident",
         source_quest_id=910001,
-        grant_method="gm_command",
+        grant_method="control",
         bot_eligible=False,
     )
     reward = RewardInstance(
@@ -36,6 +43,13 @@ def main() -> None:
         source_arc_key="ironforge_arcane_incident",
         source_quest_id=910002,
         is_equipped_gate=True,
+    )
+    steering = ConversationSteeringNote(
+        character_guid=42,
+        steering_key="prefers_practical_magic",
+        body="The character prefers practical arcane tools and visible power mutations over ceremonial rewards.",
+        priority=20,
+        source="demo",
     )
     prompt = PromptQueueEntry(
         character_guid=42,
@@ -54,6 +68,9 @@ def main() -> None:
     print()
     print("=== REWARD INSTANCE ===")
     print(reward)
+    print()
+    print("=== CONVERSATION STEERING ===")
+    print(steering)
     print()
     print("=== PROMPT QUEUE ENTRY ===")
     print(prompt)

@@ -187,6 +187,72 @@ class DeterministicContentFactoryTests(unittest.TestCase):
         self.assertEqual(actions[0].payload["player_guid"], 5406)
         self.assertEqual(notes["grant_generation"], "ready")
 
+    def test_area_pressure_scene_is_disabled_by_default(self) -> None:
+        factory = DeterministicContentFactory(
+            client=None,  # type: ignore[arg-type]
+            settings=Settings(),
+            slot_allocator=FakeAllocator(FakeSlot(910010)),  # type: ignore[arg-type]
+            resolver=FakeResolver(),  # type: ignore[arg-type]
+        )
+        opportunity = ReactionOpportunity(
+            opportunity_type="area_pressure_refresh",
+            rule_type="area_pressure_refresh",
+            player_guid=5406,
+            subject=SubjectRef(subject_type="creature", subject_entry=46),
+            source_event_key="evt-300",
+            metadata={"subject_name": "Murloc Forager", "zone_id": 40},
+        )
+
+        actions, notes = factory.build_actions(opportunity)
+
+        self.assertEqual([action.kind for action in actions], ["announcement"])
+        self.assertEqual(notes["native_scene"], "disabled")
+
+    def test_area_pressure_scene_builds_scoped_native_actions_when_enabled(self) -> None:
+        factory = DeterministicContentFactory(
+            client=None,  # type: ignore[arg-type]
+            settings=Settings(
+                event_area_pressure_scene_enabled=True,
+                event_area_pressure_scene_restore_health_percent=25,
+                event_area_pressure_scene_restore_power_percent=30,
+                event_area_pressure_scene_aura_spell_id=687,
+                event_area_pressure_scene_message="WM pressure response active.",
+            ),
+            slot_allocator=FakeAllocator(FakeSlot(910010)),  # type: ignore[arg-type]
+            resolver=FakeResolver(),  # type: ignore[arg-type]
+        )
+        opportunity = ReactionOpportunity(
+            opportunity_type="area_pressure_refresh",
+            rule_type="area_pressure_refresh",
+            player_guid=5406,
+            subject=SubjectRef(subject_type="creature", subject_entry=46),
+            source_event_key="evt-301",
+            metadata={"subject_name": "Murloc Forager", "zone_id": 40},
+        )
+
+        actions, notes = factory.build_actions(opportunity)
+
+        self.assertEqual(
+            [action.kind for action in actions],
+            ["announcement", "native_bridge_action", "native_bridge_action", "native_bridge_action"],
+        )
+        native_payloads = [action.payload for action in actions if action.kind == "native_bridge_action"]
+        self.assertEqual(
+            [payload["native_action_kind"] for payload in native_payloads],
+            ["world_announce_to_player", "player_restore_health_power", "player_apply_aura"],
+        )
+        self.assertTrue(all(payload["player_guid"] == 5406 for payload in native_payloads))
+        self.assertEqual(native_payloads[0]["payload"]["message"], "WM pressure response active.")
+        self.assertEqual(native_payloads[1]["payload"]["health_percent"], 25)
+        self.assertEqual(native_payloads[1]["payload"]["power_percent"], 30)
+        self.assertEqual(native_payloads[2]["payload"]["spell_id"], 687)
+        self.assertEqual(
+            [payload["idempotency_suffix"] for payload in native_payloads],
+            ["announce", "restore", "aura"],
+        )
+        self.assertEqual(notes["native_scene"], "ready")
+        self.assertEqual(notes["aura_spell_id"], 687)
+
 
 if __name__ == "__main__":
     unittest.main()

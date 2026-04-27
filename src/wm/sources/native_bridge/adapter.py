@@ -84,12 +84,13 @@ def _record_to_event(record: NativeBridgeRecord) -> WMEvent | None:
             metadata=metadata,
         )
 
-    if family == "quest" and event_type in {"accepted", "granted", "completed", "rewarded"}:
+    if family == "quest" and event_type in {"accepted", "granted", "completed", "rewarded", "removed"}:
         canonical_type = {
             "accepted": "quest_accept",
             "granted": "quest_granted",
             "completed": "quest_completed",
             "rewarded": "quest_rewarded",
+            "removed": "quest_removed",
         }[event_type]
         return WMEvent(
             event_class="observed",

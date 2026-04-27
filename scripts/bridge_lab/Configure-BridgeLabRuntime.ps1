@@ -4,7 +4,8 @@ param(
     [int]$WorldServerPort = 8095,
     [int]$SoapPort = 7879,
     [string]$DataDir = "D:\WOW\Azerothcore_WoTLK_Rebuild\run\data",
-    [string]$WmSpellsPlayerGuidAllowList = "5406"
+    [string]$WmSpellsPlayerGuidAllowList = "5406",
+    [switch]$UpdatePlayerbotsDatabaseInfo
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,11 +24,12 @@ function Set-ConfigValue {
         throw "Config file not found: $Path"
     }
 
-    $content = Get-Content -Path $Path -Raw
+    $content = Read-ConfigText -Path $Path
     $escapedKey = [regex]::Escape($Key)
     $line = "$Key = $Value"
     $pattern = "(?m)^\s*$escapedKey\s*=.*$"
     $regex = [regex]::new($pattern)
+    $originalContent = $content
 
     if ($regex.IsMatch($content)) {
         $content = $regex.Replace($content, $line, 1)
@@ -35,8 +37,25 @@ function Set-ConfigValue {
         $content = $content.TrimEnd() + "`r`n" + $line + "`r`n"
     }
 
-    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-    [System.IO.File]::WriteAllText($Path, $content, $utf8NoBom)
+    if ($content -ne $originalContent) {
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($Path, $content, $utf8NoBom)
+    }
+}
+
+function Read-ConfigText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $utf8Strict = [System.Text.UTF8Encoding]::new($false, $true)
+    try {
+        return $utf8Strict.GetString($bytes)
+    } catch {
+        return [System.Text.Encoding]::Default.GetString($bytes)
+    }
 }
 
 function Ensure-ConfigFile {
@@ -100,7 +119,7 @@ Set-ConfigValue -Path $worldConfig -Key "DataDir" -Value """$DataDir"""
 Set-ConfigValue -Path $worldConfig -Key "WorldServerPort" -Value $WorldServerPort
 Set-ConfigValue -Path $worldConfig -Key "SOAP.Port" -Value $SoapPort
 
-if (Test-Path $playerbotsConfig) {
+if ($UpdatePlayerbotsDatabaseInfo.IsPresent -and (Test-Path $playerbotsConfig)) {
     Set-ConfigValue -Path $playerbotsConfig -Key "PlayerbotsDatabaseInfo" -Value $playerbotsDb
 }
 
@@ -108,6 +127,9 @@ Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.Enable" -Value "1"
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.PlayerGuidAllowList" -Value """"""
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.DbControl.Enable" -Value "1"
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.ActionQueue.Enable" -Value "1"
+Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.AoeLoot.Enable" -Value "1"
+Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.AoeLoot.Radius" -Value "35"
+Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.AoeLoot.MaxCorpses" -Value "25"
 
 if (Test-Path $spellsConfig) {
     Set-ConfigValue -Path $spellsConfig -Key "WmSpells.Enable" -Value "1"

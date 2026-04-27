@@ -33,6 +33,18 @@ from wm.spells.platform import write_shell_draft_file
 from wm.spells.shell_bank import load_spell_shell_bank
 
 
+UNSAFE_STOCK_VISIBLE_RUNTIME_GRANT_SPELL_IDS = frozenset(
+    {
+        116,    # Frostbolt; teaches Mage frost skill on login validation.
+        133,    # Fireball; teaches Mage fire skill on login validation.
+        403,    # Lightning Bolt; teaches Shaman elemental skill on login validation.
+        770,    # Faerie Fire; teaches Druid balance skill on login validation.
+        1459,   # Arcane Intellect; teaches Mage arcane skill on login validation.
+        16827,  # Claw; teaches pet skill on login validation.
+    }
+)
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
@@ -254,6 +266,10 @@ def build_player_unlearn_command(*, player: str, spell_entry: int, all_ranks: bo
     return f".player unlearn {player} {int(spell_entry)}{suffix}"
 
 
+def is_unsafe_stock_visible_runtime_grant(spell_entry: int) -> bool:
+    return int(spell_entry) in UNSAFE_STOCK_VISIBLE_RUNTIME_GRANT_SPELL_IDS
+
+
 def resolve_managed_spell_runtime_target(*, draft: ManagedSpellDraft) -> dict[str, Any]:
     if draft.slot_kind == "visible_spell_slot":
         if draft.base_visible_spell_id in (None, 0):
@@ -263,6 +279,18 @@ def resolve_managed_spell_runtime_target(*, draft: ManagedSpellDraft) -> dict[st
                 "reason": (
                     f"Visible spell slot {int(draft.spell_entry)} is missing base_visible_spell_id, "
                     "so WM cannot resolve a learnable runtime spell identity."
+                ),
+            }
+        if is_unsafe_stock_visible_runtime_grant(int(draft.base_visible_spell_id)):
+            return {
+                "can_runtime_learn": False,
+                "artifact_spell_entry": int(draft.spell_entry),
+                "runtime_spell_entry": int(draft.base_visible_spell_id),
+                "runtime_source": "base_visible_spell_id",
+                "reason": (
+                    f"Visible spell slot {int(draft.spell_entry)} uses stock visual seed spell "
+                    f"{int(draft.base_visible_spell_id)}. That spell is not safe to persist in character_spell; "
+                    "stage and grant the WM shell/custom spell identity instead."
                 ),
             }
         return {
@@ -420,6 +448,21 @@ def execute_spell_runtime_action(
 ) -> WorkbenchRuntimeResult:
     if action_kind not in {"player_learn_spell", "player_unlearn_spell"}:
         raise ValueError(f"Unsupported spell runtime action kind: {action_kind}")
+    if action_kind == "player_learn_spell" and is_unsafe_stock_visible_runtime_grant(int(spell_entry)):
+        return WorkbenchRuntimeResult(
+            mode=mode,
+            command=f"blocked:player_learn_spell player_guid={player_ref['player_guid']} spell_id={int(spell_entry)}",
+            ok=False,
+            executed=False,
+            fault_code="unsafe_stock_visible_spell",
+            fault_string=(
+                f"Refusing to persist stock visual seed spell {int(spell_entry)} in character_spell. "
+                "Use a WM shell/custom spell identity for player grants."
+            ),
+            notes=[
+                "Stock visual seed spells can be used as DBC templates, aura visuals, or triggered effects, but not as persistent player learns.",
+            ],
+        )
     fallback_command = (
         build_player_learn_command(
             player=str(player_ref["command_player"]),

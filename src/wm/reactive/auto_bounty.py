@@ -187,8 +187,7 @@ class ReactiveAutoBountyManager:
                 "SELECT QuestID FROM wm_reactive_quest_rule "
                 f"WHERE PlayerGUIDScope = {int(player_guid)} "
                 "AND RuleKey LIKE 'reactive_bounty:auto:%' "
-                "ORDER BY UpdatedAt DESC, QuestID DESC "
-                "LIMIT 50"
+                "ORDER BY IsActive DESC, UpdatedAt DESC, QuestID DESC"
             ),
         )
         result: list[int] = []
@@ -200,6 +199,7 @@ class ReactiveAutoBountyManager:
         return result
 
     def _latest_quest_event_state(self, *, player_guid: int, quest_id: int) -> str | None:
+        max_age_seconds = max(int(getattr(self.settings, "reactive_auto_bounty_max_event_age_seconds", 3600)), 1)
         rows = self.client.query(
             host=self.settings.world_db_host,
             port=self.settings.world_db_port,
@@ -210,7 +210,8 @@ class ReactiveAutoBountyManager:
                 "SELECT EventType FROM wm_event_log "
                 "WHERE EventClass = 'observed' "
                 f"AND PlayerGUID = {int(player_guid)} "
-                "AND EventType IN ('quest_accept', 'quest_granted', 'quest_completed', 'quest_rewarded') "
+                "AND EventType IN ('quest_accept', 'quest_granted', 'quest_completed', 'quest_rewarded', 'quest_removed') "
+                f"AND OccurredAt >= DATE_SUB(NOW(), INTERVAL {max_age_seconds} SECOND) "
                 "AND ("
                 f"SubjectEntry = {int(quest_id)} "
                 f"OR JSON_UNQUOTE(JSON_EXTRACT(MetadataJSON, '$.quest_id')) = '{int(quest_id)}' "
@@ -230,6 +231,8 @@ class ReactiveAutoBountyManager:
             return "complete"
         if event_type == "quest_rewarded":
             return "rewarded"
+        if event_type == "quest_removed":
+            return "removed"
         return None
 
     def _resolve_plan_for_event(self, event: WMEvent) -> ResolvedAutoBountyPlan | None:
@@ -414,7 +417,12 @@ class ReactiveAutoBountyManager:
             ],
         )
         if slot is None:
-            return None
+            raise RuntimeError(
+                "No free reserved quest slots are available for dynamic auto-bounty allocation. "
+                "Seed the managed quest range declared in data/specs/reserved_id_ranges.json "
+                "before arming the watcher, for example: "
+                "python -m wm.reserved.seed --entity-type quest --start-id 910000 --end-id 910999 --mode apply"
+            )
         return int(slot.reserved_id)
 
 

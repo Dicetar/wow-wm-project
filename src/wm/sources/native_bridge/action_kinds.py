@@ -43,7 +43,7 @@ NATIVE_ACTION_KINDS: tuple[NativeActionKind, ...] = (
     NativeActionKind("player_remove_title", "inventory", "low", description="Remove a title from the scoped player."),
     NativeActionKind("player_add_achievement_credit", "inventory", "medium", description="Grant achievement criteria credit."),
     NativeActionKind("quest_add", "quest", "medium", implemented=True, description="Add a quest to the scoped player."),
-    NativeActionKind("quest_remove", "quest", "medium", description="Remove a quest from the scoped player."),
+    NativeActionKind("quest_remove", "quest", "medium", implemented=True, description="Remove a WM-managed quest from the scoped player."),
     NativeActionKind("quest_complete_objective", "quest", "medium", description="Complete one quest objective."),
     NativeActionKind("quest_complete", "quest", "medium", description="Force complete a quest for the scoped player."),
     NativeActionKind("quest_fail", "quest", "medium", description="Fail a quest for the scoped player."),

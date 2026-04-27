@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import unittest
 
-from wm.character.models import ArcState, CharacterProfile, CharacterUnlock, PromptQueueEntry, RewardInstance
+from wm.character.models import (
+    ArcState,
+    CharacterProfile,
+    CharacterUnlock,
+    ConversationSteeringNote,
+    PromptQueueEntry,
+    RewardInstance,
+)
 from wm.character.reader import CharacterStateBundle
 from wm.journal.models import JournalCounters, JournalEvent, SubjectCard
 from wm.journal.reader import SubjectJournalBundle
@@ -33,6 +40,9 @@ class PromptPackageTests(unittest.TestCase):
             arc_states=[ArcState(character_guid=42, arc_key="arc_a", stage_key="stage_1")],
             unlocks=[CharacterUnlock(character_guid=42, unlock_kind="spell", unlock_id=900001)],
             rewards=[RewardInstance(character_guid=42, reward_kind="item", template_id=910101)],
+            conversation_steering=[
+                ConversationSteeringNote(character_guid=42, steering_key="visible_first", body="Prefer visible effects.")
+            ],
             prompt_queue=[PromptQueueEntry(character_guid=42, prompt_kind="branch_choice", body="How do you proceed?")],
         )
         subject = SubjectCard(subject_name="Grey Wolf", short_description="Shabby looking wild beast")
@@ -60,6 +70,7 @@ class PromptPackageTests(unittest.TestCase):
         self.assertEqual(data["target_entry"], 46)
         self.assertEqual(data["target_profile"]["name"], "Murloc Forager")
         self.assertEqual(data["character_profile"]["character_name"], "Aldren")
+        self.assertEqual(data["conversation_steering"][0]["steering_key"], "visible_first")
         self.assertEqual(data["journal_summary"]["title"], "Grey Wolf")
         self.assertIn("Player killed 18", data["journal_summary"]["history_lines"])
 

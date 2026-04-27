@@ -141,7 +141,7 @@ Current status:
 - `WORKING`: client patch build is repeatable. On 2026-04-17, Codex downloaded official Ladik MPQ Editor into `.wm-bootstrap\tools\mpqeditor`, generated `DBFilesClient\Spell.dbc` plus `DBFilesClient\SkillLineAbility.dbc`, packed and verified `.wm-bootstrap\state\client-patches\wm_spell_shell_bank\patch-z.mpq`, and verified named shell text/presentation data for `940001`
 - `WORKING`: server DBC staging now has a `castable` profile for visible-shell tests. `.\scripts\bridge_lab\Stage-BridgeLabServerSpellDbc.ps1 -SeedProfile castable -SpellId 940001` stages `940001` with WM-owned summon effect/targeting plus explicit icon `221`, cast time index `14`, mana cost `180`, and Summon Voidwalker visual `4054`
 - `PARTIAL`: the neutral `learnable` server DBC lane remains proof of server-known shell ids only. Use `castable` plus the client MPQ for visible spellbook/action-bar testing
-- `PARTIAL`: Alpha low physical bleed and echo proc are implemented and built, but live combat proof is pending
+- `WORKING`: Alpha/Echo visible physical bleed and echo proc are BridgeLab-proven after the 2026-04-25 retune; bleed ticks scale primarily from caster melee attack power, use visible target aura `772`, and Echo bleed stacks independently by caster GUID plus target GUID
 - `PARTIAL`: the visible player-facing spell remains pending until the freshly installed client patch and restarted worldserver are validated in-game after client restart
 
 Do not replace or reuse `Summon Voidwalker`, `Raise Ghoul`, or any other stock spell as the permanent WM carrier for this behavior.

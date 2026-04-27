@@ -13,14 +13,24 @@ param(
     [ValidateSet("auto", "native", "soap")]
     [string]$QuestGrantTransport = "auto",
     [switch]$EnableRandomEnchantOnKill,
-    [double]$RandomEnchantOnKillChancePct = 2.5,
+    [double]$RandomEnchantOnKillChancePct = 7.0,
     [double]$RandomEnchantPreserveExistingChancePct = 15.0,
     [int]$RandomEnchantMaxEnchants = 3,
     [string]$RandomEnchantSelector = "random_equipped",
     [int]$RandomEnchantConsumableItemEntry = 910007,
     [int]$RandomEnchantConsumableCount = 1,
+    [bool]$RandomEnchantFocusedOnKillEnabled = $true,
+    [double]$RandomEnchantFocusedOnKillChancePct = 3.5,
+    [int]$RandomEnchantFocusedConsumableItemEntry = 910008,
+    [int]$RandomEnchantFocusedConsumableCount = 1,
+    [switch]$EnableAreaPressureScene,
+    [int]$AreaPressureSceneRestoreHealthPercent = 20,
+    [int]$AreaPressureSceneRestorePowerPercent = 20,
+    [int]$AreaPressureSceneAuraSpellId = 687,
+    [string]$AreaPressureSceneMessage = "WM senses rising pressure here. Hold the line.",
     [switch]$EnableReactiveAutoBounty,
     [switch]$ArmFromEnd,
+    [switch]$MarkExistingEvaluatedOnArm,
     [switch]$PrintIdle
 )
 
@@ -104,6 +114,9 @@ if ($Mode -eq "apply") {
 if ($ArmFromEnd.IsPresent) {
     $argumentsLiteral += "'--arm-from-end'"
 }
+if ($MarkExistingEvaluatedOnArm.IsPresent) {
+    $argumentsLiteral += "'--mark-existing-evaluated-on-arm'"
+}
 if ($PrintIdle.IsPresent) {
     $argumentsLiteral += "'--print-idle'"
 }
@@ -126,6 +139,15 @@ $runnerLines = @(
     ('$env:WM_RANDOM_ENCHANT_SELECTOR = ' + (Convert-ToPsLiteral $RandomEnchantSelector)),
     ('$env:WM_RANDOM_ENCHANT_CONSUMABLE_ITEM_ENTRY = ' + (Convert-ToPsLiteral ([string]$RandomEnchantConsumableItemEntry))),
     ('$env:WM_RANDOM_ENCHANT_CONSUMABLE_COUNT = ' + (Convert-ToPsLiteral ([string]$RandomEnchantConsumableCount))),
+    ('$env:WM_RANDOM_ENCHANT_FOCUSED_ON_KILL_ENABLED = ' + (Convert-ToPsLiteral $(if ($RandomEnchantFocusedOnKillEnabled) { '1' } else { '0' }))),
+    ('$env:WM_RANDOM_ENCHANT_FOCUSED_ON_KILL_CHANCE_PCT = ' + (Convert-ToPsLiteral ([string]$RandomEnchantFocusedOnKillChancePct))),
+    ('$env:WM_RANDOM_ENCHANT_FOCUSED_CONSUMABLE_ITEM_ENTRY = ' + (Convert-ToPsLiteral ([string]$RandomEnchantFocusedConsumableItemEntry))),
+    ('$env:WM_RANDOM_ENCHANT_FOCUSED_CONSUMABLE_COUNT = ' + (Convert-ToPsLiteral ([string]$RandomEnchantFocusedConsumableCount))),
+    ('$env:WM_EVENT_AREA_PRESSURE_SCENE_ENABLED = ' + (Convert-ToPsLiteral $(if ($EnableAreaPressureScene.IsPresent) { '1' } else { '0' }))),
+    ('$env:WM_EVENT_AREA_PRESSURE_SCENE_RESTORE_HEALTH_PERCENT = ' + (Convert-ToPsLiteral ([string]$AreaPressureSceneRestoreHealthPercent))),
+    ('$env:WM_EVENT_AREA_PRESSURE_SCENE_RESTORE_POWER_PERCENT = ' + (Convert-ToPsLiteral ([string]$AreaPressureSceneRestorePowerPercent))),
+    ('$env:WM_EVENT_AREA_PRESSURE_SCENE_AURA_SPELL_ID = ' + (Convert-ToPsLiteral ([string]$AreaPressureSceneAuraSpellId))),
+    ('$env:WM_EVENT_AREA_PRESSURE_SCENE_MESSAGE = ' + (Convert-ToPsLiteral $AreaPressureSceneMessage)),
     ('Set-Location ' + (Convert-ToPsLiteral $WorkspaceRoot)),
     ('$arguments = @(' + ($argumentsLiteral -join ', ') + ')'),
     ('& ' + (Convert-ToPsLiteral $pythonExe) + ' @arguments 1>> ' + (Convert-ToPsLiteral $paths.Stdout) + ' 2>> ' + (Convert-ToPsLiteral $paths.Stderr))
@@ -178,7 +200,17 @@ $metadata = @{
     random_enchant_selector = $RandomEnchantSelector
     random_enchant_consumable_item_entry = $RandomEnchantConsumableItemEntry
     random_enchant_consumable_count = $RandomEnchantConsumableCount
+    random_enchant_focused_on_kill_enabled = $RandomEnchantFocusedOnKillEnabled
+    random_enchant_focused_on_kill_chance_pct = $RandomEnchantFocusedOnKillChancePct
+    random_enchant_focused_consumable_item_entry = $RandomEnchantFocusedConsumableItemEntry
+    random_enchant_focused_consumable_count = $RandomEnchantFocusedConsumableCount
+    area_pressure_scene_enabled = [bool]$EnableAreaPressureScene.IsPresent
+    area_pressure_scene_restore_health_percent = $AreaPressureSceneRestoreHealthPercent
+    area_pressure_scene_restore_power_percent = $AreaPressureSceneRestorePowerPercent
+    area_pressure_scene_aura_spell_id = $AreaPressureSceneAuraSpellId
+    area_pressure_scene_message = $AreaPressureSceneMessage
     arm_from_end = [bool]$ArmFromEnd.IsPresent
+    mark_existing_evaluated_on_arm = [bool]$MarkExistingEvaluatedOnArm.IsPresent
     print_idle = [bool]$PrintIdle.IsPresent
     reactive_auto_bounty_enabled = [bool]$EnableReactiveAutoBounty.IsPresent
     quest_grant_transport = $QuestGrantTransport

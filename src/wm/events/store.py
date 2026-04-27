@@ -196,6 +196,19 @@ class EventStore:
         )
         return [self._row_to_event(row) for row in rows]
 
+    def max_observed_event_id(self, *, player_guid: int | None = None) -> int | None:
+        predicates = ["EventClass = 'observed'"]
+        if player_guid is not None:
+            predicates.append(f"PlayerGUID = {int(player_guid)}")
+        rows = self._query_world(
+            "SELECT MAX(EventID) AS MaxEventID "
+            "FROM wm_event_log "
+            f"WHERE {' AND '.join(predicates)}"
+        )
+        if not rows or rows[0].get("MaxEventID") in (None, ""):
+            return None
+        return int(rows[0]["MaxEventID"])
+
     def is_projected(self, *, event_id: int) -> bool:
         rows = self._query_world(
             "SELECT EventID FROM wm_event_log "
@@ -302,6 +315,33 @@ class EventStore:
             "SET EvaluatedAt = CURRENT_TIMESTAMP "
             f"WHERE EventID = {int(event_id)}"
         )
+
+    def mark_unevaluated_observed_events_evaluated(
+        self,
+        *,
+        player_guid: int | None = None,
+        max_event_id: int | None = None,
+    ) -> int:
+        predicates = ["EventClass = 'observed'", "EvaluatedAt IS NULL"]
+        if player_guid is not None:
+            predicates.append(f"PlayerGUID = {int(player_guid)}")
+        if max_event_id is not None:
+            predicates.append(f"EventID <= {int(max_event_id)}")
+        where_clause = " AND ".join(predicates)
+        rows = self._query_world(
+            "SELECT COUNT(*) AS CountRows "
+            "FROM wm_event_log "
+            f"WHERE {where_clause}"
+        )
+        count = int(rows[0].get("CountRows") or 0) if rows else 0
+        if count <= 0:
+            return 0
+        self._execute_world(
+            "UPDATE wm_event_log "
+            "SET EvaluatedAt = CURRENT_TIMESTAMP "
+            f"WHERE {where_clause}"
+        )
+        return count
 
     def is_cooldown_active(self, key: ReactionCooldownKey, *, at: str | None = None) -> bool:
         when = at or "CURRENT_TIMESTAMP"

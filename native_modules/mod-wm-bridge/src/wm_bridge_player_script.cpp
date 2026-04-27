@@ -1,16 +1,28 @@
+#include "CellImpl.h"
 #include "ScriptMgr.h"
 #include "Creature.h"
 #include "GameObject.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
 #include "Item.h"
 #include "ItemTemplate.h"
+#include "LootMgr.h"
 #include "Map.h"
+#include "Opcodes.h"
 #include "Player.h"
 #include "QuestDef.h"
 #include "Spell.h"
+#include "WorldPacket.h"
 #include "wm_bridge_common.h"
+
+#include <algorithm>
+#include <list>
+#include <unordered_set>
 
 namespace
 {
+    std::unordered_set<uint32> gAoeLootPlayersInProgress;
+
     std::string GetItemName(Item const* item)
     {
         if (!item || !item->GetTemplate())
@@ -78,6 +90,121 @@ namespace
                 WmBridge::JsonAppendString(payload, firstField, "loot_source_name", gameObject->GetName());
             }
         }
+    }
+
+    void NotifyAoeLootMoney(Player* player, uint32 amount)
+    {
+        if (!player || amount == 0)
+            return;
+
+        WorldPacket data(SMSG_LOOT_MONEY_NOTIFY, 4 + 1);
+        data << uint32(amount);
+        data << uint8(1);
+        player->SendDirectMessage(&data);
+    }
+
+    bool CanAoeLootCreature(Player* player, Creature* creature, ObjectGuid const& currentLootGuid)
+    {
+        if (!player || !creature || creature->GetGUID() == currentLootGuid || creature->IsAlive())
+            return false;
+
+        if (creature->loot.loot_type != LOOT_CORPSE || creature->loot.isLooted())
+            return false;
+
+        if (!creature->HasDynamicFlag(UNIT_DYNFLAG_LOOTABLE) || !creature->isTappedBy(player))
+            return false;
+
+        return creature->IsWithinDistInMap(player, std::max(1.0f, WmBridge::GetConfig().aoeLootRadius));
+    }
+
+    bool AutoLootCreatureCorpse(Player* player, Creature* creature, ObjectGuid const& currentLootGuid)
+    {
+        if (!CanAoeLootCreature(player, creature, currentLootGuid))
+            return true;
+
+        Loot& loot = creature->loot;
+        if (loot.gold > 0)
+        {
+            uint32 gold = loot.gold;
+            loot.NotifyMoneyRemoved();
+            player->ModifyMoney(gold);
+            player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_MONEY, gold);
+            NotifyAoeLootMoney(player, gold);
+            sScriptMgr->OnLootMoney(player, gold);
+            loot.gold = 0;
+        }
+
+        ObjectGuid previousLootGuid = player->GetLootGUID();
+        player->SetLootGUID(creature->GetGUID());
+
+        bool keepScanning = true;
+        uint32 maxSlot = loot.GetMaxSlotInLootFor(player);
+        for (uint32 slot = 0; slot < maxSlot; ++slot)
+        {
+            InventoryResult result = EQUIP_ERR_OK;
+            player->StoreLootItem(static_cast<uint8>(slot), &loot, result);
+            if (result != EQUIP_ERR_OK)
+            {
+                keepScanning = false;
+                break;
+            }
+        }
+
+        player->SetLootGUID(previousLootGuid);
+
+        if (loot.isLooted())
+        {
+            creature->AllLootRemovedFromCorpse();
+            creature->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+            loot.clear();
+        }
+        else
+        {
+            creature->ForceValuesUpdateAtIndex(UNIT_DYNAMIC_FLAGS);
+        }
+
+        return keepScanning;
+    }
+
+    void TryAoeLootNearbyCorpses(Player* player)
+    {
+        WmBridge::BridgeConfig const& config = WmBridge::GetConfig();
+        if (!config.aoeLootEnabled || !WmBridge::IsPlayerAllowed(player))
+            return;
+
+        ObjectGuid currentLootGuid = player->GetLootGUID();
+        if (!currentLootGuid || !currentLootGuid.IsCreatureOrVehicle())
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        if (gAoeLootPlayersInProgress.find(playerGuid) != gAoeLootPlayersInProgress.end())
+            return;
+
+        gAoeLootPlayersInProgress.insert(playerGuid);
+
+        std::list<Unit*> nearbyUnits;
+        float radius = std::max(1.0f, config.aoeLootRadius);
+        Acore::AllDeadCreaturesInRange check(player, radius);
+        Acore::UnitListSearcher<Acore::AllDeadCreaturesInRange> searcher(player, nearbyUnits, check);
+        Cell::VisitObjects(player, searcher, radius);
+
+        uint32 lootedCorpses = 0;
+        uint32 maxCorpses = std::max<uint32>(1u, config.aoeLootMaxCorpses);
+        for (Unit* unit : nearbyUnits)
+        {
+            Creature* creature = unit ? unit->ToCreature() : nullptr;
+            if (!creature || !CanAoeLootCreature(player, creature, currentLootGuid))
+                continue;
+
+            if (!AutoLootCreatureCorpse(player, creature, currentLootGuid))
+                break;
+
+            ++lootedCorpses;
+            if (lootedCorpses >= maxCorpses)
+                break;
+        }
+
+        gAoeLootPlayersInProgress.erase(playerGuid);
     }
 }
 
@@ -180,6 +307,16 @@ public:
         row.payloadJson = payload;
 
         WmBridge::EmitEvent(row);
+    }
+
+    void OnPlayerAfterCreatureLoot(Player* player) override
+    {
+        TryAoeLootNearbyCorpses(player);
+    }
+
+    void OnPlayerAfterCreatureLootMoney(Player* player) override
+    {
+        TryAoeLootNearbyCorpses(player);
     }
 };
 

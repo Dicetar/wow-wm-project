@@ -1,104 +1,96 @@
-# Character Exclusivity Layer V1
+Status: WORKING
+Last verified: 2026-04-26
+Verified by: Codex
+Doc type: reference
 
-## Architecture choice
+# Personal Journey Spine V1
 
-Use **per-character state tables** as the source of truth, while actual rewards can still be granted through GM commands.
+This is the first product-facing state layer from the roadmap's Personal Journey Spine track.
 
-This layer exists so the World Master knows:
-- which character it is speaking to
-- which arc that character is on
-- which private rewards the character has already received
-- which follow-up prompt or branch choice should be presented next
+It is character-scoped by `CharacterGUID`. Do not key WM journeys by account, bot group, or global player name.
 
-## Why this layer exists
+## What It Owns
 
-The same account may have multiple characters, but each character should feel like a different WM-driven journey.
+- character profile and WM persona
+- active/completed/paused arc state
+- exclusive unlock records
+- reward-instance records
+- conversation steering notes
+- pending prompt/branch-choice queue entries
 
-That requires state keyed by **CharacterGUID**, not by account and not globally.
+This layer records WM truth. Actual game mutation still goes through managed publishers, shell grants, control proposals, or typed native actions. Freeform SQL, freeform GM commands, and direct LLM mutation are not valid grant methods.
 
-## Current implementation in repo
+## Repo Interfaces
 
-- `src/wm/character/models.py`
-- `src/wm/character/demo.py`
-- `tests/test_character_models.py`
-- `sql/bootstrap/wm_character_state.sql`
+- `python -m wm.character.journey inspect --player-guid <guid> --summary`
+- `python -m wm.character.journey apply --plan-json <path> --mode dry-run --summary`
+- `python -m wm.character.journey apply --plan-json <path> --mode apply --summary`
 
-## Tables introduced
+Default BridgeLab seed plan:
+
+```powershell
+python -m wm.character.journey apply --plan-json control\examples\journey\jecia_personal_spine_v1.json --mode dry-run --summary
+```
+
+The plan schema is `wm.character_journey.seed.v1`.
+
+Allowed plan sections:
+
+- `profile`
+- `arc_states`
+- `unlocks`
+- `reward_instances`
+- `conversation_steering`
+- `prompt_queue`
+- `metadata`
+
+Rejected plan fields include freeform mutation fields such as `sql`, `sql_text`, `gm_command`, `gm_commands`, `shell_command`, and `command`.
+
+Allowed unlock `grant_method` values:
+
+- `control`
+- `native_bridge`
+- `managed_publish`
+- `shell_grant`
+- `item_grant`
+- `manual_record`
+
+`gm_command` is explicitly rejected.
+
+## Tables
+
+Apply `sql/bootstrap/wm_character_state.sql` to `acore_characters`.
+
+Tables:
 
 - `wm_character_profile`
 - `wm_character_arc_state`
 - `wm_character_unlock`
 - `wm_character_reward_instance`
+- `wm_character_conversation_steering`
 - `wm_character_prompt_queue`
 
-## Important design decision
+The conversation steering table stores durable player/operator preferences that later arc/reward/scene proposal code can read without letting the model mutate state directly.
 
-### Grant path
-Rewards and abilities may be **applied** using GM commands such as:
-- `.character learn [spell_id]`
-- `.additem [item_id] [count]`
+## Status
 
-### Tracking path
-But the WM still needs its own tables to remember:
-- who was granted what
-- from which arc or quest
-- whether the unlock is bot-eligible
-- whether an item is meant to gate an alternate ability while equipped
+`WORKING` at repo-test level:
 
-## Local commands
+- strict journey plan parsing
+- dry-run without DB connection
+- apply path through structured repo-owned SQL
+- reader fallback when character tables are absent
+- inspect payload and summary rendering
+- context pack generation input includes active arc keys, unlock refs, reward refs, and steering notes
 
-### Pull latest changes
+`PARTIAL` for live gameplay:
 
-```powershell
-cd D:\WOW\wm-project
-git pull origin main
-```
+- BridgeLab state apply for player `5406` still needs to be run when we want live DB proof
+- future arc/reward factory code still needs to consume this spine as an eligibility source
 
-### Reinstall editable package
+## Test Commands
 
 ```powershell
-cd D:\WOW\wm-project
-.\.venv\Scripts\Activate.ps1
-pip install -e .
+python -m pytest -q tests/test_character_models.py tests/test_character_reader.py tests/test_character_journey.py tests/test_context_pack.py tests/test_prompt_package.py
+python -m pytest -q
 ```
-
-### Run tests
-
-```powershell
-cd D:\WOW\wm-project
-.\.venv\Scripts\Activate.ps1
-python -m unittest discover -s tests -v
-```
-
-### Run demo
-
-```powershell
-cd D:\WOW\wm-project
-.\.venv\Scripts\Activate.ps1
-python -m wm.character.demo
-```
-
-### Import SQL into `acore_characters`
-
-```powershell
-cd D:\WOW\wm-project
-Get-Content .\sql\bootstrap\wm_character_state.sql | & "D:\WOW\Azerothcore_WoTLK_Repack\mysql\bin\mysql.exe" -u acore -pacore acore_characters
-```
-
-### Verify created tables
-
-```powershell
-& "D:\WOW\Azerothcore_WoTLK_Repack\mysql\bin\mysql.exe" -u acore -pacore -D acore_characters -e "SHOW TABLES LIKE 'wm_character_%';"
-```
-
-## Expected result
-
-You should now have per-character WM state tables in `acore_characters`.
-
-## Next implementation target
-
-Character Exclusivity Layer V2 should add:
-- DB read/write helpers
-- prompt queue consumption
-- unlock recording after GM-command grant
-- arc-state updates after branch choices

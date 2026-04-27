@@ -120,7 +120,8 @@
       "supports_multi_pet": false,
       "patch_seed_template": "wm_self_aura",
       "behavior_kinds": [
-        "generic_self_aura"
+        "generic_self_aura",
+        "bonebound_echo_stasis_v1"
       ]
     },
     {
@@ -181,6 +182,35 @@
       "notes": [
         "Legacy key kept for operator compatibility; this shell now runs the single-Alpha behavior.",
         "Omega TempSummon parity is retired after live damage/mana mismatch."
+      ]
+    },
+    {
+      "shell_key": "bonebound_echo_stasis_v1",
+      "spell_id": 946600,
+      "family_id": "self_aura",
+      "label": "Bonebound Echo Stasis",
+      "behavior_kind": "bonebound_echo_stasis_v1",
+      "targeting": "self_cast",
+      "required_level": 1,
+      "icon_hint": "Spell_Shadow_SoulGem",
+      "tooltip": "Bind active Echo Destroyers and Echo Restorers into stasis, or restore the stored echo counts near your Bonebound Alpha.",
+      "client_presentation": {
+        "cast_time_index": 6,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 92,
+        "reagent_1_item_id": 6265,
+        "reagent_1_count": 1,
+        "spellbook_seed_spell_id": 697,
+        "spellbook_ability_id": 1946600
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Count-only persistence: stores active Echo Destroyer and Echo Restorer totals, not creature GUIDs or health state.",
+        "Restored echoes are rebuilt from the current Bonebound Alpha runtime with full HP, mana, and max timer."
       ]
     },
     {

@@ -78,7 +78,7 @@
       "key": "bonebound_servant_v1",
       "kind": "shell_spell",
       "purpose": "Pinned WM compatibility summon shell for Bonebound Servant experiments.",
-      "status": "PARTIAL",
+      "status": "WORKING",
       "owner_system": "spell_shell_bank",
       "source_paths": [
         "control/runtime/spell_shell_bank.json",
@@ -121,6 +121,26 @@
         "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
       ],
       "player_guid_scope": 5406
+    },
+    {
+      "namespace": "spell",
+      "id": 946600,
+      "key": "bonebound_echo_stasis_v1",
+      "kind": "shell_spell",
+      "purpose": "Named WM self-cast shell for storing active Echo Destroyer/Echo Restorer counts and restoring them later from Bonebound Alpha.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_26_09_wm_spell_bonebound_echo_stasis.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Stores only role counts, not live creature GUIDs, health, power, or remaining timers.",
+        "Uses Soul Shard reagent cost through shell DBC presentation and restores echoes with fresh runtime stats and max timer."
+      ]
     },
     {
       "namespace": "spell",
@@ -213,18 +233,68 @@
       "id": 910007,
       "key": "unstable_enchanting_vellum",
       "kind": "managed_item_slot",
-      "purpose": "Consumable item that opens a server-side menu to apply random enchants to an eligible equipped item.",
+      "purpose": "Consumable item that opens a server-side menu to apply up to three unstable random enchants to an eligible equipped item.",
       "status": "PARTIAL",
       "owner_system": "mod-wm-bridge",
       "source_paths": [
         "native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_24_02_wm_bridge_random_enchant_consumable.sql",
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_25_02_wm_bridge_enchanting_vellum_variants.sql",
         "native_modules/mod-wm-bridge/src/wm_bridge_random_enchant_item.cpp",
         "src/wm/reactive/random_enchant.py",
         "docs/WM_PLATFORM_HANDOFF.md"
       ],
       "player_guid_scope": 5406,
       "notes": [
-        "Server-owned item-use path; no per-iteration client patch. Right-click uses a known item spell only to make the item client-usable, then native ItemScript cancels default casting and owns the target menu/effect."
+        "Server-owned item-use path; no per-iteration client patch. Right-click uses a known item spell only to make the item client-usable, then native ItemScript cancels default casting and owns the target menu/effect.",
+        "BridgeLab proof on 2026-04-25 for player 5406 confirmed direct native grant, right-click item menu, random enchant application, and vellum consumption.",
+        "Scoped kill-roll proof on 2026-04-25 used event 3576 and native player_add_item request 161, which reached done for item 910007 x1.",
+        "Scoped watcher proof on 2026-04-25 used a short 100% BridgeLab proof window after arming from end; fresh kill events 3578 and 3579 submitted requests 162 and 163, both done for item 910007 x1.",
+        "Repo retune raises normal drop chance to 7%, stack size to 999, and gives item-use rolls a 10% chance to use tier 5.",
+        "BridgeLab SQL apply, native rebuild/restart, and direct native grant proof passed on 2026-04-25: debug_ping request 164, player_add_item request 165 for item 910007, and worldserver pid 33620. In-game retuned item-use proof is still pending."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 910008,
+      "key": "enchanting_vellum",
+      "kind": "managed_item_slot",
+      "purpose": "Focused consumable item that opens a server-side menu to choose an eligible equipped item and reroll exactly one selected enchant slot with weighted tier chances: 40% tier 3, 30% tier 4, 30% tier 5.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-bridge",
+      "source_paths": [
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_25_02_wm_bridge_enchanting_vellum_variants.sql",
+        "native_modules/mod-wm-bridge/src/wm_bridge_random_enchant_item.cpp",
+        "src/wm/reactive/random_enchant.py",
+        "docs/WM_PLATFORM_HANDOFF.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Server-owned item-use path; no per-iteration client patch.",
+        "Repo implementation grants this focused vellum from scoped kill rolls at 3.5% when random-enchant-on-kill is enabled.",
+        "The item stacks to 999, consumes one vellum only after an enchant result, lets the player choose the target item and one enchant slot, and rolls weighted tiers at 40% tier 3, 30% tier 4, and 30% tier 5.",
+        "BridgeLab SQL apply, native rebuild/restart, and direct native grant proof passed on 2026-04-25: debug_ping request 164, player_add_item request 166 for item 910008, and worldserver pid 33620.",
+        "Weighted tier retune was rebuilt/restarted on 2026-04-25 to worldserver pid 31360; debug_ping request 260 reached done, while extra grant request 261 failed because player 5406 was offline. In-game focused menu/slot-reroll proof is still pending."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 910009,
+      "key": "bone_lure_charm",
+      "kind": "managed_item_slot",
+      "purpose": "Consumable throwable that deploys a server-owned Bone Lure Obelisk to pulse-taunt eligible non-boss enemies.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-bridge",
+      "source_paths": [
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_25_03_wm_bridge_bone_lure_obelisk.sql",
+        "native_modules/mod-wm-bridge/src/wm_bridge_bone_lure_item.cpp",
+        "docs/WM_PLATFORM_HANDOFF.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Server-owned item-use path; no per-iteration client patch. The item uses a known bomb spell only to provide ground-target client UX, then native ItemScript cancels stock bomb behavior.",
+        "Deploys creature template 920102 for 30 seconds.",
+        "BridgeLab proof on 2026-04-25 confirmed SQL apply, native rebuild/restart, scoped debug_ping request 262, scoped player_add_item request 263, and character DB inventory count 5 for player 5406.",
+        "In-game throw and taunt behavior proof is still pending."
       ]
     },
     {
@@ -244,14 +314,55 @@
     {
       "namespace": "creature_template",
       "id": 920101,
-      "key": "bonebound_alpha_echo",
+      "key": "echo_destroyer",
       "kind": "wm_creature_entry",
-      "purpose": "WM creature template used by Bonebound Alpha echo summons.",
+      "purpose": "WM creature template used by melee Bonebound Echo Destroyer summons.",
       "status": "WORKING",
       "owner_system": "mod-wm-spells",
       "source_paths": [
         "docs/SUMMON_SPELL_PLATFORM_STATUS.md",
         "docs/WM_PLATFORM_HANDOFF.md"
+      ]
+    },
+    {
+      "namespace": "creature_template",
+      "id": 920103,
+      "key": "echo_restorer",
+      "kind": "wm_creature_entry",
+      "purpose": "Rare support-role Echo Restorer variant that heals, shields, regenerates, dispels, and contributes visible shadow spell damage for Bonebound Alpha/Echo play.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_26_02_wm_spell_bonebound_priest_echo.sql",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_26_05_wm_spell_echo_restorer_mind_blast_retune.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Spawned from the same Alpha melee trigger lane as Echo Destroyers, with its own 5% support-role proc chance.",
+        "Uses Skeletal Magelord creature display 11397 from stock NPC 15121 and randomly chooses a level-appropriate rare/epic staff item entry from the configured staff model pool.",
+        "Repo implementation is native/config WORKING after tests; live gameplay proof remains PARTIAL until BridgeLab confirms healing, shielding, regeneration, dispels, and visible Mind Blast filler casts in combat."
+      ]
+    },
+    {
+      "namespace": "creature_template",
+      "id": 920102,
+      "key": "bone_lure_obelisk",
+      "kind": "wm_creature_entry",
+      "purpose": "Attackable WM lure structure spawned by item 910009; it has owner-scaled health, 75% damage reduction, DoT/status immunity, and continuous non-boss taunt pulses.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-bridge",
+      "source_paths": [
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_25_03_wm_bridge_bone_lure_obelisk.sql",
+        "native_modules/mod-wm-bridge/src/wm_bridge_bone_lure_item.cpp",
+        "docs/WM_PLATFORM_HANDOFF.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Cloned from Stoneclaw Totem for attackable structure behavior and shown with a Necrotic Shard-style model.",
+        "Native runtime skips bosses, dungeon bosses, no-taunt creatures, player-owned pets/totems, triggers, and civilians.",
+        "BridgeLab build and DB apply are proven; in-game spawn/taunt/duration proof is still pending."
       ]
     },
     {

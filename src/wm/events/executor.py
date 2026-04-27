@@ -161,8 +161,14 @@ class ReactionExecutor:
                 ],
             }
             if mode == "apply":
+                idempotency_key = _native_bridge_action_idempotency_key(
+                    plan=plan,
+                    native_action_kind=native_action_kind,
+                    payload=payload,
+                )
+                details["idempotency_key"] = idempotency_key
                 request = self.native_bridge_actions.submit(
-                    idempotency_key=f"{plan.plan_key}:native:{native_action_kind}",
+                    idempotency_key=idempotency_key,
                     player_guid=int(payload.get("player_guid") or plan.player_guid),
                     action_kind=native_action_kind,
                     payload=native_payload,
@@ -728,6 +734,24 @@ def _risk_rank(value: str) -> int:
 
 
 def _native_quest_grant_idempotency_key(*, plan: ReactionPlan, quest_id: int) -> str:
+    source_event_key = _plan_trigger_identity(plan=plan)
+    trigger_scope = source_event_key or "no_source_event"
+    return f"{plan.plan_key}:{trigger_scope}:native:quest_add:{int(quest_id)}"
+
+
+def _native_bridge_action_idempotency_key(
+    *,
+    plan: ReactionPlan,
+    native_action_kind: str,
+    payload: dict[str, Any],
+) -> str:
+    suffix = _str_or_none(payload.get("idempotency_suffix"))
+    suffix_scope = f":{suffix}" if suffix is not None else ""
+    trigger_scope = _plan_trigger_identity(plan=plan) or "no_source_event"
+    return f"{plan.plan_key}:{trigger_scope}:native:{native_action_kind}{suffix_scope}"
+
+
+def _plan_trigger_identity(*, plan: ReactionPlan) -> str | None:
     source_event_key = _str_or_none(plan.metadata.get("source_event_key"))
     opportunity_metadata = plan.metadata.get("opportunity_metadata")
     if source_event_key is None and isinstance(opportunity_metadata, dict):
@@ -736,8 +760,7 @@ def _native_quest_grant_idempotency_key(*, plan: ReactionPlan, quest_id: int) ->
             trigger_event_id = _int_or_none(opportunity_metadata.get("trigger_event_id"))
             if trigger_event_id is not None:
                 source_event_key = f"trigger_event:{trigger_event_id}"
-    trigger_scope = source_event_key or "no_source_event"
-    return f"{plan.plan_key}:{trigger_scope}:native:quest_add:{int(quest_id)}"
+    return source_event_key
 
 
 def _strip_internal_payload_fields(payload: dict[str, Any]) -> dict[str, Any]:

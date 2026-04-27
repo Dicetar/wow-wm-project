@@ -20,7 +20,7 @@ It creates a workspace under `.wm-bootstrap\` and then:
 - clones the pinned module set from `bootstrap/sources.lock.json`
 - creates module junctions inside `.wm-bootstrap\src\azerothcore\modules`
 - downloads and stages local build dependencies under `.wm-bootstrap\deps`
-- copies repo-owned SQL, addon, and helper assets into `.wm-bootstrap\run`
+- copies repo-owned SQL, client compatibility, and helper assets into `.wm-bootstrap\run`
 - records setup state under `.wm-bootstrap\state`
 
 Default workspace layout:
@@ -133,7 +133,7 @@ It is not a full DB import/migration lane and it is not a promise of gameplay pa
 - WM bootstrap SQL: `sql/bootstrap`
 - WM control registry: `control`
 - repack/world overrides: `sql/repack`
-- addon bridge: `wow_addons/WMBridge`
+- retired client-message prototype source: `wow_addons/WMBridge`
 - runtime DLL guard: `scripts/bootstrap/Test-RuntimeDllGuard.ps1`
 - compatibility overlay: `scripts/repack/Apply-RepackCompatibilityOverlay.ps1`
 - work summary: `docs/WORK_SUMMARY.md`

@@ -48,8 +48,11 @@ WmSpells.BoneboundServant.DamagePerShadowPowerPct = 16
 
 #
 # Bonebound Alpha v3 abilities are DB behavior-config driven on shell 940001:
-# - native shadow DoT, default 5s cooldown / 8s duration / 2s tick
-# - passive 5% melee proc to spawn a temporary Alpha echo
+# - visible Rend-marker bleed with WM-owned attack-power-scaled damage
+# - Alpha/Echo physical cleave pulses
+# - passive melee proc to spawn temporary Alpha Echoes
+# - Echo count visible aura stack marker
+# - lab debug command bonebound_echo_mode_v1 toggles Echo follow/hunt mode
 # Echo duration is the summoner's total intellect value in seconds.
 # Keep these server-only until a client shell patch exposes player-facing text.
 #

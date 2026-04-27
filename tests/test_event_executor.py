@@ -518,6 +518,50 @@ class ReactionExecutorTests(unittest.TestCase):
         self.assertIn("trigger_event:27671", keys[0])
         self.assertIn("trigger_event:27675", keys[2])
 
+    def test_native_bridge_action_idempotency_includes_trigger_identity_and_suffix(self) -> None:
+        store = FakeExecutionStore()
+        native_actions = FakeNativeBridgeActions()
+        executor = ReactionExecutor(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            native_bridge_actions=native_actions,  # type: ignore[arg-type]
+        )
+
+        def plan_for(source_event_key: str) -> ReactionPlan:
+            return ReactionPlan(
+                plan_key="area_pressure_refresh:5406:creature:46",
+                opportunity_type="area_pressure_refresh",
+                rule_type="area_pressure_refresh",
+                player_guid=5406,
+                subject=SubjectRef(subject_type="creature", subject_entry=46),
+                metadata={"source_event_key": source_event_key},
+                actions=[
+                    PlannedAction(
+                        kind="native_bridge_action",
+                        payload={
+                            "native_action_kind": "player_apply_aura",
+                            "player_guid": 5406,
+                            "payload": {"spell_id": 687},
+                            "risk_level": "medium",
+                            "idempotency_suffix": "aura",
+                        },
+                    )
+                ],
+            )
+
+        executor.execute(plan=plan_for("native_bridge:30001"), mode="apply")
+        executor.execute(plan=plan_for("native_bridge:30001"), mode="apply")
+        executor.execute(plan=plan_for("native_bridge:30009"), mode="apply")
+
+        keys = [submission["idempotency_key"] for submission in native_actions.submissions]
+        self.assertEqual(len(keys), 3)
+        self.assertEqual(keys[0], keys[1])
+        self.assertNotEqual(keys[1], keys[2])
+        self.assertIn("native_bridge:30001", keys[0])
+        self.assertIn("native_bridge:30009", keys[2])
+        self.assertTrue(keys[0].endswith(":native:player_apply_aura:aura"))
+
     def test_structured_ref_payloads_are_accepted(self) -> None:
         store = FakeExecutionStore()
         executor = ReactionExecutor(client=_DummyClient(), settings=Settings(), store=store)

@@ -1,9 +1,14 @@
 #include "wm_spell_runtime.h"
 
+#include "CellImpl.h"
 #include "Config.h"
 #include "Creature.h"
 #include "CreatureAI.h"
 #include "DatabaseEnv.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
+#include "Group.h"
+#include "GroupReference.h"
 #include "Item.h"
 #include "ItemTemplate.h"
 #include "MotionMaster.h"
@@ -13,10 +18,14 @@
 #include "SpellAuraEffects.h"
 #include "SpellAuras.h"
 #include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "TemporarySummon.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <list>
+#include <limits>
 #include <optional>
 #include <regex>
 #include <string>
@@ -38,7 +47,11 @@ namespace
     constexpr float NIGHT_WATCHERS_LENS_PROC_CHANCE_PCT = 10.0f;
     constexpr float NIGHT_WATCHERS_LENS_MARK_PROC_MULTIPLIER = 2.0f;
     // Rend is a client-known bleed debuff. WM owns the damage; this aura is the visible status/timer.
-    constexpr uint32 BONEBOUND_ALPHA_BLEED_VISIBLE_AURA_SPELL_ID = 772;
+    constexpr uint32 BONEBOUND_BLEED_VISIBLE_AURA_SPELL_ID = 772;
+    // Thorns is a client-known positive buff marker; WM strips its effects and only uses the stack count.
+    constexpr uint32 BONEBOUND_ECHO_COUNT_DEFAULT_AURA_SPELL_ID = 467;
+    constexpr uint32 BONEBOUND_SLASH_SPELL_ID = 945000;
+    constexpr float BONEBOUND_ECHO_MIN_FOLLOW_SEPARATION_YARDS = 1.6f;
     constexpr float WM_PI = 3.14159265358979323846f;
 
     WmSpells::RuntimeConfig gConfig;
@@ -46,6 +59,9 @@ namespace
     std::unordered_map<uint32, ObjectGuid> gBoneboundOmegaByPlayer;
     std::unordered_map<uint32, int32> gIntellectBlockRatingByPlayer;
     std::unordered_set<uint32> gNightWatchersLensAuraAppliedByPlayer;
+    std::unordered_map<uint32, bool> gBoneboundEchoHuntModeByPlayer;
+    std::unordered_map<uint32, float> gBoneboundEchoHuntRadiusByPlayer;
+    std::unordered_map<uint32, uint32> gBoneboundEchoCountAuraByPlayer;
 
     struct NightWatchersLensMarkState
     {
@@ -64,6 +80,12 @@ namespace
         uint32 tickDamage = 1;
     };
 
+    enum class BoneboundEchoRole
+    {
+        Warrior,
+        Priest
+    };
+
     struct BoneboundAlphaEchoState
     {
         ObjectGuid echoGuid;
@@ -71,13 +93,63 @@ namespace
         uint32 creatureEntry = 0;
         uint32 remainingMs = 0;
         uint32 damagePct = 100;
+        BoneboundEchoRole role = BoneboundEchoRole::Warrior;
+        uint32 virtualItem1 = 0;
+        uint32 virtualItem2 = 0;
+        uint32 virtualItem3 = 0;
         float followDistance = 2.2f;
         float followAngle = PET_FOLLOW_ANGLE;
     };
 
+    struct BoneboundEchoStasisCounts
+    {
+        uint32 destroyers = 0;
+        uint32 restorers = 0;
+
+        uint32 Total() const
+        {
+            return destroyers + restorers;
+        }
+    };
+
+    struct BoneboundEchoFormationSlot
+    {
+        float followDistance = 2.2f;
+        float followAngle = PET_FOLLOW_ANGLE;
+    };
+
+    struct BoneboundPriestDispelCandidate
+    {
+        Unit* target = nullptr;
+        uint32 spellId = 0;
+        ObjectGuid casterGuid;
+        uint32 dispelType = DISPEL_NONE;
+        uint32 severity = 0;
+    };
+
+    struct BoneboundPriestDpsCastState
+    {
+        ObjectGuid targetGuid;
+        uint32 ownerGuid = 0;
+        uint32 visualSpellId = 0;
+        uint32 damageSpellId = 0;
+        uint32 damage = 1;
+        uint32 remainingMs = 0;
+        float maxRange = 100.0f;
+    };
+
     std::vector<BoneboundBleedState> gBoneboundBleeds;
     std::unordered_map<uint32, BoneboundAlphaEchoState> gBoneboundAlphaEchoes;
-    std::unordered_map<uint32, uint32> gBoneboundBleedCooldownByPet;
+    std::unordered_map<uint32, uint32> gBoneboundBleedCooldownByCaster;
+    std::unordered_map<uint32, uint32> gBoneboundCleaveCooldownByCaster;
+    std::unordered_map<uint32, uint32> gBoneboundPriestHealCooldownByCaster;
+    std::unordered_map<uint32, uint32> gBoneboundPriestRenewCooldownByCaster;
+    std::unordered_map<uint32, uint32> gBoneboundPriestShieldCooldownByCaster;
+    std::unordered_map<uint32, uint32> gBoneboundPriestDpsCooldownByCaster;
+    std::unordered_map<uint32, uint32> gBoneboundPriestDispelCooldownByCaster;
+    std::unordered_map<uint32, uint32> gBoneboundPriestMassDispelCooldownByCaster;
+    std::unordered_map<uint32, BoneboundPriestDpsCastState> gBoneboundPriestDpsCastByCaster;
+    std::unordered_map<uint32, uint32> gBoneboundWarriorEchoesSincePriestByPlayer;
     std::unordered_map<uint64, NightWatchersLensMarkState> gNightWatchersLensMarksByTarget;
 
     void ParseUIntSet(std::string const& raw, std::unordered_set<uint32>& target)
@@ -178,7 +250,10 @@ namespace
         if (!creature)
             return;
 
+        bool nameChanged = creature->GetName() != name;
         creature->SetName(name);
+        if (nameChanged)
+            creature->UpdateObjectVisibility();
         if (displayId != 0)
         {
             creature->SetDisplayId(displayId);
@@ -420,6 +495,7 @@ namespace
         config.omegaVirtualItem1 = gConfig.boneboundVirtualItem1;
         config.omegaVirtualItem2 = gConfig.boneboundVirtualItem2;
         config.omegaVirtualItem3 = gConfig.boneboundVirtualItem3;
+        config.alphaEchoCountAuraSpellId = BONEBOUND_ECHO_COUNT_DEFAULT_AURA_SPELL_ID;
         return config;
     }
 
@@ -433,6 +509,16 @@ namespace
     bool IsIntellectBlockBehaviorKind(std::string const& behaviorKind)
     {
         return behaviorKind == "passive_intellect_block_v1";
+    }
+
+    bool IsBoneboundEchoModeBehaviorKind(std::string const& behaviorKind)
+    {
+        return behaviorKind == "bonebound_echo_mode_v1";
+    }
+
+    bool IsBoneboundEchoStasisBehaviorKind(std::string const& behaviorKind)
+    {
+        return behaviorKind == "bonebound_echo_stasis_v1";
     }
 
     bool IsBoneboundShellOrBehavior(uint32 shellSpellId)
@@ -488,6 +574,22 @@ namespace
         if (std::regex_search(json, match, pattern) && match.size() > 1)
             return match[1].str() == "true";
         return std::nullopt;
+    }
+
+    std::optional<std::vector<uint32>> ExtractJsonUIntArray(std::string const& json, std::string const& key)
+    {
+        std::regex pattern("\"" + key + "\"\\s*:\\s*\\[([^\\]]*)\\]");
+        std::smatch match;
+        if (!std::regex_search(json, match, pattern) || match.size() <= 1)
+            return std::nullopt;
+
+        std::vector<uint32> values;
+        std::string raw = match[1].str();
+        std::regex numberPattern("(\\d+)");
+        for (std::sregex_iterator it(raw.begin(), raw.end(), numberPattern), end; it != end; ++it)
+            values.push_back(static_cast<uint32>(std::stoul((*it)[1].str())));
+
+        return values;
     }
 
     std::optional<WmSpells::BoneboundBehaviorConfig> BuildBoneboundBehaviorConfig(
@@ -607,6 +709,8 @@ namespace
             config.bleedDamagePerIntellectPct = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_damage_per_shadow_power_pct"))
             config.bleedDamagePerShadowPowerPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "shadow_dot_damage_per_attack_power_pct"))
+            config.bleedDamagePerAttackPowerPct = *value;
         if (std::optional<bool> value = ExtractJsonBool(configJson, "bleed_enabled"))
             config.bleedEnabled = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "bleed_cooldown_ms"))
@@ -623,6 +727,8 @@ namespace
             config.bleedDamagePerIntellectPct = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "bleed_damage_per_shadow_power_pct"))
             config.bleedDamagePerShadowPowerPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "bleed_damage_per_attack_power_pct"))
+            config.bleedDamagePerAttackPowerPct = *value;
         if (std::optional<bool> value = ExtractJsonBool(configJson, "alpha_echo_enabled"))
             config.alphaEchoEnabled = *value;
         if (std::optional<float> value = ExtractJsonFloat(configJson, "alpha_echo_proc_chance_pct"))
@@ -631,12 +737,120 @@ namespace
             config.alphaEchoMaxActive = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "alpha_echo_creature_entry"))
             config.alphaEchoCreatureEntry = *value;
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "alpha_echo_name"))
+            config.alphaEchoName = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "alpha_echo_damage_pct"))
             config.alphaEchoDamagePct = *value;
         if (std::optional<float> value = ExtractJsonFloat(configJson, "alpha_echo_follow_distance"))
             config.alphaEchoFollowDistance = *value;
         if (std::optional<float> value = ExtractJsonFloat(configJson, "alpha_echo_follow_angle"))
             config.alphaEchoFollowAngle = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "alpha_echo_hunt_radius"))
+            config.alphaEchoHuntRadius = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "alpha_echo_count_aura_enabled"))
+            config.alphaEchoCountAuraEnabled = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "alpha_echo_count_aura_spell_id"))
+            config.alphaEchoCountAuraSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "alpha_echo_count_aura_refresh_ms"))
+            config.alphaEchoCountAuraRefreshMs = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "priest_echo_enabled"))
+            config.priestEchoEnabled = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_creature_entry"))
+            config.priestEchoCreatureEntry = *value;
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "priest_echo_name"))
+            config.priestEchoName = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_display_id"))
+            config.priestEchoDisplayId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_virtual_item_1"))
+            config.priestEchoVirtualItem1 = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_virtual_item_2"))
+            config.priestEchoVirtualItem2 = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_virtual_item_3"))
+            config.priestEchoVirtualItem3 = *value;
+        if (std::optional<std::vector<uint32>> value = ExtractJsonUIntArray(configJson, "priest_echo_staff_item_entries"))
+            config.priestEchoStaffItemEntries = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "priest_echo_scale_multiplier"))
+            config.priestEchoScaleMultiplier = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "priest_echo_proc_chance_pct"))
+            config.priestEchoProcChancePct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_max_active"))
+            config.priestEchoMaxActive = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_pity_after_warrior_spawns"))
+            config.priestEchoPityAfterWarriorSpawns = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_damage_pct"))
+            config.priestEchoDamagePct = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "priest_echo_support_radius"))
+            config.priestEchoSupportRadius = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_heal_below_health_pct"))
+            config.priestEchoHealBelowHealthPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_heal_spell_id"))
+            config.priestEchoHealSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_heal_base_pct"))
+            config.priestEchoHealBasePct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_heal_cooldown_ms"))
+            config.priestEchoHealCooldownMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_renew_spell_id"))
+            config.priestEchoRenewSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_renew_base_pct"))
+            config.priestEchoRenewBasePct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_renew_cooldown_ms"))
+            config.priestEchoRenewCooldownMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_shield_spell_id"))
+            config.priestEchoShieldSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_shield_base_pct"))
+            config.priestEchoShieldBasePct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_shield_cooldown_ms"))
+            config.priestEchoShieldCooldownMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_disease_dispel_spell_id"))
+            config.priestEchoDiseaseDispelSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_curse_dispel_spell_id"))
+            config.priestEchoCurseDispelSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_dispel_cooldown_ms"))
+            config.priestEchoDispelCooldownMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_mass_dispel_spell_id"))
+            config.priestEchoMassDispelSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_mass_dispel_cooldown_ms"))
+            config.priestEchoMassDispelCooldownMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_mass_dispel_min_affected"))
+            config.priestEchoMassDispelMinAffected = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_mass_dispel_min_severity"))
+            config.priestEchoMassDispelMinSeverity = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_mass_dispel_max_removals"))
+            config.priestEchoMassDispelMaxRemovals = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_dps_spell_id"))
+            config.priestEchoDpsSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_dps_damage_spell_id"))
+            config.priestEchoDpsDamageSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_dps_cast_time_ms"))
+            config.priestEchoDpsCastTimeMs = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_dps_damage_pct"))
+            config.priestEchoDpsDamagePct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_dps_cooldown_ms"))
+            config.priestEchoDpsCooldownMs = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "priest_echo_dps_max_range"))
+            config.priestEchoDpsMaxRange = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_spell_power_to_healing_pct"))
+            config.priestEchoSpellPowerToHealingPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_spell_power_to_shield_pct"))
+            config.priestEchoSpellPowerToShieldPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_spell_power_to_damage_pct"))
+            config.priestEchoSpellPowerToDamagePct = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "priest_echo_safe_follow_distance"))
+            config.priestEchoSafeFollowDistance = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "priest_echo_safe_min_enemy_distance"))
+            config.priestEchoSafeMinEnemyDistance = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "cleave_enabled"))
+            config.cleaveEnabled = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "cleave_cooldown_ms"))
+            config.cleaveCooldownMs = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "cleave_radius"))
+            config.cleaveRadius = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "cleave_max_targets"))
+            config.cleaveMaxTargets = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "alpha_cleave_damage_pct"))
+            config.alphaCleaveDamagePct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "echo_cleave_damage_pct"))
+            config.echoCleaveDamagePct = *value;
 
         if (record.behaviorKind == "summon_bonebound_alpha_v3")
             config.spawnOmega = false;
@@ -661,6 +875,25 @@ namespace
             config.spellSchoolMask = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "max_block_rating"))
             config.maxBlockRating = *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::BoneboundEchoStasisConfig> BuildBoneboundEchoStasisConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (!IsBoneboundEchoStasisBehaviorKind(record.behaviorKind) || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BoneboundEchoStasisConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "alpha_shell_spell_id"))
+            config.alphaShellSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "soul_shard_item_id"))
+            config.soulShardItemId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "soul_shard_count"))
+            config.soulShardCount = *value;
 
         return config;
     }
@@ -835,19 +1068,37 @@ namespace
         return BuildBoneboundBehaviorConfig(*behaviorRecord, persistPetFallback);
     }
 
-    uint32 ResolveBoneboundBleedTickDamage(Player* owner, Unit* caster, WmSpells::BoneboundBehaviorConfig const& config)
+    float ResolveBoneboundCasterAttackPower(Unit* caster)
+    {
+        if (!caster)
+            return 0.0f;
+
+        float baseAttackPower = static_cast<float>(caster->GetInt32Value(UNIT_FIELD_ATTACK_POWER));
+        float attackPowerMods = static_cast<float>(caster->GetInt32Value(UNIT_FIELD_ATTACK_POWER_MODS));
+        float attackPowerMultiplier = caster->GetFloatValue(UNIT_FIELD_ATTACK_POWER_MULTIPLIER);
+        return std::max(0.0f, (baseAttackPower + attackPowerMods) * (1.0f + attackPowerMultiplier));
+    }
+
+    uint32 ResolveBoneboundBleedTickDamage(Player* owner, Unit* caster, WmSpells::BoneboundBehaviorConfig const& config, uint32 damagePct)
     {
         if (!owner)
             return 1u;
 
         float intellect = std::max(0.0f, owner->GetTotalStatValue(STAT_INTELLECT));
         int32 shadowPower = std::max<int32>(0, owner->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_SHADOW));
+        float attackPower = ResolveBoneboundCasterAttackPower(caster);
         uint32 level = caster ? caster->GetLevel() : owner->GetLevel();
         float damage = static_cast<float>(config.bleedBaseDamage)
+            + attackPower * (static_cast<float>(config.bleedDamagePerAttackPowerPct) / 100.0f)
             + static_cast<float>(level) * (static_cast<float>(config.bleedDamagePerLevelPct) / 100.0f)
             + intellect * (static_cast<float>(config.bleedDamagePerIntellectPct) / 100.0f)
             + static_cast<float>(shadowPower) * (static_cast<float>(config.bleedDamagePerShadowPowerPct) / 100.0f);
-        return std::max<uint32>(1u, static_cast<uint32>(std::round(damage)));
+        uint32 resolved = std::max<uint32>(1u, static_cast<uint32>(std::round(damage)));
+        if (damagePct == 100u)
+            return resolved;
+
+        uint64 scaled = (static_cast<uint64>(resolved) * static_cast<uint64>(std::max<uint32>(1u, damagePct)) + 50u) / 100u;
+        return std::max<uint32>(1u, static_cast<uint32>(std::min<uint64>(scaled, std::numeric_limits<uint32>::max())));
     }
 
     Aura* ApplyBoneboundBleedVisibleAura(Unit* caster, Unit* target, uint32 durationMs)
@@ -855,9 +1106,9 @@ namespace
         if (!caster || !target)
             return nullptr;
 
-        Aura* aura = caster->AddAura(BONEBOUND_ALPHA_BLEED_VISIBLE_AURA_SPELL_ID, target);
+        Aura* aura = caster->AddAura(BONEBOUND_BLEED_VISIBLE_AURA_SPELL_ID, target);
         if (!aura)
-            aura = target->GetAura(BONEBOUND_ALPHA_BLEED_VISIBLE_AURA_SPELL_ID, caster->GetGUID());
+            aura = target->GetAura(BONEBOUND_BLEED_VISIBLE_AURA_SPELL_ID, caster->GetGUID());
         if (!aura)
             return nullptr;
 
@@ -879,11 +1130,11 @@ namespace
         if (!caster || !target)
             return false;
 
-        Aura* aura = target->GetAura(BONEBOUND_ALPHA_BLEED_VISIBLE_AURA_SPELL_ID, caster->GetGUID());
+        Aura* aura = target->GetAura(BONEBOUND_BLEED_VISIBLE_AURA_SPELL_ID, caster->GetGUID());
         return aura && aura->GetDuration() > 0;
     }
 
-    void StartBoneboundAlphaBleed(Player* owner, Unit* caster, Unit* target, WmSpells::BoneboundBehaviorConfig const& config)
+    void StartBoneboundBleed(Player* owner, Unit* caster, Unit* target, WmSpells::BoneboundBehaviorConfig const& config, uint32 damagePct)
     {
         if (!owner || !caster || !target || !target->IsAlive() || !config.bleedEnabled)
             return;
@@ -894,7 +1145,7 @@ namespace
             return;
 
         uint32 tickMs = std::max<uint32>(500u, config.bleedTickMs);
-        uint32 tickDamage = ResolveBoneboundBleedTickDamage(owner, caster, config);
+        uint32 tickDamage = ResolveBoneboundBleedTickDamage(owner, caster, config, damagePct);
 
         for (BoneboundBleedState& bleed : gBoneboundBleeds)
         {
@@ -920,15 +1171,345 @@ namespace
         gBoneboundBleeds.push_back(bleed);
     }
 
-    uint32 CountActiveBoneboundAlphaEchoes(uint32 ownerGuid)
+    void UpdateBoneboundBleedCooldowns(uint32 diff)
+    {
+        if (diff == 0 || gBoneboundBleedCooldownByCaster.empty())
+            return;
+
+        for (auto it = gBoneboundBleedCooldownByCaster.begin(); it != gBoneboundBleedCooldownByCaster.end();)
+        {
+            if (it->second > diff)
+            {
+                it->second -= diff;
+                ++it;
+            }
+            else
+            {
+                it = gBoneboundBleedCooldownByCaster.erase(it);
+            }
+        }
+    }
+
+    void UpdateBoneboundCleaveCooldowns(uint32 diff)
+    {
+        if (diff == 0 || gBoneboundCleaveCooldownByCaster.empty())
+            return;
+
+        for (auto it = gBoneboundCleaveCooldownByCaster.begin(); it != gBoneboundCleaveCooldownByCaster.end();)
+        {
+            if (it->second > diff)
+            {
+                it->second -= diff;
+                ++it;
+            }
+            else
+            {
+                it = gBoneboundCleaveCooldownByCaster.erase(it);
+            }
+        }
+    }
+
+    void UpdateBoneboundPriestEchoCooldowns(uint32 diff)
+    {
+        auto updateCooldowns = [diff](std::unordered_map<uint32, uint32>& cooldowns)
+        {
+            if (diff == 0 || cooldowns.empty())
+                return;
+
+            for (auto it = cooldowns.begin(); it != cooldowns.end();)
+            {
+                if (it->second > diff)
+                {
+                    it->second -= diff;
+                    ++it;
+                }
+                else
+                {
+                    it = cooldowns.erase(it);
+                }
+            }
+        };
+
+        updateCooldowns(gBoneboundPriestHealCooldownByCaster);
+        updateCooldowns(gBoneboundPriestRenewCooldownByCaster);
+        updateCooldowns(gBoneboundPriestShieldCooldownByCaster);
+        updateCooldowns(gBoneboundPriestDpsCooldownByCaster);
+        updateCooldowns(gBoneboundPriestDispelCooldownByCaster);
+        updateCooldowns(gBoneboundPriestMassDispelCooldownByCaster);
+    }
+
+    uint32 CountActiveBoneboundEchoes(uint32 ownerGuid, std::optional<BoneboundEchoRole> role = std::nullopt)
     {
         uint32 count = 0;
         for (auto const& [_, echo] : gBoneboundAlphaEchoes)
         {
-            if (echo.ownerGuid == ownerGuid)
+            if (echo.ownerGuid == ownerGuid && (!role.has_value() || echo.role == *role))
                 ++count;
         }
         return count;
+    }
+
+    uint32 CountActiveBoneboundAlphaEchoes(uint32 ownerGuid)
+    {
+        return CountActiveBoneboundEchoes(ownerGuid);
+    }
+
+    uint32 CountActiveBoneboundWarriorEchoes(uint32 ownerGuid)
+    {
+        return CountActiveBoneboundEchoes(ownerGuid, BoneboundEchoRole::Warrior);
+    }
+
+    uint32 CountActiveBoneboundPriestEchoes(uint32 ownerGuid)
+    {
+        return CountActiveBoneboundEchoes(ownerGuid, BoneboundEchoRole::Priest);
+    }
+
+    BoneboundEchoStasisCounts CountActiveBoneboundEchoesByRole(uint32 ownerGuid)
+    {
+        return {
+            CountActiveBoneboundWarriorEchoes(ownerGuid),
+            CountActiveBoneboundPriestEchoes(ownerGuid),
+        };
+    }
+
+    uint32 SaturatingAddUInt32(uint32 left, uint32 right)
+    {
+        uint64 sum = static_cast<uint64>(left) + static_cast<uint64>(right);
+        return static_cast<uint32>(std::min<uint64>(sum, std::numeric_limits<uint32>::max()));
+    }
+
+    BoneboundEchoStasisCounts AddBoneboundEchoStasisCounts(
+        BoneboundEchoStasisCounts const& storedCounts,
+        BoneboundEchoStasisCounts const& activeCounts)
+    {
+        return {
+            SaturatingAddUInt32(storedCounts.destroyers, activeCounts.destroyers),
+            SaturatingAddUInt32(storedCounts.restorers, activeCounts.restorers),
+        };
+    }
+
+    BoneboundEchoStasisCounts SubtractBoneboundEchoStasisCounts(
+        BoneboundEchoStasisCounts const& storedCounts,
+        BoneboundEchoStasisCounts const& restoredCounts)
+    {
+        return {
+            storedCounts.destroyers > restoredCounts.destroyers
+                ? storedCounts.destroyers - restoredCounts.destroyers
+                : 0u,
+            storedCounts.restorers > restoredCounts.restorers
+                ? storedCounts.restorers - restoredCounts.restorers
+                : 0u,
+        };
+    }
+
+    float ClampBoneboundEchoHuntRadius(float radius)
+    {
+        if (!std::isfinite(radius))
+            return 35.0f;
+
+        return std::clamp(radius, 5.0f, 100.0f);
+    }
+
+    float ResolveBoneboundEchoHuntRadius(uint32 ownerGuid, std::optional<WmSpells::BoneboundBehaviorConfig> const& runtimeConfig)
+    {
+        auto overrideIt = gBoneboundEchoHuntRadiusByPlayer.find(ownerGuid);
+        if (overrideIt != gBoneboundEchoHuntRadiusByPlayer.end())
+            return ClampBoneboundEchoHuntRadius(overrideIt->second);
+
+        if (runtimeConfig.has_value())
+            return ClampBoneboundEchoHuntRadius(runtimeConfig->alphaEchoHuntRadius);
+
+        return 35.0f;
+    }
+
+    bool IsBoneboundEchoHuntMode(uint32 ownerGuid)
+    {
+        auto it = gBoneboundEchoHuntModeByPlayer.find(ownerGuid);
+        return it != gBoneboundEchoHuntModeByPlayer.end() && it->second;
+    }
+
+    void ClearBoneboundEchoCountAura(Player* owner)
+    {
+        if (!owner)
+            return;
+
+        uint32 ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+        auto it = gBoneboundEchoCountAuraByPlayer.find(ownerGuid);
+        if (it == gBoneboundEchoCountAuraByPlayer.end())
+            return;
+
+        owner->RemoveAurasDueToSpell(it->second);
+        gBoneboundEchoCountAuraByPlayer.erase(it);
+    }
+
+    void StripAuraEffects(Aura* aura)
+    {
+        if (!aura)
+            return;
+
+        for (uint8 effectIndex = 0; effectIndex < MAX_SPELL_EFFECTS; ++effectIndex)
+        {
+            if (AuraEffect* effect = aura->GetEffect(effectIndex))
+            {
+                effect->SetAmount(0);
+                effect->SetPeriodic(false);
+            }
+        }
+    }
+
+    void RefreshBoneboundEchoCountAura(Player* owner, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!owner)
+            return;
+
+        uint32 ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+        uint32 activeCount = CountActiveBoneboundAlphaEchoes(ownerGuid);
+        if (!config.alphaEchoCountAuraEnabled || config.alphaEchoCountAuraSpellId == 0 || activeCount == 0)
+        {
+            ClearBoneboundEchoCountAura(owner);
+            return;
+        }
+
+        auto existingAuraIt = gBoneboundEchoCountAuraByPlayer.find(ownerGuid);
+        if (existingAuraIt != gBoneboundEchoCountAuraByPlayer.end() && existingAuraIt->second != config.alphaEchoCountAuraSpellId)
+            ClearBoneboundEchoCountAura(owner);
+
+        Aura* aura = owner->AddAura(config.alphaEchoCountAuraSpellId, owner);
+        if (!aura)
+            aura = owner->GetAura(config.alphaEchoCountAuraSpellId, owner->GetGUID());
+        if (!aura)
+            return;
+
+        aura->SetMaxDuration(-1);
+        aura->SetDuration(-1);
+        aura->SetStackAmount(static_cast<uint8>(std::min<uint32>(255u, activeCount)));
+        StripAuraEffects(aura);
+        gBoneboundEchoCountAuraByPlayer[ownerGuid] = config.alphaEchoCountAuraSpellId;
+    }
+
+    void SeedBoneboundOwnerKillCredit(Player* owner, Unit* victim, uint32 creditedDamage = 0)
+    {
+        if (!owner || !victim || !victim->IsAlive() || !WmSpells::IsPlayerAllowed(owner))
+            return;
+
+        if (Creature* creature = victim->ToCreature())
+        {
+            if (!creature->hasLootRecipient())
+                creature->SetLootRecipient(owner, true);
+
+            if (creditedDamage > 0)
+            {
+                uint32 damageCredit = std::min<uint32>(
+                    std::max<uint32>(1u, creditedDamage),
+                    std::max<uint32>(1u, creature->GetHealth()));
+                creature->LowerPlayerDamageReq(damageCredit, true);
+            }
+        }
+
+        owner->SetInCombatWith(victim);
+        victim->SetInCombatWith(owner);
+        if (victim->CanHaveThreatList())
+            victim->AddThreat(owner, 1.0f);
+    }
+
+    std::vector<Unit*> SelectBoneboundCleaveTargets(Unit* caster, Unit* primaryVictim, float radius, uint32 maxTargets)
+    {
+        std::vector<Unit*> targets;
+        if (!caster || radius <= 0.0f || maxTargets == 0)
+            return targets;
+
+        std::list<Unit*> nearby;
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(caster, caster, radius);
+        Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(caster, nearby, check);
+        Cell::VisitObjects(caster, searcher, radius);
+
+        for (Unit* target : nearby)
+        {
+            if (!target || target == caster || target == primaryVictim || !target->IsAlive() || caster->IsFriendlyTo(target))
+                continue;
+
+            targets.push_back(target);
+            if (targets.size() >= maxTargets)
+                break;
+        }
+        return targets;
+    }
+
+    Unit* SelectNearestBoneboundSeekTarget(Player* owner, Creature* seeker, float radius)
+    {
+        if (!owner || !seeker || radius <= 0.0f || owner->GetMapId() != seeker->GetMapId())
+            return nullptr;
+
+        std::list<Unit*> nearby;
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(owner, owner, radius);
+        Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(owner, nearby, check);
+        Cell::VisitObjects(owner, searcher, radius);
+
+        Unit* bestTarget = nullptr;
+        float bestDistance = std::numeric_limits<float>::max();
+        for (Unit* candidate : nearby)
+        {
+            if (!candidate
+                || candidate == owner
+                || candidate == seeker
+                || !candidate->IsAlive()
+                || candidate->GetMapId() != owner->GetMapId()
+                || !owner->IsWithinDistInMap(candidate, radius)
+                || owner->IsFriendlyTo(candidate)
+                || !seeker->CanCreatureAttack(candidate, true)
+                || !seeker->IsWithinLOSInMap(candidate))
+                continue;
+
+            float distance = owner->GetDistance(candidate);
+            if (!bestTarget || distance < bestDistance)
+            {
+                bestTarget = candidate;
+                bestDistance = distance;
+            }
+        }
+
+        return bestTarget;
+    }
+
+    void TryBoneboundCleave(
+        Player* owner,
+        Unit* caster,
+        Unit* primaryVictim,
+        WmSpells::BoneboundBehaviorConfig const& config,
+        uint32 baseDamage,
+        uint32 cleaveDamagePct)
+    {
+        if (!owner || !caster || !primaryVictim || !primaryVictim->IsAlive() || !config.cleaveEnabled || baseDamage == 0 || cleaveDamagePct == 0)
+            return;
+
+        uint32 casterGuid = static_cast<uint32>(caster->GetGUID().GetCounter());
+        uint32& cooldown = gBoneboundCleaveCooldownByCaster[casterGuid];
+        if (cooldown != 0)
+            return;
+
+        std::vector<Unit*> targets = SelectBoneboundCleaveTargets(
+            caster,
+            primaryVictim,
+            std::max(1.0f, config.cleaveRadius),
+            std::max<uint32>(1u, config.cleaveMaxTargets));
+        if (targets.empty())
+            return;
+
+        uint32 damage = std::max<uint32>(1u, (static_cast<uint64>(baseDamage) * static_cast<uint64>(cleaveDamagePct)) / 100u);
+        for (Unit* target : targets)
+        {
+            SeedBoneboundOwnerKillCredit(owner, target, damage);
+            SpellCastResult result = caster->CastCustomSpell(
+                BONEBOUND_SLASH_SPELL_ID,
+                SPELLVALUE_BASE_POINT0,
+                static_cast<int32>(std::min<uint32>(damage, static_cast<uint32>(std::numeric_limits<int32>::max()))),
+                target,
+                true);
+            if (result != SPELL_CAST_OK)
+                continue;
+        }
+
+        cooldown = std::max<uint32>(500u, config.cleaveCooldownMs);
     }
 
     uint32 ResolveAlphaEchoDurationMs(Player* owner)
@@ -940,17 +1521,130 @@ namespace
         return seconds * 1000u;
     }
 
-    float RandomAlphaEchoFollowAngle()
+    uint32 BoneboundEchoFormationRingCapacity(float followDistance)
     {
-        return -WM_PI + (static_cast<float>(urand(0, 10000)) / 10000.0f) * (WM_PI * 2.0f);
+        float circumference = std::max(1.0f, followDistance) * WM_PI * 2.0f;
+        return std::max<uint32>(
+            1u,
+            static_cast<uint32>(std::floor(circumference / BONEBOUND_ECHO_MIN_FOLLOW_SEPARATION_YARDS)));
     }
 
-    float RandomAlphaEchoFollowDistance(WmSpells::BoneboundBehaviorConfig const& config)
+    float NormalizeBoneboundEchoFollowAngle(float angle)
     {
-        float baseDistance = std::max(1.5f, config.alphaEchoFollowDistance);
-        float minDistance = std::max(1.0f, baseDistance - 0.8f);
-        float maxDistance = baseDistance + 1.2f;
-        return minDistance + (static_cast<float>(urand(0, 10000)) / 10000.0f) * (maxDistance - minDistance);
+        while (angle > WM_PI)
+            angle -= WM_PI * 2.0f;
+        while (angle < -WM_PI)
+            angle += WM_PI * 2.0f;
+        return angle;
+    }
+
+    BoneboundEchoFormationSlot ResolveBoneboundEchoFormationSlot(
+        WmSpells::BoneboundBehaviorConfig const& config,
+        BoneboundEchoRole role,
+        uint32 ordinal)
+    {
+        bool priestEcho = role == BoneboundEchoRole::Priest;
+        float baseDistance = priestEcho
+            ? std::max(1.8f, config.priestEchoSafeFollowDistance)
+            : std::max(3.2f, config.alphaEchoFollowDistance);
+
+        uint32 ring = 0;
+        uint32 slot = ordinal;
+        float followDistance = baseDistance;
+        for (;;)
+        {
+            uint32 capacity = BoneboundEchoFormationRingCapacity(followDistance);
+            if (slot < capacity)
+            {
+                float angleStep = (WM_PI * 2.0f) / static_cast<float>(capacity);
+                float roleOffset = priestEcho ? angleStep * 0.5f : 0.0f;
+                float ringOffset = (ring % 2u == 0u) ? 0.0f : angleStep * 0.5f;
+                return {
+                    followDistance,
+                    NormalizeBoneboundEchoFollowAngle(
+                        config.alphaEchoFollowAngle
+                        + roleOffset
+                        + ringOffset
+                        + static_cast<float>(slot) * angleStep),
+                };
+            }
+
+            slot -= capacity;
+            ++ring;
+            followDistance += BONEBOUND_ECHO_MIN_FOLLOW_SEPARATION_YARDS;
+        }
+    }
+
+    void RefreshBoneboundEchoFormationSlots(Player* owner, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!owner)
+            return;
+
+        uint32 ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+        std::vector<uint32> warriorEchoes;
+        std::vector<uint32> priestEchoes;
+        for (auto const& [echoGuid, state] : gBoneboundAlphaEchoes)
+        {
+            if (state.ownerGuid != ownerGuid)
+                continue;
+
+            if (state.role == BoneboundEchoRole::Priest)
+                priestEchoes.push_back(echoGuid);
+            else
+                warriorEchoes.push_back(echoGuid);
+        }
+
+        auto applySlots = [owner, &config](std::vector<uint32>& echoGuids, BoneboundEchoRole role)
+        {
+            std::sort(echoGuids.begin(), echoGuids.end());
+            for (uint32 index = 0; index < echoGuids.size(); ++index)
+            {
+                auto stateIt = gBoneboundAlphaEchoes.find(echoGuids[index]);
+                if (stateIt == gBoneboundAlphaEchoes.end())
+                    continue;
+
+                BoneboundEchoFormationSlot slot = ResolveBoneboundEchoFormationSlot(config, role, index);
+                stateIt->second.followDistance = slot.followDistance;
+                stateIt->second.followAngle = slot.followAngle;
+
+                Creature* echo = ObjectAccessor::GetCreature(*owner, stateIt->second.echoGuid);
+                if (echo && echo->IsAlive() && !echo->IsInCombat())
+                    echo->GetMotionMaster()->MoveFollow(owner, slot.followDistance, slot.followAngle);
+            }
+        };
+
+        applySlots(warriorEchoes, BoneboundEchoRole::Warrior);
+        applySlots(priestEchoes, BoneboundEchoRole::Priest);
+    }
+
+    uint32 ResolveBoneboundPriestEchoStaffItem(WmSpells::BoneboundBehaviorConfig const& config);
+
+    BoneboundAlphaEchoState BuildBoneboundAlphaEchoState(
+        Player* owner,
+        WmSpells::BoneboundBehaviorConfig const& config,
+        BoneboundEchoRole requestedRole)
+    {
+        bool priestEcho = requestedRole == BoneboundEchoRole::Priest;
+        uint32 echoEntry = priestEcho
+            ? config.priestEchoCreatureEntry
+            : (config.alphaEchoCreatureEntry != 0 ? config.alphaEchoCreatureEntry : config.creatureEntry);
+        uint32 ownerGuid = owner ? static_cast<uint32>(owner->GetGUID().GetCounter()) : 0;
+        BoneboundEchoFormationSlot formationSlot = ResolveBoneboundEchoFormationSlot(
+            config,
+            requestedRole,
+            CountActiveBoneboundEchoes(ownerGuid, requestedRole));
+        BoneboundAlphaEchoState state;
+        state.ownerGuid = ownerGuid;
+        state.creatureEntry = echoEntry;
+        state.remainingMs = ResolveAlphaEchoDurationMs(owner);
+        state.damagePct = std::max<uint32>(1u, priestEcho ? config.priestEchoDamagePct : config.alphaEchoDamagePct);
+        state.role = priestEcho ? BoneboundEchoRole::Priest : BoneboundEchoRole::Warrior;
+        state.virtualItem1 = priestEcho ? ResolveBoneboundPriestEchoStaffItem(config) : 0;
+        state.virtualItem2 = priestEcho ? config.priestEchoVirtualItem2 : 0;
+        state.virtualItem3 = priestEcho ? config.priestEchoVirtualItem3 : 0;
+        state.followDistance = formationSlot.followDistance;
+        state.followAngle = formationSlot.followAngle;
+        return state;
     }
 
     uint32 ResolveAlphaMeleeDamageRoll(Pet* alphaPet, Player* owner, WmSpells::BoneboundBehaviorConfig const& config)
@@ -985,7 +1679,8 @@ namespace
         uint32 previousMaxHealth = echo->GetMaxHealth();
         uint32 desiredMaxHealth = std::max<uint32>(1u, alphaPet->GetMaxHealth());
 
-        echo->SetCreateHealth(alphaPet->GetCreateHealth());
+        echo->SetLevel(alphaPet->GetLevel());
+        echo->SetCreateHealth(desiredMaxHealth);
         echo->SetMaxHealth(desiredMaxHealth);
         echo->SetHealth(PreserveRuntimeValuePct(previousHealth, previousMaxHealth, desiredMaxHealth, refill));
 
@@ -1023,12 +1718,845 @@ namespace
         echo->UpdateDamagePhysical(BASE_ATTACK);
         echo->SetStatFloatValue(UNIT_FIELD_MINDAMAGE, alphaPet->GetFloatValue(UNIT_FIELD_MINDAMAGE));
         echo->SetStatFloatValue(UNIT_FIELD_MAXDAMAGE, alphaPet->GetFloatValue(UNIT_FIELD_MAXDAMAGE));
+        echo->SetLevel(alphaPet->GetLevel());
     }
 
-    void ApplyBoneboundAlphaEchoRuntime(Player* owner, Pet* alphaPet, TempSummon* echo, WmSpells::BoneboundBehaviorConfig const& config)
+    void MatchBoneboundEchoMovementSpeed(Pet* alphaPet, TempSummon* echo)
+    {
+        if (!alphaPet || !echo)
+            return;
+
+        echo->SetWalk(false);
+        echo->SetSpeed(MOVE_WALK, alphaPet->GetSpeedRate(MOVE_WALK), true);
+        echo->SetSpeed(MOVE_RUN, alphaPet->GetSpeedRate(MOVE_RUN), true);
+        echo->SetSpeed(MOVE_RUN_BACK, alphaPet->GetSpeedRate(MOVE_RUN_BACK), true);
+        echo->SetSpeed(MOVE_SWIM, alphaPet->GetSpeedRate(MOVE_SWIM), true);
+        echo->SetSpeed(MOVE_SWIM_BACK, alphaPet->GetSpeedRate(MOVE_SWIM_BACK), true);
+        echo->SetSpeed(MOVE_FLIGHT, alphaPet->GetSpeedRate(MOVE_FLIGHT), true);
+        echo->SetSpeed(MOVE_FLIGHT_BACK, alphaPet->GetSpeedRate(MOVE_FLIGHT_BACK), true);
+    }
+
+    bool IsBoneboundPriestEcho(BoneboundAlphaEchoState const& state)
+    {
+        return state.role == BoneboundEchoRole::Priest;
+    }
+
+    uint32 ResolveBoneboundPriestEchoStaffItem(WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (config.priestEchoVirtualItem1 != 0)
+            return config.priestEchoVirtualItem1;
+
+        if (config.priestEchoStaffItemEntries.empty())
+            return 0;
+
+        return config.priestEchoStaffItemEntries[urand(0, static_cast<uint32>(config.priestEchoStaffItemEntries.size() - 1))];
+    }
+
+    uint32 ResolvePercentOfMaxHealth(Unit* target, uint32 pct)
+    {
+        if (!target)
+            return 1u;
+
+        uint64 amount = (static_cast<uint64>(std::max<uint32>(1u, target->GetMaxHealth())) * std::max<uint32>(1u, pct)) / 100u;
+        return std::max<uint32>(1u, static_cast<uint32>(std::min<uint64>(amount, std::numeric_limits<uint32>::max())));
+    }
+
+    uint32 ResolveBoneboundPriestSpellPowerBonus(Player* owner, uint32 pct)
+    {
+        if (!owner || pct == 0)
+            return 0;
+
+        uint32 shadowPower = static_cast<uint32>(std::max<int32>(0, owner->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_SHADOW)));
+        uint64 amount = (static_cast<uint64>(shadowPower) * static_cast<uint64>(pct)) / 100u;
+        return static_cast<uint32>(std::min<uint64>(amount, std::numeric_limits<uint32>::max()));
+    }
+
+    uint32 AddBoneboundPriestSpellPowerBonus(uint32 baseAmount, Player* owner, uint32 pct)
+    {
+        uint64 amount = static_cast<uint64>(std::max<uint32>(1u, baseAmount)) + ResolveBoneboundPriestSpellPowerBonus(owner, pct);
+        return static_cast<uint32>(std::min<uint64>(std::max<uint64>(1u, amount), std::numeric_limits<uint32>::max()));
+    }
+
+    int32 ClampSpellBasePoint(uint32 amount)
+    {
+        return static_cast<int32>(std::min<uint32>(std::max<uint32>(1u, amount), static_cast<uint32>(std::numeric_limits<int32>::max())));
+    }
+
+    bool TryCastBoneboundPriestEchoSpell(Creature* priestEcho, Unit* target, uint32 spellId, uint32 basePoint, bool triggered = true)
+    {
+        if (!priestEcho || !target || !target->IsAlive() || spellId == 0)
+            return false;
+
+        SpellCastResult result = priestEcho->CastCustomSpell(
+            spellId,
+            SPELLVALUE_BASE_POINT0,
+            ClampSpellBasePoint(basePoint),
+            target,
+            triggered);
+        return result == SPELL_CAST_OK;
+    }
+
+    bool DealBoneboundPriestDpsDamage(
+        Creature* priestEcho,
+        Unit* target,
+        Player* owner,
+        uint32 damage,
+        uint32 damageSpellId)
+    {
+        if (!priestEcho || !target || !target->IsAlive() || !owner || damage == 0 || damageSpellId == 0)
+            return false;
+
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(damageSpellId);
+        if (!spellInfo)
+            return false;
+
+        uint32 adjustedDamage = std::max<uint32>(1u, damage);
+        SpellNonMeleeDamage damageInfo(priestEcho, target, spellInfo, SPELL_SCHOOL_MASK_SHADOW);
+        damageInfo.damage = adjustedDamage;
+        Unit::DealDamageMods(target, damageInfo.damage, &damageInfo.absorb);
+        damageInfo.overkill = damageInfo.damage > target->GetHealth() ? damageInfo.damage - target->GetHealth() : 0;
+
+        priestEcho->SendSpellNonMeleeDamageLog(&damageInfo);
+        priestEcho->DealSpellDamage(&damageInfo, false);
+        SeedBoneboundOwnerKillCredit(owner, target, damageInfo.damage);
+        return true;
+    }
+
+    float ClampBoneboundPriestDpsMaxRange(float maxRange)
+    {
+        if (!std::isfinite(maxRange) || maxRange <= 0.0f)
+            return 100.0f;
+        return std::clamp(maxRange, 5.0f, 100.0f);
+    }
+
+    float ResolveBoneboundPriestDpsMaxRange(WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        return ClampBoneboundPriestDpsMaxRange(config.priestEchoDpsMaxRange);
+    }
+
+    float ResolveBoneboundPriestVisibleDpsCastRange(Creature* priestEcho, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        float configuredRange = ResolveBoneboundPriestDpsMaxRange(config);
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(config.priestEchoDpsSpellId);
+        if (!spellInfo)
+            return configuredRange;
+
+        float spellRange = spellInfo->GetMaxRange(false, priestEcho);
+        if (!std::isfinite(spellRange) || spellRange <= 0.0f)
+            return configuredRange;
+
+        return std::min(configuredRange, std::max(5.0f, spellRange + 1.5f));
+    }
+
+    bool UpdateBoneboundPriestDpsCast(
+        Creature* priestEcho,
+        Player* owner,
+        uint32 diff)
+    {
+        if (!priestEcho || !owner)
+            return false;
+
+        uint32 echoGuid = static_cast<uint32>(priestEcho->GetGUID().GetCounter());
+        auto it = gBoneboundPriestDpsCastByCaster.find(echoGuid);
+        if (it == gBoneboundPriestDpsCastByCaster.end())
+            return false;
+
+        if (it->second.remainingMs > diff)
+        {
+            it->second.remainingMs -= diff;
+            return true;
+        }
+
+        BoneboundPriestDpsCastState castState = it->second;
+        gBoneboundPriestDpsCastByCaster.erase(it);
+
+        Unit* target = ObjectAccessor::GetUnit(*owner, castState.targetGuid);
+        if (!target || !target->IsAlive() || !priestEcho->CanCreatureAttack(target, true))
+            return false;
+        if (!priestEcho->IsWithinDistInMap(target, ClampBoneboundPriestDpsMaxRange(castState.maxRange)))
+            return false;
+        if (!priestEcho->IsWithinLOSInMap(target))
+            return false;
+
+        uint32 damageSpellId = castState.damageSpellId != 0 ? castState.damageSpellId : castState.visualSpellId;
+        if (damageSpellId == castState.visualSpellId)
+        {
+            SpellCastResult result = priestEcho->CastCustomSpell(
+                damageSpellId,
+                SPELLVALUE_BASE_POINT0,
+                ClampSpellBasePoint(castState.damage),
+                target,
+                true);
+            if (result == SPELL_CAST_OK)
+                SeedBoneboundOwnerKillCredit(owner, target, castState.damage);
+        }
+        else
+        {
+            DealBoneboundPriestDpsDamage(
+                priestEcho,
+                target,
+                owner,
+                castState.damage,
+                damageSpellId);
+        }
+        return false;
+    }
+
+    bool TryStartBoneboundPriestDpsCast(
+        Creature* priestEcho,
+        Unit* target,
+        Player* owner,
+        WmSpells::BoneboundBehaviorConfig const& config,
+        uint32 damage)
+    {
+        if (!priestEcho || !target || !target->IsAlive() || !owner || config.priestEchoDpsSpellId == 0)
+            return false;
+
+        uint32 echoGuid = static_cast<uint32>(priestEcho->GetGUID().GetCounter());
+        if (gBoneboundPriestDpsCastByCaster.find(echoGuid) != gBoneboundPriestDpsCastByCaster.end())
+            return false;
+
+        SpellInfo const* visualSpellInfo = sSpellMgr->GetSpellInfo(config.priestEchoDpsSpellId);
+        SpellInfo const* damageSpellInfo = sSpellMgr->GetSpellInfo(
+            config.priestEchoDpsDamageSpellId != 0 ? config.priestEchoDpsDamageSpellId : config.priestEchoDpsSpellId);
+        if (!visualSpellInfo || !damageSpellInfo)
+            return false;
+
+        uint32 desiredCastMs = std::max<uint32>(1u, config.priestEchoDpsCastTimeMs);
+        float maxRange = ResolveBoneboundPriestDpsMaxRange(config);
+        float visibleCastRange = ResolveBoneboundPriestVisibleDpsCastRange(priestEcho, config);
+        if (!priestEcho->IsWithinDistInMap(target, visibleCastRange))
+            return false;
+        if (!priestEcho->IsWithinLOSInMap(target))
+            return false;
+
+        priestEcho->AttackStop();
+        priestEcho->SetFacingToObject(target);
+
+        uint32 damageSpellId = config.priestEchoDpsDamageSpellId != 0 ? config.priestEchoDpsDamageSpellId : config.priestEchoDpsSpellId;
+        bool damageIsNativeSpellHit = damageSpellId == config.priestEchoDpsSpellId;
+        if (damageIsNativeSpellHit)
+        {
+            uint32 baseCastMs = visualSpellInfo->CalcCastTime();
+            float previousCastSpeed = priestEcho->GetFloatValue(UNIT_MOD_CAST_SPEED);
+            bool adjustedCastSpeed = false;
+            if (baseCastMs > 0 && desiredCastMs > 0)
+            {
+                float desiredCastSpeed = std::clamp(
+                    static_cast<float>(desiredCastMs) / static_cast<float>(baseCastMs),
+                    0.05f,
+                    5.0f);
+                priestEcho->SetFloatValue(UNIT_MOD_CAST_SPEED, desiredCastSpeed);
+                adjustedCastSpeed = true;
+            }
+
+            SpellCastResult result = priestEcho->CastCustomSpell(
+                damageSpellId,
+                SPELLVALUE_BASE_POINT0,
+                ClampSpellBasePoint(std::max<uint32>(1u, damage)),
+                target,
+                false);
+            if (adjustedCastSpeed)
+                priestEcho->SetFloatValue(UNIT_MOD_CAST_SPEED, previousCastSpeed);
+
+            if (result == SPELL_CAST_OK)
+                SeedBoneboundOwnerKillCredit(owner, target, damage);
+            return result == SPELL_CAST_OK;
+        }
+
+        uint32 baseCastMs = visualSpellInfo->CalcCastTime();
+        float previousCastSpeed = priestEcho->GetFloatValue(UNIT_MOD_CAST_SPEED);
+        bool adjustedCastSpeed = false;
+        if (baseCastMs > 0 && desiredCastMs > 0)
+        {
+            float desiredCastSpeed = std::clamp(
+                static_cast<float>(desiredCastMs) / static_cast<float>(baseCastMs),
+                0.05f,
+                5.0f);
+            priestEcho->SetFloatValue(UNIT_MOD_CAST_SPEED, desiredCastSpeed);
+            adjustedCastSpeed = true;
+        }
+
+        SpellCastResult result = priestEcho->CastSpell(target, config.priestEchoDpsSpellId, false);
+        if (adjustedCastSpeed)
+            priestEcho->SetFloatValue(UNIT_MOD_CAST_SPEED, previousCastSpeed);
+
+        if (result != SPELL_CAST_OK)
+            return false;
+
+        gBoneboundPriestDpsCastByCaster[echoGuid] = BoneboundPriestDpsCastState{
+            target->GetGUID(),
+            static_cast<uint32>(owner->GetGUID().GetCounter()),
+            config.priestEchoDpsSpellId,
+            damageSpellId,
+            std::max<uint32>(1u, damage),
+            desiredCastMs,
+            maxRange,
+        };
+        return true;
+    }
+
+    void AddUniqueBoneboundPriestSupportTarget(std::vector<Unit*>& targets, Unit* candidate)
+    {
+        if (!candidate || !candidate->IsAlive())
+            return;
+
+        if (std::find(targets.begin(), targets.end(), candidate) == targets.end())
+            targets.push_back(candidate);
+    }
+
+    std::vector<Unit*> CollectBoneboundPriestSupportTargets(
+        Creature* priestEcho,
+        Player* owner,
+        Pet* alphaPet,
+        WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        std::vector<Unit*> targets;
+        if (!priestEcho || !owner)
+            return targets;
+
+        float radius = std::max(5.0f, config.priestEchoSupportRadius);
+        auto addIfValid = [&](Unit* candidate)
+        {
+            if (!candidate
+                || !candidate->IsAlive()
+                || candidate->GetMapId() != priestEcho->GetMapId()
+                || !priestEcho->IsWithinDistInMap(candidate, radius)
+                || !priestEcho->IsWithinLOSInMap(candidate)
+                || !priestEcho->IsFriendlyTo(candidate))
+                return;
+
+            AddUniqueBoneboundPriestSupportTarget(targets, candidate);
+        };
+
+        addIfValid(owner);
+        addIfValid(alphaPet);
+        for (auto const& [_, state] : gBoneboundAlphaEchoes)
+        {
+            if (state.ownerGuid != static_cast<uint32>(owner->GetGUID().GetCounter()))
+                continue;
+
+            addIfValid(ObjectAccessor::GetCreature(*owner, state.echoGuid));
+        }
+
+        if (Group* group = owner->GetGroup())
+        {
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->GetSource();
+                if (!member || !member->IsAlive() || member->IsGameMaster())
+                    continue;
+
+                addIfValid(member);
+                addIfValid(member->GetPet());
+                addIfValid(member->GetCharm());
+            }
+        }
+
+        return targets;
+    }
+
+    bool IsBoneboundPriestTargetUnderThreat(Unit* candidate)
+    {
+        if (!candidate || !candidate->IsAlive())
+            return false;
+
+        for (Unit* attacker : candidate->getAttackers())
+        {
+            if (!attacker || !attacker->IsAlive())
+                continue;
+
+            if (attacker->GetVictim() == candidate || attacker->IsNonMeleeSpellCast(false))
+                return true;
+        }
+
+        return false;
+    }
+
+    uint32 ScoreBoneboundPriestDebuff(AuraApplication const* auraApplication, SpellInfo const* spellInfo)
+    {
+        if (!auraApplication || !spellInfo || auraApplication->IsPositive())
+            return 0;
+
+        uint32 score = 0;
+        switch (spellInfo->Dispel)
+        {
+            case DISPEL_CURSE:
+            case DISPEL_DISEASE:
+                score += 3;
+                break;
+            case DISPEL_MAGIC:
+            case DISPEL_POISON:
+                score += 2;
+                break;
+            default:
+                return 0;
+        }
+
+        if (spellInfo->HasAura(SPELL_AURA_MOD_STUN)
+            || spellInfo->HasAura(SPELL_AURA_MOD_FEAR)
+            || spellInfo->HasAura(SPELL_AURA_MOD_CONFUSE)
+            || spellInfo->HasAura(SPELL_AURA_MOD_PACIFY)
+            || spellInfo->HasAura(SPELL_AURA_MOD_PACIFY_SILENCE)
+            || spellInfo->HasAura(SPELL_AURA_MOD_SILENCE))
+            score += 4;
+
+        if (spellInfo->HasAura(SPELL_AURA_MOD_ROOT)
+            || spellInfo->HasAura(SPELL_AURA_MOD_DECREASE_SPEED))
+            score += 2;
+
+        if (spellInfo->HasAura(SPELL_AURA_PERIODIC_DAMAGE)
+            || spellInfo->HasAura(SPELL_AURA_PERIODIC_DAMAGE_PERCENT)
+            || spellInfo->HasAura(SPELL_AURA_PERIODIC_LEECH)
+            || spellInfo->HasAura(SPELL_AURA_PERIODIC_MANA_LEECH))
+            score += 2;
+
+        if (spellInfo->HasAura(SPELL_AURA_MOD_DAMAGE_PERCENT_TAKEN)
+            || spellInfo->HasAura(SPELL_AURA_MOD_DAMAGE_TAKEN)
+            || spellInfo->HasAura(SPELL_AURA_MOD_ATTACKSPEED)
+            || spellInfo->HasAura(SPELL_AURA_MOD_STAT))
+            score += 1;
+
+        return score;
+    }
+
+    std::vector<BoneboundPriestDispelCandidate> CollectBoneboundPriestDispelCandidates(
+        std::vector<Unit*> const& supportTargets,
+        bool massDispel)
+    {
+        std::vector<BoneboundPriestDispelCandidate> candidates;
+        for (Unit* target : supportTargets)
+        {
+            if (!target || !target->IsAlive())
+                continue;
+
+            for (auto const& [_, auraApplication] : target->GetAppliedAuras())
+            {
+                if (!auraApplication || auraApplication->IsPositive())
+                    continue;
+
+                Aura const* aura = auraApplication->GetBase();
+                SpellInfo const* spellInfo = aura ? aura->GetSpellInfo() : nullptr;
+                if (!aura || !spellInfo)
+                    continue;
+
+                bool singleEligible = spellInfo->Dispel == DISPEL_DISEASE || spellInfo->Dispel == DISPEL_CURSE;
+                bool massEligible = singleEligible || spellInfo->Dispel == DISPEL_MAGIC || spellInfo->Dispel == DISPEL_POISON;
+                if ((!massDispel && !singleEligible) || (massDispel && !massEligible))
+                    continue;
+
+                uint32 severity = ScoreBoneboundPriestDebuff(auraApplication, spellInfo);
+                if (severity == 0)
+                    continue;
+
+                candidates.push_back({target, spellInfo->Id, aura->GetCasterGUID(), spellInfo->Dispel, severity});
+            }
+        }
+
+        std::sort(
+            candidates.begin(),
+            candidates.end(),
+            [](BoneboundPriestDispelCandidate const& left, BoneboundPriestDispelCandidate const& right)
+            {
+                if (left.severity != right.severity)
+                    return left.severity > right.severity;
+                if (left.dispelType != right.dispelType)
+                    return left.dispelType == DISPEL_CURSE || left.dispelType == DISPEL_DISEASE;
+                return left.spellId < right.spellId;
+            });
+        return candidates;
+    }
+
+    bool RemoveBoneboundPriestDebuff(BoneboundPriestDispelCandidate const& candidate)
+    {
+        if (!candidate.target || candidate.spellId == 0)
+            return false;
+
+        if (!candidate.target->HasAura(candidate.spellId, candidate.casterGuid))
+            return false;
+
+        candidate.target->RemoveAura(candidate.spellId, candidate.casterGuid);
+        return true;
+    }
+
+    Unit* SelectBoneboundPriestShieldTarget(
+        Creature* priestEcho,
+        std::vector<Unit*> const& supportTargets,
+        WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!priestEcho)
+            return nullptr;
+
+        Unit* bestTarget = nullptr;
+        uint32 bestScore = 0;
+        for (Unit* candidate : supportTargets)
+        {
+            if (!candidate || !candidate->IsAlive() || candidate->HasAura(config.priestEchoShieldSpellId, priestEcho->GetGUID()))
+                continue;
+
+            if (!IsBoneboundPriestTargetUnderThreat(candidate))
+                continue;
+
+            uint32 healthPct = std::min<uint32>(100u, static_cast<uint32>(candidate->GetHealthPct()));
+            uint32 attackerScore = static_cast<uint32>(std::min<size_t>(candidate->getAttackers().size(), 5u)) * 10u;
+            uint32 score = attackerScore + (100u - healthPct);
+            if (!bestTarget || score > bestScore)
+            {
+                bestTarget = candidate;
+                bestScore = score;
+            }
+        }
+
+        return bestTarget;
+    }
+
+    bool TryBoneboundPriestSingleDispel(
+        Creature* priestEcho,
+        std::vector<Unit*> const& supportTargets,
+        WmSpells::BoneboundBehaviorConfig const& config,
+        uint32& dispelCooldown)
+    {
+        if (!priestEcho || dispelCooldown != 0)
+            return false;
+
+        std::vector<BoneboundPriestDispelCandidate> candidates = CollectBoneboundPriestDispelCandidates(supportTargets, false);
+        if (candidates.empty())
+            return false;
+
+        BoneboundPriestDispelCandidate const& candidate = candidates.front();
+        uint32 spellId = candidate.dispelType == DISPEL_CURSE
+            ? config.priestEchoCurseDispelSpellId
+            : config.priestEchoDiseaseDispelSpellId;
+        if (spellId == 0)
+            return false;
+
+        bool castOk = TryCastBoneboundPriestEchoSpell(priestEcho, candidate.target, spellId, 1u);
+        if (castOk)
+            RemoveBoneboundPriestDebuff(candidate);
+
+        dispelCooldown = castOk ? std::max<uint32>(1000u, config.priestEchoDispelCooldownMs) : 1000u;
+        return castOk;
+    }
+
+    bool TryBoneboundPriestMassDispel(
+        Creature* priestEcho,
+        std::vector<Unit*> const& supportTargets,
+        WmSpells::BoneboundBehaviorConfig const& config,
+        uint32& massDispelCooldown)
+    {
+        if (!priestEcho || massDispelCooldown != 0 || config.priestEchoMassDispelSpellId == 0)
+            return false;
+
+        std::vector<BoneboundPriestDispelCandidate> candidates = CollectBoneboundPriestDispelCandidates(supportTargets, true);
+        if (candidates.empty())
+            return false;
+
+        uint32 totalSeverity = 0;
+        std::vector<Unit*> affectedTargets;
+        for (BoneboundPriestDispelCandidate const& candidate : candidates)
+        {
+            totalSeverity += candidate.severity;
+            AddUniqueBoneboundPriestSupportTarget(affectedTargets, candidate.target);
+        }
+
+        uint32 minAffected = std::max<uint32>(1u, config.priestEchoMassDispelMinAffected);
+        uint32 minSeverity = std::max<uint32>(1u, config.priestEchoMassDispelMinSeverity);
+        bool severeSingleTarget = candidates.front().severity >= minSeverity;
+        bool enoughTargets = affectedTargets.size() >= minAffected;
+        bool enoughSeverity = totalSeverity >= minSeverity;
+        if (!severeSingleTarget && !enoughTargets && !enoughSeverity)
+            return false;
+
+        Unit* visualTarget = candidates.front().target;
+        bool castOk = TryCastBoneboundPriestEchoSpell(priestEcho, visualTarget, config.priestEchoMassDispelSpellId, 1u);
+        if (castOk)
+        {
+            uint32 removals = 0;
+            uint32 maxRemovals = std::max<uint32>(1u, config.priestEchoMassDispelMaxRemovals);
+            for (BoneboundPriestDispelCandidate const& candidate : candidates)
+            {
+                if (removals >= maxRemovals)
+                    break;
+                if (RemoveBoneboundPriestDebuff(candidate))
+                    ++removals;
+            }
+        }
+
+        massDispelCooldown = castOk ? std::max<uint32>(30000u, config.priestEchoMassDispelCooldownMs) : 1000u;
+        return castOk;
+    }
+
+    void MoveBoneboundPriestEchoToSafePosition(
+        Creature* priestEcho,
+        Player* owner,
+        Unit* enemy,
+        BoneboundAlphaEchoState const& state,
+        WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!priestEcho || !owner || priestEcho->IsNonMeleeSpellCast(false))
+            return;
+
+        priestEcho->AttackStop();
+        float followDistance = std::max(1.2f, state.followDistance);
+        float minEnemyDistance = std::max(3.0f, config.priestEchoSafeMinEnemyDistance);
+        if (enemy && IsBoneboundEchoHuntMode(state.ownerGuid))
+        {
+            float castRange = ResolveBoneboundPriestVisibleDpsCastRange(priestEcho, config);
+            float seekDistance = std::clamp(minEnemyDistance + 6.0f, 8.0f, std::max(8.0f, castRange - 2.0f));
+            if (!priestEcho->IsWithinDistInMap(enemy, std::max(5.0f, castRange - 1.0f))
+                || !priestEcho->IsWithinLOSInMap(enemy)
+                || priestEcho->IsWithinDistInMap(enemy, minEnemyDistance))
+            {
+                priestEcho->GetMotionMaster()->MoveFollow(enemy, seekDistance, state.followAngle);
+                return;
+            }
+
+            priestEcho->SetTarget(enemy->GetGUID());
+            priestEcho->SetFacingToObject(enemy);
+            return;
+        }
+
+        if ((enemy && priestEcho->IsWithinDistInMap(enemy, minEnemyDistance))
+            || !priestEcho->IsWithinDistInMap(owner, followDistance + 5.0f))
+            priestEcho->GetMotionMaster()->MoveFollow(owner, followDistance, state.followAngle);
+    }
+
+    void ConsiderBoneboundPriestSupportTarget(
+        Creature* priestEcho,
+        Unit* candidate,
+        float radius,
+        uint32 healthThresholdPct,
+        uint32 skipAuraSpellId,
+        Unit*& bestTarget,
+        uint32& bestHealthPct,
+        uint32& bestMissingHealth)
+    {
+        if (!priestEcho || !candidate || !candidate->IsAlive() || candidate->GetMaxHealth() == 0)
+            return;
+
+        if (candidate->GetMapId() != priestEcho->GetMapId()
+            || !priestEcho->IsWithinDistInMap(candidate, radius)
+            || !priestEcho->IsWithinLOSInMap(candidate)
+            || !priestEcho->IsFriendlyTo(candidate))
+            return;
+
+        if (skipAuraSpellId != 0 && candidate->HasAura(skipAuraSpellId, priestEcho->GetGUID()))
+            return;
+
+        uint32 healthPct = std::min<uint32>(100u, static_cast<uint32>(candidate->GetHealthPct()));
+        if (healthPct > healthThresholdPct)
+            return;
+
+        uint32 missingHealth = candidate->GetMaxHealth() > candidate->GetHealth()
+            ? candidate->GetMaxHealth() - candidate->GetHealth()
+            : 0u;
+
+        if (!bestTarget || healthPct < bestHealthPct || (healthPct == bestHealthPct && missingHealth > bestMissingHealth))
+        {
+            bestTarget = candidate;
+            bestHealthPct = healthPct;
+            bestMissingHealth = missingHealth;
+        }
+    }
+
+    Unit* SelectBoneboundPriestSupportTarget(
+        Creature* priestEcho,
+        Player* owner,
+        Pet* alphaPet,
+        WmSpells::BoneboundBehaviorConfig const& config,
+        uint32 healthThresholdPct,
+        uint32 skipAuraSpellId)
+    {
+        if (!priestEcho || !owner)
+            return nullptr;
+
+        float radius = std::max(5.0f, config.priestEchoSupportRadius);
+        Unit* bestTarget = nullptr;
+        uint32 bestHealthPct = 101u;
+        uint32 bestMissingHealth = 0u;
+
+        auto consider = [&](Unit* candidate)
+        {
+            ConsiderBoneboundPriestSupportTarget(
+                priestEcho,
+                candidate,
+                radius,
+                std::min<uint32>(100u, std::max<uint32>(1u, healthThresholdPct)),
+                skipAuraSpellId,
+                bestTarget,
+                bestHealthPct,
+                bestMissingHealth);
+        };
+
+        consider(owner);
+        consider(alphaPet);
+        for (auto const& [_, state] : gBoneboundAlphaEchoes)
+        {
+            if (state.ownerGuid != static_cast<uint32>(owner->GetGUID().GetCounter()))
+                continue;
+
+            consider(ObjectAccessor::GetCreature(*owner, state.echoGuid));
+        }
+
+        if (Group* group = owner->GetGroup())
+        {
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->GetSource();
+                if (!member || !member->IsAlive() || member->IsGameMaster())
+                    continue;
+
+                consider(member);
+                consider(member->GetPet());
+                consider(member->GetCharm());
+            }
+        }
+
+        return bestTarget;
+    }
+
+    Unit* SelectBoneboundPriestEnemyTarget(Creature* priestEcho, Player* owner, Pet* alphaPet, uint32 ownerGuid, WmSpells::BoneboundBehaviorConfig const& config)
+    {
+        if (!priestEcho || !owner)
+            return nullptr;
+
+        if (IsBoneboundEchoHuntMode(ownerGuid))
+        {
+            std::optional<WmSpells::BoneboundBehaviorConfig> runtimeConfig = config;
+            Unit* sought = SelectNearestBoneboundSeekTarget(owner, priestEcho, ResolveBoneboundEchoHuntRadius(ownerGuid, runtimeConfig));
+            if (sought)
+                return sought;
+        }
+
+        Unit* victim = alphaPet ? alphaPet->GetVictim() : nullptr;
+        if (!victim)
+            victim = priestEcho->GetVictim();
+
+        return victim && victim->IsAlive() && priestEcho->CanCreatureAttack(victim, true) ? victim : nullptr;
+    }
+
+    void CommandBoneboundPriestEchoSeek(Creature* priestEcho, Unit* victim)
+    {
+        if (!priestEcho || !victim || !victim->IsAlive() || !priestEcho->CanCreatureAttack(victim, true))
+            return;
+
+        priestEcho->AttackStop();
+        priestEcho->SetTarget(victim->GetGUID());
+        priestEcho->SetFacingToObject(victim);
+        priestEcho->SetInCombatWith(victim);
+        victim->SetInCombatWith(priestEcho);
+    }
+
+    void CommandBoneboundAlphaEchoAttack(Creature* echo, Unit* victim);
+
+    void UpdateBoneboundPriestEcho(
+        Creature* priestEcho,
+        Player* owner,
+        Pet* alphaPet,
+        BoneboundAlphaEchoState const& state,
+        WmSpells::BoneboundBehaviorConfig const& config,
+        uint32 diff)
+    {
+        if (!priestEcho || !owner || !config.priestEchoEnabled)
+            return;
+
+        uint32 echoGuid = static_cast<uint32>(priestEcho->GetGUID().GetCounter());
+        if (UpdateBoneboundPriestDpsCast(priestEcho, owner, diff))
+        {
+            MoveBoneboundPriestEchoToSafePosition(priestEcho, owner, nullptr, state, config);
+            return;
+        }
+
+        std::vector<Unit*> supportTargets = CollectBoneboundPriestSupportTargets(priestEcho, owner, alphaPet, config);
+        Unit* hurtTarget = SelectBoneboundPriestSupportTarget(
+            priestEcho,
+            owner,
+            alphaPet,
+            config,
+            config.priestEchoHealBelowHealthPct,
+            0);
+
+        bool supportCast = false;
+        uint32& massDispelCooldown = gBoneboundPriestMassDispelCooldownByCaster[echoGuid];
+        supportCast = TryBoneboundPriestMassDispel(priestEcho, supportTargets, config, massDispelCooldown);
+
+        uint32& dispelCooldown = gBoneboundPriestDispelCooldownByCaster[echoGuid];
+        if (!supportCast)
+            supportCast = TryBoneboundPriestSingleDispel(priestEcho, supportTargets, config, dispelCooldown);
+
+        uint32& healCooldown = gBoneboundPriestHealCooldownByCaster[echoGuid];
+        if (!supportCast && hurtTarget && healCooldown == 0 && config.priestEchoHealSpellId != 0)
+        {
+            uint32 healAmount = AddBoneboundPriestSpellPowerBonus(
+                ResolvePercentOfMaxHealth(hurtTarget, config.priestEchoHealBasePct),
+                owner,
+                config.priestEchoSpellPowerToHealingPct);
+            bool castOk = TryCastBoneboundPriestEchoSpell(priestEcho, hurtTarget, config.priestEchoHealSpellId, healAmount);
+            healCooldown = castOk ? std::max<uint32>(500u, config.priestEchoHealCooldownMs) : 1000u;
+            supportCast = castOk;
+        }
+
+        uint32& renewCooldown = gBoneboundPriestRenewCooldownByCaster[echoGuid];
+        if (!supportCast && hurtTarget && renewCooldown == 0 && config.priestEchoRenewSpellId != 0 && !hurtTarget->HasAura(config.priestEchoRenewSpellId, priestEcho->GetGUID()))
+        {
+            uint32 renewAmount = AddBoneboundPriestSpellPowerBonus(
+                ResolvePercentOfMaxHealth(hurtTarget, config.priestEchoRenewBasePct),
+                owner,
+                config.priestEchoSpellPowerToHealingPct);
+            bool castOk = TryCastBoneboundPriestEchoSpell(priestEcho, hurtTarget, config.priestEchoRenewSpellId, renewAmount);
+            renewCooldown = castOk ? std::max<uint32>(1000u, config.priestEchoRenewCooldownMs) : 1000u;
+            supportCast = castOk;
+        }
+
+        uint32& shieldCooldown = gBoneboundPriestShieldCooldownByCaster[echoGuid];
+        if (!supportCast && shieldCooldown == 0 && config.priestEchoShieldSpellId != 0)
+        {
+            Unit* shieldTarget = SelectBoneboundPriestShieldTarget(priestEcho, supportTargets, config);
+            if (shieldTarget)
+            {
+                uint32 shieldAmount = AddBoneboundPriestSpellPowerBonus(
+                    ResolvePercentOfMaxHealth(shieldTarget, config.priestEchoShieldBasePct),
+                    owner,
+                    config.priestEchoSpellPowerToShieldPct);
+                bool castOk = TryCastBoneboundPriestEchoSpell(priestEcho, shieldTarget, config.priestEchoShieldSpellId, shieldAmount);
+                shieldCooldown = castOk ? std::max<uint32>(1000u, config.priestEchoShieldCooldownMs) : 1000u;
+                supportCast = castOk;
+            }
+        }
+
+        uint32& dpsCooldown = gBoneboundPriestDpsCooldownByCaster[echoGuid];
+        Unit* enemy = SelectBoneboundPriestEnemyTarget(priestEcho, owner, alphaPet, state.ownerGuid, config);
+        if (enemy && IsBoneboundEchoHuntMode(state.ownerGuid))
+            CommandBoneboundPriestEchoSeek(priestEcho, enemy);
+        if (!supportCast && dpsCooldown == 0 && !priestEcho->IsNonMeleeSpellCast(false) && config.priestEchoDpsSpellId != 0)
+        {
+            if (enemy)
+            {
+                uint32 alphaRoll = ResolveAlphaMeleeDamageRoll(alphaPet, owner, config);
+                uint32 baseDamage = std::max<uint32>(1u, (alphaRoll * std::max<uint32>(1u, config.priestEchoDpsDamagePct)) / 100u);
+                uint32 damage = AddBoneboundPriestSpellPowerBonus(baseDamage, owner, config.priestEchoSpellPowerToDamagePct);
+                bool castOk = TryStartBoneboundPriestDpsCast(priestEcho, enemy, owner, config, damage);
+                dpsCooldown = castOk ? std::max<uint32>(500u, config.priestEchoDpsCooldownMs) : 1000u;
+            }
+        }
+
+        MoveBoneboundPriestEchoToSafePosition(priestEcho, owner, enemy, state, config);
+    }
+
+    void ApplyBoneboundAlphaEchoRuntime(Player* owner, Pet* alphaPet, TempSummon* echo, BoneboundAlphaEchoState const& state, WmSpells::BoneboundBehaviorConfig const& config, bool refillHealth)
     {
         if (!owner || !alphaPet || !echo)
             return;
+
+        bool priestEcho = IsBoneboundPriestEcho(state);
+        std::string const& name = priestEcho ? config.priestEchoName : config.alphaEchoName;
+        uint32 displayId = priestEcho && config.priestEchoDisplayId != 0 ? config.priestEchoDisplayId : config.displayId;
+        uint32 virtualItem1 = priestEcho ? state.virtualItem1 : config.virtualItem1;
+        uint32 virtualItem2 = priestEcho ? state.virtualItem2 : config.virtualItem2;
+        uint32 virtualItem3 = priestEcho ? state.virtualItem3 : config.virtualItem3;
+        float scale = alphaPet->GetObjectScale();
+        if (priestEcho)
+            scale = std::clamp(scale * std::max(0.1f, config.priestEchoScaleMultiplier), 0.1f, 5.0f);
 
         echo->SetCreatorGUID(owner->GetGUID());
         echo->SetOwnerGUID(owner->GetGUID());
@@ -1037,16 +2565,36 @@ namespace
         echo->SetUInt32Value(UNIT_CREATED_BY_SPELL, config.shellSpellId);
         ApplyBoneboundCreatureAppearance(
             echo,
-            config.name,
-            config.displayId,
-            config.virtualItem1,
-            config.virtualItem2,
-            config.virtualItem3,
-            alphaPet->GetObjectScale());
+            name,
+            displayId,
+            virtualItem1,
+            virtualItem2,
+            virtualItem3,
+            scale);
         // Creature stat recalculation restores template fields; copy Alpha values after it.
         ApplyOwnerTransferBonuses(echo, owner, config, false);
-        CopyAlphaFinalStatsToEcho(alphaPet, echo, true);
-        echo->SetReactState(REACT_DEFENSIVE);
+        CopyAlphaFinalStatsToEcho(alphaPet, echo, refillHealth);
+        MatchBoneboundEchoMovementSpeed(alphaPet, echo);
+        echo->SetReactState(priestEcho ? REACT_PASSIVE : REACT_DEFENSIVE);
+    }
+
+    void CommandBoneboundAlphaEchoAttack(Creature* echo, Unit* victim)
+    {
+        if (!echo || !victim || !victim->IsAlive() || !echo->CanCreatureAttack(victim, true))
+            return;
+
+        echo->AddThreat(victim, 25.0f);
+        echo->SetInCombatWith(victim);
+        victim->SetInCombatWith(echo);
+
+        if (echo->AI())
+            echo->AI()->AttackStart(victim);
+
+        if (echo->GetVictim() != victim)
+            echo->Attack(victim, true);
+
+        if (!echo->IsWithinMeleeRange(victim))
+            echo->GetMotionMaster()->MoveChase(victim);
     }
 
     TempSummon* SpawnBoneboundAlphaEchoFromState(
@@ -1076,9 +2624,9 @@ namespace
         if (!echo)
             return nullptr;
 
-        ApplyBoneboundAlphaEchoRuntime(owner, alphaPet, echo, config);
-        if (victim && victim->IsAlive() && echo->AI())
-            echo->AI()->AttackStart(victim);
+        ApplyBoneboundAlphaEchoRuntime(owner, alphaPet, echo, state, config, true);
+        if (!IsBoneboundPriestEcho(state) && victim && victim->IsAlive())
+            CommandBoneboundAlphaEchoAttack(echo, victim);
         else
             echo->GetMotionMaster()->MoveFollow(owner, state.followDistance, state.followAngle);
 
@@ -1087,36 +2635,66 @@ namespace
         return echo;
     }
 
-    void TrySpawnBoneboundAlphaEcho(Player* owner, Pet* alphaPet, Unit* victim, WmSpells::BoneboundBehaviorConfig const& config)
+    bool TrySpawnBoneboundAlphaEcho(
+        Player* owner,
+        Pet* alphaPet,
+        Unit* victim,
+        WmSpells::BoneboundBehaviorConfig const& config,
+        BoneboundEchoRole requestedRole = BoneboundEchoRole::Warrior)
     {
         if (!owner || !alphaPet || !victim || !victim->IsAlive() || !config.alphaEchoEnabled)
-            return;
+            return false;
+
+        bool priestEcho = requestedRole == BoneboundEchoRole::Priest;
+        if (priestEcho && (!config.priestEchoEnabled || config.priestEchoCreatureEntry == 0))
+            return false;
 
         uint32 ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
-        if (CountActiveBoneboundAlphaEchoes(ownerGuid) >= std::max<uint32>(1u, config.alphaEchoMaxActive))
-            return;
+        uint32 activeRoleCount = priestEcho
+            ? CountActiveBoneboundPriestEchoes(ownerGuid)
+            : CountActiveBoneboundWarriorEchoes(ownerGuid);
+        uint32 activeRoleCap = priestEcho
+            ? std::max<uint32>(1u, config.priestEchoMaxActive)
+            : std::max<uint32>(1u, config.alphaEchoMaxActive);
+        if (activeRoleCount >= activeRoleCap)
+            return false;
 
-        uint32 durationMs = ResolveAlphaEchoDurationMs(owner);
-        float followDistance = RandomAlphaEchoFollowDistance(config);
-        float followAngle = RandomAlphaEchoFollowAngle();
-        uint32 echoEntry = config.alphaEchoCreatureEntry != 0 ? config.alphaEchoCreatureEntry : config.creatureEntry;
-
-        BoneboundAlphaEchoState state;
-        state.ownerGuid = ownerGuid;
-        state.creatureEntry = echoEntry;
-        state.remainingMs = durationMs;
-        state.damagePct = std::max<uint32>(1u, config.alphaEchoDamagePct);
-        state.followDistance = followDistance;
-        state.followAngle = followAngle;
+        BoneboundAlphaEchoState state = BuildBoneboundAlphaEchoState(owner, config, requestedRole);
 
         TempSummon* echo = SpawnBoneboundAlphaEchoFromState(owner, alphaPet, victim, state, config);
         if (!echo)
-            return;
+            return false;
 
         gBoneboundAlphaEchoes[static_cast<uint32>(echo->GetGUID().GetCounter())] = state;
+        RefreshBoneboundEchoFormationSlots(owner, config);
+        RefreshBoneboundEchoCountAura(owner, config);
+        return true;
     }
 
-    void MaintainBoneboundAlphaAbilities(Player* owner, Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config, uint32 diff)
+    bool SpawnStoredBoneboundAlphaEcho(
+        Player* owner,
+        Pet* alphaPet,
+        WmSpells::BoneboundBehaviorConfig const& config,
+        BoneboundEchoRole requestedRole)
+    {
+        if (!owner || !alphaPet || !config.alphaEchoEnabled)
+            return false;
+
+        bool priestEcho = requestedRole == BoneboundEchoRole::Priest;
+        if (priestEcho && (!config.priestEchoEnabled || config.priestEchoCreatureEntry == 0))
+            return false;
+
+        BoneboundAlphaEchoState state = BuildBoneboundAlphaEchoState(owner, config, requestedRole);
+        TempSummon* echo = SpawnBoneboundAlphaEchoFromState(owner, alphaPet, nullptr, state, config);
+        if (!echo)
+            return false;
+
+        gBoneboundAlphaEchoes[static_cast<uint32>(echo->GetGUID().GetCounter())] = state;
+        RefreshBoneboundEchoFormationSlots(owner, config);
+        return true;
+    }
+
+    void MaintainBoneboundAlphaAbilities(Player* owner, Pet* alphaPet, WmSpells::BoneboundBehaviorConfig const& config, uint32 /*diff*/)
     {
         if (!owner || !alphaPet)
             return;
@@ -1124,12 +2702,9 @@ namespace
         uint32 petGuid = static_cast<uint32>(alphaPet->GetGUID().GetCounter());
         if (!config.bleedEnabled)
         {
-            gBoneboundBleedCooldownByPet.erase(petGuid);
+            gBoneboundBleedCooldownByCaster.erase(petGuid);
             return;
         }
-
-        uint32& cooldown = gBoneboundBleedCooldownByPet[petGuid];
-        cooldown = cooldown > diff ? cooldown - diff : 0u;
     }
 
     void RemoveBoneboundAlphaEchoes(Player* owner)
@@ -1148,8 +2723,22 @@ namespace
 
             if (Creature* echo = ObjectAccessor::GetCreature(*owner, it->second.echoGuid))
                 echo->DespawnOrUnsummon();
+            gBoneboundBleedCooldownByCaster.erase(it->first);
+            gBoneboundCleaveCooldownByCaster.erase(it->first);
+            gBoneboundPriestHealCooldownByCaster.erase(it->first);
+            gBoneboundPriestRenewCooldownByCaster.erase(it->first);
+            gBoneboundPriestShieldCooldownByCaster.erase(it->first);
+            gBoneboundPriestDpsCooldownByCaster.erase(it->first);
+            gBoneboundPriestDpsCastByCaster.erase(it->first);
+            gBoneboundPriestDispelCooldownByCaster.erase(it->first);
+            gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
             it = gBoneboundAlphaEchoes.erase(it);
         }
+
+        gBoneboundEchoHuntModeByPlayer.erase(ownerGuid);
+        gBoneboundEchoHuntRadiusByPlayer.erase(ownerGuid);
+        gBoneboundWarriorEchoesSincePriestByPlayer.erase(ownerGuid);
+        ClearBoneboundEchoCountAura(owner);
 
         gBoneboundBleeds.erase(
             std::remove_if(
@@ -1184,6 +2773,7 @@ namespace
             }
             else
             {
+                SeedBoneboundOwnerKillCredit(owner, target, it->tickDamage);
                 Unit::DealDamage(caster, target, it->tickDamage, nullptr, DOT, SPELL_SCHOOL_MASK_NORMAL, nullptr, true);
                 it->tickTimerMs = it->tickMs;
             }
@@ -1207,6 +2797,15 @@ namespace
             Player* owner = ObjectAccessor::FindPlayerByLowGUID(it->second.ownerGuid);
             if (!owner)
             {
+                gBoneboundBleedCooldownByCaster.erase(it->first);
+                gBoneboundCleaveCooldownByCaster.erase(it->first);
+                gBoneboundPriestHealCooldownByCaster.erase(it->first);
+                gBoneboundPriestRenewCooldownByCaster.erase(it->first);
+                gBoneboundPriestShieldCooldownByCaster.erase(it->first);
+                gBoneboundPriestDpsCooldownByCaster.erase(it->first);
+                gBoneboundPriestDpsCastByCaster.erase(it->first);
+                gBoneboundPriestDispelCooldownByCaster.erase(it->first);
+                gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
                 it = gBoneboundAlphaEchoes.erase(it);
                 continue;
             }
@@ -1215,6 +2814,15 @@ namespace
             {
                 if (Creature* echo = ObjectAccessor::GetCreature(*owner, it->second.echoGuid))
                     echo->DespawnOrUnsummon();
+                gBoneboundBleedCooldownByCaster.erase(it->first);
+                gBoneboundCleaveCooldownByCaster.erase(it->first);
+                gBoneboundPriestHealCooldownByCaster.erase(it->first);
+                gBoneboundPriestRenewCooldownByCaster.erase(it->first);
+                gBoneboundPriestShieldCooldownByCaster.erase(it->first);
+                gBoneboundPriestDpsCooldownByCaster.erase(it->first);
+                gBoneboundPriestDpsCastByCaster.erase(it->first);
+                gBoneboundPriestDispelCooldownByCaster.erase(it->first);
+                gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
                 it = gBoneboundAlphaEchoes.erase(it);
                 continue;
             }
@@ -1237,6 +2845,15 @@ namespace
 
                 if (!alphaPet || !IsBoneboundPet(alphaPet))
                 {
+                    gBoneboundBleedCooldownByCaster.erase(it->first);
+                    gBoneboundCleaveCooldownByCaster.erase(it->first);
+                    gBoneboundPriestHealCooldownByCaster.erase(it->first);
+                    gBoneboundPriestRenewCooldownByCaster.erase(it->first);
+                    gBoneboundPriestShieldCooldownByCaster.erase(it->first);
+                    gBoneboundPriestDpsCooldownByCaster.erase(it->first);
+                    gBoneboundPriestDpsCastByCaster.erase(it->first);
+                    gBoneboundPriestDispelCooldownByCaster.erase(it->first);
+                    gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
                     it = gBoneboundAlphaEchoes.erase(it);
                     continue;
                 }
@@ -1244,6 +2861,15 @@ namespace
                 std::optional<WmSpells::BoneboundBehaviorConfig> runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
                 if (!runtimeConfig.has_value() || !runtimeConfig->alphaEchoEnabled)
                 {
+                    gBoneboundBleedCooldownByCaster.erase(it->first);
+                    gBoneboundCleaveCooldownByCaster.erase(it->first);
+                    gBoneboundPriestHealCooldownByCaster.erase(it->first);
+                    gBoneboundPriestRenewCooldownByCaster.erase(it->first);
+                    gBoneboundPriestShieldCooldownByCaster.erase(it->first);
+                    gBoneboundPriestDpsCooldownByCaster.erase(it->first);
+                    gBoneboundPriestDpsCastByCaster.erase(it->first);
+                    gBoneboundPriestDispelCooldownByCaster.erase(it->first);
+                    gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
                     it = gBoneboundAlphaEchoes.erase(it);
                     continue;
                 }
@@ -1253,23 +2879,62 @@ namespace
                 TempSummon* restored = SpawnBoneboundAlphaEchoFromState(owner, alphaPet, victim, state, *runtimeConfig);
                 if (!restored)
                 {
+                    gBoneboundBleedCooldownByCaster.erase(it->first);
+                    gBoneboundCleaveCooldownByCaster.erase(it->first);
+                    gBoneboundPriestHealCooldownByCaster.erase(it->first);
+                    gBoneboundPriestRenewCooldownByCaster.erase(it->first);
+                    gBoneboundPriestShieldCooldownByCaster.erase(it->first);
+                    gBoneboundPriestDpsCooldownByCaster.erase(it->first);
+                    gBoneboundPriestDpsCastByCaster.erase(it->first);
+                    gBoneboundPriestDispelCooldownByCaster.erase(it->first);
+                    gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
                     it = gBoneboundAlphaEchoes.erase(it);
                     continue;
                 }
 
+                gBoneboundBleedCooldownByCaster.erase(it->first);
+                gBoneboundCleaveCooldownByCaster.erase(it->first);
+                gBoneboundPriestHealCooldownByCaster.erase(it->first);
+                gBoneboundPriestRenewCooldownByCaster.erase(it->first);
+                gBoneboundPriestShieldCooldownByCaster.erase(it->first);
+                gBoneboundPriestDpsCooldownByCaster.erase(it->first);
+                gBoneboundPriestDpsCastByCaster.erase(it->first);
+                gBoneboundPriestDispelCooldownByCaster.erase(it->first);
+                gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
                 it = gBoneboundAlphaEchoes.erase(it);
                 gBoneboundAlphaEchoes[static_cast<uint32>(restored->GetGUID().GetCounter())] = state;
+                RefreshBoneboundEchoFormationSlots(owner, *runtimeConfig);
                 continue;
             }
 
             Pet* alphaPet = owner->GetPet();
             if (alphaPet && IsBoneboundPet(alphaPet))
             {
-                if (Unit* victim = alphaPet->GetVictim())
+                std::optional<WmSpells::BoneboundBehaviorConfig> runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
+                if (runtimeConfig.has_value() && runtimeConfig->alphaEchoEnabled)
                 {
-                    if (echo->AI())
-                        echo->AI()->AttackStart(victim);
+                    ApplyBoneboundAlphaEchoRuntime(owner, alphaPet, echo->ToTempSummon(), it->second, *runtimeConfig, false);
+                    if (IsBoneboundPriestEcho(it->second))
+                        UpdateBoneboundPriestEcho(echo, owner, alphaPet, it->second, *runtimeConfig, diff);
                 }
+
+                if (IsBoneboundPriestEcho(it->second))
+                {
+                    ++it;
+                    continue;
+                }
+
+                Unit* victim = nullptr;
+                if (IsBoneboundEchoHuntMode(it->second.ownerGuid))
+                {
+                    float huntRadius = ResolveBoneboundEchoHuntRadius(it->second.ownerGuid, runtimeConfig);
+                    victim = SelectNearestBoneboundSeekTarget(owner, echo, huntRadius);
+                }
+                if (!victim)
+                    victim = alphaPet->GetVictim();
+
+                if (victim && victim->IsAlive())
+                    CommandBoneboundAlphaEchoAttack(echo, victim);
                 else if (!echo->IsInCombat())
                 {
                     echo->GetMotionMaster()->MoveFollow(owner, it->second.followDistance, it->second.followAngle);
@@ -1300,6 +2965,46 @@ namespace
         if (shellSpellId != 0)
             payload.insert(payload.size() - 1, ",\"shell_spell_id\":" + std::to_string(shellSpellId));
         return payload;
+    }
+
+    BoneboundEchoStasisCounts LoadStoredBoneboundEchoStasis(uint32 ownerGuid)
+    {
+        QueryResult result = WorldDatabase.Query(
+            "SELECT DestroyerCount, RestorerCount FROM wm_bonebound_echo_stasis WHERE PlayerGUID = {} LIMIT 1",
+            ownerGuid);
+        if (!result)
+            return {};
+
+        Field* fields = result->Fetch();
+        return {
+            fields[0].Get<uint32>(),
+            fields[1].Get<uint32>(),
+        };
+    }
+
+    bool HasStoredBoneboundEchoStasis(uint32 ownerGuid)
+    {
+        return LoadStoredBoneboundEchoStasis(ownerGuid).Total() > 0;
+    }
+
+    void StoreBoneboundEchoStasis(uint32 ownerGuid, BoneboundEchoStasisCounts const& counts)
+    {
+        WorldDatabase.Execute(
+            "INSERT INTO wm_bonebound_echo_stasis "
+            "(PlayerGUID, DestroyerCount, RestorerCount, StoredAt, UpdatedAt) VALUES "
+            "({}, {}, {}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) "
+            "ON DUPLICATE KEY UPDATE "
+            "DestroyerCount = VALUES(DestroyerCount), RestorerCount = VALUES(RestorerCount), UpdatedAt = CURRENT_TIMESTAMP",
+            ownerGuid,
+            counts.destroyers,
+            counts.restorers);
+    }
+
+    void ClearBoneboundEchoStasis(uint32 ownerGuid)
+    {
+        WorldDatabase.Execute(
+            "DELETE FROM wm_bonebound_echo_stasis WHERE PlayerGUID = {}",
+            ownerGuid);
     }
 
     void ApplyIntellectBlockRating(Player* player, int32 desiredRating)
@@ -1556,7 +3261,10 @@ namespace WmSpells
 
     bool IsSupportedBehaviorKind(std::string const& behaviorKind)
     {
-        return IsBoneboundBehaviorKind(behaviorKind) || IsIntellectBlockBehaviorKind(behaviorKind);
+        return IsBoneboundBehaviorKind(behaviorKind)
+            || IsIntellectBlockBehaviorKind(behaviorKind)
+            || IsBoneboundEchoModeBehaviorKind(behaviorKind)
+            || IsBoneboundEchoStasisBehaviorKind(behaviorKind);
     }
 
     std::optional<BehaviorRecord> LoadBehaviorRecord(uint32 shellSpellId)
@@ -1580,7 +3288,7 @@ namespace WmSpells
         return record;
     }
 
-    SpellCastResult CheckBoneboundCorpseTarget(Player* player, uint32 shellSpellId)
+    SpellCastResult CheckShellCast(Player* player, uint32 shellSpellId)
     {
         if (!player)
             return SPELL_FAILED_CASTER_DEAD;
@@ -1591,6 +3299,37 @@ namespace WmSpells
         std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(shellSpellId);
         if (!behaviorRecord.has_value())
             return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+        if (IsBoneboundEchoStasisBehaviorKind(behaviorRecord->behaviorKind))
+        {
+            std::optional<BoneboundEchoStasisConfig> stasisConfig = BuildBoneboundEchoStasisConfig(*behaviorRecord);
+            if (!stasisConfig.has_value())
+                return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+            if (stasisConfig->soulShardItemId != 0 && stasisConfig->soulShardCount > 0
+                && !player->HasItemCount(stasisConfig->soulShardItemId, stasisConfig->soulShardCount, false))
+                return SPELL_FAILED_REAGENTS;
+
+            uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+            if (CountActiveBoneboundAlphaEchoes(ownerGuid) > 0)
+                return SPELL_CAST_OK;
+
+            if (!HasStoredBoneboundEchoStasis(ownerGuid))
+                return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+            Pet* alphaPet = player->GetPet();
+            if (!alphaPet || !IsBoneboundPet(alphaPet))
+                return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+            std::optional<BoneboundBehaviorConfig> runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
+            return runtimeConfig.has_value() && runtimeConfig->alphaEchoEnabled
+                ? SPELL_CAST_OK
+                : SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+        }
+
+        if (IsIntellectBlockBehaviorKind(behaviorRecord->behaviorKind))
+            return SPELL_CAST_OK;
+
         std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, true);
         if (!runtimeConfig.has_value())
             return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
@@ -1599,6 +3338,11 @@ namespace WmSpells
             return SPELL_CAST_OK;
 
         return GetCorpseTarget(player) ? SPELL_CAST_OK : SPELL_FAILED_BAD_TARGETS;
+    }
+
+    SpellCastResult CheckBoneboundCorpseTarget(Player* player, uint32 shellSpellId)
+    {
+        return CheckShellCast(player, shellSpellId);
     }
 
     BehaviorExecutionResult ExecuteBoneboundServant(Player* player, uint32 createdBySpellId, bool persistPet)
@@ -1658,6 +3402,93 @@ namespace WmSpells
         return {true, "bonebound_servant_summoned"};
     }
 
+    BehaviorExecutionResult ExecuteBoneboundEchoStasis(Player* player, uint32 shellSpellId)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+
+        std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(shellSpellId);
+        if (!behaviorRecord.has_value())
+            return {false, "shell_behavior_missing"};
+        std::optional<BoneboundEchoStasisConfig> stasisConfig = BuildBoneboundEchoStasisConfig(*behaviorRecord);
+        if (!stasisConfig.has_value())
+            return {false, "echo_stasis_disabled"};
+
+        uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        BoneboundEchoStasisCounts activeCounts = CountActiveBoneboundEchoesByRole(ownerGuid);
+        if (activeCounts.Total() > 0)
+        {
+            BoneboundEchoStasisCounts storedBefore = LoadStoredBoneboundEchoStasis(ownerGuid);
+            BoneboundEchoStasisCounts storedAfter = AddBoneboundEchoStasisCounts(storedBefore, activeCounts);
+            StoreBoneboundEchoStasis(ownerGuid, storedAfter);
+            RemoveBoneboundAlphaEchoes(player);
+            return {
+                true,
+                "bonebound_echoes_stored:destroyers="
+                    + std::to_string(activeCounts.destroyers)
+                    + ":restorers="
+                    + std::to_string(activeCounts.restorers)
+                    + ":pool_destroyers="
+                    + std::to_string(storedAfter.destroyers)
+                    + ":pool_restorers="
+                    + std::to_string(storedAfter.restorers),
+            };
+        }
+
+        BoneboundEchoStasisCounts storedCounts = LoadStoredBoneboundEchoStasis(ownerGuid);
+        if (storedCounts.Total() == 0)
+            return {false, "echo_stasis_empty"};
+
+        Pet* alphaPet = player->GetPet();
+        if (!alphaPet || !IsBoneboundPet(alphaPet))
+            return {false, "bonebound_alpha_required"};
+
+        std::optional<BoneboundBehaviorConfig> runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
+        if (!runtimeConfig.has_value() || !runtimeConfig->alphaEchoEnabled)
+            return {false, "alpha_echo_disabled"};
+
+        BoneboundEchoStasisCounts restoredCounts;
+        uint32 destroyerLimit = std::min<uint32>(storedCounts.destroyers, std::max<uint32>(1u, runtimeConfig->alphaEchoMaxActive));
+        uint32 restorerLimit = runtimeConfig->priestEchoEnabled && runtimeConfig->priestEchoCreatureEntry != 0
+            ? std::min<uint32>(storedCounts.restorers, std::max<uint32>(1u, runtimeConfig->priestEchoMaxActive))
+            : 0u;
+
+        for (uint32 index = 0; index < destroyerLimit; ++index)
+        {
+            if (SpawnStoredBoneboundAlphaEcho(player, alphaPet, *runtimeConfig, BoneboundEchoRole::Warrior))
+                ++restoredCounts.destroyers;
+        }
+
+        for (uint32 index = 0; index < restorerLimit; ++index)
+        {
+            if (SpawnStoredBoneboundAlphaEcho(player, alphaPet, *runtimeConfig, BoneboundEchoRole::Priest))
+                ++restoredCounts.restorers;
+        }
+
+        if (restoredCounts.Total() == 0)
+            return {false, "echo_stasis_restore_failed"};
+
+        BoneboundEchoStasisCounts remainingCounts = SubtractBoneboundEchoStasisCounts(storedCounts, restoredCounts);
+        if (remainingCounts.Total() > 0)
+            StoreBoneboundEchoStasis(ownerGuid, remainingCounts);
+        else
+            ClearBoneboundEchoStasis(ownerGuid);
+        RefreshBoneboundEchoCountAura(player, *runtimeConfig);
+        return {
+            true,
+            "bonebound_echoes_restored:destroyers="
+                + std::to_string(restoredCounts.destroyers)
+                + ":restorers="
+                + std::to_string(restoredCounts.restorers)
+                + ":pool_destroyers="
+                + std::to_string(remainingCounts.destroyers)
+                + ":pool_restorers="
+                + std::to_string(remainingCounts.restorers),
+        };
+    }
+
     BehaviorExecutionResult ExecuteShellBehavior(Player* player, uint32 shellSpellId, bool persistPetFallback)
     {
         std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(shellSpellId);
@@ -1670,6 +3501,9 @@ namespace WmSpells
             return {true, "intellect_block_passive_maintained"};
         }
 
+        if (IsBoneboundEchoStasisBehaviorKind(behaviorRecord->behaviorKind))
+            return ExecuteBoneboundEchoStasis(player, shellSpellId);
+
         std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, persistPetFallback);
         if (!runtimeConfig.has_value())
             return {false, "shell_behavior_disabled"};
@@ -1680,8 +3514,175 @@ namespace WmSpells
         return {false, "unsupported_shell_spell"};
     }
 
+    BehaviorExecutionResult ExecuteBoneboundEchoSeekRange(Player* player, float huntRadius)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+        if (!std::isfinite(huntRadius) || huntRadius <= 0.0f)
+            return {false, "invalid_echo_hunt_radius"};
+
+        uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        float clampedRadius = ClampBoneboundEchoHuntRadius(huntRadius);
+        gBoneboundEchoHuntRadiusByPlayer[ownerGuid] = clampedRadius;
+        return {true, clampedRadius >= 99.95f ? "bonebound_echo_range_set:100" : "bonebound_echo_range_set"};
+    }
+
+    BehaviorExecutionResult ExecuteBoneboundEchoTeleport(Player* player)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+
+        uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        Pet* alphaPet = player->GetPet();
+        std::optional<BoneboundBehaviorConfig> runtimeConfig;
+        if (alphaPet && IsBoneboundPet(alphaPet))
+            runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
+        if (runtimeConfig.has_value())
+            RefreshBoneboundEchoFormationSlots(player, *runtimeConfig);
+
+        uint32 teleported = 0;
+        for (auto const& [echoGuid, state] : gBoneboundAlphaEchoes)
+        {
+            if (state.ownerGuid != ownerGuid)
+                continue;
+
+            Creature* echo = ObjectAccessor::GetCreature(*player, state.echoGuid);
+            if (!echo || !echo->IsAlive() || echo->GetMapId() != player->GetMapId())
+                continue;
+
+            float x = player->GetPositionX();
+            float y = player->GetPositionY();
+            float z = player->GetPositionZ();
+            player->GetClosePoint(
+                x,
+                y,
+                z,
+                echo->GetCombatReach(),
+                std::max(1.2f, state.followDistance),
+                state.followAngle);
+
+            echo->NearTeleportTo(x, y, z, player->GetOrientation());
+            echo->CombatStop(true);
+            gBoneboundPriestDpsCastByCaster.erase(echoGuid);
+
+            if (IsBoneboundPriestEcho(state) && runtimeConfig.has_value())
+                MoveBoneboundPriestEchoToSafePosition(echo, player, nullptr, state, *runtimeConfig);
+            else
+                echo->GetMotionMaster()->MoveFollow(player, state.followDistance, state.followAngle);
+
+            ++teleported;
+        }
+
+        return {true, "bonebound_echo_teleported:" + std::to_string(teleported)};
+    }
+
+    BehaviorExecutionResult ExecuteBoneboundEchoMode(Player* player, std::string const& mode, std::optional<float> huntRadiusOverride)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+
+        std::string normalized = mode;
+        std::transform(
+            normalized.begin(),
+            normalized.end(),
+            normalized.begin(),
+            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+        if (normalized == "teleport" || normalized == "tp" || normalized == "recall")
+            return ExecuteBoneboundEchoTeleport(player);
+
+        bool huntMode = false;
+        if (normalized == "hunt" || normalized == "seek" || normalized == "attack" || normalized == "aggressive")
+        {
+            huntMode = true;
+        }
+        else if (normalized == "follow" || normalized == "close" || normalized == "guard" || normalized == "passive")
+        {
+            huntMode = false;
+        }
+        else
+        {
+            return {false, "invalid_echo_mode"};
+        }
+
+        uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        if (huntRadiusOverride.has_value())
+        {
+            BehaviorExecutionResult rangeResult = ExecuteBoneboundEchoSeekRange(player, *huntRadiusOverride);
+            if (!rangeResult.ok)
+                return rangeResult;
+        }
+        gBoneboundEchoHuntModeByPlayer[ownerGuid] = huntMode;
+
+        Pet* alphaPet = player->GetPet();
+        std::optional<BoneboundBehaviorConfig> runtimeConfig;
+        if (alphaPet && IsBoneboundPet(alphaPet))
+            runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
+        if (runtimeConfig.has_value())
+            RefreshBoneboundEchoFormationSlots(player, *runtimeConfig);
+
+        for (auto const& [_, state] : gBoneboundAlphaEchoes)
+        {
+            if (state.ownerGuid != ownerGuid)
+                continue;
+
+            Creature* echo = ObjectAccessor::GetCreature(*player, state.echoGuid);
+            if (!echo || !echo->IsAlive())
+                continue;
+
+            if (IsBoneboundPriestEcho(state))
+            {
+                Unit* enemy = nullptr;
+                if (huntMode)
+                {
+                    float huntRadius = ResolveBoneboundEchoHuntRadius(ownerGuid, runtimeConfig);
+                    enemy = SelectNearestBoneboundSeekTarget(player, echo, huntRadius);
+                    if (enemy)
+                        CommandBoneboundPriestEchoSeek(echo, enemy);
+                }
+                else if (alphaPet)
+                {
+                    enemy = alphaPet->GetVictim();
+                }
+
+                if (runtimeConfig.has_value())
+                    MoveBoneboundPriestEchoToSafePosition(echo, player, enemy, state, *runtimeConfig);
+                else
+                    echo->GetMotionMaster()->MoveFollow(player, state.followDistance, state.followAngle);
+                continue;
+            }
+
+            if (huntMode)
+            {
+                float huntRadius = ResolveBoneboundEchoHuntRadius(ownerGuid, runtimeConfig);
+                if (Unit* target = SelectNearestBoneboundSeekTarget(player, echo, huntRadius))
+                    CommandBoneboundAlphaEchoAttack(echo, target);
+                continue;
+            }
+
+            if (alphaPet && alphaPet->GetVictim())
+                CommandBoneboundAlphaEchoAttack(echo, alphaPet->GetVictim());
+            else
+            {
+                echo->CombatStop(true);
+                echo->GetMotionMaster()->MoveFollow(player, state.followDistance, state.followAngle);
+            }
+        }
+
+        return {true, huntMode ? "bonebound_echo_mode_hunt" : "bonebound_echo_mode_follow"};
+    }
+
     void UpdateTrackedCompanions(uint32 diff)
     {
+        UpdateBoneboundBleedCooldowns(diff);
+        UpdateBoneboundCleaveCooldowns(diff);
+        UpdateBoneboundPriestEchoCooldowns(diff);
         UpdateBoneboundBleeds(diff);
         UpdateBoneboundAlphaEchoes(diff);
         UpdateNightWatchersLensMarks(diff);
@@ -1762,6 +3763,7 @@ namespace WmSpells
             ResolveAlphaVisualScale(owner, *runtimeConfig));
         ApplyOwnerTransferBonuses(alphaPet, owner, *runtimeConfig, false);
         MaintainBoneboundAlphaAbilities(owner, alphaPet, *runtimeConfig, 1000u);
+        RefreshBoneboundEchoCountAura(owner, *runtimeConfig);
 
         if (runtimeConfig->spawnOmega)
             SyncBoneboundOmega(owner, alphaPet, *runtimeConfig);
@@ -1788,22 +3790,56 @@ namespace WmSpells
             if (!runtimeConfig.has_value())
                 return;
 
+            uint32 ownerGuid = static_cast<uint32>(owner->GetGUID().GetCounter());
+            SeedBoneboundOwnerKillCredit(owner, victim, damage);
             uint32 petGuid = static_cast<uint32>(alphaPet->GetGUID().GetCounter());
-            uint32& bleedCooldown = gBoneboundBleedCooldownByPet[petGuid];
+            uint32& bleedCooldown = gBoneboundBleedCooldownByCaster[petGuid];
             if (runtimeConfig->bleedEnabled && bleedCooldown == 0)
             {
-                StartBoneboundAlphaBleed(owner, alphaPet, victim, *runtimeConfig);
+                StartBoneboundBleed(owner, alphaPet, victim, *runtimeConfig, 100u);
                 bleedCooldown = std::max<uint32>(1000u, runtimeConfig->bleedCooldownMs);
             }
+            TryBoneboundCleave(owner, alphaPet, victim, *runtimeConfig, damage, runtimeConfig->alphaCleaveDamagePct);
 
             if (!runtimeConfig->alphaEchoEnabled)
                 return;
 
+            bool lensMarked = IsNightWatchersLensMarked(victim);
             float procChance = std::clamp(runtimeConfig->alphaEchoProcChancePct, 0.0f, 100.0f);
-            if (IsNightWatchersLensMarked(victim))
+            if (lensMarked)
                 procChance = std::clamp(procChance * NIGHT_WATCHERS_LENS_MARK_PROC_MULTIPLIER, 0.0f, 100.0f);
+            bool warriorEchoSpawned = false;
             if (procChance > 0.0f && roll_chance_f(procChance))
-                TrySpawnBoneboundAlphaEcho(owner, alphaPet, victim, *runtimeConfig);
+                warriorEchoSpawned = TrySpawnBoneboundAlphaEcho(owner, alphaPet, victim, *runtimeConfig);
+
+            float priestProcChance = runtimeConfig->priestEchoEnabled
+                ? std::clamp(runtimeConfig->priestEchoProcChancePct, 0.0f, 100.0f)
+                : 0.0f;
+            if (lensMarked)
+                priestProcChance = std::clamp(priestProcChance * NIGHT_WATCHERS_LENS_MARK_PROC_MULTIPLIER, 0.0f, 100.0f);
+            uint32 priestPityThreshold = std::max<uint32>(1u, runtimeConfig->priestEchoPityAfterWarriorSpawns);
+            uint32 warriorSpawnsSincePriest = 0;
+            auto pityIt = gBoneboundWarriorEchoesSincePriestByPlayer.find(ownerGuid);
+            if (pityIt != gBoneboundWarriorEchoesSincePriestByPlayer.end())
+                warriorSpawnsSincePriest = pityIt->second;
+
+            bool priestPityReady = runtimeConfig->priestEchoEnabled
+                && runtimeConfig->priestEchoCreatureEntry != 0
+                && runtimeConfig->priestEchoPityAfterWarriorSpawns > 0
+                && (warriorSpawnsSincePriest >= priestPityThreshold
+                    || (warriorEchoSpawned && warriorSpawnsSincePriest + 1 >= priestPityThreshold));
+            bool priestEchoSpawned = false;
+            if ((priestProcChance > 0.0f && roll_chance_f(priestProcChance)) || priestPityReady)
+                priestEchoSpawned = TrySpawnBoneboundAlphaEcho(owner, alphaPet, victim, *runtimeConfig, BoneboundEchoRole::Priest);
+
+            if (priestEchoSpawned)
+            {
+                gBoneboundWarriorEchoesSincePriestByPlayer.erase(ownerGuid);
+            }
+            else if (warriorEchoSpawned && runtimeConfig->priestEchoEnabled && runtimeConfig->priestEchoCreatureEntry != 0 && runtimeConfig->priestEchoPityAfterWarriorSpawns > 0)
+            {
+                gBoneboundWarriorEchoesSincePriestByPlayer[ownerGuid] = std::min<uint32>(priestPityThreshold, warriorSpawnsSincePriest + 1);
+            }
             return;
         }
 
@@ -1823,9 +3859,29 @@ namespace WmSpells
         if (!runtimeConfig.has_value())
             return;
 
+        uint32 echoGuid = static_cast<uint32>(attacker->GetGUID().GetCounter());
+        uint32& bleedCooldown = gBoneboundBleedCooldownByCaster[echoGuid];
+        bool priestEcho = IsBoneboundPriestEcho(echoIt->second);
+        if (priestEcho)
+        {
+            damage = 0;
+            if (Creature* priestCreature = attacker->ToCreature())
+                MoveBoneboundPriestEchoToSafePosition(priestCreature, owner, victim, echoIt->second, *runtimeConfig);
+            return;
+        }
+
+        if (!priestEcho && runtimeConfig->bleedEnabled && bleedCooldown == 0)
+        {
+            StartBoneboundBleed(owner, attacker, victim, *runtimeConfig, echoIt->second.damagePct);
+            bleedCooldown = std::max<uint32>(1000u, runtimeConfig->bleedCooldownMs);
+        }
+
         uint32 alphaRoll = ResolveAlphaMeleeDamageRoll(alphaPet, owner, *runtimeConfig);
         uint32 scaledRoll = std::max<uint32>(1u, (alphaRoll * std::max<uint32>(1u, echoIt->second.damagePct)) / 100u);
+        SeedBoneboundOwnerKillCredit(owner, victim, scaledRoll);
         damage = std::max<uint32>(damage, scaledRoll);
+        if (!priestEcho)
+            TryBoneboundCleave(owner, attacker, victim, *runtimeConfig, scaledRoll, runtimeConfig->echoCleaveDamagePct);
     }
 
     void ForgetBoneboundCompanions(Player* owner)
@@ -2005,6 +4061,22 @@ namespace WmSpells
             requestId);
 
         Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
+        if (IsBoneboundEchoModeBehaviorKind(behaviorKind))
+        {
+            std::string mode = ExtractJsonString(payloadJson, "mode").value_or("");
+            std::optional<float> huntRadius = ExtractJsonFloat(payloadJson, "hunt_radius");
+            BehaviorExecutionResult exec = ExecuteBoneboundEchoMode(player, mode, huntRadius);
+            if (exec.ok)
+            {
+                CompleteDebugRequest(requestId, "done", JsonResult(true, behaviorKind, exec.message, shellSpellId));
+            }
+            else
+            {
+                CompleteDebugRequest(requestId, "failed", JsonResult(false, behaviorKind, exec.message, shellSpellId), exec.message);
+            }
+            return;
+        }
+
         if (IsSupportedBehaviorKind(behaviorKind))
         {
             BehaviorExecutionResult exec = ExecuteShellBehavior(player, shellSpellId, false);

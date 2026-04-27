@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(slots=True)
@@ -30,7 +31,7 @@ class CharacterUnlock:
     unlock_id: int
     source_arc_key: str | None = None
     source_quest_id: int | None = None
-    grant_method: str = "gm_command"
+    grant_method: str = "control"
     bot_eligible: bool = False
 
 
@@ -49,3 +50,18 @@ class PromptQueueEntry:
     character_guid: int
     prompt_kind: str
     body: str
+    queue_id: int | None = None
+    is_consumed: bool = False
+    created_at: str | None = None
+
+
+@dataclass(slots=True)
+class ConversationSteeringNote:
+    character_guid: int
+    steering_key: str
+    body: str
+    steering_kind: str = "player_preference"
+    priority: int = 0
+    source: str = "operator"
+    is_active: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)

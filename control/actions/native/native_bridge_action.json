@@ -58,8 +58,18 @@
     },
     "player_random_enchant_item": {
       "required_any": ["item_guid_low", "equipment_slot", "selector"],
-      "optional": ["max_enchants", "guarantee_first", "preserve_existing_chance_pct", "enchant_chance_1", "enchant_chance_2", "enchant_chance_3"],
-      "notes": "Applies random-enchant table effects to one existing scoped-player weapon/armor item. selector=random_equipped picks one eligible equipped item. Existing enchant slots have a default 15% preserve chance instead of being overwritten."
+      "optional": ["max_enchants", "guarantee_first", "preserve_existing_chance_pct", "minimum_tier", "forced_tier", "bonus_tier", "bonus_tier_chance_pct", "selected_enchant_slot_index", "enchant_chance_1", "enchant_chance_2", "enchant_chance_3"],
+      "notes": "Applies random-enchant table effects to one existing scoped-player weapon/armor item. selector=random_equipped picks one eligible equipped item. Existing enchant slots have a default 15% preserve chance instead of being overwritten. Tiers are clamped to 1-5; selected_enchant_slot_index rerolls exactly one slot."
+    },
+    "quest_add": {
+      "required": ["quest_id"],
+      "optional": ["target_player_guid"],
+      "notes": "Adds quest_id to the scoped online player using GM .quest add style sanity checks and emits a native quest/granted event."
+    },
+    "quest_remove": {
+      "required": ["quest_id"],
+      "optional": ["target_player_guid", "admin_override", "remove_rewarded"],
+      "notes": "Removes an active WM-managed/reserved quest from the scoped online player's quest log and emits a native quest/removed event. Non-reserved quest ids require explicit admin_override; rewarded history is kept unless remove_rewarded is true."
     },
     "player_add_money": {
       "required": ["copper"],

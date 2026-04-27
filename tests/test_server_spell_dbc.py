@@ -5,6 +5,8 @@ from pathlib import Path
 
 from wm.spells.server_dbc import inspect_spell_dbc
 from wm.spells.server_dbc import materialize_server_spell_dbc
+from wm.spells.server_dbc import REAGENT_COUNT_START_FIELD
+from wm.spells.server_dbc import REAGENT_START_FIELD
 from wm.spells.server_dbc import select_shell_patch_rows
 
 
@@ -69,23 +71,26 @@ def test_materialize_named_shell_rows_clones_seed_records(tmp_path: Path) -> Non
         [
             (107, 1007),
             (133, 1133),
+            (1459, 2459),
             (16827, 116827),
         ],
     )
 
     result = materialize_server_spell_dbc(source_dbc=source_path, out=out_path, include="named")
 
-    assert result.appended_count == 4
+    assert result.appended_count == 5
     assert result.replaced_count == 0
     assert result.inspection.checked_ids[940000] is True
     assert result.inspection.checked_ids[940001] is True
     assert result.inspection.checked_ids[944000] is True
     assert result.inspection.checked_ids[945000] is True
-    markers = _read_spell_markers(out_path, [940000, 940001, 944000, 945000])
+    assert result.inspection.checked_ids[946600] is True
+    markers = _read_spell_markers(out_path, [940000, 940001, 944000, 945000, 946600])
     assert markers[940000] == 1133
     assert markers[940001] == 1133
     assert markers[944000] == 1007
     assert markers[945000] == 116827
+    assert markers[946600] == 2459
 
 
 def test_materialize_castable_profile_uses_client_cast_shape_seed(tmp_path: Path) -> None:
@@ -136,6 +141,27 @@ def test_materialize_castable_profile_applies_named_shell_presentation(tmp_path:
     assert fields[131] == 4054
     assert fields[133] == 221
     assert fields[204] == 0
+
+
+def test_materialize_castable_profile_applies_stasis_reagent_presentation(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.dbc"
+    out_path = tmp_path / "out.dbc"
+    _write_full_test_spell_dbc(source_path, [1459])
+
+    result = materialize_server_spell_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        seed_profile="castable",
+        spell_ids=[946600],
+    )
+
+    assert result.selected_spell_ids == [946600]
+    fields = _read_full_spell_fields(out_path, 946600)
+    assert fields[28] == 6
+    assert fields[42] == 0
+    assert fields[REAGENT_START_FIELD] == 6265
+    assert fields[REAGENT_COUNT_START_FIELD] == 1
 
 
 def test_materialize_all_shell_rows_adds_generic_family_entries(tmp_path: Path) -> None:

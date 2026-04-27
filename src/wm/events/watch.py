@@ -30,6 +30,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--summary", action="store_true")
     parser.add_argument("--print-idle", action="store_true")
     parser.add_argument("--arm-from-end", action="store_true")
+    parser.add_argument("--mark-existing-evaluated-on-arm", action="store_true")
     return parser
 
 
@@ -38,10 +39,13 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.from_env()
     _apply_settings_overrides(args=args, settings=settings)
     _validate_run_arguments(args=args, settings=settings)
+    if args.mark_existing_evaluated_on_arm and not args.arm_from_end:
+        raise SystemExit("--mark-existing-evaluated-on-arm requires --arm-from-end.")
 
     if args.arm_from_end:
         client = MysqlCliClient()
         store = EventStore(client=client, settings=settings)
+        existing_max_event_id = store.max_observed_event_id(player_guid=args.player_guid)
         if args.adapter == "combat_log":
             arm_result = arm_combat_log_cursor(settings=settings, store=store)
         elif args.adapter == "addon_log":
@@ -57,18 +61,26 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(
                 "--arm-from-end is only supported with --adapter addon_log, --adapter combat_log, or --adapter native_bridge."
             )
+        marked_existing_evaluated = 0
+        if args.mark_existing_evaluated_on_arm:
+            marked_existing_evaluated = store.mark_unevaluated_observed_events_evaluated(
+                player_guid=args.player_guid,
+                max_event_id=existing_max_event_id,
+            )
         if args.summary:
             if args.adapter == "native_bridge":
                 print(
                     f"armed_from_end=true table_exists={arm_result.table_exists} "
                     f"player_guid={arm_result.player_guid} previous_last_seen={arm_result.previous_last_seen} "
-                    f"armed_last_seen={arm_result.armed_last_seen}",
+                    f"armed_last_seen={arm_result.armed_last_seen} "
+                    f"marked_existing_evaluated={marked_existing_evaluated}",
                     flush=True,
                 )
             else:
                 print(
                     f"armed_from_end=true file_exists={arm_result.file_exists} "
-                    f"previous_offset={arm_result.previous_offset} armed_offset={arm_result.armed_offset}",
+                    f"previous_offset={arm_result.previous_offset} armed_offset={arm_result.armed_offset} "
+                    f"marked_existing_evaluated={marked_existing_evaluated}",
                     flush=True,
                 )
 

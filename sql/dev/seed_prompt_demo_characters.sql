@@ -1,4 +1,5 @@
 DELETE FROM wm_character_prompt_queue WHERE CharacterGUID = 42;
+DELETE FROM wm_character_conversation_steering WHERE CharacterGUID = 42;
 DELETE FROM wm_character_reward_instance WHERE CharacterGUID = 42;
 DELETE FROM wm_character_unlock WHERE CharacterGUID = 42;
 DELETE FROM wm_character_arc_state WHERE CharacterGUID = 42;
@@ -50,7 +51,7 @@ INSERT INTO wm_character_unlock (
     900001,
     'ironforge_arcane_incident',
     910001,
-    'gm_command',
+    'control',
     0
 );
 
@@ -68,6 +69,26 @@ INSERT INTO wm_character_reward_instance (
     'ironforge_arcane_incident',
     910002,
     1
+);
+
+INSERT INTO wm_character_conversation_steering (
+    CharacterGUID,
+    SteeringKey,
+    SteeringKind,
+    Body,
+    Priority,
+    Source,
+    IsActive,
+    MetadataJSON
+) VALUES (
+    42,
+    'prefers_practical_magic',
+    'player_preference',
+    'The character leans toward practical arcane tools, risky artifacts, and visible power mutations over ceremonial rewards.',
+    20,
+    'seed',
+    1,
+    '{"source":"prompt_demo"}'
 );
 
 INSERT INTO wm_character_prompt_queue (

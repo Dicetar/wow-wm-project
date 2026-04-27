@@ -448,6 +448,12 @@ def _default_behavior_config(shell: SpellShellDefinition) -> dict[str, Any]:
             "spell_school_mask": 126,
             "max_block_rating": 0,
         }
+    if shell.behavior_kind == "bonebound_echo_stasis_v1":
+        return {
+            "alpha_shell_spell_id": 940001,
+            "soul_shard_item_id": 6265,
+            "soul_shard_count": 1,
+        }
     return {}
 
 

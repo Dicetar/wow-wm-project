@@ -12,6 +12,14 @@
 
 namespace
 {
+    constexpr uint32 RANDOM_ENCHANT_MIN_TIER = 1;
+    constexpr uint32 RANDOM_ENCHANT_MAX_TIER = 5;
+
+    uint32 ClampEnchantTier(uint32 tier)
+    {
+        return std::clamp<uint32>(tier, RANDOM_ENCHANT_MIN_TIER, RANDOM_ENCHANT_MAX_TIER);
+    }
+
     uint8 RandomEnchantTierForItem(Item const* item)
     {
         if (!item || !item->GetTemplate())
@@ -57,6 +65,32 @@ namespace WmBridge
 {
 namespace RandomEnchant
 {
+    uint32 ResolveRandomEnchantTierForItem(Item const* item, ApplyOptions const& options)
+    {
+        if (options.forcedTier > 0)
+        {
+            return ClampEnchantTier(options.forcedTier);
+        }
+
+        uint32 tier = RandomEnchantTierForItem(item);
+        if (tier == 0)
+        {
+            return 0;
+        }
+
+        if (options.bonusTier > 0 && options.bonusTierChancePct > 0.0f && roll_chance_f(std::clamp<float>(options.bonusTierChancePct, 0.0f, 100.0f)))
+        {
+            tier = ClampEnchantTier(options.bonusTier);
+        }
+
+        if (options.minimumTier > 0)
+        {
+            tier = std::max<uint32>(tier, ClampEnchantTier(options.minimumTier));
+        }
+
+        return ClampEnchantTier(tier);
+    }
+
     ApplyOptions DefaultApplyOptionsFromConfig()
     {
         ApplyOptions options;
@@ -84,13 +118,18 @@ namespace RandomEnchant
 
     uint32 SelectRandomEnchantForItem(Item* item)
     {
+        return SelectRandomEnchantForItem(item, ApplyOptions());
+    }
+
+    uint32 SelectRandomEnchantForItem(Item* item, ApplyOptions const& options)
+    {
         if (!IsEligibleItem(item))
         {
             return 0;
         }
 
         char const* classKey = item->GetTemplate()->Class == ITEM_CLASS_WEAPON ? "WEAPON" : "ARMOR";
-        uint8 tier = RandomEnchantTierForItem(item);
+        uint32 tier = ResolveRandomEnchantTierForItem(item, options);
         if (tier == 0)
         {
             return 0;
@@ -136,21 +175,34 @@ namespace RandomEnchant
         ApplyOptions options = rawOptions;
         options.maxEnchants = std::clamp<uint32>(options.maxEnchants, 1, 3);
         options.preserveExistingChancePct = std::clamp<float>(options.preserveExistingChancePct, 0.0f, 100.0f);
+        options.minimumTier = options.minimumTier == 0 ? 0 : ClampEnchantTier(options.minimumTier);
+        options.forcedTier = options.forcedTier == 0 ? 0 : ClampEnchantTier(options.forcedTier);
+        options.bonusTier = options.bonusTier == 0 ? 0 : ClampEnchantTier(options.bonusTier);
+        options.bonusTierChancePct = std::clamp<float>(options.bonusTierChancePct, 0.0f, 100.0f);
         options.enchantChance1 = std::clamp<float>(options.enchantChance1, 0.0f, 100.0f);
         options.enchantChance2 = std::clamp<float>(options.enchantChance2, 0.0f, 100.0f);
         options.enchantChance3 = std::clamp<float>(options.enchantChance3, 0.0f, 100.0f);
 
         EnchantmentSlot enchantSlots[3] = {PERM_ENCHANTMENT_SLOT, TEMP_ENCHANTMENT_SLOT, BONUS_ENCHANTMENT_SLOT};
         float rollChances[3] = {options.enchantChance1, options.enchantChance2, options.enchantChance3};
-
-        for (uint32 i = 0; i < options.maxEnchants; ++i)
+        if (options.selectedEnchantSlotIndex > 2)
         {
-            if (!(i == 0 && options.guaranteeFirst) && !roll_chance_f(rollChances[i]))
+            result.ok = false;
+            result.message = "invalid_enchant_slot";
+            return result;
+        }
+        uint32 iterationCount = options.selectedEnchantSlotIndex >= 0 ? 1 : options.maxEnchants;
+
+        for (uint32 i = 0; i < iterationCount; ++i)
+        {
+            uint32 slotIndex = options.selectedEnchantSlotIndex >= 0 ? static_cast<uint32>(options.selectedEnchantSlotIndex) : i;
+            uint32 chanceIndex = options.selectedEnchantSlotIndex >= 0 ? 0 : i;
+            if (!(i == 0 && options.guaranteeFirst) && !roll_chance_f(rollChances[chanceIndex]))
             {
                 break;
             }
 
-            EnchantmentSlot slot = enchantSlots[i];
+            EnchantmentSlot slot = enchantSlots[slotIndex];
             uint32 oldEnchantId = item->GetEnchantmentId(slot);
             if (oldEnchantId != 0 && roll_chance_f(options.preserveExistingChancePct))
             {
@@ -158,7 +210,7 @@ namespace RandomEnchant
                 continue;
             }
 
-            uint32 enchantId = SelectRandomEnchantForItem(item);
+            uint32 enchantId = SelectRandomEnchantForItem(item, options);
             if (enchantId == 0)
             {
                 continue;

@@ -23,6 +23,9 @@ namespace WmBridge
         uint32 dbControlRefreshIntervalMs = 5000;
         bool actionQueueEnabled = false;
         uint32 actionPollIntervalMs = 1000;
+        bool aoeLootEnabled = false;
+        float aoeLootRadius = 35.0f;
+        uint32 aoeLootMaxCorpses = 25;
         std::unordered_set<uint32> playerGuidAllowList;
         std::unordered_set<uint32> dbPlayerGuidAllowList;
     };

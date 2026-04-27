@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-04-14
+Last verified: 2026-04-26
 Verified by: Codex
 Doc type: reference
 
@@ -27,7 +27,7 @@ The repo uses a Diataxis-style split:
 - [Next Chat Handoff](NEXT_CHAT_HANDOFF.md) - compact continuation brief for a fresh chat
 - [Work Summary](WORK_SUMMARY.md) - compact summary of what the repo has built
 - [Summon and Spell Platform Status](SUMMON_SPELL_PLATFORM_STATUS.md) - current summon/spell truth source
-- [Roadmap](ROADMAP.md) - intended direction, not current truth
+- [Roadmap](ROADMAP.md) - canonical intended product direction; current-state docs remain the truth for what is proven now
 
 ## How-To / Operations
 
@@ -53,6 +53,7 @@ The repo uses a Diataxis-style split:
 ## Reference / Contracts
 
 - [Custom ID Ledger](CUSTOM_ID_LEDGER.md)
+- [Personal Journey Spine V1](CHARACTER_EXCLUSIVITY_V1.md) - per-character arcs, unlocks, reward instances, steering notes, and prompt queue
 - [Content Workbench V1](CONTENT_WORKBENCH_V1.md)
 - [Journal Layer V1 / V2](JOURNAL_LAYER_V1.md) - current subject-memory reader and inspect status
 - [Prompt Package V1](PROMPT_PACKAGE_V1.md) - historical prompt-package reference; check status header before trusting

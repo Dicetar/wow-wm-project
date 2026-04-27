@@ -16,6 +16,11 @@ namespace RandomEnchant
         uint32 maxEnchants = 3;
         bool guaranteeFirst = true;
         float preserveExistingChancePct = 15.0f;
+        uint32 minimumTier = 0;
+        uint32 forcedTier = 0;
+        uint32 bonusTier = 0;
+        float bonusTierChancePct = 0.0f;
+        int32 selectedEnchantSlotIndex = -1;
         float enchantChance1 = 70.0f;
         float enchantChance2 = 65.0f;
         float enchantChance3 = 60.0f;
@@ -37,6 +42,7 @@ namespace RandomEnchant
     ApplyOptions DefaultApplyOptionsFromConfig();
     bool IsEligibleItem(Item const* item);
     uint32 SelectRandomEnchantForItem(Item* item);
+    uint32 SelectRandomEnchantForItem(Item* item, ApplyOptions const& options);
     ApplyResult ApplyToItem(Player* player, Item* item, ApplyOptions const& options);
 }
 }

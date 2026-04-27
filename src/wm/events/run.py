@@ -18,6 +18,7 @@ from wm.events.reporting import build_execution_summary_lines
 from wm.events.rules import DeterministicRuleEngine
 from wm.events.store import EventStore
 from wm.reactive.random_enchant import RandomEnchantKillRoll
+from wm.reactive.random_enchant import RandomEnchantDropSpec
 from wm.reactive.random_enchant import RandomEnchantKillRoller
 from wm.reactive.state import ReactiveQuestRuntimeSynchronizer
 from wm.reactive.store import ReactiveQuestStore
@@ -134,6 +135,7 @@ def execute_event_spine(
         if event.event_id is not None:
             store.mark_evaluated(event_id=event.event_id)
 
+    random_enchant_event_ids = {result.event_id for result in random_enchant_results}
     return {
         "adapter": adapter.name,
         "mode": mode,
@@ -151,7 +153,8 @@ def execute_event_spine(
         "executions": [result.to_dict() for result in execution_results],
         "random_enchant_consumable_on_kill": {
             "enabled": bool(settings.random_enchant_on_kill_enabled),
-            "processed_kills": len(random_enchant_results),
+            "processed_kills": len(random_enchant_event_ids),
+            "processed_rolls": len(random_enchant_results),
             "selected": sum(1 for result in random_enchant_results if result.selected),
             "submitted": sum(1 for result in random_enchant_results if result.request_id is not None),
             "results": [result.to_dict() for result in random_enchant_results],
@@ -184,6 +187,7 @@ def _emit_output(*, payload: dict[str, object], summary: bool, output_json: Path
             print(
                 "random_enchant_consumable_on_kill="
                 f"processed={random_enchant.get('processed_kills', 0)} "
+                f"rolls={random_enchant.get('processed_rolls', random_enchant.get('processed_kills', 0))} "
                 f"selected={random_enchant.get('selected', 0)} "
                 f"submitted={random_enchant.get('submitted', 0)}",
                 flush=True,
@@ -243,15 +247,27 @@ def _process_random_enchant_on_kill(
         event_store=store,
         native_actions=NativeBridgeActionClient(client=client, settings=settings),
     )
-    return roller.process_events(
+    drop_specs = [
+        RandomEnchantDropSpec(
+            drop_key="unstable_enchanting_vellum",
+            item_entry=int(settings.random_enchant_consumable_item_entry),
+            chance_pct=float(settings.random_enchant_on_kill_chance_pct),
+            count=int(settings.random_enchant_consumable_count),
+        )
+    ]
+    if settings.random_enchant_focused_on_kill_enabled:
+        drop_specs.append(
+            RandomEnchantDropSpec(
+                drop_key="enchanting_vellum",
+                item_entry=int(settings.random_enchant_focused_consumable_item_entry),
+                chance_pct=float(settings.random_enchant_focused_on_kill_chance_pct),
+                count=int(settings.random_enchant_focused_consumable_count),
+            )
+        )
+    return roller.process_events_for_drop_specs(
         events=recorded_events,
         player_guid=int(player_guid),
-        chance_pct=float(settings.random_enchant_on_kill_chance_pct),
-        preserve_existing_chance_pct=float(settings.random_enchant_preserve_existing_chance_pct),
-        selector=str(settings.random_enchant_selector),
-        max_enchants=int(settings.random_enchant_max_enchants),
-        item_entry=int(settings.random_enchant_consumable_item_entry),
-        count=int(settings.random_enchant_consumable_count),
+        drop_specs=drop_specs,
         mode=mode,
     )
 

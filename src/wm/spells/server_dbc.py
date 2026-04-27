@@ -34,6 +34,9 @@ CASTABLE_SERVER_SEED_TEMPLATE_SOURCE_SPELL_IDS: dict[str, int] = {
 CASTING_TIME_INDEX_FIELD = 28
 POWER_TYPE_FIELD = 41
 MANA_COST_FIELD = 42
+REAGENT_START_FIELD = 52
+REAGENT_COUNT_START_FIELD = 60
+REAGENT_SLOT_COUNT = 8
 SPELL_ICON_ID_FIELD = 133
 ACTIVE_ICON_ID_FIELD = 134
 SPELL_VISUAL_ID_1_FIELD = 130
@@ -272,6 +275,23 @@ def _apply_server_presentation(record: bytearray, row: SpellShellPatchRow) -> No
             struct.pack_into("<I", record, field_index * 4, int(presentation[key]))
     if "spell_icon_id" in presentation:
         struct.pack_into("<I", record, ACTIVE_ICON_ID_FIELD * 4, 0)
+    for reagent_index in range(1, REAGENT_SLOT_COUNT + 1):
+        item_key = f"reagent_{reagent_index}_item_id"
+        count_key = f"reagent_{reagent_index}_count"
+        if item_key in presentation:
+            struct.pack_into(
+                "<I",
+                record,
+                (REAGENT_START_FIELD + reagent_index - 1) * 4,
+                int(presentation[item_key]),
+            )
+        if count_key in presentation:
+            struct.pack_into(
+                "<I",
+                record,
+                (REAGENT_COUNT_START_FIELD + reagent_index - 1) * 4,
+                int(presentation[count_key]),
+            )
 
 
 def select_shell_patch_rows(

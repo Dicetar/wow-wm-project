@@ -162,9 +162,10 @@ class FakeExecutor:
 class FakeRandomEnchantRoll:
     selected: bool
     request_id: int | None
+    event_id: int = 1
 
     def to_dict(self) -> dict[str, object]:
-        return {"selected": self.selected, "request_id": self.request_id}
+        return {"selected": self.selected, "request_id": self.request_id, "event_id": self.event_id}
 
 
 class FakeRandomEnchantRoller:
@@ -174,6 +175,13 @@ class FakeRandomEnchantRoller:
     def process_events(self, **kwargs):  # type: ignore[no-untyped-def]
         self.calls.append(dict(kwargs))
         return [FakeRandomEnchantRoll(selected=True, request_id=77)]
+
+    def process_events_for_drop_specs(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.calls.append(dict(kwargs))
+        return [
+            FakeRandomEnchantRoll(selected=True, request_id=77, event_id=1),
+            FakeRandomEnchantRoll(selected=False, request_id=None, event_id=1),
+        ]
 
 
 class EventRunValidationTests(unittest.TestCase):
@@ -562,7 +570,9 @@ class EventRunValidationTests(unittest.TestCase):
             payload = execute_event_spine(
                 settings=Settings(
                     random_enchant_on_kill_enabled=True,
-                    random_enchant_on_kill_chance_pct=2.5,
+                    random_enchant_on_kill_chance_pct=7.0,
+                    random_enchant_focused_on_kill_enabled=True,
+                    random_enchant_focused_on_kill_chance_pct=3.5,
                     random_enchant_preserve_existing_chance_pct=15.0,
                 ),
                 adapter_name="native_bridge",
@@ -573,16 +583,17 @@ class EventRunValidationTests(unittest.TestCase):
 
         self.assertEqual(payload["random_enchant_consumable_on_kill"]["enabled"], True)
         self.assertEqual(payload["random_enchant_consumable_on_kill"]["processed_kills"], 1)
+        self.assertEqual(payload["random_enchant_consumable_on_kill"]["processed_rolls"], 2)
         self.assertEqual(payload["random_enchant_consumable_on_kill"]["selected"], 1)
         self.assertEqual(payload["random_enchant_consumable_on_kill"]["submitted"], 1)
         self.assertEqual(len(random_roller.calls), 1)
         call = random_roller.calls[0]
         self.assertEqual(call["player_guid"], 5406)
-        self.assertEqual(call["chance_pct"], 2.5)
-        self.assertEqual(call["preserve_existing_chance_pct"], 15.0)
-        self.assertEqual(call["selector"], "random_equipped")
-        self.assertEqual(call["item_entry"], 910007)
-        self.assertEqual(call["count"], 1)
+        drop_specs = call["drop_specs"]
+        self.assertEqual([spec.drop_key for spec in drop_specs], ["unstable_enchanting_vellum", "enchanting_vellum"])
+        self.assertEqual([spec.item_entry for spec in drop_specs], [910007, 910008])
+        self.assertEqual([spec.chance_pct for spec in drop_specs], [7.0, 3.5])
+        self.assertEqual([spec.count for spec in drop_specs], [1, 1])
         self.assertEqual(call["mode"], "apply")
         self.assertEqual([event.event_id for event in call["events"]], [1])
 

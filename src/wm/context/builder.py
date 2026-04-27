@@ -263,10 +263,10 @@ class ContextPackBuilder:
         payload = asdict(bundle)
         if payload.get("profile") is None:
             payload["status"] = "PARTIAL"
-            payload["notes"] = ["No wm_character_profile row was loaded."]
+            payload["notes"] = payload.get("notes") or ["No wm_character_profile row was loaded."]
         else:
-            payload["status"] = "WORKING"
-            payload["notes"] = []
+            payload["status"] = payload.get("status") or "WORKING"
+            payload["notes"] = payload.get("notes") or []
         return payload
 
     def _load_recent_events(self, *, player_guid: int, limit: int) -> list[dict[str, Any]]:
@@ -399,6 +399,10 @@ def _build_generation_input(
     eligible_recipes: list[dict[str, Any]],
 ) -> dict[str, Any]:
     character_profile = (character_state or {}).get("profile") or {}
+    arc_states = (character_state or {}).get("arc_states") or []
+    unlocks = (character_state or {}).get("unlocks") or []
+    rewards = (character_state or {}).get("rewards") or []
+    conversation_steering = (character_state or {}).get("conversation_steering") or []
     counters = asdict(journal.counters) if journal.counters is not None else {}
     active_rules = quest_runtime.get("active_rules") or []
     quest_states = sorted(
@@ -439,6 +443,33 @@ def _build_generation_input(
             "quest_complete_count": counters.get("quest_complete_count", 0),
             "last_quest_title": counters.get("last_quest_title"),
             "summary_lines": journal.summary.history_lines if journal.summary is not None else [],
+        },
+        "journey": {
+            "active_arc_keys": [
+                str(arc.get("arc_key"))
+                for arc in arc_states
+                if isinstance(arc, dict) and str(arc.get("status") or "active") == "active" and arc.get("arc_key")
+            ],
+            "unlock_refs": [
+                f"{unlock.get('unlock_kind')}:{unlock.get('unlock_id')}"
+                for unlock in unlocks
+                if isinstance(unlock, dict) and unlock.get("unlock_kind") and unlock.get("unlock_id")
+            ],
+            "reward_refs": [
+                f"{reward.get('reward_kind')}:{reward.get('template_id')}"
+                for reward in rewards
+                if isinstance(reward, dict) and reward.get("reward_kind") and reward.get("template_id")
+            ],
+            "steering": [
+                {
+                    "key": note.get("steering_key"),
+                    "kind": note.get("steering_kind"),
+                    "body": note.get("body"),
+                    "priority": note.get("priority", 0),
+                }
+                for note in conversation_steering
+                if isinstance(note, dict) and note.get("body")
+            ],
         },
         "quest_runtime": {
             "active_rule_count": int(quest_runtime.get("active_rule_count") or 0),

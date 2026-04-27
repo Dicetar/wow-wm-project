@@ -10,6 +10,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 class SpellInfo;
 
@@ -100,16 +101,71 @@ namespace WmSpells
         uint32 bleedDurationMs = 4000;
         uint32 bleedTickMs = 1000;
         uint32 bleedBaseDamage = 3;
-        uint32 bleedDamagePerLevelPct = 25;
-        uint32 bleedDamagePerIntellectPct = 1;
+        uint32 bleedDamagePerAttackPowerPct = 20;
+        uint32 bleedDamagePerLevelPct = 0;
+        uint32 bleedDamagePerIntellectPct = 0;
         uint32 bleedDamagePerShadowPowerPct = 0;
         bool alphaEchoEnabled = true;
         uint32 alphaEchoCreatureEntry = 920101;
+        std::string alphaEchoName = "Echo Destroyer";
         float alphaEchoProcChancePct = 7.5f;
         uint32 alphaEchoMaxActive = 40;
         uint32 alphaEchoDamagePct = 100;
         float alphaEchoFollowDistance = 2.6f;
         float alphaEchoFollowAngle = PET_FOLLOW_ANGLE;
+        float alphaEchoHuntRadius = 35.0f;
+        bool alphaEchoCountAuraEnabled = true;
+        uint32 alphaEchoCountAuraSpellId = 467;
+        uint32 alphaEchoCountAuraRefreshMs = 3000;
+        bool priestEchoEnabled = true;
+        uint32 priestEchoCreatureEntry = 920103;
+        std::string priestEchoName = "Echo Restorer";
+        uint32 priestEchoDisplayId = 11397;
+        uint32 priestEchoVirtualItem1 = 0;
+        uint32 priestEchoVirtualItem2 = 0;
+        uint32 priestEchoVirtualItem3 = 0;
+        std::vector<uint32> priestEchoStaffItemEntries = {18842, 22800, 19909, 21275, 21452, 22335, 19570, 19566};
+        float priestEchoScaleMultiplier = 0.9f;
+        float priestEchoProcChancePct = 5.0f;
+        uint32 priestEchoMaxActive = 10;
+        uint32 priestEchoPityAfterWarriorSpawns = 6;
+        uint32 priestEchoDamagePct = 35;
+        float priestEchoSupportRadius = 45.0f;
+        uint32 priestEchoHealBelowHealthPct = 95;
+        uint32 priestEchoHealSpellId = 2061;
+        uint32 priestEchoHealBasePct = 12;
+        uint32 priestEchoHealCooldownMs = 2500;
+        uint32 priestEchoRenewSpellId = 139;
+        uint32 priestEchoRenewBasePct = 5;
+        uint32 priestEchoRenewCooldownMs = 10000;
+        uint32 priestEchoShieldSpellId = 17;
+        uint32 priestEchoShieldBasePct = 10;
+        uint32 priestEchoShieldCooldownMs = 12000;
+        uint32 priestEchoDiseaseDispelSpellId = 528;
+        uint32 priestEchoCurseDispelSpellId = 475;
+        uint32 priestEchoDispelCooldownMs = 8000;
+        uint32 priestEchoMassDispelSpellId = 32375;
+        uint32 priestEchoMassDispelCooldownMs = 180000;
+        uint32 priestEchoMassDispelMinAffected = 3;
+        uint32 priestEchoMassDispelMinSeverity = 8;
+        uint32 priestEchoMassDispelMaxRemovals = 8;
+        uint32 priestEchoDpsSpellId = 8092;
+        uint32 priestEchoDpsDamageSpellId = 8092;
+        uint32 priestEchoDpsCastTimeMs = 1500;
+        uint32 priestEchoDpsDamagePct = 19;
+        uint32 priestEchoDpsCooldownMs = 2500;
+        float priestEchoDpsMaxRange = 100.0f;
+        uint32 priestEchoSpellPowerToHealingPct = 35;
+        uint32 priestEchoSpellPowerToShieldPct = 30;
+        uint32 priestEchoSpellPowerToDamagePct = 45;
+        float priestEchoSafeFollowDistance = 1.8f;
+        float priestEchoSafeMinEnemyDistance = 6.0f;
+        bool cleaveEnabled = true;
+        uint32 cleaveCooldownMs = 3000;
+        float cleaveRadius = 5.0f;
+        uint32 cleaveMaxTargets = 4;
+        uint32 alphaCleaveDamagePct = 45;
+        uint32 echoCleaveDamagePct = 25;
     };
 
     struct BehaviorRecord
@@ -129,15 +185,28 @@ namespace WmSpells
         uint32 maxBlockRating = 0;
     };
 
+    struct BoneboundEchoStasisConfig
+    {
+        uint32 shellSpellId = 946600;
+        uint32 alphaShellSpellId = 940001;
+        uint32 soulShardItemId = 6265;
+        uint32 soulShardCount = 1;
+    };
+
     RuntimeConfig const& GetConfig();
     void LoadConfig();
     bool IsPlayerAllowed(Player* player);
     bool IsBoneboundShellSpell(Player* player, uint32 spellId);
     bool IsSupportedBehaviorKind(std::string const& behaviorKind);
     std::optional<BehaviorRecord> LoadBehaviorRecord(uint32 shellSpellId);
+    SpellCastResult CheckShellCast(Player* player, uint32 shellSpellId = 0);
     SpellCastResult CheckBoneboundCorpseTarget(Player* player, uint32 shellSpellId = 0);
     BehaviorExecutionResult ExecuteBoneboundServant(Player* player, uint32 createdBySpellId, bool persistPet);
+    BehaviorExecutionResult ExecuteBoneboundEchoStasis(Player* player, uint32 shellSpellId);
     BehaviorExecutionResult ExecuteShellBehavior(Player* player, uint32 shellSpellId, bool persistPetFallback);
+    BehaviorExecutionResult ExecuteBoneboundEchoMode(Player* player, std::string const& mode, std::optional<float> huntRadiusOverride = std::nullopt);
+    BehaviorExecutionResult ExecuteBoneboundEchoSeekRange(Player* player, float huntRadius);
+    BehaviorExecutionResult ExecuteBoneboundEchoTeleport(Player* player);
     void UpdateTrackedCompanions(uint32 diff);
     void MaintainBoneboundSummons(Player* player);
     void ForgetBoneboundCompanions(Player* player);

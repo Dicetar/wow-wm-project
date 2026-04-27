@@ -14,10 +14,29 @@ from wm.sources.native_bridge.actions import NativeBridgeActionClient
 from wm.sources.native_bridge.actions import NativeBridgeActionRequest
 
 
-DEFAULT_RANDOM_ENCHANT_KILL_CHANCE_PCT = 2.5
+DEFAULT_RANDOM_ENCHANT_KILL_CHANCE_PCT = 7.0
+DEFAULT_FOCUSED_ENCHANT_VELLUM_KILL_CHANCE_PCT = 3.5
 DEFAULT_PRESERVE_EXISTING_CHANCE_PCT = 15.0
 DEFAULT_RANDOM_ENCHANT_CONSUMABLE_ITEM_ENTRY = 910007
+DEFAULT_FOCUSED_ENCHANT_VELLUM_ITEM_ENTRY = 910008
 DEFAULT_RANDOM_ENCHANT_CONSUMABLE_COUNT = 1
+DEFAULT_FOCUSED_ENCHANT_VELLUM_COUNT = 1
+
+
+@dataclass(frozen=True, slots=True)
+class RandomEnchantDropSpec:
+    drop_key: str
+    item_entry: int
+    chance_pct: float
+    count: int = 1
+
+    def normalized(self) -> "RandomEnchantDropSpec":
+        return RandomEnchantDropSpec(
+            drop_key=str(self.drop_key or f"item:{int(self.item_entry)}"),
+            item_entry=int(self.item_entry),
+            chance_pct=max(0.0, min(100.0, float(self.chance_pct))),
+            count=max(1, int(self.count)),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +44,7 @@ class RandomEnchantKillRoll:
     event_id: int
     player_guid: int
     source_event_key: str
+    drop_key: str
     subject_entry: int | None
     subject_name: str | None
     roll_pct: float
@@ -42,6 +62,7 @@ class RandomEnchantKillRoll:
             "event_id": self.event_id,
             "player_guid": self.player_guid,
             "source_event_key": self.source_event_key,
+            "drop_key": self.drop_key,
             "subject_entry": self.subject_entry,
             "subject_name": self.subject_name,
             "roll_pct": round(self.roll_pct, 4),
@@ -85,7 +106,6 @@ class RandomEnchantKillRoller:
     ) -> list[RandomEnchantKillRoll]:
         if mode not in {"dry-run", "apply"}:
             raise ValueError("mode must be dry-run or apply")
-        chance_pct = max(0.0, min(100.0, float(chance_pct)))
         preserve_existing_chance_pct = max(0.0, min(100.0, float(preserve_existing_chance_pct)))
         max_enchants = max(1, min(3, int(max_enchants)))
 
@@ -125,14 +145,34 @@ class RandomEnchantKillRoller:
         count: int = DEFAULT_RANDOM_ENCHANT_CONSUMABLE_COUNT,
         mode: str = "dry-run",
     ) -> list[RandomEnchantKillRoll]:
+        return self.process_events_for_drop_specs(
+            events=events,
+            player_guid=player_guid,
+            drop_specs=[
+                RandomEnchantDropSpec(
+                    drop_key="unstable_enchanting_vellum",
+                    item_entry=item_entry,
+                    chance_pct=chance_pct,
+                    count=count,
+                )
+            ],
+            mode=mode,
+        )
+
+    def process_events_for_drop_specs(
+        self,
+        *,
+        events: list[WMEvent],
+        player_guid: int,
+        drop_specs: list[RandomEnchantDropSpec],
+        mode: str = "dry-run",
+    ) -> list[RandomEnchantKillRoll]:
         results: list[RandomEnchantKillRoll] = []
         if mode not in {"dry-run", "apply"}:
             raise ValueError("mode must be dry-run or apply")
-        chance_pct = max(0.0, min(100.0, float(chance_pct)))
-        preserve_existing_chance_pct = max(0.0, min(100.0, float(preserve_existing_chance_pct)))
-        max_enchants = max(1, min(3, int(max_enchants)))
-        item_entry = int(item_entry)
-        count = max(1, int(count))
+        specs = [spec.normalized() for spec in drop_specs]
+        if not specs:
+            return []
 
         kill_events = [
             event
@@ -144,55 +184,64 @@ class RandomEnchantKillRoller:
             and int(event.player_guid) == int(player_guid)
         ]
         for event in kill_events:
-            selected, roll_pct = self._roll_event(event=event, chance_pct=chance_pct)
-            idempotency_key = f"random_enchant_consumable:on_kill:{int(player_guid)}:{int(event.event_id or 0)}"
-            request: NativeBridgeActionRequest | None = None
-            if selected and mode == "apply":
-                request = self.native_actions.submit(
-                    idempotency_key=idempotency_key,
-                    player_guid=int(player_guid),
-                    action_kind="player_add_item",
-                    payload={
-                        "item_id": item_entry,
-                        "count": count,
-                        "soulbound": False,
-                        "reason": "random_enchant_consumable_drop",
-                        "source_event_id": int(event.event_id or 0),
-                        "source_event_key": event.source_event_key,
-                        "chance_pct": chance_pct,
-                    },
-                    created_by="wm.random_enchant",
-                    risk_level="medium",
-                    expires_seconds=60,
-                    max_attempts=3,
-                    priority=5,
+            for spec in specs:
+                selected, roll_pct = self._roll_event(event=event, drop_spec=spec)
+                idempotency_key = (
+                    f"random_enchant_consumable:on_kill:{int(player_guid)}:"
+                    f"{int(event.event_id or 0)}:{spec.drop_key}:{spec.item_entry}"
                 )
+                request: NativeBridgeActionRequest | None = None
+                if selected and mode == "apply":
+                    request = self.native_actions.submit(
+                        idempotency_key=idempotency_key,
+                        player_guid=int(player_guid),
+                        action_kind="player_add_item",
+                        payload={
+                            "item_id": spec.item_entry,
+                            "count": spec.count,
+                            "soulbound": False,
+                            "reason": "random_enchant_consumable_drop",
+                            "drop_key": spec.drop_key,
+                            "source_event_id": int(event.event_id or 0),
+                            "source_event_key": event.source_event_key,
+                            "chance_pct": spec.chance_pct,
+                        },
+                        created_by="wm.random_enchant",
+                        risk_level="medium",
+                        expires_seconds=60,
+                        max_attempts=3,
+                        priority=5,
+                    )
 
-            results.append(
-                RandomEnchantKillRoll(
-                    event_id=int(event.event_id or 0),
-                    player_guid=int(player_guid),
-                    source_event_key=event.source_event_key,
-                    subject_entry=event.subject_entry,
-                    subject_name=_subject_name(event),
-                    roll_pct=roll_pct,
-                    chance_pct=chance_pct,
-                    selected=selected,
-                    mode=mode,
-                    idempotency_key=idempotency_key if selected else None,
-                    request_id=request.request_id if request is not None else None,
-                    request_status=request.status if request is not None else None,
-                    item_entry=item_entry if selected else None,
-                    count=count if selected else None,
+                results.append(
+                    RandomEnchantKillRoll(
+                        event_id=int(event.event_id or 0),
+                        player_guid=int(player_guid),
+                        source_event_key=event.source_event_key,
+                        drop_key=spec.drop_key,
+                        subject_entry=event.subject_entry,
+                        subject_name=_subject_name(event),
+                        roll_pct=roll_pct,
+                        chance_pct=spec.chance_pct,
+                        selected=selected,
+                        mode=mode,
+                        idempotency_key=idempotency_key if selected else None,
+                        request_id=request.request_id if request is not None else None,
+                        request_status=request.status if request is not None else None,
+                        item_entry=spec.item_entry,
+                        count=spec.count,
+                    )
                 )
-            )
         return results
 
-    def _roll_event(self, *, event: WMEvent, chance_pct: float) -> tuple[bool, float]:
-        material = f"{self.rng_salt}:{event.event_id}:{event.source}:{event.source_event_key}"
+    def _roll_event(self, *, event: WMEvent, drop_spec: RandomEnchantDropSpec) -> tuple[bool, float]:
+        material = (
+            f"{self.rng_salt}:{drop_spec.drop_key}:{drop_spec.item_entry}:"
+            f"{event.event_id}:{event.source}:{event.source_event_key}"
+        )
         digest = hashlib.sha256(material.encode("utf-8")).hexdigest()
         roll_pct = (int(digest[:12], 16) / float(0xFFFFFFFFFFFF)) * 100.0
-        return roll_pct < chance_pct, roll_pct
+        return roll_pct < drop_spec.chance_pct, roll_pct
 
 
 def _subject_name(event: WMEvent) -> str | None:

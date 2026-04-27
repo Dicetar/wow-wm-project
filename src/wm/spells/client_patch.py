@@ -546,6 +546,15 @@ def _apply_client_presentation(
         if key in presentation:
             _set_field(record, field_index, int(presentation[key]))
             changed = True
+    for reagent_index in range(1, REAGENT_SLOT_COUNT + 1):
+        item_key = f"reagent_{reagent_index}_item_id"
+        count_key = f"reagent_{reagent_index}_count"
+        if item_key in presentation:
+            _set_field(record, REAGENT_START_FIELD + reagent_index - 1, int(presentation[item_key]))
+            changed = True
+        if count_key in presentation:
+            _set_field(record, REAGENT_COUNT_START_FIELD + reagent_index - 1, int(presentation[count_key]))
+            changed = True
     return changed
 
 

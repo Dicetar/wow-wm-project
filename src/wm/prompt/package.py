@@ -17,6 +17,7 @@ class PromptPackage:
     arc_states: list[dict[str, Any]]
     unlocks: list[dict[str, Any]]
     rewards: list[dict[str, Any]]
+    conversation_steering: list[dict[str, Any]]
     prompt_queue: list[dict[str, Any]]
     journal_summary: dict[str, Any] | None
 
@@ -40,6 +41,7 @@ def build_prompt_package(
         arc_states=[asdict(x) for x in character_state.arc_states],
         unlocks=[asdict(x) for x in character_state.unlocks],
         rewards=[asdict(x) for x in character_state.rewards],
+        conversation_steering=[asdict(x) for x in character_state.conversation_steering],
         prompt_queue=[asdict(x) for x in character_state.prompt_queue],
         journal_summary=(
             {

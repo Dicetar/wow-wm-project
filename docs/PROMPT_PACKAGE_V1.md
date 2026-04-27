@@ -54,11 +54,9 @@ Instead, code should build a structured package containing:
 
 ## Important design decision
 
-Actual rewards may still be **applied** using GM commands like:
-- `.character learn [spell_id]`
-- `.additem [item_id] [count]`
+Actual rewards and abilities must be applied through current managed publishers, shell grants, control proposals, or typed native actions.
 
-But the WM must still **track** those rewards in its own tables so the character journey remains unique.
+This historical prompt package can read tracked rewards, but it is not a mutation lane and must not generate freeform SQL or GM commands.
 
 ## Local commands
 
@@ -124,6 +122,6 @@ The prompt demo should print one JSON package combining:
 
 Prompt Package V2 should add:
 - configurable CLI arguments for character and target
-- write helpers for unlock tracking after GM command grants
+- integration with `python -m wm.character.journey` for unlock, reward, steering, and prompt state
 - write helpers for prompt queue consumption
 - richer world-side joins for quest and gossip context

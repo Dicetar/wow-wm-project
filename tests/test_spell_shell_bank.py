@@ -35,6 +35,7 @@ def test_bonebound_shell_definitions_are_present() -> None:
 
     summon_shell = bank.shell_by_key("bonebound_servant_v1")
     twin_shell = bank.shell_by_key("bonebound_twins_v1")
+    stasis_shell = bank.shell_by_key("bonebound_echo_stasis_v1")
     pet_active_shell = bank.shell_by_spell_id(945000)
 
     assert summon_shell is not None
@@ -48,6 +49,14 @@ def test_bonebound_shell_definitions_are_present() -> None:
     assert twin_shell.client_presentation["mana_cost"] == 180
     assert twin_shell.client_presentation["spell_visual_id_2"] == 4054
     assert twin_shell.client_presentation["spellbook_seed_spell_id"] == 697
+    assert stasis_shell is not None
+    assert stasis_shell.spell_id == 946600
+    assert stasis_shell.family_id == "self_aura"
+    assert stasis_shell.behavior_kind == "bonebound_echo_stasis_v1"
+    assert stasis_shell.client_presentation is not None
+    assert stasis_shell.client_presentation["cast_time_index"] == 6
+    assert stasis_shell.client_presentation["reagent_1_item_id"] == 6265
+    assert stasis_shell.client_presentation["reagent_1_count"] == 1
     assert pet_active_shell is not None
     assert pet_active_shell.family_id == "pet_active_compat"
     assert pet_active_shell.spell_id == 945000
@@ -63,6 +72,7 @@ def test_patch_rows_expand_compatibility_and_generic_ranges_and_overlay_named_sh
     summon_shell = next(row for row in rows if row.spell_id == 940000)
     generic_projectile_slot = next(row for row in rows if row.spell_id == 946000)
     pet_active_shell = next(row for row in rows if row.spell_id == 945000)
+    stasis_shell = next(row for row in rows if row.spell_id == 946600)
 
     assert summon_shell.is_named_override is True
     assert summon_shell.shell_key == "bonebound_servant_v1"
@@ -76,6 +86,11 @@ def test_patch_rows_expand_compatibility_and_generic_ranges_and_overlay_named_sh
     assert twin_shell.behavior_kind == "summon_bonebound_alpha_v3"
     assert twin_shell.client_presentation["spellbook_ability_id"] == 1940001
     assert twin_shell.client_presentation["spell_visual_id_2"] == 4054
+    assert stasis_shell.is_named_override is True
+    assert stasis_shell.shell_key == "bonebound_echo_stasis_v1"
+    assert stasis_shell.behavior_kind == "bonebound_echo_stasis_v1"
+    assert stasis_shell.client_presentation["cast_time_index"] == 6
+    assert stasis_shell.client_presentation["reagent_1_item_id"] == 6265
     assert pet_active_shell.is_named_override is True
     assert pet_active_shell.shell_key == "bonebound_servant_slash_v1"
     assert all(row.spell_id != 946100 for row in rows)
@@ -95,4 +110,4 @@ def test_patch_plan_reports_range_driven_summary() -> None:
     assert plan["slots_per_family"] == 100
     assert plan["reserve_gap_slots"] == 100
     assert plan["total_rows"] == 504
-    assert plan["named_override_count"] == 4
+    assert plan["named_override_count"] == 5

@@ -1,0 +1,176 @@
+-- WM random-enchant vellum variants.
+-- Server truth:
+-- - 910007 Unstable Enchanting Vellum stacks to 999 and can rarely roll highest-tier enchants.
+-- - 910008 Enchanting Vellum lets the player choose one enchant slot and reroll it at 40% tier 3, 30% tier 4, 30% tier 5.
+
+UPDATE item_template
+SET
+    stackable = 999,
+    description = 'Right-click to choose an equipped weapon or armor item and apply unstable random enchants. Existing enchants have a chance to survive. Rare rolls can reach the highest tier.',
+    ScriptName = 'wm_random_enchant_consumable'
+WHERE entry = 910007;
+
+DROP TEMPORARY TABLE IF EXISTS wm_tmp_enchanting_vellum;
+CREATE TEMPORARY TABLE wm_tmp_enchanting_vellum LIKE item_template;
+
+INSERT INTO wm_tmp_enchanting_vellum
+SELECT *
+FROM item_template
+WHERE entry = 955
+LIMIT 1;
+
+UPDATE wm_tmp_enchanting_vellum
+SET
+    entry = 910008,
+    class = 0,
+    subclass = 4,
+    name = 'Enchanting Vellum',
+    displayid = 57288,
+    Quality = 2,
+    Flags = 0,
+    FlagsExtra = 0,
+    BuyCount = 1,
+    BuyPrice = 0,
+    SellPrice = 0,
+    InventoryType = 0,
+    AllowableClass = -1,
+    AllowableRace = -1,
+    ItemLevel = 20,
+    RequiredLevel = 1,
+    RequiredSkill = 0,
+    RequiredSkillRank = 0,
+    requiredspell = 0,
+    requiredhonorrank = 0,
+    RequiredCityRank = 0,
+    RequiredReputationFaction = 0,
+    RequiredReputationRank = 0,
+    maxcount = 0,
+    stackable = 999,
+    ContainerSlots = 0,
+    stat_type1 = 0,
+    stat_value1 = 0,
+    stat_type2 = 0,
+    stat_value2 = 0,
+    stat_type3 = 0,
+    stat_value3 = 0,
+    stat_type4 = 0,
+    stat_value4 = 0,
+    stat_type5 = 0,
+    stat_value5 = 0,
+    stat_type6 = 0,
+    stat_value6 = 0,
+    stat_type7 = 0,
+    stat_value7 = 0,
+    stat_type8 = 0,
+    stat_value8 = 0,
+    stat_type9 = 0,
+    stat_value9 = 0,
+    stat_type10 = 0,
+    stat_value10 = 0,
+    ScalingStatDistribution = 0,
+    ScalingStatValue = 0,
+    dmg_min1 = 0,
+    dmg_max1 = 0,
+    dmg_type1 = 0,
+    dmg_min2 = 0,
+    dmg_max2 = 0,
+    dmg_type2 = 0,
+    armor = 0,
+    holy_res = 0,
+    fire_res = 0,
+    nature_res = 0,
+    frost_res = 0,
+    shadow_res = 0,
+    arcane_res = 0,
+    delay = 1000,
+    ammo_type = 0,
+    RangedModRange = 0,
+    spellid_1 = 8096,
+    spelltrigger_1 = 0,
+    spellcharges_1 = -1,
+    spellppmRate_1 = 0,
+    spellcooldown_1 = -1,
+    spellcategory_1 = 0,
+    spellcategorycooldown_1 = -1,
+    spellid_2 = 0,
+    spelltrigger_2 = 0,
+    spellcharges_2 = 0,
+    spellppmRate_2 = 0,
+    spellcooldown_2 = -1,
+    spellcategory_2 = 0,
+    spellcategorycooldown_2 = -1,
+    spellid_3 = 0,
+    spelltrigger_3 = 0,
+    spellcharges_3 = 0,
+    spellppmRate_3 = 0,
+    spellcooldown_3 = -1,
+    spellcategory_3 = 0,
+    spellcategorycooldown_3 = -1,
+    spellid_4 = 0,
+    spelltrigger_4 = 0,
+    spellcharges_4 = 0,
+    spellppmRate_4 = 0,
+    spellcooldown_4 = -1,
+    spellcategory_4 = 0,
+    spellcategorycooldown_4 = -1,
+    spellid_5 = 0,
+    spelltrigger_5 = 0,
+    spellcharges_5 = 0,
+    spellppmRate_5 = 0,
+    spellcooldown_5 = -1,
+    spellcategory_5 = 0,
+    spellcategorycooldown_5 = -1,
+    bonding = 1,
+    description = 'Right-click to choose an equipped weapon or armor item, then choose one enchant slot to reroll. Tier chance: 40% tier 3, 30% tier 4, 30% tier 5.',
+    PageText = 0,
+    LanguageID = 0,
+    PageMaterial = 0,
+    startquest = 0,
+    lockid = 0,
+    RandomProperty = 0,
+    RandomSuffix = 0,
+    block = 0,
+    itemset = 0,
+    MaxDurability = 0,
+    area = 0,
+    Map = 0,
+    BagFamily = 0,
+    TotemCategory = 0,
+    socketColor_1 = 0,
+    socketContent_1 = 0,
+    socketColor_2 = 0,
+    socketContent_2 = 0,
+    socketColor_3 = 0,
+    socketContent_3 = 0,
+    socketBonus = 0,
+    GemProperties = 0,
+    RequiredDisenchantSkill = -1,
+    ArmorDamageModifier = 0,
+    duration = 0,
+    ItemLimitCategory = 0,
+    HolidayId = 0,
+    ScriptName = 'wm_random_enchant_consumable',
+    DisenchantID = 0,
+    FoodType = 0,
+    minMoneyLoot = 0,
+    maxMoneyLoot = 0,
+    flagsCustom = 0,
+    VerifiedBuild = 0;
+
+DELETE FROM item_template WHERE entry = 910008;
+INSERT INTO item_template
+SELECT *
+FROM wm_tmp_enchanting_vellum;
+
+DROP TEMPORARY TABLE IF EXISTS wm_tmp_enchanting_vellum;
+
+INSERT INTO wm_reserved_slot
+    (EntityType, ReservedID, SlotStatus, ArcKey, CharacterGUID, SourceQuestID, NotesJSON)
+VALUES
+    ('item', 910008, 'active', 'wm_content:item:enchanting-vellum', 5406, NULL, '["wm_random_enchant_consumable","base_item_entry:955","single_slot","tier_roll:3=40,4=30,5=30"]')
+ON DUPLICATE KEY UPDATE
+    SlotStatus = VALUES(SlotStatus),
+    ArcKey = VALUES(ArcKey),
+    CharacterGUID = VALUES(CharacterGUID),
+    SourceQuestID = VALUES(SourceQuestID),
+    NotesJSON = VALUES(NotesJSON);

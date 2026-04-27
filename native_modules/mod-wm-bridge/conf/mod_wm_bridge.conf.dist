@@ -34,6 +34,18 @@ WmBridge.Emit.Gossip = 1
 WmBridge.Emit.Area = 1
 
 #
+#    WmBridge.AoeLoot.Enable
+#        When enabled for an allowed WM player, looting one corpse also gathers
+#        lootable nearby corpses already tapped by that player/group. This is a
+#        server-side 3.3.5 QoL path, not a client AoE-loot packet.
+#
+#        Default: 0
+#
+WmBridge.AoeLoot.Enable = 0
+WmBridge.AoeLoot.Radius = 35
+WmBridge.AoeLoot.MaxCorpses = 25
+
+#
 #    WmBridge.DbControl.Enable
 #        When enabled, the bridge also reads wm_bridge_player_scope every
 #        WmBridge.DbControl.RefreshIntervalMS. This lets WM enable or disable

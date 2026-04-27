@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-24
+Last verified: 2026-04-26
 Verified by: Codex
 Doc type: reference
 
@@ -62,11 +62,20 @@ Implemented native actions in the first safe slice:
   - targets by `item_guid_low`, `equipment_slot`, or `selector=random_equipped`
   - selects enchant IDs from `item_enchantment_random_tiers`
   - defaults to a guaranteed first enchant plus 15% chance to preserve existing enchant slots
-- Random enchant consumable item path is `PARTIAL`:
-  - item `910007` (`Unstable Enchanting Vellum`)
-  - native `ItemScript` opens a menu of eligible equipped items and calls the same random-enchant helper
-  - selected scoped kill rolls now submit `player_add_item` for the consumable instead of mutating gear directly
-  - repo SQL/script/tests, BridgeLab native build, and lab SQL apply are `WORKING`; deploy/restart/use proof is pending
+  - supports tier clamps/options (`minimum_tier`, `forced_tier`, `bonus_tier`, `bonus_tier_chance_pct`) and `selected_enchant_slot_index` for exactly one-slot rerolls
+- Random enchant consumable item-use, operator-selected kill grant, and scoped watcher grant paths are `WORKING` for the original `910007` proof; the current retune is repo `WORKING` / live `PARTIAL` until in-game focused vellum use is proven:
+  - item `910007` (`Unstable Enchanting Vellum`) stacks to `999`, drops from scoped kill rolls at `7%`, applies up to three enchants, preserves existing enchant slots at 15%, and has a 10% chance per roll to use tier 5
+  - item `910008` (`Enchanting Vellum`) stacks to `999`, drops from scoped kill rolls at `3.5%`, opens a target-item menu followed by an enchant-slot submenu, and rerolls exactly one chosen slot with weighted tiers: 40% tier 3, 30% tier 4, 30% tier 5
+  - native `ItemScript` opens menus for eligible equipped items and calls the same random-enchant helper; selected scoped kill rolls submit `player_add_item` for consumables instead of mutating gear directly
+  - old repo SQL/script/tests, BridgeLab native build, lab SQL apply, deploy/restart, direct native grant request `160`, live stack proof, user in-game right-click/enchant/consume proof for player `5406`, forced scoped kill-roll request `161`, and watcher requests `162`/`163` are `WORKING`
+  - new dual-drop idempotency and focused slot behavior are repo-tested, with BridgeLab SQL apply, native rebuild/restart to worldserver pid `33620`, `debug_ping` request `164`, direct grant requests `165` / `166`, character inventory persistence, and watcher pid `30224` `WORKING`; in-game focused menu/slot-reroll proof is pending
+
+Bone Lure item-use lane is repo/build/DB/grant `WORKING` and live gameplay `PARTIAL`:
+
+- item `910009` (`Bone Lure Charm`) uses a known bomb target spell only for client ground-target UX
+- native `ItemScript` owns the mutation, consumes the item only after spawn, and refuses non-scoped players
+- creature `920102` (`Bone Lure Obelisk`) is a native `CreatureScript` lure with owner-scaled health, 75% damage reduction, DoT/status immunity, 30-second duration, and repeated 200-yard non-boss taunt pulses
+- BridgeLab SQL apply, native compile, updater apply, worldserver restart to pid `20232`, watcher restart to pid `18768`, native `debug_ping` request `262`, and direct grant request `263` for five charms are done; in-game proof remains pending
 
 Everything risky should be proven in `D:\WOW\WM_BridgeLab` before promotion.
 
@@ -284,7 +293,7 @@ Phase 1 parity evidence as of 2026-04-13:
   - `wm.events.watch --adapter native_bridge --arm-from-end --max-iterations 1` advanced the high-water mark for player `5406`
   - the full same-day in-game bounty rerun did not complete because player `5406` was offline
 
-If you use Questie-335 while testing WM custom quests, install the repo addon under `wow_addons/WMQuestieCompat` into the client `Interface\AddOns\` folder. It suppresses Questie tracker spam for WM-owned quest ids like `910000`.
+If you use Questie-335 while testing WM custom quests, install the repo's Questie compatibility shim from `wow_addons/WMQuestieCompat` into the client `Interface\AddOns\` folder. It suppresses Questie tracker spam for WM-owned quest ids like `910000`; it is not a WM runtime transport.
 
 Two build compatibility fixes are now part of the repo:
 
@@ -331,6 +340,13 @@ Scene JSON is intentionally strict:
 - payload must stay a JSON object
 - risk levels must be `low`, `medium`, or `high`
 - scene play is an operator wrapper over `manual_admin_action`, not a second executor
+
+Reactive area-pressure scenes use the event spine and the same `native_bridge_action` planned action:
+
+- disabled by default through `WM_EVENT_AREA_PRESSURE_SCENE_ENABLED=0`
+- enabled in BridgeLab watcher runs with `Start-BridgeLabNativeWatch.ps1 -EnableAreaPressureScene`
+- composes `world_announce_to_player`, `player_restore_health_power`, and optional `player_apply_aura`
+- uses event trigger identity plus per-step `idempotency_suffix` for native action idempotency, so a later area-pressure trigger submits fresh native requests without losing duplicate protection for the same trigger
 
 The validator rejects unknown native verbs before they reach the queue. Non-admin event-bound proposals also reject stale source events by default through `control/policies/direct_apply.json` `max_source_event_age_seconds=600`; build proposals from fresh `wm_event_log` rows instead of copying old example JSON for live apply.
 

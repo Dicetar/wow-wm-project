@@ -4,6 +4,7 @@ import unittest
 
 from wm.config import Settings
 from wm.events.models import WMEvent
+from wm.reactive.random_enchant import RandomEnchantDropSpec
 from wm.reactive.random_enchant import RandomEnchantKillRoller
 from wm.sources.native_bridge.actions import NativeBridgeActionRequest
 
@@ -62,7 +63,10 @@ class RandomEnchantKillRollerTests(unittest.TestCase):
 
         self.assertEqual(len(results), 1)
         self.assertTrue(results[0].selected)
-        self.assertEqual(results[0].idempotency_key, "random_enchant_consumable:on_kill:5406:10")
+        self.assertEqual(
+            results[0].idempotency_key,
+            "random_enchant_consumable:on_kill:5406:10:unstable_enchanting_vellum:910007",
+        )
         self.assertEqual(native.submitted, [])
 
     def test_apply_submits_idempotent_consumable_item_grant(self) -> None:
@@ -84,7 +88,10 @@ class RandomEnchantKillRollerTests(unittest.TestCase):
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].request_id, 1)
-        self.assertEqual(native.submitted[0]["idempotency_key"], "random_enchant_consumable:on_kill:5406:11")
+        self.assertEqual(
+            native.submitted[0]["idempotency_key"],
+            "random_enchant_consumable:on_kill:5406:11:unstable_enchanting_vellum:910007",
+        )
         self.assertEqual(native.submitted[0]["action_kind"], "player_add_item")
         self.assertEqual(native.submitted[0]["risk_level"], "medium")
         payload = native.submitted[0]["payload"]
@@ -92,7 +99,10 @@ class RandomEnchantKillRollerTests(unittest.TestCase):
         self.assertEqual(payload["item_id"], 910007)
         self.assertEqual(payload["count"], 1)
         self.assertEqual(payload["reason"], "random_enchant_consumable_drop")
+        self.assertEqual(payload["drop_key"], "unstable_enchanting_vellum")
         self.assertEqual(payload["source_event_id"], 11)
+        self.assertEqual(payload["chance_pct"], 100.0)
+        self.assertEqual(results[0].drop_key, "unstable_enchanting_vellum")
         self.assertEqual(results[0].item_entry, 910007)
         self.assertEqual(results[0].count, 1)
 
@@ -131,7 +141,52 @@ class RandomEnchantKillRollerTests(unittest.TestCase):
 
         self.assertEqual([result.event_id for result in results], [22])
         self.assertEqual(len(native.submitted), 1)
-        self.assertEqual(native.submitted[0]["idempotency_key"], "random_enchant_consumable:on_kill:5406:22")
+        self.assertEqual(
+            native.submitted[0]["idempotency_key"],
+            "random_enchant_consumable:on_kill:5406:22:unstable_enchanting_vellum:910007",
+        )
+
+    def test_process_events_for_drop_specs_rolls_and_grants_consumables_independently(self) -> None:
+        native = FakeNativeActions()
+        roller = RandomEnchantKillRoller(
+            settings=Settings(),
+            event_store=FakeEventStore([]),  # type: ignore[arg-type]
+            native_actions=native,  # type: ignore[arg-type]
+        )
+
+        results = roller.process_events_for_drop_specs(
+            events=[_kill_event(30, "native:kill:30")],
+            player_guid=5406,
+            drop_specs=[
+                RandomEnchantDropSpec(
+                    drop_key="unstable_enchanting_vellum",
+                    item_entry=910007,
+                    chance_pct=100.0,
+                    count=1,
+                ),
+                RandomEnchantDropSpec(
+                    drop_key="enchanting_vellum",
+                    item_entry=910008,
+                    chance_pct=100.0,
+                    count=1,
+                ),
+            ],
+            mode="apply",
+        )
+
+        self.assertEqual([result.item_entry for result in results], [910007, 910008])
+        self.assertEqual([result.drop_key for result in results], ["unstable_enchanting_vellum", "enchanting_vellum"])
+        self.assertEqual([result.request_id for result in results], [1, 2])
+        self.assertEqual(
+            [request["idempotency_key"] for request in native.submitted],
+            [
+                "random_enchant_consumable:on_kill:5406:30:unstable_enchanting_vellum:910007",
+                "random_enchant_consumable:on_kill:5406:30:enchanting_vellum:910008",
+            ],
+        )
+        payloads = [request["payload"] for request in native.submitted]
+        self.assertEqual([payload["item_id"] for payload in payloads], [910007, 910008])
+        self.assertEqual([payload["drop_key"] for payload in payloads], ["unstable_enchanting_vellum", "enchanting_vellum"])
 
 
 if __name__ == "__main__":

@@ -158,6 +158,9 @@ namespace WmBridge
         gBridgeConfig.dbControlRefreshIntervalMs = sConfigMgr->GetOption<uint32>("WmBridge.DbControl.RefreshIntervalMS", 5000);
         gBridgeConfig.actionQueueEnabled = sConfigMgr->GetOption<bool>("WmBridge.ActionQueue.Enable", false);
         gBridgeConfig.actionPollIntervalMs = sConfigMgr->GetOption<uint32>("WmBridge.ActionQueue.PollIntervalMS", 1000);
+        gBridgeConfig.aoeLootEnabled = sConfigMgr->GetOption<bool>("WmBridge.AoeLoot.Enable", false);
+        gBridgeConfig.aoeLootRadius = sConfigMgr->GetOption<float>("WmBridge.AoeLoot.Radius", 35.0f);
+        gBridgeConfig.aoeLootMaxCorpses = sConfigMgr->GetOption<uint32>("WmBridge.AoeLoot.MaxCorpses", 25);
 
         bool allowAllPlayers = false;
         gBridgeConfig.playerGuidAllowList = ParsePlayerGuidAllowList(

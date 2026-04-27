@@ -20,6 +20,7 @@ This guide seeds the demo inputs used by `wm.prompt.demo`:
 - one `wm_character_arc_state` row
 - one `wm_character_unlock` row
 - one `wm_character_reward_instance` row
+- one `wm_character_conversation_steering` row
 - one `wm_character_prompt_queue` row
 
 ### `acore_world`
@@ -46,7 +47,7 @@ Get-Content .\sql\dev\seed_prompt_demo_characters.sql | & "D:\WOW\Azerothcore_Wo
 ### Verify `acore_characters`
 
 ```powershell
-& "D:\WOW\Azerothcore_WoTLK_Repack\mysql\bin\mysql.exe" -u acore -pacore -D acore_characters -e "SELECT * FROM wm_character_profile WHERE CharacterGUID = 42; SELECT * FROM wm_character_arc_state WHERE CharacterGUID = 42; SELECT * FROM wm_character_unlock WHERE CharacterGUID = 42; SELECT * FROM wm_character_reward_instance WHERE CharacterGUID = 42; SELECT * FROM wm_character_prompt_queue WHERE CharacterGUID = 42;"
+& "D:\WOW\Azerothcore_WoTLK_Repack\mysql\bin\mysql.exe" -u acore -pacore -D acore_characters -e "SELECT * FROM wm_character_profile WHERE CharacterGUID = 42; SELECT * FROM wm_character_arc_state WHERE CharacterGUID = 42; SELECT * FROM wm_character_unlock WHERE CharacterGUID = 42; SELECT * FROM wm_character_reward_instance WHERE CharacterGUID = 42; SELECT * FROM wm_character_conversation_steering WHERE CharacterGUID = 42; SELECT * FROM wm_character_prompt_queue WHERE CharacterGUID = 42;"
 ```
 
 ### Seed `acore_world`
@@ -77,6 +78,7 @@ The demo JSON should no longer contain:
 - empty `arc_states`
 - empty `unlocks`
 - empty `rewards`
+- empty `conversation_steering`
 - empty `prompt_queue`
 - `journal_summary: null`
 

@@ -13,13 +13,21 @@ param(
     [ValidateSet("auto", "native", "soap")]
     [string]$QuestGrantTransport = "auto",
     [switch]$EnableRandomEnchantOnKill,
-    [double]$RandomEnchantOnKillChancePct = 2.5,
+    [double]$RandomEnchantOnKillChancePct = 7.0,
     [double]$RandomEnchantPreserveExistingChancePct = 15.0,
     [int]$RandomEnchantMaxEnchants = 3,
     [string]$RandomEnchantSelector = "random_equipped",
     [int]$RandomEnchantConsumableItemEntry = 910007,
     [int]$RandomEnchantConsumableCount = 1,
+    [bool]$RandomEnchantFocusedOnKillEnabled = $true,
+    [double]$RandomEnchantFocusedOnKillChancePct = 3.5,
+    [int]$RandomEnchantFocusedConsumableItemEntry = 910008,
+    [int]$RandomEnchantFocusedConsumableCount = 1,
+    [int]$QuestSlotSeedStart = 910000,
+    [int]$QuestSlotSeedEnd = 910999,
+    [switch]$SkipQuestSlotSeed,
     [switch]$KeepExistingBountyRules,
+    [switch]$KeepExistingEventBacklog,
     [switch]$PrintIdle,
     [switch]$DoNotArmFromEnd
 )
@@ -51,6 +59,26 @@ $env:WM_SOAP_PORT = [string]$SoapPort
 $env:WM_BRIDGE_CONFIG_PATH = $bridgeConfig
 
 Set-Location -LiteralPath $WorkspaceRoot
+
+if (-not $SkipQuestSlotSeed.IsPresent) {
+    $seedArgs = @(
+        "-m",
+        "wm.reserved.seed",
+        "--entity-type",
+        "quest",
+        "--start-id",
+        ([string]$QuestSlotSeedStart),
+        "--end-id",
+        ([string]$QuestSlotSeedEnd),
+        "--mode",
+        "apply",
+        "--summary"
+    )
+    & $pythonExe @seedArgs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
 
 & $stopWatchScript -WorkspaceRoot $WorkspaceRoot
 
@@ -88,6 +116,10 @@ $watchArgs = @{
     RandomEnchantSelector = $RandomEnchantSelector
     RandomEnchantConsumableItemEntry = $RandomEnchantConsumableItemEntry
     RandomEnchantConsumableCount = $RandomEnchantConsumableCount
+    RandomEnchantFocusedOnKillEnabled = $RandomEnchantFocusedOnKillEnabled
+    RandomEnchantFocusedOnKillChancePct = $RandomEnchantFocusedOnKillChancePct
+    RandomEnchantFocusedConsumableItemEntry = $RandomEnchantFocusedConsumableItemEntry
+    RandomEnchantFocusedConsumableCount = $RandomEnchantFocusedConsumableCount
     EnableReactiveAutoBounty = $true
 }
 if ($EnableRandomEnchantOnKill.IsPresent) {
@@ -95,6 +127,9 @@ if ($EnableRandomEnchantOnKill.IsPresent) {
 }
 if (-not $DoNotArmFromEnd.IsPresent) {
     $watchArgs["ArmFromEnd"] = $true
+    if (-not $KeepExistingEventBacklog.IsPresent) {
+        $watchArgs["MarkExistingEvaluatedOnArm"] = $true
+    }
 }
 if ($PrintIdle.IsPresent) {
     $watchArgs["PrintIdle"] = $true

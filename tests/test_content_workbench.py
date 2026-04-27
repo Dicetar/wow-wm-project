@@ -316,7 +316,7 @@ class SpellGrantGovernanceTests(unittest.TestCase):
     def test_direct_spell_grant_metadata_ignores_stock_spell(self) -> None:
         self.assertIsNone(build_direct_spell_grant_metadata(spell_entry=133, source_command="learn-spell", all_ranks=False))
 
-    def test_resolve_managed_spell_runtime_target_uses_base_visible_spell(self) -> None:
+    def test_resolve_managed_spell_runtime_target_rejects_unsafe_stock_visible_seed(self) -> None:
         target = resolve_managed_spell_runtime_target(
             draft=ManagedSpellDraft(
                 spell_entry=947020,
@@ -326,10 +326,26 @@ class SpellGrantGovernanceTests(unittest.TestCase):
             )
         )
 
-        self.assertTrue(target["can_runtime_learn"])
+        self.assertFalse(target["can_runtime_learn"])
         self.assertEqual(target["artifact_spell_entry"], 947020)
         self.assertEqual(target["runtime_spell_entry"], 133)
         self.assertEqual(target["runtime_source"], "base_visible_spell_id")
+        self.assertIn("not safe to persist in character_spell", target["reason"])
+
+    def test_execute_spell_runtime_action_blocks_unsafe_stock_visible_seed_learn(self) -> None:
+        result = execute_spell_runtime_action(
+            client=object(),
+            settings=object(),
+            player_ref={"player_guid": 5406, "command_player": "Jecia"},
+            spell_entry=133,
+            action_kind="player_learn_spell",
+            mode="apply",
+        )
+
+        self.assertFalse(result.ok)
+        self.assertFalse(result.executed)
+        self.assertEqual(result.fault_code, "unsafe_stock_visible_spell")
+        self.assertIn("Refusing to persist stock visual seed spell 133", result.fault_string or "")
 
     def test_resolve_managed_spell_runtime_target_rejects_nonvisible_managed_slot(self) -> None:
         target = resolve_managed_spell_runtime_target(
@@ -381,7 +397,7 @@ class SpellGrantGovernanceTests(unittest.TestCase):
 
         self.assertEqual(metadata["grant_scope"], "managed_spell_slot")
         self.assertEqual(metadata["spell_entry"], 947020)
-        self.assertTrue(metadata["runtime_can_learn"])
+        self.assertFalse(metadata["runtime_can_learn"])
         self.assertEqual(metadata["runtime_spell_entry"], 133)
         self.assertEqual(metadata["runtime_source"], "base_visible_spell_id")
 

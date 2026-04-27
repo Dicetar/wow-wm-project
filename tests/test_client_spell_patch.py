@@ -8,6 +8,8 @@ from wm.spells.client_patch import CASTING_TIME_INDEX_FIELD
 from wm.spells.client_patch import MANA_COST_FIELD
 from wm.spells.client_patch import MANA_COST_PERCENTAGE_FIELD
 from wm.spells.client_patch import POWER_TYPE_FIELD
+from wm.spells.client_patch import REAGENT_COUNT_START_FIELD
+from wm.spells.client_patch import REAGENT_START_FIELD
 from wm.spells.client_patch import SPELL_DESCRIPTION_START_FIELD
 from wm.spells.client_patch import SPELL_ICON_ID_FIELD
 from wm.spells.client_patch import SPELL_NAME_START_FIELD
@@ -111,6 +113,30 @@ def test_materialize_client_spell_dbc_uses_client_seed_and_named_text(tmp_path: 
     assert _string_at(string_block, fields[SPELL_NAME_START_FIELD]) == "Bonebound Alpha"
     assert "WM-controlled bleed" in _string_at(string_block, fields[SPELL_DESCRIPTION_START_FIELD])
     assert "WM-controlled bleed" in _string_at(string_block, fields[SPELL_TOOLTIP_START_FIELD])
+
+
+def test_materialize_client_spell_dbc_applies_stasis_reagent_presentation(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.dbc"
+    out_path = tmp_path / "out.dbc"
+    _write_test_spell_dbc(source_path, list(CLIENT_SEED_TEMPLATE_SOURCE_SPELL_IDS.values()))
+
+    result = materialize_client_spell_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        spell_ids=[946600],
+    )
+
+    assert result.appended_count == 1
+    assert result.selected_spell_ids == [946600]
+    assert result.presentation_applied_spell_ids == [946600]
+    fields, string_block = _record_fields(out_path, 946600)
+    assert fields[CASTING_TIME_INDEX_FIELD] == 6
+    assert fields[MANA_COST_FIELD] == 0
+    assert fields[REAGENT_START_FIELD] == 6265
+    assert fields[REAGENT_COUNT_START_FIELD] == 1
+    assert _string_at(string_block, fields[SPELL_NAME_START_FIELD]) == "Bonebound Echo Stasis"
+    assert "restore the stored echo counts" in _string_at(string_block, fields[SPELL_DESCRIPTION_START_FIELD])
 
 
 def test_materialize_client_spell_dbc_replaces_existing_shell_row(tmp_path: Path) -> None:

@@ -139,15 +139,90 @@ class DeterministicContentFactory:
     def _build_area_pressure_actions(self, opportunity: ReactionOpportunity) -> tuple[list[PlannedAction], dict[str, Any]]:
         subject_name = _subject_name(opportunity)
         zone_id = opportunity.metadata.get("zone_id")
-        return (
-            [
+        notes: dict[str, Any] = {
+            "subject_name": subject_name,
+            "zone_id": zone_id,
+            "content_factory": "deterministic_area_pressure",
+            "native_scene": "disabled",
+        }
+        actions = [
+            PlannedAction(
+                kind="announcement",
+                payload={"text": f"Area pressure around {subject_name} is rising in zone {zone_id}."},
+                description="Announce that the area pressure rule has crossed its threshold.",
+            )
+        ]
+        if not bool(getattr(self.settings, "event_area_pressure_scene_enabled", False)):
+            return (actions, notes)
+
+        health_percent = _clamp_percent(getattr(self.settings, "event_area_pressure_scene_restore_health_percent", 20))
+        power_percent = _clamp_percent(getattr(self.settings, "event_area_pressure_scene_restore_power_percent", 20))
+        aura_spell_id = max(0, int(getattr(self.settings, "event_area_pressure_scene_aura_spell_id", 687) or 0))
+        message = str(
+            getattr(self.settings, "event_area_pressure_scene_message", "")
+            or f"WM senses rising pressure around {subject_name}. Hold the line."
+        ).strip()
+        if not message:
+            message = f"WM senses rising pressure around {subject_name}. Hold the line."
+
+        actions.append(
+            PlannedAction(
+                kind="native_bridge_action",
+                payload={
+                    "native_action_kind": "world_announce_to_player",
+                    "player_guid": int(opportunity.player_guid),
+                    "payload": {"message": message},
+                    "risk_level": "low",
+                    "created_by": "wm.events.area_pressure_scene",
+                    "priority": 5,
+                    "idempotency_suffix": "announce",
+                },
+                description="Send a scoped in-game WM response to the player.",
+            )
+        )
+        actions.append(
+            PlannedAction(
+                kind="native_bridge_action",
+                payload={
+                    "native_action_kind": "player_restore_health_power",
+                    "player_guid": int(opportunity.player_guid),
+                    "payload": {
+                        "health_percent": health_percent,
+                        "power_percent": power_percent,
+                        "power_type": "active",
+                    },
+                    "risk_level": "low",
+                    "created_by": "wm.events.area_pressure_scene",
+                    "priority": 5,
+                    "idempotency_suffix": "restore",
+                },
+                description="Restore a small amount of health and active power as a visible pressure response.",
+            )
+        )
+        if aura_spell_id > 0:
+            actions.append(
                 PlannedAction(
-                    kind="announcement",
-                    payload={"text": f"Area pressure around {subject_name} is rising in zone {zone_id}."},
-                    description="Announce that the area pressure rule has crossed its threshold.",
+                    kind="native_bridge_action",
+                    payload={
+                        "native_action_kind": "player_apply_aura",
+                        "player_guid": int(opportunity.player_guid),
+                        "payload": {"spell_id": aura_spell_id},
+                        "risk_level": "medium",
+                        "created_by": "wm.events.area_pressure_scene",
+                        "priority": 5,
+                        "idempotency_suffix": "aura",
+                    },
+                    description="Apply a configured visible aura as the scene marker.",
                 )
-            ],
-            {"subject_name": subject_name, "zone_id": zone_id, "content_factory": "deterministic_area_pressure"},
+            )
+        notes["native_scene"] = "ready"
+        notes["restore_health_percent"] = health_percent
+        notes["restore_power_percent"] = power_percent
+        notes["aura_spell_id"] = aura_spell_id
+        notes["message"] = message
+        return (
+            actions,
+            notes,
         )
 
     def _build_familiar_npc_actions(self, opportunity: ReactionOpportunity) -> tuple[list[PlannedAction], dict[str, Any]]:
@@ -248,3 +323,11 @@ def _str_or_none(value: object) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
+
+
+def _clamp_percent(value: object) -> int:
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(100, parsed))

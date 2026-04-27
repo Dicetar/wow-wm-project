@@ -5,7 +5,14 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from wm.character.models import ArcState, CharacterProfile, CharacterUnlock, PromptQueueEntry, RewardInstance
+from wm.character.models import (
+    ArcState,
+    CharacterProfile,
+    CharacterUnlock,
+    ConversationSteeringNote,
+    PromptQueueEntry,
+    RewardInstance,
+)
 from wm.character.reader import CharacterStateBundle
 from wm.context.builder import ContextPackBuildError, ContextPackBuilder, main
 from wm.db.mysql_cli import MysqlCliError
@@ -62,6 +69,9 @@ class ContextPackBuilderTests(unittest.TestCase):
         self.assertEqual(data["policy"]["id"], "direct_apply")
         self.assertEqual(data["native_context_snapshot"]["snapshot_id"], 91)
         self.assertEqual(data["generation_input"]["player"]["name"], "Jecia")
+        self.assertEqual(data["generation_input"]["journey"]["active_arc_keys"], ["murloc"])
+        self.assertEqual(data["generation_input"]["journey"]["unlock_refs"], ["spell:900001"])
+        self.assertEqual(data["generation_input"]["journey"]["steering"][0]["key"], "visible_first")
         self.assertEqual(data["generation_input"]["quest_runtime"]["states"], ["none"])
         self.assertEqual(data["generation_input"]["eligible_recipe_ids"], ["reactive_bounty"])
         self.assertEqual(data["notes"], [])
@@ -200,6 +210,14 @@ class _CharacterLoader:
             arc_states=[ArcState(character_guid=character_guid, arc_key="murloc", stage_key="seen")],
             unlocks=[CharacterUnlock(character_guid=character_guid, unlock_kind="spell", unlock_id=900001)],
             rewards=[RewardInstance(character_guid=character_guid, reward_kind="item", template_id=23192)],
+            conversation_steering=[
+                ConversationSteeringNote(
+                    character_guid=character_guid,
+                    steering_key="visible_first",
+                    body="Prefer visible effects.",
+                    priority=10,
+                )
+            ],
             prompt_queue=[PromptQueueEntry(character_guid=character_guid, prompt_kind="branch_choice", body="What next?")],
         )
 

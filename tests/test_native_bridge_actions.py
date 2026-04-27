@@ -82,6 +82,7 @@ class NativeBridgeActionTests(unittest.TestCase):
             "player_remove_item",
             "player_random_enchant_item",
             "quest_add",
+            "quest_remove",
             "creature_spawn",
             "gossip_override_set",
             "companion_spawn",
@@ -99,6 +100,7 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertTrue(expected.issubset(set(native_action_kind_ids())))
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["debug_ping"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["quest_add"].implemented)
+        self.assertTrue(NATIVE_ACTION_KIND_BY_ID["quest_remove"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["world_announce_to_player"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["player_remove_item"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["player_random_enchant_item"].implemented)
@@ -145,6 +147,12 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertTrue(action.implemented)
         self.assertFalse(action.default_enabled)
 
+    def test_quest_remove_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
+        action = NATIVE_ACTION_KIND_BY_ID["quest_remove"]
+
+        self.assertTrue(action.implemented)
+        self.assertFalse(action.default_enabled)
+
     def test_primitive_pack_1_contracts_are_documented(self) -> None:
         schema_path = Path("control/actions/native/native_bridge_action.json")
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -154,11 +162,19 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("soulbound", contracts["player_add_item"]["optional"])
         self.assertEqual(contracts["player_remove_item"]["required"], ["item_id", "count"])
         self.assertIn("admin_override", contracts["player_remove_item"]["optional"])
+        self.assertEqual(contracts["quest_add"]["required"], ["quest_id"])
+        self.assertEqual(contracts["quest_remove"]["required"], ["quest_id"])
+        self.assertIn("admin_override", contracts["quest_remove"]["optional"])
+        self.assertIn("remove_rewarded", contracts["quest_remove"]["optional"])
         self.assertIn("item_guid_low", contracts["player_random_enchant_item"]["required_any"])
         self.assertIn("equipment_slot", contracts["player_random_enchant_item"]["required_any"])
         self.assertIn("selector", contracts["player_random_enchant_item"]["required_any"])
         self.assertIn("preserve_existing_chance_pct", contracts["player_random_enchant_item"]["optional"])
+        self.assertIn("minimum_tier", contracts["player_random_enchant_item"]["optional"])
+        self.assertIn("bonus_tier", contracts["player_random_enchant_item"]["optional"])
+        self.assertIn("selected_enchant_slot_index", contracts["player_random_enchant_item"]["optional"])
         self.assertIn("default 15% preserve chance", contracts["player_random_enchant_item"]["notes"])
+        self.assertIn("Tiers are clamped to 1-5", contracts["player_random_enchant_item"]["notes"])
         self.assertIn("LiveGUIDLow", contracts["creature_spawn"]["notes"])
         self.assertIn("arc_key", contracts["creature_despawn"]["required_any"])
 
@@ -209,6 +225,13 @@ class NativeBridgeActionTests(unittest.TestCase):
         sql = sql_path.read_text(encoding="utf-8")
 
         self.assertIn("('player_random_enchant_item', 'default', 0, 'medium'", sql)
+        self.assertNotIn("Enabled = VALUES(Enabled)", sql)
+
+    def test_quest_remove_sql_keeps_mutation_disabled(self) -> None:
+        sql_path = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_26_00_wm_bridge_quest_remove.sql")
+        sql = sql_path.read_text(encoding="utf-8")
+
+        self.assertIn("('quest_remove', 'default', 0, 'medium'", sql)
         self.assertNotIn("Enabled = VALUES(Enabled)", sql)
 
     def test_primitive_pack_1_cpp_uses_scope_policy_and_wm_owned_creature_guard(self) -> None:
@@ -274,10 +297,24 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("IsRandomEnchantEligibleItem", block)
         self.assertIn("WmBridge::RandomEnchant::ApplyToItem(player, item, options)", block)
         self.assertIn("preserveExistingChancePct", block)
+        self.assertIn("minimumTier", block)
+        self.assertIn("bonusTier", block)
+        self.assertIn("bonusTierChancePct", block)
+        self.assertIn("selectedEnchantSlotIndex", block)
         self.assertIn("item_enchantment_random_tiers", helper)
         self.assertIn("sSpellItemEnchantmentStore.LookupEntry(enchantId)", helper)
+        self.assertIn("RANDOM_ENCHANT_MAX_TIER = 5", helper)
+        self.assertIn("ResolveRandomEnchantTierForItem", helper)
+        self.assertIn("SelectRandomEnchantForItem(item, options)", helper)
         self.assertIn("preserveExistingChancePct = 15.0f", header)
+        self.assertIn("uint32 minimumTier = 0", header)
+        self.assertIn("uint32 bonusTier = 0", header)
+        self.assertIn("float bonusTierChancePct = 0.0f", header)
+        self.assertIn("int32 selectedEnchantSlotIndex = -1", header)
         self.assertIn("roll_chance_f(options.preserveExistingChancePct)", helper)
+        self.assertIn("options.minimumTier", helper)
+        self.assertIn("options.bonusTier", helper)
+        self.assertIn("options.selectedEnchantSlotIndex", helper)
         self.assertIn("player->ApplyEnchantment(item, slot, false)", helper)
         self.assertIn("item->SetEnchantment(slot, enchantId, 0, 0, player->GetGUID())", helper)
         self.assertIn("player->ApplyEnchantment(item, slot, true)", helper)
@@ -288,24 +325,108 @@ class NativeBridgeActionTests(unittest.TestCase):
     def test_random_enchant_consumable_item_sql_and_script_are_wired(self) -> None:
         sql_path = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_24_02_wm_bridge_random_enchant_consumable.sql")
         sql = sql_path.read_text(encoding="utf-8")
+        variants_sql_path = Path(
+            "native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_25_02_wm_bridge_enchanting_vellum_variants.sql"
+        )
+        variants_sql = variants_sql_path.read_text(encoding="utf-8")
         script_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_random_enchant_item.cpp")
         script = script_path.read_text(encoding="utf-8")
         loader = Path("native_modules/mod-wm-bridge/src/mod_wm_bridge_loader.cpp").read_text(encoding="utf-8")
 
         self.assertIn("entry = 910007", sql)
         self.assertIn("Unstable Enchanting Vellum", sql)
+        self.assertIn("stackable = 999", sql)
         self.assertIn("ScriptName = 'wm_random_enchant_consumable'", sql)
         self.assertIn("wm_reserved_slot", sql)
+        self.assertIn("entry = 910008", variants_sql)
+        self.assertIn("Enchanting Vellum", variants_sql)
+        self.assertIn("stackable = 999", variants_sql)
+        self.assertIn("40% tier 3, 30% tier 4, 30% tier 5", variants_sql)
+        self.assertIn("tier_roll:3=40,4=30,5=30", variants_sql)
         self.assertIn("wm_random_enchant_consumable", script)
         self.assertIn("ItemScript(\"wm_random_enchant_consumable\")", script)
-        self.assertIn("WM_RANDOM_ENCHANT_CONSUMABLE_ITEM_ENTRY = 910007", script)
-        self.assertIn("SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, item->GetGUID())", script)
+        self.assertIn("WM_UNSTABLE_ENCHANTING_VELLUM_ITEM_ENTRY = 910007", script)
+        self.assertIn("WM_ENCHANTING_VELLUM_ITEM_ENTRY = 910008", script)
+        self.assertIn("RollFocusedEnchantingVellumTier", script)
+        self.assertIn("roll <= 40", script)
+        self.assertIn("roll <= 70", script)
+        self.assertIn("SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, vellum->GetGUID())", script)
         self.assertIn("OnGossipSelect(Player* player, Item* item", script)
+        self.assertIn("ShowEnchantSlotMenu", script)
+        self.assertIn("FocusedSlotAction", script)
         self.assertIn("WmBridge::RandomEnchant::ApplyToItem(player, targetItem, options)", script)
         self.assertIn("options.preserveExistingChancePct = 15.0f", script)
+        self.assertIn("options.bonusTier = 5", script)
+        self.assertIn("options.bonusTierChancePct = 10.0f", script)
+        self.assertIn("options.minimumTier = 3", script)
+        self.assertIn("options.forcedTier = focusedTier", script)
+        self.assertIn("options.selectedEnchantSlotIndex", script)
         self.assertIn("player->DestroyItemCount(item, destroyCount, true)", script)
         self.assertIn("player->SaveInventoryAndGoldToDB(trans)", script)
         self.assertIn("AddSC_mod_wm_bridge_random_enchant_item", loader)
+
+    def test_bone_lure_consumable_sql_and_script_are_wired(self) -> None:
+        sql_path = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_25_03_wm_bridge_bone_lure_obelisk.sql")
+        sql = sql_path.read_text(encoding="utf-8")
+        script_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_bone_lure_item.cpp")
+        script = script_path.read_text(encoding="utf-8")
+        loader = Path("native_modules/mod-wm-bridge/src/mod_wm_bridge_loader.cpp").read_text(encoding="utf-8")
+
+        self.assertIn("SET @wm_bone_lure_item_entry := 910009", sql)
+        self.assertIn("SET @wm_bone_lure_creature_entry := 920102", sql)
+        self.assertIn("SET @wm_bone_lure_base_item_entry := 41119", sql)
+        self.assertIn("SET @wm_bone_lure_base_creature_entry := 3579", sql)
+        self.assertIn("spellid_1 = 56350", sql)
+        self.assertIn("Bone Lure Charm", sql)
+        self.assertIn("Bone Lure Obelisk", sql)
+        self.assertIn("ScriptName = 'wm_bone_lure_charm'", sql)
+        self.assertIn("ScriptName = 'wm_bone_lure_obelisk'", sql)
+        self.assertIn("creature_template_model", sql)
+        self.assertIn("display_id:16135", sql)
+        self.assertIn("wm_reserved_slot", sql)
+
+        self.assertIn("WM_BONE_LURE_ITEM_ENTRY = 910009", script)
+        self.assertIn("WM_BONE_LURE_CREATURE_ENTRY = 920102", script)
+        self.assertIn("BONE_LURE_DURATION_MS = 30000", script)
+        self.assertIn("BONE_LURE_TAUNT_RADIUS = 200.0f", script)
+        self.assertIn("BONE_LURE_DAMAGE_TAKEN_PCT = 25", script)
+        self.assertIn("WmBridge::IsPlayerAllowed(player)", script)
+        self.assertIn("player->SummonCreature(", script)
+        self.assertIn("player->DestroyItemCount(item, destroyCount, true)", script)
+        self.assertIn("player->SaveInventoryAndGoldToDB(trans)", script)
+        self.assertIn("SPELL_AURA_PERIODIC_DAMAGE", script)
+        self.assertIn("SPELL_AURA_PERIODIC_DAMAGE_PERCENT", script)
+        self.assertIn("SPELL_AURA_PERIODIC_LEECH", script)
+        self.assertIn("IMMUNITY_MECHANIC", script)
+        self.assertIn("MECHANIC_BLEED", script)
+        self.assertIn("CREATURE_FLAG_EXTRA_NO_TAUNT", script)
+        self.assertIn("creature->isWorldBoss()", script)
+        self.assertIn("creature->IsDungeonBoss()", script)
+        self.assertIn("creature->GetThreatMgr().AddThreat(lure", script)
+        self.assertIn("creature->GetThreatMgr().FixateTarget(lure)", script)
+        self.assertIn("creature->GetThreatMgr().ClearFixate()", script)
+        self.assertIn("creature->UpdateLeashExtensionTime()", script)
+        self.assertIn("AddSC_mod_wm_bridge_bone_lure_item", loader)
+
+    def test_aoe_loot_is_scoped_bridge_qol_not_global_core_patch(self) -> None:
+        script = Path("native_modules/mod-wm-bridge/src/wm_bridge_player_script.cpp").read_text(encoding="utf-8")
+        common_header = Path("native_modules/mod-wm-bridge/src/wm_bridge_common.h").read_text(encoding="utf-8")
+        common_cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_common.cpp").read_text(encoding="utf-8")
+        dist = Path("native_modules/mod-wm-bridge/conf/mod_wm_bridge.conf.dist").read_text(encoding="utf-8")
+        configure = Path("scripts/bridge_lab/Configure-BridgeLabRuntime.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("bool aoeLootEnabled = false;", common_header)
+        self.assertIn('sConfigMgr->GetOption<bool>("WmBridge.AoeLoot.Enable", false)', common_cpp)
+        self.assertIn("void TryAoeLootNearbyCorpses(Player* player)", script)
+        self.assertIn("WmBridge::IsPlayerAllowed(player)", script)
+        self.assertIn("Acore::AllDeadCreaturesInRange check(player, radius);", script)
+        self.assertIn("creature->isTappedBy(player)", script)
+        self.assertIn("player->StoreLootItem(static_cast<uint8>(slot), &loot, result);", script)
+        self.assertIn("creature->AllLootRemovedFromCorpse();", script)
+        self.assertIn("void OnPlayerAfterCreatureLoot(Player* player) override", script)
+        self.assertIn("void OnPlayerAfterCreatureLootMoney(Player* player) override", script)
+        self.assertIn("WmBridge.AoeLoot.Enable = 0", dist)
+        self.assertIn('Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.AoeLoot.Enable" -Value "1"', configure)
 
     def test_player_add_item_cpp_persists_inventory_after_grant(self) -> None:
         cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
@@ -360,6 +481,29 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("player->CanAddQuest(quest, false)", quest_add_block)
         self.assertIn("Mirror GM .quest add semantics for WM grants", quest_add_block)
         self.assertNotIn("player->CanTakeQuest(quest, false)", quest_add_block)
+
+    def test_quest_remove_cpp_uses_scope_policy_reserved_guard_and_event(self) -> None:
+        cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp").read_text(encoding="utf-8")
+        start = cpp.index("bool ExecuteQuestRemove")
+        end = cpp.index("bool IsRandomEnchantEligibleItem", start)
+        block = cpp[start:end]
+
+        self.assertIn("ResolveScopedOnlinePlayer", block)
+        self.assertIn("missing_quest_id", block)
+        self.assertIn("invalid_quest", block)
+        self.assertIn("wm_reserved_slot", block)
+        self.assertIn("EntityType = 'quest'", block)
+        self.assertIn("admin_override", block)
+        self.assertIn("non_managed_quest_remove_denied", block)
+        self.assertIn("GetQuestSlotQuestId", block)
+        self.assertIn("SetQuestSlot(slot, 0)", block)
+        self.assertIn("RemoveActiveQuest(questId, true)", block)
+        self.assertIn("RemoveRewardedQuest(questId, true)", block)
+        self.assertIn("remove_rewarded", block)
+        self.assertIn("player->SaveToDB(false, false)", block)
+        self.assertIn("EmitQuestRemovedEvent(player, quest", block)
+        self.assertIn('MakePlayerScopedEvent(player, "quest", "removed")', cpp)
+        self.assertIn('actionKind == "quest_remove"', cpp)
 
     def test_client_submits_idempotent_queue_request(self) -> None:
         client = FakeMysqlClient()

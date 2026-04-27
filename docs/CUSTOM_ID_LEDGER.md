@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-04-17
+Last verified: 2026-04-25
 Verified by: Codex
 Doc type: reference
 
@@ -40,6 +40,7 @@ Current pinned spell claims:
 - `940001`: `bonebound_twins_v1` / current Bonebound Alpha lane - `WORKING`
 - `944000`: `jecia_intellect_block_v1` - `WORKING`
 - `945000`: `bonebound_servant_slash_v1` - `PARTIAL`
+- `946600`: `bonebound_echo_stasis_v1` - `PARTIAL`
 - `947000`: `defias_pursuit_instinct` bundled managed spell example - `PARTIAL`
 
 ## Current non-spell examples
@@ -50,9 +51,13 @@ Repo-backed current claims include:
 - quest `910020`: control-native grant proof - `WORKING`
 - quest `910024`: `Bounty: Nightbane Dark Runner - Lens` - `WORKING`
 - item `910006`: `Night Watcher's Lens` - `WORKING`
-- item `910007`: `Unstable Enchanting Vellum` random-enchant consumable - `PARTIAL`
+- item `910007`: `Unstable Enchanting Vellum` random-enchant consumable - `PARTIAL` for retuned live proof
+- item `910008`: `Enchanting Vellum` focused single-slot random-enchant consumable - `PARTIAL`
+- item `910009`: `Bone Lure Charm` throwable taunt-obelisk consumable - `PARTIAL`
 - creature `920100`: Bonebound Alpha template - `PARTIAL`
-- creature `920101`: Bonebound Alpha Echo template - `WORKING`
+- creature `920101`: Echo Destroyer melee template - `WORKING`
+- creature `920102`: Bone Lure Obelisk deployed by item `910009` - `PARTIAL`
+- creature `920103`: Echo Restorer support-role template - `PARTIAL`
 - DBC override rows `100118`, `100414`, `100433`, `100434`: combat proficiency support - `WORKING`
 
 Check the JSON ledger for the complete current list and source paths.
