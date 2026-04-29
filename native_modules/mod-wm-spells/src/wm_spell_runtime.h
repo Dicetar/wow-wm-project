@@ -155,6 +155,7 @@ namespace WmSpells
         uint32 priestEchoDpsDamagePct = 19;
         uint32 priestEchoDpsCooldownMs = 2500;
         float priestEchoDpsMaxRange = 100.0f;
+        float priestEchoMovementSpeedMultiplier = 1.5f;
         uint32 priestEchoSpellPowerToHealingPct = 35;
         uint32 priestEchoSpellPowerToShieldPct = 30;
         uint32 priestEchoSpellPowerToDamagePct = 45;

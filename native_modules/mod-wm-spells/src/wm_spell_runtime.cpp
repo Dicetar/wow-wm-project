@@ -51,6 +51,8 @@ namespace
     // Thorns is a client-known positive buff marker; WM strips its effects and only uses the stack count.
     constexpr uint32 BONEBOUND_ECHO_COUNT_DEFAULT_AURA_SPELL_ID = 467;
     constexpr uint32 BONEBOUND_SLASH_SPELL_ID = 945000;
+    constexpr uint32 BONEBOUND_ECHO_SEEK_TARGET_STICKY_MS = 30000;
+    constexpr float BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE = 35.0f;
     constexpr float BONEBOUND_ECHO_MIN_FOLLOW_SEPARATION_YARDS = 1.6f;
     constexpr float WM_PI = 3.14159265358979323846f;
 
@@ -138,6 +140,12 @@ namespace
         float maxRange = 100.0f;
     };
 
+    struct BoneboundEchoSeekTargetState
+    {
+        ObjectGuid targetGuid;
+        uint32 remainingStickyMs = 0;
+    };
+
     std::vector<BoneboundBleedState> gBoneboundBleeds;
     std::unordered_map<uint32, BoneboundAlphaEchoState> gBoneboundAlphaEchoes;
     std::unordered_map<uint32, uint32> gBoneboundBleedCooldownByCaster;
@@ -149,6 +157,7 @@ namespace
     std::unordered_map<uint32, uint32> gBoneboundPriestDispelCooldownByCaster;
     std::unordered_map<uint32, uint32> gBoneboundPriestMassDispelCooldownByCaster;
     std::unordered_map<uint32, BoneboundPriestDpsCastState> gBoneboundPriestDpsCastByCaster;
+    std::unordered_map<uint32, BoneboundEchoSeekTargetState> gBoneboundEchoSeekTargetByCaster;
     std::unordered_map<uint32, uint32> gBoneboundWarriorEchoesSincePriestByPlayer;
     std::unordered_map<uint64, NightWatchersLensMarkState> gNightWatchersLensMarksByTarget;
 
@@ -829,6 +838,8 @@ namespace
             config.priestEchoDpsCooldownMs = *value;
         if (std::optional<float> value = ExtractJsonFloat(configJson, "priest_echo_dps_max_range"))
             config.priestEchoDpsMaxRange = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "priest_echo_movement_speed_multiplier"))
+            config.priestEchoMovementSpeedMultiplier = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_spell_power_to_healing_pct"))
             config.priestEchoSpellPowerToHealingPct = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "priest_echo_spell_power_to_shield_pct"))
@@ -1471,6 +1482,68 @@ namespace
         return bestTarget;
     }
 
+    bool IsValidBoneboundSeekTarget(Player* owner, Creature* seeker, Unit* target)
+    {
+        return owner
+            && seeker
+            && target
+            && target != owner
+            && target != seeker
+            && target->IsAlive()
+            && owner->GetMapId() == seeker->GetMapId()
+            && target->GetMapId() == owner->GetMapId()
+            && !owner->IsFriendlyTo(target)
+            && seeker->CanCreatureAttack(target, true);
+    }
+
+    Unit* SelectBoneboundEchoSeekTarget(Player* owner, Creature* seeker, float radius, uint32 diff)
+    {
+        if (!owner || !seeker || radius <= 0.0f)
+            return nullptr;
+
+        uint32 echoGuid = static_cast<uint32>(seeker->GetGUID().GetCounter());
+        auto stickyIt = gBoneboundEchoSeekTargetByCaster.find(echoGuid);
+        if (stickyIt != gBoneboundEchoSeekTargetByCaster.end())
+        {
+            if (stickyIt->second.remainingStickyMs > diff)
+                stickyIt->second.remainingStickyMs -= diff;
+            else
+                stickyIt->second.remainingStickyMs = 0;
+
+            Unit* stickyTarget = ObjectAccessor::GetUnit(*owner, stickyIt->second.targetGuid);
+            if (!IsValidBoneboundSeekTarget(owner, seeker, stickyTarget))
+            {
+                stickyIt = gBoneboundEchoSeekTargetByCaster.erase(stickyIt);
+            }
+            else if (stickyIt->second.remainingStickyMs > 0)
+            {
+                return stickyTarget;
+            }
+        }
+
+        Unit* selectedTarget = SelectNearestBoneboundSeekTarget(owner, seeker, radius);
+        if (selectedTarget)
+        {
+            BoneboundEchoSeekTargetState& stickyState = gBoneboundEchoSeekTargetByCaster[echoGuid];
+            if (stickyState.targetGuid != selectedTarget->GetGUID())
+            {
+                stickyState.targetGuid = selectedTarget->GetGUID();
+                stickyState.remainingStickyMs = BONEBOUND_ECHO_SEEK_TARGET_STICKY_MS;
+            }
+            return selectedTarget;
+        }
+
+        if (stickyIt != gBoneboundEchoSeekTargetByCaster.end())
+        {
+            Unit* stickyTarget = ObjectAccessor::GetUnit(*owner, stickyIt->second.targetGuid);
+            if (IsValidBoneboundSeekTarget(owner, seeker, stickyTarget))
+                return stickyTarget;
+            gBoneboundEchoSeekTargetByCaster.erase(stickyIt);
+        }
+
+        return nullptr;
+    }
+
     void TryBoneboundCleave(
         Player* owner,
         Unit* caster,
@@ -1721,19 +1794,27 @@ namespace
         echo->SetLevel(alphaPet->GetLevel());
     }
 
-    void MatchBoneboundEchoMovementSpeed(Pet* alphaPet, TempSummon* echo)
+    void MatchBoneboundEchoMovementSpeed(Pet* alphaPet, TempSummon* echo, float speedMultiplier = 1.0f)
     {
         if (!alphaPet || !echo)
             return;
 
+        float multiplier = std::isfinite(speedMultiplier) && speedMultiplier > 0.0f
+            ? std::clamp(speedMultiplier, 0.1f, 5.0f)
+            : 1.0f;
+        auto scaledSpeed = [alphaPet, multiplier](UnitMoveType moveType)
+        {
+            return alphaPet->GetSpeedRate(moveType) * multiplier;
+        };
+
         echo->SetWalk(false);
-        echo->SetSpeed(MOVE_WALK, alphaPet->GetSpeedRate(MOVE_WALK), true);
-        echo->SetSpeed(MOVE_RUN, alphaPet->GetSpeedRate(MOVE_RUN), true);
-        echo->SetSpeed(MOVE_RUN_BACK, alphaPet->GetSpeedRate(MOVE_RUN_BACK), true);
-        echo->SetSpeed(MOVE_SWIM, alphaPet->GetSpeedRate(MOVE_SWIM), true);
-        echo->SetSpeed(MOVE_SWIM_BACK, alphaPet->GetSpeedRate(MOVE_SWIM_BACK), true);
-        echo->SetSpeed(MOVE_FLIGHT, alphaPet->GetSpeedRate(MOVE_FLIGHT), true);
-        echo->SetSpeed(MOVE_FLIGHT_BACK, alphaPet->GetSpeedRate(MOVE_FLIGHT_BACK), true);
+        echo->SetSpeed(MOVE_WALK, scaledSpeed(MOVE_WALK), true);
+        echo->SetSpeed(MOVE_RUN, scaledSpeed(MOVE_RUN), true);
+        echo->SetSpeed(MOVE_RUN_BACK, scaledSpeed(MOVE_RUN_BACK), true);
+        echo->SetSpeed(MOVE_SWIM, scaledSpeed(MOVE_SWIM), true);
+        echo->SetSpeed(MOVE_SWIM_BACK, scaledSpeed(MOVE_SWIM_BACK), true);
+        echo->SetSpeed(MOVE_FLIGHT, scaledSpeed(MOVE_FLIGHT), true);
+        echo->SetSpeed(MOVE_FLIGHT_BACK, scaledSpeed(MOVE_FLIGHT_BACK), true);
     }
 
     bool IsBoneboundPriestEcho(BoneboundAlphaEchoState const& state)
@@ -1839,13 +1920,13 @@ namespace
         float configuredRange = ResolveBoneboundPriestDpsMaxRange(config);
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(config.priestEchoDpsSpellId);
         if (!spellInfo)
-            return configuredRange;
+            return std::min(configuredRange, BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE);
 
         float spellRange = spellInfo->GetMaxRange(false, priestEcho);
         if (!std::isfinite(spellRange) || spellRange <= 0.0f)
-            return configuredRange;
+            return std::min(configuredRange, BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE);
 
-        return std::min(configuredRange, std::max(5.0f, spellRange + 1.5f));
+        return std::min(configuredRange, std::min(BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE, std::max(5.0f, spellRange + 1.5f)));
     }
 
     bool UpdateBoneboundPriestDpsCast(
@@ -2302,15 +2383,16 @@ namespace
         if (enemy && IsBoneboundEchoHuntMode(state.ownerGuid))
         {
             float castRange = ResolveBoneboundPriestVisibleDpsCastRange(priestEcho, config);
-            float seekDistance = std::clamp(minEnemyDistance + 6.0f, 8.0f, std::max(8.0f, castRange - 2.0f));
-            if (!priestEcho->IsWithinDistInMap(enemy, std::max(5.0f, castRange - 1.0f))
-                || !priestEcho->IsWithinLOSInMap(enemy)
-                || priestEcho->IsWithinDistInMap(enemy, minEnemyDistance))
+            float readyRange = std::max(5.0f, castRange - 1.0f);
+            if (!priestEcho->IsWithinDistInMap(enemy, readyRange) || !priestEcho->IsWithinLOSInMap(enemy))
             {
-                priestEcho->GetMotionMaster()->MoveFollow(enemy, seekDistance, state.followAngle);
+                float chaseStopDistance = std::clamp(castRange * 0.65f, minEnemyDistance, std::max(minEnemyDistance, castRange - 2.0f));
+                priestEcho->SetTarget(enemy->GetGUID());
+                priestEcho->GetMotionMaster()->MoveChase(enemy, chaseStopDistance);
                 return;
             }
 
+            priestEcho->GetMotionMaster()->MoveIdle();
             priestEcho->SetTarget(enemy->GetGUID());
             priestEcho->SetFacingToObject(enemy);
             return;
@@ -2423,7 +2505,7 @@ namespace
         if (IsBoneboundEchoHuntMode(ownerGuid))
         {
             std::optional<WmSpells::BoneboundBehaviorConfig> runtimeConfig = config;
-            Unit* sought = SelectNearestBoneboundSeekTarget(owner, priestEcho, ResolveBoneboundEchoHuntRadius(ownerGuid, runtimeConfig));
+            Unit* sought = SelectBoneboundEchoSeekTarget(owner, priestEcho, ResolveBoneboundEchoHuntRadius(ownerGuid, runtimeConfig), diff);
             if (sought)
                 return sought;
         }
@@ -2574,7 +2656,7 @@ namespace
         // Creature stat recalculation restores template fields; copy Alpha values after it.
         ApplyOwnerTransferBonuses(echo, owner, config, false);
         CopyAlphaFinalStatsToEcho(alphaPet, echo, refillHealth);
-        MatchBoneboundEchoMovementSpeed(alphaPet, echo);
+        MatchBoneboundEchoMovementSpeed(alphaPet, echo, priestEcho ? config.priestEchoMovementSpeedMultiplier : 1.0f);
         echo->SetReactState(priestEcho ? REACT_PASSIVE : REACT_DEFENSIVE);
     }
 
@@ -2732,6 +2814,7 @@ namespace
             gBoneboundPriestDpsCastByCaster.erase(it->first);
             gBoneboundPriestDispelCooldownByCaster.erase(it->first);
             gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
+            gBoneboundEchoSeekTargetByCaster.erase(it->first);
             it = gBoneboundAlphaEchoes.erase(it);
         }
 
@@ -2806,6 +2889,7 @@ namespace
                 gBoneboundPriestDpsCastByCaster.erase(it->first);
                 gBoneboundPriestDispelCooldownByCaster.erase(it->first);
                 gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
+                gBoneboundEchoSeekTargetByCaster.erase(it->first);
                 it = gBoneboundAlphaEchoes.erase(it);
                 continue;
             }
@@ -2823,6 +2907,7 @@ namespace
                 gBoneboundPriestDpsCastByCaster.erase(it->first);
                 gBoneboundPriestDispelCooldownByCaster.erase(it->first);
                 gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
+                gBoneboundEchoSeekTargetByCaster.erase(it->first);
                 it = gBoneboundAlphaEchoes.erase(it);
                 continue;
             }
@@ -2854,6 +2939,7 @@ namespace
                     gBoneboundPriestDpsCastByCaster.erase(it->first);
                     gBoneboundPriestDispelCooldownByCaster.erase(it->first);
                     gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
+                    gBoneboundEchoSeekTargetByCaster.erase(it->first);
                     it = gBoneboundAlphaEchoes.erase(it);
                     continue;
                 }
@@ -2870,6 +2956,7 @@ namespace
                     gBoneboundPriestDpsCastByCaster.erase(it->first);
                     gBoneboundPriestDispelCooldownByCaster.erase(it->first);
                     gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
+                    gBoneboundEchoSeekTargetByCaster.erase(it->first);
                     it = gBoneboundAlphaEchoes.erase(it);
                     continue;
                 }
@@ -2888,6 +2975,7 @@ namespace
                     gBoneboundPriestDpsCastByCaster.erase(it->first);
                     gBoneboundPriestDispelCooldownByCaster.erase(it->first);
                     gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
+                    gBoneboundEchoSeekTargetByCaster.erase(it->first);
                     it = gBoneboundAlphaEchoes.erase(it);
                     continue;
                 }
@@ -2901,6 +2989,7 @@ namespace
                 gBoneboundPriestDpsCastByCaster.erase(it->first);
                 gBoneboundPriestDispelCooldownByCaster.erase(it->first);
                 gBoneboundPriestMassDispelCooldownByCaster.erase(it->first);
+                gBoneboundEchoSeekTargetByCaster.erase(it->first);
                 it = gBoneboundAlphaEchoes.erase(it);
                 gBoneboundAlphaEchoes[static_cast<uint32>(restored->GetGUID().GetCounter())] = state;
                 RefreshBoneboundEchoFormationSlots(owner, *runtimeConfig);
@@ -2928,7 +3017,7 @@ namespace
                 if (IsBoneboundEchoHuntMode(it->second.ownerGuid))
                 {
                     float huntRadius = ResolveBoneboundEchoHuntRadius(it->second.ownerGuid, runtimeConfig);
-                    victim = SelectNearestBoneboundSeekTarget(owner, echo, huntRadius);
+                    victim = SelectBoneboundEchoSeekTarget(owner, echo, huntRadius, diff);
                 }
                 if (!victim)
                     victim = alphaPet->GetVictim();
@@ -3568,6 +3657,7 @@ namespace WmSpells
             echo->NearTeleportTo(x, y, z, player->GetOrientation());
             echo->CombatStop(true);
             gBoneboundPriestDpsCastByCaster.erase(echoGuid);
+            gBoneboundEchoSeekTargetByCaster.erase(echoGuid);
 
             if (IsBoneboundPriestEcho(state) && runtimeConfig.has_value())
                 MoveBoneboundPriestEchoToSafePosition(echo, player, nullptr, state, *runtimeConfig);
@@ -3619,6 +3709,14 @@ namespace WmSpells
                 return rangeResult;
         }
         gBoneboundEchoHuntModeByPlayer[ownerGuid] = huntMode;
+        if (!huntMode)
+        {
+            for (auto const& [echoGuid, state] : gBoneboundAlphaEchoes)
+            {
+                if (state.ownerGuid == ownerGuid)
+                    gBoneboundEchoSeekTargetByCaster.erase(echoGuid);
+            }
+        }
 
         Pet* alphaPet = player->GetPet();
         std::optional<BoneboundBehaviorConfig> runtimeConfig;
@@ -3642,7 +3740,7 @@ namespace WmSpells
                 if (huntMode)
                 {
                     float huntRadius = ResolveBoneboundEchoHuntRadius(ownerGuid, runtimeConfig);
-                    enemy = SelectNearestBoneboundSeekTarget(player, echo, huntRadius);
+                    enemy = SelectBoneboundEchoSeekTarget(player, echo, huntRadius, 0);
                     if (enemy)
                         CommandBoneboundPriestEchoSeek(echo, enemy);
                 }
@@ -3661,7 +3759,7 @@ namespace WmSpells
             if (huntMode)
             {
                 float huntRadius = ResolveBoneboundEchoHuntRadius(ownerGuid, runtimeConfig);
-                if (Unit* target = SelectNearestBoneboundSeekTarget(player, echo, huntRadius))
+                if (Unit* target = SelectBoneboundEchoSeekTarget(player, echo, huntRadius, 0))
                     CommandBoneboundAlphaEchoAttack(echo, target);
                 continue;
             }
