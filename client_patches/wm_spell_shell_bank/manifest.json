@@ -505,6 +505,47 @@
       ]
     },
     {
+      "shell_key": "energy_surge_potion_v1",
+      "spell_id": 946606,
+      "family_id": "self_aura",
+      "label": "Energy Surge",
+      "behavior_kind": "energy_surge_potion_v1",
+      "tooltip": "Restores 10 additional energy every second for 2 hours.",
+      "icon_hint": "INV_Potion_93",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "dispel_type": 0,
+        "duration_index": 0,
+        "effect_1": 6,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_implicit_target_a_1": 1,
+        "effect_apply_aura_name_1": 4,
+        "effect_misc_value_1": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 1299
+      },
+      "shell_row_requirements": {
+        "effect_model": "apply_aura_marker",
+        "dispel_type": 0,
+        "aura_type": "dummy",
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Visible timed buff shell for Energy Surge Potion 910014.",
+        "Native bridge runtime owns the extra energy ticks and gates them on this aura being present."
+      ]
+    },
+    {
       "shell_key": "broug_universal_parry_v1",
       "spell_id": 946800,
       "family_id": "passive_aura",

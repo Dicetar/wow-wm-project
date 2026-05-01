@@ -484,6 +484,42 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("creature->UpdateLeashExtensionTime()", script)
         self.assertIn("AddSC_mod_wm_bridge_bone_lure_item", loader)
 
+    def test_energy_surge_potion_sql_and_script_are_wired(self) -> None:
+        sql_path = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_05_02_00_wm_bridge_energy_surge_potion.sql")
+        sql = sql_path.read_text(encoding="utf-8")
+        script_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_energy_potion.cpp")
+        script = script_path.read_text(encoding="utf-8")
+        loader = Path("native_modules/mod-wm-bridge/src/mod_wm_bridge_loader.cpp").read_text(encoding="utf-8")
+        registry = json.loads(Path("data/specs/custom_id_registry.json").read_text(encoding="utf-8"))
+        claims = {(claim["namespace"], claim["id"]) for claim in registry["claims"]}
+
+        self.assertIn("SET @wm_energy_surge_potion_item_entry := 910014", sql)
+        self.assertIn("SET @wm_energy_surge_aura_spell_id := 946606", sql)
+        self.assertIn("SET @wm_energy_surge_base_item_entry := 33448", sql)
+        self.assertIn("Energy Surge Potion", sql)
+        self.assertIn("spellid_1 = 8096", sql)
+        self.assertIn("spellcooldown_1 = 60000", sql)
+        self.assertIn("ScriptName = 'wm_energy_surge_potion'", sql)
+        self.assertIn("visible_aura:946606", sql)
+        self.assertIn("energy_per_second:10", sql)
+        self.assertIn("wm_reserved_slot", sql)
+
+        self.assertIn("WM_ENERGY_SURGE_POTION_ITEM_ENTRY = 910014", script)
+        self.assertIn("WM_ENERGY_SURGE_AURA_SPELL_ID = 946606", script)
+        self.assertIn("ENERGY_SURGE_DURATION_MS = 7200000", script)
+        self.assertIn("ENERGY_SURGE_ENERGY_PER_SECOND = 10", script)
+        self.assertIn("WmBridge::IsPlayerAllowed(player)", script)
+        self.assertIn("HasUsableEnergyBar", script)
+        self.assertIn("player->AddAura(WM_ENERGY_SURGE_AURA_SPELL_ID, player)", script)
+        self.assertIn("aura->SetDuration(static_cast<int32>(ENERGY_SURGE_DURATION_MS))", script)
+        self.assertIn("player->DestroyItemCount(item, destroyCount, true)", script)
+        self.assertIn("player->SaveInventoryAndGoldToDB(trans)", script)
+        self.assertIn("void OnPlayerAfterUpdate(Player* player, uint32 diff) override", script)
+        self.assertIn("player->ModifyPower(POWER_ENERGY", script)
+        self.assertIn("AddSC_mod_wm_bridge_energy_potion", loader)
+        self.assertIn(("item", 910014), claims)
+        self.assertIn(("spell", 946606), claims)
+
     def test_aoe_loot_is_scoped_bridge_qol_not_global_core_patch(self) -> None:
         script = Path("native_modules/mod-wm-bridge/src/wm_bridge_player_script.cpp").read_text(encoding="utf-8")
         common_header = Path("native_modules/mod-wm-bridge/src/wm_bridge_common.h").read_text(encoding="utf-8")

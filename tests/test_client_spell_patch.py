@@ -250,6 +250,40 @@ def test_materialize_client_spell_dbc_applies_watcher_beacon_marker_text(tmp_pat
     assert "fixed its attention" in _string_at(string_block, fields[SPELL_DESCRIPTION_START_FIELD])
 
 
+def test_materialize_client_spell_dbc_applies_energy_surge_potion_aura(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.dbc"
+    out_path = tmp_path / "out.dbc"
+    _write_test_spell_dbc(source_path, list(CLIENT_SEED_TEMPLATE_SOURCE_SPELL_IDS.values()))
+
+    result = materialize_client_spell_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        spell_ids=[946606],
+    )
+
+    assert result.appended_count == 1
+    assert result.selected_spell_ids == [946606]
+    assert result.presentation_applied_spell_ids == [946606]
+    fields, string_block = _record_fields(out_path, 946606)
+    assert fields[CASTING_TIME_INDEX_FIELD] == 1
+    assert fields[POWER_TYPE_FIELD] == 0
+    assert fields[MANA_COST_FIELD] == 0
+    assert fields[MANA_COST_PERCENTAGE_FIELD] == 0
+    assert fields[DISPEL_TYPE_FIELD] == 0
+    assert fields[DURATION_INDEX_FIELD] == 0
+    assert fields[EFFECT_1_FIELD] == 6
+    assert fields[EFFECT_BASE_POINTS_1_FIELD] == 0
+    assert fields[EFFECT_IMPLICIT_TARGET_A_1_FIELD] == 1
+    assert fields[EFFECT_APPLY_AURA_NAME_1_FIELD] == 4
+    assert fields[EFFECT_MISC_VALUE_1_FIELD] == 0
+    assert fields[SPELL_VISUAL_ID_1_FIELD] == 0
+    assert fields[SPELL_VISUAL_ID_2_FIELD] == 0
+    assert fields[SPELL_ICON_ID_FIELD] == 1299
+    assert _string_at(string_block, fields[SPELL_NAME_START_FIELD]) == "Energy Surge"
+    assert "10 additional energy" in _string_at(string_block, fields[SPELL_DESCRIPTION_START_FIELD])
+
+
 def test_materialize_client_spell_dbc_applies_echo_mind_blast_range(tmp_path: Path) -> None:
     source_path = tmp_path / "source.dbc"
     out_path = tmp_path / "out.dbc"

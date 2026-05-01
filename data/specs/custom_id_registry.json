@@ -318,6 +318,27 @@
     },
     {
       "namespace": "spell",
+      "id": 946606,
+      "key": "energy_surge_potion_v1",
+      "kind": "shell_spell",
+      "purpose": "Visible timed self-aura shell used by Energy Surge Potion to gate native +10 energy-per-second regeneration.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-bridge",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_05_02_00_wm_bridge_energy_surge_potion.sql",
+        "native_modules/mod-wm-bridge/src/wm_bridge_energy_potion.cpp",
+        "docs/WM_PLATFORM_HANDOFF.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "The aura is a harmless WM-owned dummy buff; native bridge code owns the resource ticks and only grants them while this aura is present.",
+        "Requires refreshed server Spell.dbc and client patch materialization before live proof."
+      ]
+    },
+    {
+      "namespace": "spell",
       "id": 946800,
       "key": "broug_universal_parry_v1",
       "kind": "shell_spell",
@@ -962,6 +983,26 @@
         "Deploys creature template 920102 for 30 seconds.",
         "BridgeLab proof on 2026-04-25 confirmed SQL apply, native rebuild/restart, scoped debug_ping request 262, scoped player_add_item request 263, and character DB inventory count 5 for player 5406.",
         "In-game throw and taunt behavior proof is still pending."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 910014,
+      "key": "energy_surge_potion",
+      "kind": "managed_item_slot",
+      "purpose": "Consumable potion that applies visible Energy Surge aura 946606 and restores 10 additional energy per second for 2 hours.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-bridge",
+      "source_paths": [
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_05_02_00_wm_bridge_energy_surge_potion.sql",
+        "native_modules/mod-wm-bridge/src/wm_bridge_energy_potion.cpp",
+        "control/runtime/spell_shell_bank.json",
+        "docs/WM_PLATFORM_HANDOFF.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Server-owned item-use path. Right-click uses a known item spell only to make the item client-usable; native ItemScript applies the WM-owned visible aura and consumes the potion.",
+        "Live proof is pending until SQL apply, server/client DBC refresh, native rebuild/restart, direct grant, and in-game energy tick verification."
       ]
     },
     {

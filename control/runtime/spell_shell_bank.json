@@ -174,7 +174,8 @@
         "lanathel_blood_queen_stance_v1",
         "watcher_marker_beacon_v1",
         "broug_deflect_v1",
-        "broug_deflect_counter_stance_v1"
+        "broug_deflect_counter_stance_v1",
+        "energy_surge_potion_v1"
       ]
     },
     {
@@ -572,6 +573,41 @@
       "notes": [
         "Fresh stance shell. It uses stock stance spell shape, Rogue spell family, permanent form 13, and stance bar order 1 instead of a timed generic buff.",
         "Native runtime gates the automatic Deflect counterattack on live 946605 stance presence. Without the stance, Deflect still blocks and applies Vulnerable."
+      ]
+    },
+    {
+      "shell_key": "energy_surge_potion_v1",
+      "spell_id": 946606,
+      "family_id": "self_aura",
+      "label": "Energy Surge",
+      "behavior_kind": "energy_surge_potion_v1",
+      "targeting": "self_cast",
+      "required_level": 1,
+      "icon_hint": "INV_Potion_93",
+      "tooltip": "Restores 10 additional energy every second for 2 hours.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "dispel_type": 0,
+        "duration_index": 0,
+        "effect_1": 6,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_implicit_target_a_1": 1,
+        "effect_apply_aura_name_1": 4,
+        "effect_misc_value_1": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 1299
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Visible timed buff shell for Energy Surge Potion 910014.",
+        "Native bridge runtime owns the extra energy ticks and gates them on this aura being present."
       ]
     },
     {

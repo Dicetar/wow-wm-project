@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-04-29
+Last verified: 2026-05-02
 Verified by: Codex
 Doc type: reference
 
@@ -50,6 +50,7 @@ Current pinned spell claims:
 - `946603`: `broug_deflect_v1` / `Deflect` animation-timed active guard, aura-free, counter gated by `946605` - `WORKING` for Broug current scope
 - `946604`: `broug_skirmisher_mark_v2` / retired self-aura toggle `Skirmisher's Mark` - `BROKEN`, replaced by `spell:946098`
 - `946605`: `broug_deflect_counter_stance_v1` / `Counterstrike Stance` real stance aura gating Deflect auto-counter - `WORKING` for Broug current scope
+- `946606`: `energy_surge_potion_v1` / `Energy Surge` visible potion buff for +10 energy/sec - `PARTIAL`
 - `946800`: `broug_universal_parry_v1` / `Impossible Guard` - `WORKING` for Broug current scope
 - `946801`: `broug_mobile_marksman_v1` / retired passive `Skirmisher's Mark` - `BROKEN`, replaced by `spell:946098`
 - `946802`: `broug_auto_retaliation_v1` / `Riposte Instinct` - `WORKING` for Broug current scope
@@ -77,6 +78,7 @@ Repo-backed current claims include:
 - item `910007`: `Unstable Enchanting Vellum` random-enchant consumable - `PARTIAL` for retuned live proof
 - item `910008`: `Enchanting Vellum` focused single-slot random-enchant consumable - `PARTIAL`
 - item `910009`: `Bone Lure Charm` throwable taunt-obelisk consumable - `PARTIAL`
+- item `910014`: `Energy Surge Potion` consumable that applies visible aura `946606` and restores 10 additional energy per second for 2 hours - `PARTIAL`
 - item `910010`: retired bad Shadowmoon Lens item attempt - `BROKEN`, replaced by fresh item `910013`
 - item `910011`: retired bad Shadowmoon Lens v2 item attempt - `BROKEN`, replaced by fresh item `910013`
 - item `919001`: retired Shadowmoon Lens v3 item attempt - `BROKEN`, replaced by fresh item `910013`
