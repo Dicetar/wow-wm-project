@@ -83,6 +83,12 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
             "src",
             "wm_spell_runtime.h",
         ).read_text(encoding="utf-8"))
+        self.assertIn("float alphaEchoMovementSpeedMultiplier = 1.75f;", self._repo_root().joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_runtime.h",
+        ).read_text(encoding="utf-8"))
 
     def test_alpha_echo_damage_is_runtime_hooked_not_visible_field_copy(self) -> None:
         repo_root = self._repo_root()
@@ -116,7 +122,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("return alphaPet->GetSpeedRate(moveType) * multiplier;", runtime)
         self.assertIn("echo->SetWalk(false);", runtime)
         self.assertIn("echo->SetSpeed(MOVE_RUN, scaledSpeed(MOVE_RUN), true);", runtime)
-        self.assertIn("MatchBoneboundEchoMovementSpeed(alphaPet, echo, priestEcho ? config.priestEchoMovementSpeedMultiplier : 1.0f);", runtime)
+        self.assertIn("MatchBoneboundEchoMovementSpeed(alphaPet, echo, priestEcho ? config.priestEchoMovementSpeedMultiplier : config.alphaEchoMovementSpeedMultiplier);", runtime)
         self.assertIn("ApplyBoneboundAlphaEchoRuntime(owner, alphaPet, echo->ToTempSummon(), it->second, *runtimeConfig, false)", runtime)
         self.assertIn("echo->SetCreateHealth(desiredMaxHealth);", runtime)
         self.assertIn("echo->SetLevel(alphaPet->GetLevel());", runtime)
@@ -162,10 +168,19 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("IsBoneboundEchoHuntMode(it->second.ownerGuid)", runtime)
         self.assertIn("float ResolveBoneboundEchoHuntRadius(uint32 ownerGuid, std::optional<WmSpells::BoneboundBehaviorConfig> const& runtimeConfig)", runtime)
         self.assertIn("Unit* SelectNearestBoneboundSeekTarget(Player* owner, Creature* seeker, float radius)", runtime)
+        self.assertIn("Unit* SelectNightWatchersLensMarkedBoneboundSeekTarget(Player* owner, Creature* seeker, float radius)", runtime)
         self.assertIn("Unit* SelectBoneboundEchoSeekTarget(Player* owner, Creature* seeker, float radius, uint32 diff)", runtime)
         self.assertIn("constexpr uint32 BONEBOUND_ECHO_SEEK_TARGET_STICKY_MS = 30000;", runtime)
         self.assertIn("std::unordered_map<uint32, BoneboundEchoSeekTargetState> gBoneboundEchoSeekTargetByCaster;", runtime)
         self.assertIn("stickyState.remainingStickyMs = BONEBOUND_ECHO_SEEK_TARGET_STICKY_MS;", runtime)
+        self.assertIn("if (!WmSpells::IsNightWatchersLensMarkedBy(stickyTarget, owner))", runtime)
+        self.assertIn("Unit* selectedTarget = SelectNightWatchersLensMarkedBoneboundSeekTarget(owner, seeker, radius);", runtime)
+        self.assertIn("selectedTarget = SelectNearestBoneboundSeekTarget(owner, seeker, radius);", runtime)
+        self.assertIn("|| !WmSpells::IsNightWatchersLensMarkedBy(candidate, owner))", runtime)
+        self.assertIn("Unit* selected = SelectNightWatchersLensMarkedBoneboundSeekTarget(player, echo, huntRadius);", runtime)
+        self.assertIn("bool lensMarked = hasTarget && WmSpells::IsNightWatchersLensMarkedBy(target, player);", runtime)
+        self.assertIn("\" marked=\" + std::to_string(restorerLensMarked)", runtime)
+        self.assertIn("firstRestorer += \":mark\" + std::to_string(lensMarked ? 1 : 0);", runtime)
         self.assertIn("return stickyTarget;", runtime)
         self.assertIn("Acore::AnyUnfriendlyUnitInObjectRangeCheck check(owner, owner, radius);", runtime)
         self.assertIn("float distance = owner->GetDistance(candidate);", runtime)
@@ -230,6 +245,24 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
             "updates",
             "2026_04_26_08_wm_spell_echo_restorer_seek_teleport_range.sql",
         ).read_text(encoding="utf-8")
+        mind_blast_x3_sql = repo_root.joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "data",
+            "sql",
+            "world",
+            "updates",
+            "2026_04_29_00_wm_spell_echo_restorer_mind_blast_x3.sql",
+        ).read_text(encoding="utf-8")
+        destroyer_speed_sql = repo_root.joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "data",
+            "sql",
+            "world",
+            "updates",
+            "2026_04_29_01_wm_spell_echo_destroyer_speed_retune.sql",
+        ).read_text(encoding="utf-8")
 
         self.assertIn("enum class BoneboundEchoRole", runtime)
         self.assertIn("BoneboundEchoRole::Priest", runtime)
@@ -256,9 +289,10 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("target,\n                false);", runtime)
         self.assertIn("float ResolveBoneboundPriestDpsMaxRange(WmSpells::BoneboundBehaviorConfig const& config)", runtime)
         self.assertIn("float ResolveBoneboundPriestVisibleDpsCastRange(Creature* priestEcho, WmSpells::BoneboundBehaviorConfig const& config)", runtime)
-        self.assertIn("constexpr float BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE = 35.0f;", runtime)
+        self.assertIn("constexpr uint32 BONEBOUND_RESTORER_MIND_BLAST_X3_SPELL_ID = 946099;", runtime)
+        self.assertIn("constexpr float BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE = 100.0f;", runtime)
         self.assertIn("return std::min(configuredRange, BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE);", runtime)
-        self.assertIn("return std::min(configuredRange, std::min(BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE, std::max(5.0f, spellRange + 1.5f)));", runtime)
+        self.assertIn("return std::min(configuredRange, std::min(BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE, std::max(5.0f, spellRange)));", runtime)
         self.assertIn("config.priestEchoDpsMaxRange = *value;", runtime)
         self.assertIn('ExtractJsonFloat(configJson, "priest_echo_dps_max_range")', runtime)
         self.assertIn("float visibleCastRange = ResolveBoneboundPriestVisibleDpsCastRange(priestEcho, config);", runtime)
@@ -286,6 +320,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("priestEcho->GetMotionMaster()->MoveIdle();", runtime)
         self.assertNotIn("priestEcho->GetMotionMaster()->MoveFollow(enemy, seekDistance, state.followAngle);", runtime)
         self.assertIn("void CommandBoneboundPriestEchoSeek(Creature* priestEcho, Unit* victim)", runtime)
+        self.assertIn("priestEcho->Attack(victim, false);", runtime)
         self.assertIn("CommandBoneboundPriestEchoSeek(priestEcho, enemy);", runtime)
         self.assertIn("CommandBoneboundPriestEchoSeek(echo, enemy);", runtime)
         self.assertIn("BoneboundEchoFormationSlot formationSlot = ResolveBoneboundEchoFormationSlot(", runtime)
@@ -298,13 +333,14 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("state.virtualItem1 = priestEcho ? ResolveBoneboundPriestEchoStaffItem(config) : 0;", runtime)
         self.assertIn('ExtractJsonUIntArray(configJson, "priest_echo_staff_item_entries")', runtime)
         self.assertIn('ExtractJsonString(configJson, "alpha_echo_name")', runtime)
+        self.assertIn('ExtractJsonFloat(configJson, "alpha_echo_movement_speed_multiplier")', runtime)
         self.assertIn("std::string const& name = priestEcho ? config.priestEchoName : config.alphaEchoName;", runtime)
         self.assertIn("bool nameChanged = creature->GetName() != name;", runtime)
         self.assertIn("creature->UpdateObjectVisibility();", runtime)
         self.assertIn('std::string alphaEchoName = "Echo Destroyer";', header)
         self.assertIn('std::string priestEchoName = "Echo Restorer";', header)
-        self.assertIn("priestEchoDpsSpellId = 8092", header)
-        self.assertIn("uint32 priestEchoDpsDamageSpellId = 8092;", header)
+        self.assertIn("priestEchoDpsSpellId = 946099", header)
+        self.assertIn("uint32 priestEchoDpsDamageSpellId = 946099;", header)
         self.assertIn("uint32 priestEchoDpsCastTimeMs = 1500;", header)
         self.assertIn("uint32 priestEchoDpsDamagePct = 19;", header)
         self.assertIn("uint32 priestEchoDpsCooldownMs = 2500;", header)
@@ -352,6 +388,12 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("restorer.speed_walk = destroyer.speed_walk", speed_sql)
         self.assertIn("restorer.speed_run = destroyer.speed_run", speed_sql)
         self.assertIn("'$.priest_echo_dps_max_range', 100.0", seek_range_sql)
+        self.assertIn("SET @wm_echo_restorer_mind_blast_x3_spell_id := 946099;", mind_blast_x3_sql)
+        self.assertIn("'$.priest_echo_dps_spell_id', @wm_echo_restorer_mind_blast_x3_spell_id", mind_blast_x3_sql)
+        self.assertIn("'$.priest_echo_dps_damage_spell_id', @wm_echo_restorer_mind_blast_x3_spell_id", mind_blast_x3_sql)
+        self.assertIn("'$.priest_echo_dps_damage_pct', 19", mind_blast_x3_sql)
+        self.assertIn("'$.alpha_echo_movement_speed_multiplier', 1.75", destroyer_speed_sql)
+        self.assertIn("bonebound_echo_destroyer_speed_retune", destroyer_speed_sql)
 
     def test_alpha_echo_mode_command_and_count_aura_are_runtime_owned(self) -> None:
         repo_root = self._repo_root()
@@ -381,6 +423,19 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("BehaviorExecutionResult ExecuteBoneboundEchoMode(Player* player, std::string const& mode, std::optional<float> huntRadiusOverride)", runtime)
         self.assertIn("BehaviorExecutionResult ExecuteBoneboundEchoSeekRange(Player* player, float huntRadius)", runtime)
         self.assertIn("BehaviorExecutionResult ExecuteBoneboundEchoTeleport(Player* player)", runtime)
+        self.assertIn("BehaviorExecutionResult DescribeBoneboundEchoStatus(Player* player)", runtime)
+        self.assertIn("restorer_targeted=", runtime)
+        self.assertIn("ready=", runtime)
+        self.assertIn("no_target=", runtime)
+        self.assertIn("out_range=", runtime)
+        self.assertIn("no_los=", runtime)
+        self.assertIn("dps_spell=", runtime)
+        self.assertIn("BehaviorExecutionResult DescribeBoneboundEchoStatus(Player* player);", repo_root.joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_runtime.h",
+        ).read_text(encoding="utf-8"))
         self.assertIn('normalized == "teleport" || normalized == "tp" || normalized == "recall"', runtime)
         self.assertIn("echo->NearTeleportTo(x, y, z, player->GetOrientation());", runtime)
         self.assertIn("gBoneboundPriestDpsCastByCaster.erase(echoGuid);", runtime)
@@ -412,12 +467,16 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn('"teleport"', player_script)
         self.assertIn('"tp"', player_script)
         self.assertIn('"recall"', player_script)
+        self.assertIn('"status"', player_script)
+        self.assertIn('"state"', player_script)
         self.assertIn('"#wm echo "', player_script)
         self.assertIn('"wm echo "', player_script)
         self.assertIn('"echo "', player_script)
         self.assertIn("WmSpells::ExecuteBoneboundEchoSeekRange(player, *command.huntRadius)", player_script)
         self.assertIn("WmSpells::ExecuteBoneboundEchoMode(player, command.mode, command.huntRadius)", player_script)
         self.assertIn("WmSpells::ExecuteBoneboundEchoTeleport(player)", player_script)
+        self.assertIn("WmSpells::DescribeBoneboundEchoStatus(player)", player_script)
+        self.assertIn("WM Echoes: status", player_script)
         self.assertIn("WM Echoes: teleported to your position.", player_script)
         self.assertIn("WM Echoes: seek range set to", player_script)
         self.assertIn("WM Echoes: seek mode enabled at", player_script)
@@ -477,7 +536,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("BehaviorExecutionResult ExecuteBoneboundEchoStasis(Player* player, uint32 shellSpellId);", header)
         self.assertIn('behaviorKind == "bonebound_echo_stasis_v1"', runtime)
         self.assertIn("BuildBoneboundEchoStasisConfig", runtime)
-        self.assertIn("CheckShellCast(Player* player, uint32 shellSpellId)", runtime)
+        self.assertIn("CheckShellCast(Player* player, uint32 shellSpellId, Unit* explicitTarget)", runtime)
         self.assertIn("player->HasItemCount(stasisConfig->soulShardItemId, stasisConfig->soulShardCount, false)", runtime)
         self.assertIn("SPELL_FAILED_REAGENTS", runtime)
         self.assertIn("BoneboundEchoStasisCounts CountActiveBoneboundEchoesByRole(uint32 ownerGuid)", runtime)
@@ -500,7 +559,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("state.remainingMs = ResolveAlphaEchoDurationMs(owner);", runtime)
         self.assertIn("ApplyBoneboundAlphaEchoRuntime(owner, alphaPet, echo, state, config, true);", runtime)
         self.assertIn("return CheckShellCast(player, shellSpellId);", runtime)
-        self.assertIn("WmSpells::CheckShellCast(player, GetSpellInfo()->Id)", shell_script)
+        self.assertIn("WmSpells::CheckShellCast(player, GetSpellInfo()->Id, GetExplTargetUnit())", shell_script)
         self.assertIn("SPELL_EFFECT_APPLY_AURA", shell_script)
         self.assertIn('"shell_key": "bonebound_echo_stasis_v1"', shell_bank)
         self.assertIn('"spell_id": 946600', shell_bank)
@@ -509,6 +568,67 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS wm_bonebound_echo_stasis", sql)
         self.assertIn("'bonebound_echo_stasis_v1'", sql)
         self.assertIn("(@wm_echo_stasis_shell_spell_id, 'spell_wm_shell_dispatch')", sql)
+
+    def test_lanathel_stance_is_shell_bound_native_form(self) -> None:
+        repo_root = self._repo_root()
+        runtime = repo_root.joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_runtime.cpp",
+        ).read_text(encoding="utf-8")
+        header = repo_root.joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_runtime.h",
+        ).read_text(encoding="utf-8")
+        player_script = repo_root.joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "src",
+            "wm_spell_player_scripts.cpp",
+        ).read_text(encoding="utf-8")
+        shell_bank = repo_root.joinpath("control", "runtime", "spell_shell_bank.json").read_text(encoding="utf-8")
+        sql = repo_root.joinpath(
+            "native_modules",
+            "mod-wm-spells",
+            "data",
+            "sql",
+            "world",
+            "updates",
+            "2026_04_27_00_wm_spell_lanathel_stance.sql",
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("struct LanathelStanceConfig", header)
+        self.assertIn("uint32 shellSpellId = 946601;", header)
+        self.assertIn("uint32 displayId = 31165;", header)
+        self.assertIn("uint32 ridingSkillId = SKILL_RIDING;", header)
+        self.assertIn("BehaviorExecutionResult ExecuteLanathelStance(Player* player, uint32 shellSpellId);", header)
+        self.assertIn('behaviorKind == "lanathel_blood_queen_stance_v1"', runtime)
+        self.assertIn("BuildLanathelStanceConfig", runtime)
+        self.assertIn("CREATE TABLE IF NOT EXISTS wm_lanathel_stance_state", sql)
+        self.assertIn("wm_lanathel_stance_state", runtime)
+        self.assertIn("player->SetDisplayId(config.displayId, config.displayScale);", runtime)
+        self.assertIn("player->Dismount();", runtime)
+        self.assertIn("player->RemoveAurasByType(SPELL_AURA_MOUNTED);", runtime)
+        self.assertIn("player->GetBaseSkillValue(config.ridingSkillId)", runtime)
+        self.assertIn("player->canFlyInZone(player->GetMapId(), player->GetZoneId(), spellInfo)", runtime)
+        self.assertIn("areaEntry->IsFlyable()", runtime)
+        self.assertIn("AREA_FLAG_NO_FLY_ZONE", runtime)
+        self.assertIn("player->SetCanFly(true);", runtime)
+        self.assertIn("player->SetCanFly(false);", runtime)
+        self.assertIn("player->SetSpeed(MOVE_RUN, landSpeedRate, true);", runtime)
+        self.assertIn("player->SetSpeed(MOVE_FLIGHT, flightSpeedRate, true);", runtime)
+        self.assertIn("StoreLanathelStanceState(playerGuid, shellSpellId);", runtime)
+        self.assertIn("ClearLanathelStanceState(playerGuid);", runtime)
+        self.assertIn("MaintainLanathelStance(player, BONEBOUND_MAINTENANCE_INTERVAL_MS)", player_script)
+        self.assertIn("ForgetLanathelStance(player);", player_script)
+        self.assertIn('"shell_key": "lanathel_blood_queen_stance_v1"', shell_bank)
+        self.assertIn('"spell_id": 946601', shell_bank)
+        self.assertIn('"spellbook_ability_id": 1946601', shell_bank)
+        self.assertIn("'lanathel_blood_queen_stance_v1'", sql)
+        self.assertIn("(@wm_lanathel_stance_shell_spell_id, 'spell_wm_shell_dispatch')", sql)
 
     def test_bonebound_pet_identity_does_not_fallback_to_stock_voidwalker_entry(self) -> None:
         runtime = self._repo_root().joinpath(
@@ -629,10 +749,12 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_ITEM_ENTRY = 910006;", runtime)
+        self.assertIn("constexpr uint32 SHADOWMOON_WATCHERS_LENS_ITEM_ENTRY = 910013;", runtime)
         self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID = 132;", runtime)
         self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_MARK_DEBUFF_SPELL_ID = 770;", runtime)
         self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_MARK_DURATION_MS = 10000;", runtime)
         self.assertIn("constexpr float NIGHT_WATCHERS_LENS_PROC_CHANCE_PCT = 10.0f;", runtime)
+        self.assertIn("constexpr uint32 NIGHT_WATCHERS_LENS_SPELL_FOCUS_DAMAGE_BONUS_PCT = 15;", runtime)
         self.assertIn("std::unordered_map<uint64, NightWatchersLensMarkState> gNightWatchersLensMarksByTarget;", runtime)
         self.assertIn("player->HasAura(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID)", runtime)
         self.assertIn("bool RefreshNightWatchersLensMark(Player* caster, Unit* target)", runtime)
@@ -644,6 +766,10 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("ITEM_SUBCLASS_WEAPON_WAND", runtime)
         self.assertIn("spellInfo->HasAttribute(SPELL_ATTR2_AUTO_REPEAT)", runtime)
         self.assertIn("bool TryProcNightWatchersLensMark(Unit* attacker, Unit* victim, uint32 damage)", runtime)
+        self.assertIn("bool IsNightWatchersLensMarkedBy(Unit const* unit, Player const* player)", runtime)
+        self.assertIn("void ApplyNightWatchersLensSpellFocus(Player* player, Unit* victim, int32& damage, SpellInfo const* spellInfo)", runtime)
+        self.assertIn("NIGHT_WATCHERS_LENS_SPELL_FOCUS_DAMAGE_BONUS_PCT) / 100", runtime)
+        self.assertIn("ApplyNightWatchersLensSpellFocus(attacker->ToPlayer(), victim, damage, spellInfo);", runtime)
         self.assertIn("void HandleNightWatchersLensWeaponDamage(Unit* attacker, Unit* victim, uint32& damage)", runtime)
         self.assertIn("void HandleNightWatchersLensSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo)", runtime)
         self.assertIn("bool lensMarked = IsNightWatchersLensMarked(victim);", runtime)
@@ -660,6 +786,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("WmSpells::MaintainNightWatchersLens(player, BONEBOUND_MAINTENANCE_INTERVAL_MS)", player_script)
         self.assertIn("OnPlayerEquip(Player* player, Item* item", player_script)
         self.assertIn("OnPlayerUnequip(Player* player, Item* item) override", player_script)
+        self.assertIn("item->GetTemplate()->ItemId != 910006 && item->GetTemplate()->ItemId != 910013", player_script)
         self.assertNotIn("UNITHOOK_ON_DAMAGE", unit_script)
         self.assertIn("UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN", unit_script)
         self.assertIn("UNITHOOK_ON_BEFORE_ROLL_MELEE_OUTCOME_AGAINST", unit_script)
@@ -681,7 +808,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         for script in (configure_script, deploy_script):
-            self.assertIn('[string]$WmSpellsPlayerGuidAllowList = "5406"', script)
+            self.assertIn('[string]$WmSpellsPlayerGuidAllowList = "5406,5405"', script)
             self.assertIn(
                 'Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """$WmSpellsPlayerGuidAllowList"""',
                 script,
@@ -732,6 +859,33 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
 
         for expected_line in expected_config_lines:
             self.assertIn(expected_line, configure_script)
+
+    def test_bridge_lab_all_installs_ipp_character_quest_compat_before_worldserver(self) -> None:
+        repo_root = self._repo_root()
+        launcher = repo_root.joinpath(
+            "scripts",
+            "bridge_lab",
+            "Start-BridgeLabAll.ps1",
+        ).read_text(encoding="utf-8")
+        sql = repo_root.joinpath(
+            "sql",
+            "bootstrap",
+            "bridge_lab_ipp_character_quest_compat.sql",
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("[switch]$SkipBridgeLabCompatibilitySql", launcher)
+        self.assertIn("$bridgeLabCompatibilitySql = Join-Path $ProjectRoot \"sql\\bootstrap\\bridge_lab_ipp_character_quest_compat.sql\"", launcher)
+        self.assertIn("function Invoke-BridgeLabMySqlFile", launcher)
+        self.assertIn("-Database \"acore_characters\"", launcher)
+        self.assertLess(
+            launcher.index("Invoke-BridgeLabMySqlFile `"),
+            launcher.index("-Name \"worldserver\""),
+        )
+
+        self.assertIn("CREATE OR REPLACE SQL SECURITY INVOKER VIEW `character_quest`", sql)
+        self.assertIn("FROM `character_queststatus_rewarded`", sql)
+        self.assertIn("CAST(6 AS UNSIGNED) AS `status`", sql)
+        self.assertNotIn("DROP TABLE", sql.upper())
 
 
 if __name__ == "__main__":

@@ -1,0 +1,102 @@
+{
+  "schema_version": "wm.arc_reward_factory.personal_arc.v1",
+  "arc_key": "jecia_shadowmoon_lens_v9",
+  "player_guid": 5406,
+  "title": "Shadowmoon Lens",
+  "summary": "Jecia binds a level-70 Shadowmoon version of the lens through Earthmender Wilda instead of Oronok, using a fresh quest and fresh item identity.",
+  "beats": [
+    {
+      "beat_key": "shadowmoon_signal",
+      "label": "Shadowmoon Signal",
+      "kind": "setup",
+      "description": "The lens points away from Oronok's stale quest path and toward Earthmender Wilda's nearby elemental trouble."
+    },
+    {
+      "beat_key": "quiet_the_water",
+      "label": "Quiet The Water",
+      "kind": "quest_objective",
+      "description": "Jecia breaks nearby Enraged Water Spirits so the reward comes from the zone she is actually playing in."
+    },
+    {
+      "beat_key": "fit_the_reward",
+      "label": "Fit The Reward",
+      "kind": "reward",
+      "description": "The reward is a level-70 item-level-125 head item with a fresh item identity and the working fixed-reward quest row shape."
+    }
+  ],
+  "target": {
+    "creature_entry": 21059,
+    "target_name": "Enraged Water Spirits",
+    "kill_count": 6
+  },
+  "turn_in_npc": {
+    "entry": 21027,
+    "name": "Earthmender Wilda"
+  },
+  "quest": {
+    "title": "Jecia: Shadowmoon Lens",
+    "quest_level": 70,
+    "min_level": 68,
+    "grant_mode": "npc_start",
+    "quest_description": "The lens pulls a clean line through Shadowmoon Valley's broken waters. Quiet the nearby Enraged Water Spirits, then return to Earthmender Wilda.",
+    "objective_text": "Slay 6 Enraged Water Spirits.",
+    "request_items_text": "Quiet 6 Enraged Water Spirits, then report to Earthmender Wilda.",
+    "offer_reward_text": "Wilda studies the lens and nods toward the waterline. The spirit in it finally has a shape she trusts."
+  },
+  "reward": {
+    "kind": "managed_item",
+    "item_draft_path": "control/examples/items/shadowmoon_watchers_lens_v9.json",
+    "item_entry": 910013,
+    "item_name": "Shadowmoon Watcher's Lens",
+    "item_count": 1,
+    "reward_item_mode": "fixed",
+    "is_equipped_gate": true
+  },
+  "journey_updates": {
+    "stage_key": "shadowmoon_lens_quest_published",
+    "branch_key": "zone_fitting_visible_item_power",
+    "conversation_steering": [
+      {
+        "steering_key": "prefer_current_zone_rewards",
+        "steering_kind": "operator_direction",
+        "body": "Prefer arc proof targets and rewards that match Jecia's current level, current zone, and current gear tier instead of starter-zone reuse.",
+        "priority": 90,
+        "source": "operator",
+        "is_active": true,
+        "metadata": {
+          "arc_key": "jecia_shadowmoon_lens_v9",
+          "zone_id": 3520,
+          "map_id": 530
+        }
+      },
+      {
+        "steering_key": "fresh_ids_for_visible_content",
+        "steering_kind": "operator_direction",
+        "body": "Never reuse visible quest, item, spell, creature, or object IDs for failed or stale content iterations. Retire the old ID and publish a fresh ID.",
+        "priority": 100,
+        "source": "operator",
+        "is_active": true,
+        "metadata": {
+          "retired_item_entries": [910010, 910011, 910012, 919001, 919002, 919003, 919004, 919005],
+          "replacement_item_entry": 910013,
+          "retired_quest_ids": [910152, 910154, 910155, 910160, 910167, 910168, 910169, 910170],
+          "replacement_quest_id": 910171
+        }
+      }
+    ],
+    "prompt_queue": [
+      {
+        "prompt_kind": "arc_branch_choice",
+        "body": "Offer the next Jecia branch from current Outland context: Shadowmoon zone pressure, companion upgrades, or a level-70 item-granted ability."
+      }
+    ]
+  },
+  "runtime_sync": {
+    "mode": "auto",
+    "item_commands": [".reload item_template"],
+    "quest_commands": []
+  },
+  "notes": [
+    "Live publish for this iteration changes the questgiver to Earthmender Wilda, uses a fresh quest ID and item ID, overwrites LogDescription and QuestCompletionLog, and clears visible money so copper cannot be interpreted as an item entry."
+  ]
+}

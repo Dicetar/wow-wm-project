@@ -40,6 +40,25 @@ class ManagedItemDraftValidationTests(unittest.TestCase):
         self.assertIn("native_indicated_effect", draft.tags)
         self.assertNotIn("native_hidden_effect", draft.tags)
 
+    def test_shadowmoon_watchers_lens_example_is_level_fitting_managed_reward(self) -> None:
+        draft = load_managed_item_draft(Path("control/examples/items/shadowmoon_watchers_lens_v9.json"))
+
+        result = validate_managed_item_draft(draft)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(draft.item_entry, 910013)
+        self.assertEqual(draft.required_level, 70)
+        self.assertEqual(draft.item_level, 125)
+        self.assertEqual(draft.inventory_type, 1)
+        self.assertEqual(draft.spells[0].spell_id, 132)
+        self.assertEqual(draft.spells[0].trigger, 1)
+        self.assertIn("level_70", draft.tags)
+        self.assertIn("shadowmoon_watchers_lens", draft.tags)
+        self.assertIn("visible_aura_marker", draft.tags)
+        self.assertIn("target_debuff_proc", draft.tags)
+        self.assertIn("native_indicated_effect", draft.tags)
+        self.assertNotIn("native_hidden_effect", draft.tags)
+
 
 class ManagedItemSqlPlanTests(unittest.TestCase):
     def test_compiles_replace_statement(self) -> None:

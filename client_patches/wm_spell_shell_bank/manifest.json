@@ -10,7 +10,7 @@
   "artifact_commit_policy": "local_only_do_not_commit",
   "generation_mode": "range_driven",
   "slots_per_family": 100,
-  "reserve_gap_slots": 100,
+  "reserve_gap_slots": 0,
   "notes": [
     "Shell rows must be WM-only client identities.",
     "Do not copy stock summon spell rows for WM abilities.",
@@ -44,10 +44,22 @@
       "seed_template": "wm_unit_target_projectile"
     },
     {
+      "family_id": "unit_target_friendly",
+      "slot_range_start": 946100,
+      "slot_count": 100,
+      "seed_template": "wm_friendly_target_effect"
+    },
+    {
       "family_id": "unit_target_effect",
       "slot_range_start": 946200,
       "slot_count": 100,
       "seed_template": "wm_unit_target_effect"
+    },
+    {
+      "family_id": "target_centered_aoe",
+      "slot_range_start": 946300,
+      "slot_count": 100,
+      "seed_template": "wm_target_centered_aoe"
     },
     {
       "family_id": "ground_target_aoe",
@@ -56,16 +68,34 @@
       "seed_template": "wm_ground_target_aoe"
     },
     {
+      "family_id": "caster_centered_aoe",
+      "slot_range_start": 946500,
+      "slot_count": 100,
+      "seed_template": "wm_caster_centered_aoe"
+    },
+    {
       "family_id": "self_aura",
       "slot_range_start": 946600,
       "slot_count": 100,
       "seed_template": "wm_self_aura"
     },
     {
+      "family_id": "random_targets",
+      "slot_range_start": 946700,
+      "slot_count": 100,
+      "seed_template": "wm_random_targets"
+    },
+    {
       "family_id": "passive_aura",
       "slot_range_start": 946800,
       "slot_count": 100,
       "seed_template": "wm_passive_aura"
+    },
+    {
+      "family_id": "frontal_cone",
+      "slot_range_start": 946900,
+      "slot_count": 100,
+      "seed_template": "wm_frontal_cone"
     }
   ],
   "shells": [
@@ -121,6 +151,483 @@
       "implementation_notes": [
         "Legacy key kept for operator compatibility; this shell now runs the single-Alpha behavior.",
         "Server-side behavior owns Alpha pet creation, bleed, and echo handling."
+      ]
+    },
+    {
+      "shell_key": "bonebound_echo_stasis_v1",
+      "spell_id": 946600,
+      "family_id": "self_aura",
+      "label": "Bonebound Echo Stasis",
+      "behavior_kind": "bonebound_echo_stasis_v1",
+      "tooltip": "Bind active Echo Destroyers and Echo Restorers into stasis, or restore the stored echo counts near your Bonebound Alpha.",
+      "icon_hint": "Spell_Shadow_SoulGem",
+      "client_presentation": {
+        "cast_time_index": 6,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 92,
+        "reagent_1_item_id": 6265,
+        "reagent_1_count": 1,
+        "spellbook_seed_spell_id": 697,
+        "spellbook_ability_id": 1946600
+      },
+      "shell_row_requirements": {
+        "effect_model": "apply_aura_dispatch",
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Runtime stores and restores role counts; no creature GUID persistence."
+      ]
+    },
+    {
+      "shell_key": "echo_restorer_mind_blast_x3_v1",
+      "spell_id": 946099,
+      "family_id": "unit_target_projectile",
+      "label": "Echo Mind Blast",
+      "behavior_kind": "bonebound_restorer_dps_spell_v1",
+      "patch_seed_template": "wm_mind_blast",
+      "tooltip": "A WM-owned Echo Restorer Mind Blast clone with three times the stock cast range.",
+      "icon_hint": "Spell_Shadow_UnholyFrenzy",
+      "client_presentation": {
+        "range_index": 157
+      },
+      "shell_row_requirements": {
+        "effect_model": "stock_mind_blast_clone",
+        "range_index": 157,
+        "always_castable": false
+      },
+      "implementation_notes": [
+        "Creature-only Restorer filler spell. Stock Mind Blast 8092 stays untouched and remains only the DBC clone seed.",
+        "RangeIndex 157 is the existing 90-yard SpellRange row, matching 3x stock Mind Blast's 30-yard range."
+      ]
+    },
+    {
+      "shell_key": "lanathel_blood_queen_stance_v1",
+      "spell_id": 946601,
+      "family_id": "self_aura",
+      "label": "Blood Queen's Pursuit",
+      "behavior_kind": "lanathel_blood_queen_stance_v1",
+      "tooltip": "Assume a Lana'thel battle stance, gaining land or flight movement from your Riding skill while the form remains active through combat.",
+      "icon_hint": "Achievement_Boss_Lanathel",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 4165,
+        "spellbook_seed_spell_id": 697,
+        "spellbook_ability_id": 1946601
+      },
+      "shell_row_requirements": {
+        "effect_model": "apply_aura_dispatch",
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Native runtime owns the persistent transformation and movement stance.",
+        "Use this as a shell-bank ability; do not map it onto a stock druid or mount spell."
+      ]
+    },
+    {
+      "shell_key": "wm_watcher_beacon_v1",
+      "spell_id": 946602,
+      "family_id": "self_aura",
+      "label": "WM Watcher Beacon",
+      "behavior_kind": "watcher_marker_beacon_v1",
+      "patch_seed_template": "wm_watcher_marker",
+      "tooltip": "The World Master has fixed its attention on this character.",
+      "icon_hint": "Spell_Shadow_EvilEye",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "dispel_type": 0,
+        "duration_index": 0,
+        "effect_1": 6,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 4,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 135
+      },
+      "shell_row_requirements": {
+        "effect_model": "apply_aura_marker",
+        "dispel_type": 0,
+        "duration_index": 0,
+        "aura_type": "dummy",
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Dedicated WM-owned player discovery marker. Stock 132 remains a temporary compatibility fallback only.",
+        "Uses an undispellable no-duration dummy aura seed and forces no gameplay aura payload.",
+        "Bridge sensing owns the tracking event; the aura is only the visible marker applied during the short wildcard observation window."
+      ]
+    },
+    {
+      "shell_key": "broug_vulnerable_v1",
+      "spell_id": 946200,
+      "family_id": "unit_target_effect",
+      "label": "Vulnerable",
+      "behavior_kind": "broug_vulnerable_v1",
+      "tooltip": "The next damage taken is increased by 100% per stack, then all stacks are consumed.",
+      "icon_hint": "Ability_Parry",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "dispel_type": 0,
+        "duration_index": 3,
+        "stack_amount": 255,
+        "effect_1": 6,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 4,
+        "effect_misc_value_1": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 558
+      },
+      "shell_row_requirements": {
+        "effect_model": "apply_aura_debuff",
+        "dispel_type": 0,
+        "duration_index": 3,
+        "aura_type": "dummy",
+        "stackable": true,
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Fresh WM-owned visible debuff shell for Broug Deflect. Runtime owns stack application, damage multiplier, and consumption.",
+        "60 second duration uses SpellDuration.dbc index 3; icon 558 is the stock Forceful Deflection icon."
+      ]
+    },
+    {
+      "shell_key": "broug_deflected_v1",
+      "spell_id": 946201,
+      "family_id": "unit_target_effect",
+      "label": "Deflected",
+      "behavior_kind": "broug_deflected_v1",
+      "tooltip": "Marked by a forceful deflection. Stack count is retained for later Broug mechanics.",
+      "icon_hint": "Ability_Parry",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "dispel_type": 0,
+        "duration_index": 36,
+        "stack_amount": 255,
+        "effect_1": 6,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 4,
+        "effect_misc_value_1": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 558
+      },
+      "shell_row_requirements": {
+        "effect_model": "apply_aura_status",
+        "dispel_type": 0,
+        "duration_index": 36,
+        "aura_type": "dummy",
+        "stackable": true,
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Fresh WM-owned visible status shell for Broug Deflect. Runtime forced stun remains the actual control mechanic.",
+        "Runtime sets duration to the active forced-stun window and applies stacks equal to consumed Vulnerable stacks."
+      ]
+    },
+    {
+      "shell_key": "broug_deflect_v1",
+      "spell_id": 946603,
+      "family_id": "self_aura",
+      "label": "Deflect",
+      "behavior_kind": "broug_deflect_v1",
+      "tooltip": "Enter a split-second guard. If hostile damage lands during the window, prevent it, briefly stun the attacker, and strike back.",
+      "icon_hint": "Ability_Warrior_ShieldReflection",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 3,
+        "mana_cost": 5,
+        "mana_cost_percentage": 0,
+        "recovery_time": 500,
+        "category_recovery_time": 0,
+        "start_recovery_category": 0,
+        "start_recovery_time": 0,
+        "dispel_type": 0,
+        "duration_index": 0,
+        "effect_1": 0,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_die_sides_2": 0,
+        "effect_die_sides_3": 0,
+        "effect_base_points_1": 0,
+        "effect_base_points_2": 0,
+        "effect_base_points_3": 0,
+        "effect_apply_aura_name_1": 0,
+        "effect_apply_aura_name_2": 0,
+        "effect_apply_aura_name_3": 0,
+        "effect_misc_value_1": 0,
+        "effect_misc_value_2": 0,
+        "effect_misc_value_3": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 278,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946603
+      },
+      "shell_row_requirements": {
+        "effect_model": "apply_aura_dispatch",
+        "power_type": 3,
+        "mana_cost": 5,
+        "recovery_time": 500,
+        "global_cooldown": 0,
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Native runtime owns the guard window, stun, reflected damage, and deflect counter.",
+        "Behavior is gated by active wm_spell_grant and should not be granted through class defaults."
+      ]
+    },
+    {
+      "shell_key": "broug_deflect_counter_stance_v1",
+      "spell_id": 946605,
+      "family_id": "self_aura",
+      "label": "Counterstrike Stance",
+      "behavior_kind": "broug_deflect_counter_stance_v1",
+      "tooltip": "Enter Counterstrike Stance. Deflect only performs its automatic counterattack while this stance is active.",
+      "icon_hint": "Ability_Warrior_Revenge",
+      "client_presentation": {
+        "category": 47,
+        "cast_time_index": 1,
+        "power_type": 3,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "recovery_time": 0,
+        "category_recovery_time": 1000,
+        "start_recovery_category": 0,
+        "start_recovery_time": 0,
+        "dispel_type": 0,
+        "max_level": 0,
+        "base_level": 1,
+        "spell_level": 1,
+        "duration_index": 21,
+        "range_index": 1,
+        "effect_1": 6,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 1,
+        "effect_die_sides_2": 0,
+        "effect_die_sides_3": 0,
+        "effect_base_points_1": 4294967295,
+        "effect_base_points_2": 0,
+        "effect_base_points_3": 0,
+        "effect_implicit_target_a_1": 1,
+        "effect_implicit_target_a_2": 0,
+        "effect_implicit_target_a_3": 0,
+        "effect_implicit_target_b_1": 0,
+        "effect_implicit_target_b_2": 0,
+        "effect_implicit_target_b_3": 0,
+        "effect_apply_aura_name_1": 36,
+        "effect_apply_aura_name_2": 0,
+        "effect_apply_aura_name_3": 0,
+        "effect_misc_value_1": 13,
+        "effect_misc_value_2": 0,
+        "effect_misc_value_3": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 44,
+        "spell_icon_id": 132,
+        "active_icon_id": 132,
+        "spell_priority": 50,
+        "attributes": 688193552,
+        "attributes_ex": 268436480,
+        "attributes_ex_2": 0,
+        "attributes_ex_3": 1048576,
+        "attributes_ex_4": 2097152,
+        "attributes_ex_5": 0,
+        "attributes_ex_6": 4096,
+        "attributes_ex_7": 0,
+        "interrupt_flags": 0,
+        "aura_interrupt_flags": 0,
+        "channel_interrupt_flags": 0,
+        "spell_family_name": 8,
+        "spell_family_flags_1": 0,
+        "spell_family_flags_2": 0,
+        "spell_family_flags_3": 0,
+        "damage_class": 0,
+        "prevention_type": 0,
+        "stance_bar_order": 1,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946605
+      },
+      "shell_row_requirements": {
+        "effect_model": "apply_aura_dispatch",
+        "recovery_time": 0,
+        "global_cooldown": 0,
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Fresh stance shell. It uses stock stance spell shape, Rogue spell family, permanent form 13, and stance bar order 1 instead of a timed generic buff.",
+        "Native runtime gates the automatic Deflect counterattack on live 946605 stance presence. Without the stance, Deflect still blocks and applies Vulnerable."
+      ]
+    },
+    {
+      "shell_key": "broug_universal_parry_v1",
+      "spell_id": 946800,
+      "family_id": "passive_aura",
+      "label": "Impossible Guard",
+      "behavior_kind": "broug_universal_parry_v1",
+      "tooltip": "Proc chance: 30% + 0.45% per Strength + 0.45% per Agility + 2.5% per 1% Expertise + 0.25% per weapon mastery %, capped at 90%. Parry weapon strikes, spells, and hostile effects with any equipped weapon.",
+      "icon_hint": "Ability_Parry",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "equipped_item_class": -1,
+        "equipped_item_subclass_mask": 0,
+        "equipped_item_inventory_type_mask": 0,
+        "effect_1": 0,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 0,
+        "effect_misc_value_1": 0,
+        "spell_icon_id": 26,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946800
+      },
+      "shell_row_requirements": {
+        "effect_model": "passive",
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "passive"
+      },
+      "implementation_notes": [
+        "Native runtime owns all mitigation and counter updates; stock Parry requirements are not reused.",
+        "Grant is per-character through character_spell plus wm_spell_grant, scoped to Broug for the first live proof."
+      ]
+    },
+    {
+      "shell_key": "broug_skirmisher_shot_v1",
+      "spell_id": 946098,
+      "family_id": "unit_target_projectile",
+      "label": "Skirmisher's Mark",
+      "behavior_kind": "broug_skirmisher_shot_v1",
+      "patch_seed_template": "wm_weapon_ranged_attack",
+      "tooltip": "Fire a ranged or thrown attack at your enemy while moving. Uses equipped ranged weapon speed and normal ranged auto-attack damage scaling.",
+      "icon_hint": "Ability_Hunter_RunningShot",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "recovery_time": 0,
+        "category_recovery_time": 0,
+        "start_recovery_category": 0,
+        "start_recovery_time": 0,
+        "attributes": 4259856,
+        "interrupt_flags": 0,
+        "aura_interrupt_flags": 0,
+        "channel_interrupt_flags": 0,
+        "damage_class": 3,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "equipped_item_subclass_mask": 327692,
+        "effect_1": 58,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_apply_aura_name_1": 0,
+        "spell_icon_id": 156,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946098
+      },
+      "shell_row_requirements": {
+        "effect_model": "targeted_dispatch",
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "global_cooldown": 0,
+        "cooldown_family": "wm_owned"
+      },
+      "implementation_notes": [
+        "Fresh targeted active shell replacing failed visible shells 946801 and 946604.",
+        "The client row uses a dispatch shot shape with bow/gun/crossbow/thrown subclass allowance, no ranged-slot cast penalty, no movement interrupt flags, and no Fireball spell visual; runtime owns the single-shot attack, so this is not a self-buff and does not globally patch stock Auto Shot or Throw movement checks.",
+        "Damage is resolved from normal ranged auto-attack weapon/AP scaling, with a config damage_pct knob for later calibration."
+      ]
+    },
+    {
+      "shell_key": "broug_auto_retaliation_v1",
+      "spell_id": 946802,
+      "family_id": "passive_aura",
+      "label": "Riposte Instinct",
+      "behavior_kind": "broug_auto_retaliation_v1",
+      "tooltip": "Automatically strike back when Impossible Guard parries hostile damage. Damage scales with weapon damage and attack power.",
+      "icon_hint": "Ability_Warrior_Revenge",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "equipped_item_class": -1,
+        "equipped_item_subclass_mask": 0,
+        "equipped_item_inventory_type_mask": 0,
+        "effect_1": 0,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 0,
+        "effect_misc_value_1": 0,
+        "spell_icon_id": 132,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946802
+      },
+      "shell_row_requirements": {
+        "effect_model": "passive",
+        "allow_class_restriction": false,
+        "allow_talent_requirement": false,
+        "always_castable": true,
+        "cooldown_family": "passive"
+      },
+      "implementation_notes": [
+        "Native runtime owns auto-retaliation damage and cooldown.",
+        "Does not alter stock Revenge, Riposte, or combat outcome tables."
       ]
     },
     {

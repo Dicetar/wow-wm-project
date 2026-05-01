@@ -204,6 +204,18 @@ class QuestPublisher:
                         ),
                     )
                 )
+        if draft.reward.reward_item_mode == "choice":
+            choice_slot = reward_compatibility["choice_item_slots"].get("slot_1", {})
+            if choice_slot.get("item_column") is None or choice_slot.get("count_column") is None:
+                report.issues.append(
+                    PublishIssue(
+                        path="reward.reward_item_mode",
+                        message=(
+                            "Choice reward mode was requested, but this quest_template schema does not expose "
+                            "compatible RewardChoiceItemID1 and quantity columns."
+                        ),
+                    )
+                )
 
         if table_presence.get("quest_template", False):
             report.existing_quest_rows = self._query_world(
@@ -605,6 +617,7 @@ def load_bounty_quest_draft(path: str | Path) -> BountyQuestDraft:
                 if reward.get("reward_item_name") not in (None, "")
                 else None
             ),
+            reward_item_mode=str(reward.get("reward_item_mode") or "fixed"),
             reward_item_count=int(reward.get("reward_item_count", 1)),
             reward_xp_difficulty=(
                 int(reward.get("reward_xp_difficulty", reward.get("xp_difficulty")))
@@ -699,6 +712,19 @@ def _build_reward_column_compatibility(quest_template_columns: set[str]) -> dict
                 ),
             }
             for index in range(1, 6)
+        },
+        "choice_item_slots": {
+            f"slot_{index}": {
+                "item_column": _first_supported_column(
+                    (f"RewardChoiceItemID{index}", f"RewardChoiceItemId{index}"),
+                    quest_template_columns,
+                ),
+                "count_column": _first_supported_column(
+                    (f"RewardChoiceItemQuantity{index}", f"RewardChoiceItemCount{index}"),
+                    quest_template_columns,
+                ),
+            }
+            for index in range(1, 7)
         },
     }
 

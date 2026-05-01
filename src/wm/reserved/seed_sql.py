@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -22,6 +23,20 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _iter_range_specs(ranges: dict[str, Any]) -> list[tuple[str, str, int, int]]:
+    specs: list[tuple[str, str, int, int]] = []
+    for range_key, spec in ranges.items():
+        if not isinstance(spec, dict):
+            continue
+        start = spec.get("start")
+        end = spec.get("end")
+        if start is None or end is None:
+            continue
+        entity_type = str(spec.get("entity_type") or range_key)
+        specs.append((range_key, entity_type, int(start), int(end)))
+    return specs
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -35,13 +50,10 @@ def main(argv: list[str] | None = None) -> int:
         "",
     ]
 
-    for entity_type, spec in ranges.items():
-        start = spec.get("start")
-        end = spec.get("end")
-        if start is None or end is None:
-            continue
-        statements.append(f"-- {entity_type}: {start}..{end}")
-        for reserved_id in range(int(start), int(end) + 1):
+    for range_key, entity_type, start, end in _iter_range_specs(ranges):
+        label = entity_type if range_key == entity_type else f"{range_key} ({entity_type})"
+        statements.append(f"-- {label}: {start}..{end}")
+        for reserved_id in range(start, end + 1):
             statements.append(
                 "INSERT IGNORE INTO wm_reserved_slot "
                 "(EntityType, ReservedID, SlotStatus, ArcKey, CharacterGUID, SourceQuestID, NotesJSON) "

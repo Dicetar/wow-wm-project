@@ -218,7 +218,7 @@ class ItemRollback:
                 )
                 if not existing_rows:
                     self._execute_world(f"DELETE FROM `item_template` WHERE `entry` = {int(item_entry)}")
-                    self._update_reserved_slot(item_entry=item_entry, slot_status="staged")
+                    self._update_reserved_slot(item_entry=item_entry, slot_status="retired")
                 else:
                     row = dict(existing_rows[0])
                     column_order = list(row.keys())

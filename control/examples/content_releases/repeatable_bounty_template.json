@@ -1,0 +1,34 @@
+{
+  "schema_version": "wm.quest.release.repeatable_bounty.v1",
+  "quest_kind": "repeatable_bounty",
+  "player_guid": 5406,
+  "slot_policy": "fresh_reserved_or_existing_active_repeatable",
+  "repeatable": true,
+  "quest": {
+    "quest_level": 70,
+    "min_level": 68,
+    "grant_mode": "npc_start",
+    "template_defaults": {
+      "SpecialFlags": 1
+    }
+  },
+  "objective": {
+    "kind": "kill",
+    "target_entry": 21059,
+    "target_name": "Enraged Water Spirit",
+    "kill_count": 6
+  },
+  "reward": {
+    "kind": "item",
+    "item_entry": 910013,
+    "item_name": "Shadowmoon Watcher's Lens",
+    "item_count": 1,
+    "fresh_visible_reward_ids_required": true
+  },
+  "runtime_sync": {
+    "mode": "auto"
+  },
+  "notes": [
+    "Template only. Use a fresh quest ID when changing visible rewards."
+  ]
+}

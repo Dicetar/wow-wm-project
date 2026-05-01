@@ -62,7 +62,7 @@ class RecordingRollbackManager(QuestRollbackManager):
 
 
 class QuestRollbackTests(unittest.TestCase):
-    def test_rollback_apply_restores_empty_snapshot_and_sets_slot_staged(self) -> None:
+    def test_rollback_apply_restores_empty_snapshot_and_retires_slot(self) -> None:
         manager = RecordingRollbackManager()
         result = manager.rollback(quest_id=910005, mode="apply", runtime_sync_mode="off")
         self.assertTrue(result.ok)
@@ -70,7 +70,7 @@ class QuestRollbackTests(unittest.TestCase):
         self.assertIn("DELETE FROM creature_queststarter WHERE quest = 910005;", joined)
         self.assertIn("DELETE FROM quest_template_addon WHERE ID = 910005;", joined)
         self.assertIn("DELETE FROM quest_template WHERE ID = 910005;", joined)
-        self.assertIn("UPDATE wm_reserved_slot SET SlotStatus = 'staged'", joined)
+        self.assertIn("UPDATE wm_reserved_slot SET SlotStatus = 'retired'", joined)
         self.assertIn("'rollback', 'success'", joined)
 
     def test_reactive_quest_requires_explicit_override(self) -> None:

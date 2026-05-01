@@ -1,0 +1,28 @@
+{
+  "schema_version": "wm.ability.release.shell_power.v1",
+  "content_kind": "ability",
+  "player_guid": 5406,
+  "ability_key": "template_targeted_projectile",
+  "ability_type": "targeted_effect_with_projectile",
+  "shell_family": "unit_target_projectile",
+  "slot_policy": "fresh_shell_slot_required",
+  "behavior_kind": "generic_projectile",
+  "client_truth": {
+    "client_patch_required": true,
+    "server_dbc_required": true,
+    "spellbook_button_required": true
+  },
+  "runtime": {
+    "native_behavior_required": true,
+    "python_decision_required": true,
+    "audit_required": true
+  },
+  "seed": {
+    "stock_seed_spell_id": 133,
+    "seed_template": "wm_unit_target_projectile",
+    "seed_only": true
+  },
+  "notes": [
+    "Base shell for enemy targeted projectile abilities."
+  ]
+}

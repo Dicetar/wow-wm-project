@@ -34,6 +34,28 @@ WmBridge.Emit.Gossip = 1
 WmBridge.Emit.Area = 1
 
 #
+#    WmBridge.Emit.Aura
+#        Emit player aura apply/remove events for the configured marker spells.
+#        Keep this scoped through PlayerGuidAllowList / wm_bridge_player_scope.
+#
+#        Default: 0
+#
+WmBridge.Emit.Aura = 0
+
+#
+#    WmBridge.Emit.AuraSpellAllowList
+#        Comma-separated spell IDs that may emit aura events when aura emission
+#        is enabled. Use "*" only for short debug runs.
+#
+#        Defaults cover current visible WM markers:
+#        - 946602: WM Watcher Beacon player discovery marker
+#        - 132: legacy Detect Invisibility / watcher-lens marker fallback
+#        - 687: area-pressure scene marker
+#        - 770: Lens target mark
+#
+WmBridge.Emit.AuraSpellAllowList = "946602,132,687,770"
+
+#
 #    WmBridge.AoeLoot.Enable
 #        When enabled for an allowed WM player, looting one corpse also gathers
 #        lootable nearby corpses already tapped by that player/group. This is a

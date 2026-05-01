@@ -73,7 +73,7 @@ class ItemRollbackTests(unittest.TestCase):
         self.assertEqual(rollback.executed, [])
         self.assertIn("snapshot_id: 7", _render_summary(result))
 
-    def test_apply_deletes_missing_original_and_sets_slot_staged(self) -> None:
+    def test_apply_deletes_missing_original_and_retires_slot(self) -> None:
         rollback = RecordingItemRollback(rows=[_snapshot_row({"existing_item_template": []})])
 
         result = rollback.rollback(
@@ -86,7 +86,7 @@ class ItemRollbackTests(unittest.TestCase):
         self.assertTrue(result.ok)
         joined = "\n".join(rollback.executed)
         self.assertIn("DELETE FROM `item_template` WHERE `entry` = 910006", joined)
-        self.assertIn("UPDATE `wm_reserved_slot` SET `SlotStatus` = 'staged'", joined)
+        self.assertIn("UPDATE `wm_reserved_slot` SET `SlotStatus` = 'retired'", joined)
         self.assertIn("'rollback', 'success'", joined)
         self.assertTrue(result.restart_recommended)
 

@@ -1,0 +1,47 @@
+{
+  "schema_version": "wm.scene.release.native_sequence.v1",
+  "content_kind": "scene",
+  "player_guid": 5406,
+  "scene_key": "template_weather_fallback_scene",
+  "scene_type": "environment_effect",
+  "slot_policy": "no_visible_id_required",
+  "trigger": {
+    "kind": "arc_beat",
+    "source_event_required": true,
+    "max_event_age_seconds": 600,
+    "notes": "Use this while real zone weather actions are registered but not implemented."
+  },
+  "runtime": {
+    "native_actions_required": true,
+    "audit_required": true,
+    "player_scope_required": true,
+    "control_scene_required": true
+  },
+  "steps": [
+    {
+      "step_key": "announce",
+      "native_action_kind": "world_announce_to_player",
+      "payload": {
+        "message": "The air chills around you as WM bends the scene."
+      },
+      "risk_level": "low",
+      "idempotency_suffix": "announce",
+      "expected_effect": "The scoped player sees local environmental narration.",
+      "requires_live_proof": true
+    },
+    {
+      "step_key": "visible_aura",
+      "native_action_kind": "player_apply_aura",
+      "payload": {
+        "spell_id": 687
+      },
+      "risk_level": "medium",
+      "idempotency_suffix": "visible-aura",
+      "expected_effect": "The scoped player receives a visible temporary aura instead of unsupported real weather control.",
+      "requires_live_proof": true
+    }
+  ],
+  "cleanup": {
+    "required": false
+  }
+}

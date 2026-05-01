@@ -42,12 +42,8 @@ Repo contract:
 
 Shell families currently defined:
 
-- `summon_pet`
-- `summon_companion`
-- `self_buff`
-- `offensive_bolt`
-- `passive_aura`
-- `pet_active`
+- pinned compatibility shells: `summon_pet_compat`, `combat_proficiency_compat`, `pet_active_compat`
+- generic cast-shape shells: `unit_target_projectile`, `unit_target_friendly`, `unit_target_effect`, `target_centered_aoe`, `ground_target_aoe`, `caster_centered_aoe`, `self_aura`, `random_targets`, `passive_aura`, and `frontal_cone`
 
 These shells are WM-owned spell identities. They are the player-facing layer.
 

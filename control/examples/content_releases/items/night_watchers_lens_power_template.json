@@ -1,0 +1,75 @@
+{
+  "schema_version": "wm.item.release.managed_power.v1",
+  "content_kind": "item",
+  "player_guid": 5406,
+  "item_key": "template_night_watchers_lens_power",
+  "item_entry": 910006,
+  "slot_policy": "existing_proven_item_slot_extension",
+  "visibility": {
+    "player_visible_state_required": true,
+    "tooltip_required": true,
+    "wearer_aura_spell_id": 132,
+    "target_aura_spell_id": 770,
+    "client_cache_risk": "existing live item slot; use a fresh item slot if tooltip or visible identity changes fail client proof"
+  },
+  "runtime": {
+    "native_behavior_required": true,
+    "python_decision_required": false,
+    "audit_required": true,
+    "rollback_required": true
+  },
+  "reward_integration": {
+    "quest_reward_allowed": true,
+    "fresh_quest_required_when_reward_changes": true,
+    "direct_grant_allowed": true,
+    "cleanup_supported": true,
+    "notes": "If a visible reward panel changes after acceptance/reward, retire the quest ID and publish a fresh one."
+  },
+  "effects": [
+    {
+      "effect_key": "wearer_marker",
+      "kind": "wearer_aura",
+      "trigger": "equipped",
+      "target": "self",
+      "spell_id": 132,
+      "notes": "Visible state proving the item is active."
+    },
+    {
+      "effect_key": "target_mark_proc",
+      "kind": "target_mark_proc",
+      "trigger": "weapon_or_wand_hit",
+      "target": "enemy",
+      "visible_state": "target aura 770 from the Lens wearer",
+      "native_hook": true,
+      "chance_pct": 10,
+      "duration_ms": 10000,
+      "spell_id": 770
+    },
+    {
+      "effect_key": "spell_focus",
+      "kind": "direct_spell_damage_bonus",
+      "trigger": "non_wand_direct_spell_damage",
+      "target": "marked_enemy",
+      "visible_state": "target aura 770 from the Lens wearer",
+      "native_hook": true,
+      "amount_pct": 15
+    },
+    {
+      "effect_key": "lens_command",
+      "kind": "companion_target_preference",
+      "trigger": "bonebound_echo_seek",
+      "target": "marked_enemy",
+      "visible_state": "target aura 770 from the Lens wearer",
+      "native_hook": true
+    },
+    {
+      "effect_key": "wm_proc_multiplier",
+      "kind": "proc_multiplier",
+      "trigger": "wm_owned_proc_hook",
+      "target": "marked_enemy",
+      "visible_state": "target aura 770 from the Lens wearer",
+      "native_hook": true,
+      "amount_pct": 200
+    }
+  ]
+}

@@ -28,6 +28,8 @@ DEFAULT_QUEST_TEMPLATE_COLUMNS = {
     "RewardMoney",
     "RewardItem1",
     "RewardAmount1",
+    "RewardChoiceItemID1",
+    "RewardChoiceItemQuantity1",
     "RewardXPDifficulty",
     "RewardSpell",
     "RewardDisplaySpell",
@@ -38,6 +40,8 @@ DEFAULT_QUEST_TEMPLATE_COLUMNS = {
 }
 
 _XP_REWARD_COLUMNS = ("RewardXPDifficulty", "RewardXPId", "RewardXP")
+_REWARD_CHOICE_ITEM_ID_COLUMNS = ("RewardChoiceItemID{index}", "RewardChoiceItemId{index}")
+_REWARD_CHOICE_ITEM_COUNT_COLUMNS = ("RewardChoiceItemQuantity{index}", "RewardChoiceItemCount{index}")
 _REPUTATION_SLOT_COUNT = 5
 _REPUTATION_FACTION_COLUMNS = ("RewardFactionID{index}", "RewardFactionId{index}")
 _REPUTATION_VALUE_COLUMNS = (
@@ -80,6 +84,11 @@ def compile_bounty_quest_sql_plan(
 
     reward_item_entry = draft.reward.reward_item_entry or 0
     reward_item_count = draft.reward.reward_item_count if draft.reward.reward_item_entry is not None else 0
+    reward_item_mode = str(getattr(draft.reward, "reward_item_mode", "fixed") or "fixed")
+    fixed_reward_item_entry = reward_item_entry if reward_item_mode == "fixed" else 0
+    fixed_reward_item_count = reward_item_count if reward_item_mode == "fixed" else 0
+    choice_reward_item_entry = reward_item_entry if reward_item_mode == "choice" else 0
+    choice_reward_item_count = reward_item_count if reward_item_mode == "choice" else 0
     reward_spell_id = draft.reward.reward_spell_id or 0
     reward_spell_display_id = draft.reward.reward_spell_display_id or 0
 
@@ -170,8 +179,20 @@ def compile_bounty_quest_sql_plan(
         add_column("RequestItemsText", _sql_quote(draft.request_items_text))
 
     add_column("RewardMoney", str(draft.reward.money_copper))
-    add_column("RewardItem1", str(reward_item_entry))
-    add_column("RewardAmount1", str(reward_item_count))
+    add_column("RewardItem1", str(fixed_reward_item_entry))
+    add_column("RewardAmount1", str(fixed_reward_item_count))
+    choice_item_column = _first_available_column(
+        tuple(template.format(index=1) for template in _REWARD_CHOICE_ITEM_ID_COLUMNS),
+        quest_template_columns,
+    )
+    choice_count_column = _first_available_column(
+        tuple(template.format(index=1) for template in _REWARD_CHOICE_ITEM_COUNT_COLUMNS),
+        quest_template_columns,
+    )
+    if choice_item_column is not None:
+        add_column(choice_item_column, str(choice_reward_item_entry))
+    if choice_count_column is not None:
+        add_column(choice_count_column, str(choice_reward_item_count))
     if draft.reward.reward_xp_difficulty is not None:
         xp_column = _first_available_column(_XP_REWARD_COLUMNS, quest_template_columns)
         if xp_column is not None:

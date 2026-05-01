@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-04-26
+Last verified: 2026-04-28
 Verified by: Codex
 Doc type: reference
 
@@ -74,7 +74,7 @@ The conversation steering table stores durable player/operator preferences that 
 
 ## Status
 
-`WORKING` at repo-test level:
+`WORKING` at repo-test and BridgeLab live level:
 
 - strict journey plan parsing
 - dry-run without DB connection
@@ -82,11 +82,13 @@ The conversation steering table stores durable player/operator preferences that 
 - reader fallback when character tables are absent
 - inspect payload and summary rendering
 - context pack generation input includes active arc keys, unlock refs, reward refs, and steering notes
+- BridgeLab proof for player `5406` / Jecia applied `control/examples/journey/jecia_personal_spine_v1.json`, then inspect returned `status: WORKING`, `arcs: 1`, `unlocks: 2`, `reward_instances: 1`, `conversation_steering: 2`, `prompt_queue: 1`, and `notes: 0`
+- context-pack proof with target creature `46` returned `status: WORKING` and consumed the character state alongside subject/journal state
+- `wm.character.eligibility` now builds a reusable `JourneyEligibilitySnapshot` for arc/reward/power consumers; live context-pack proof returned `ready_for_arc_factory: true` for Jecia with active arc, unlock, reward, steering, and prompt refs
 
 `PARTIAL` for live gameplay:
 
-- BridgeLab state apply for player `5406` still needs to be run when we want live DB proof
-- future arc/reward factory code still needs to consume this spine as an eligibility source
+- future arc/reward factory code still needs to publish a real arc using this eligibility source
 
 ## Test Commands
 

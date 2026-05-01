@@ -67,8 +67,8 @@ This now defines two shell layers:
 Current generic V2 sizing default:
 
 - 100 usable slots per family
-- 100 reserve-gap ids after each generic family
-- 5 generic families in `946000-946999`
+- 0 reserve-gap ids after each generic family
+- 10 generic families in `946000-946999`
 
 Current pinned compatibility shells stay where they already work:
 
@@ -85,7 +85,7 @@ The repo now also provides a range-driven patch-plan export:
 
 - `python -m wm.spells.export_patch_plan --summary`
 
-That export now expands the compatibility rows plus the five generic V2 families, then overlays named shells like `940000`, `940001`, `944000`, and `945000` with their WM-specific metadata.
+That export now expands the compatibility rows plus the ten generic V2 families, then overlays named shells like `940000`, `940001`, `944000`, and `945000` with their WM-specific metadata.
 
 The repo-owned local package builder is:
 
@@ -136,7 +136,7 @@ Current status:
 - `WORKING`: Alpha is the one true persisted pet; Omega is retired from the release lane
 - `WORKING`: total intellect is added to Alpha stats and shadow spell power is added to Alpha attack power
 - `WORKING`: exact shell claims now live in `data/specs/custom_id_registry.json` and `docs/CUSTOM_ID_LEDGER.md`
-- `WORKING`: generic shell-bank V2 is cast-shape based with 100-slot families and 100-id reserve gaps
+- `WORKING`: generic shell-bank V2 is cast-shape based with ten 100-slot families and no remaining reserve gaps inside `946000-946999`
 - `WORKING`: server-side named-shell materialization exists through `python -m wm.spells.server_dbc materialize` and `scripts/bridge_lab/Stage-BridgeLabServerSpellDbc.ps1`; on 2026-04-17 BridgeLab staged `940000`, `940001`, `944000`, and `945000` into `Spell.dbc`, `grant-shell` created `character_spell(5406, 940001)`, and `ungrant-shell` removed it and revoked `wm_spell_grant`
 - `WORKING`: client patch build is repeatable. On 2026-04-17, Codex downloaded official Ladik MPQ Editor into `.wm-bootstrap\tools\mpqeditor`, generated `DBFilesClient\Spell.dbc` plus `DBFilesClient\SkillLineAbility.dbc`, packed and verified `.wm-bootstrap\state\client-patches\wm_spell_shell_bank\patch-z.mpq`, and verified named shell text/presentation data for `940001`
 - `WORKING`: server DBC staging now has a `castable` profile for visible-shell tests. `.\scripts\bridge_lab\Stage-BridgeLabServerSpellDbc.ps1 -SeedProfile castable -SpellId 940001` stages `940001` with WM-owned summon effect/targeting plus explicit icon `221`, cast time index `14`, mana cost `180`, and Summon Voidwalker visual `4054`

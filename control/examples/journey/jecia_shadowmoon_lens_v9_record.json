@@ -1,0 +1,38 @@
+{
+  "schema_version": "wm.character_journey.seed.v1",
+  "player_guid": 5406,
+  "arc_states": [
+    {
+      "arc_key": "jecia_shadowmoon_lens_v9",
+      "stage_key": "shadowmoon_lens_quest_published",
+      "status": "active",
+      "branch_key": "zone_fitting_visible_item_power",
+      "summary": "Fresh Shadowmoon Lens quest moved from Oronok to Earthmender Wilda with fresh quest 910171 and fresh reward item 910013."
+    }
+  ],
+  "reward_instances": [
+    {
+      "reward_kind": "item",
+      "template_id": 910013,
+      "source_arc_key": "jecia_shadowmoon_lens_v9",
+      "source_quest_id": 910171,
+      "is_equipped_gate": true
+    }
+  ],
+  "conversation_steering": [
+    {
+      "steering_key": "fresh_ids_for_visible_content",
+      "steering_kind": "operator_direction",
+      "body": "Never reuse visible quest, item, spell, creature, or object IDs for failed or stale content iterations. Retire the old ID and publish a fresh ID.",
+      "priority": 100,
+      "source": "operator",
+      "is_active": true,
+      "metadata": {
+        "retired_item_entries": [910010, 910011, 910012, 919001, 919002, 919003, 919004, 919005],
+        "replacement_item_entry": 910013,
+        "retired_quest_ids": [910152, 910154, 910155, 910160, 910167, 910168, 910169, 910170],
+        "replacement_quest_id": 910171
+      }
+    }
+  ]
+}

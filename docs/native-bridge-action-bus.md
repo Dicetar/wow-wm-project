@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-26
+Last verified: 2026-04-30
 Verified by: Codex
 Doc type: reference
 
@@ -18,6 +18,7 @@ The action bus is compiled but inert until explicitly enabled:
 - `WmBridge.ActionQueue.Enable = 0`
 - `WmBridge.DbControl.Enable = 0`
 - `WmBridge.PlayerGuidAllowList = ""`
+- `WmBridge.Emit.Aura = 0`
 - most native mutation verbs are disabled in `wm_bridge_action_policy`
 - most mutation verbs return `not_implemented` in C++ until each body has a lab test
 
@@ -48,7 +49,7 @@ Implemented native actions in the first safe slice:
   - `creature_set_scale`
   - repo tests and BridgeLab native build are `WORKING`
   - live scene proof through `arcane_marker_demo` reached proposals `46-51` and native requests `84-89` `done`
-- Cleanup primitive is `WORKING` at repo/static-test level and `PARTIAL` for live proof:
+- Cleanup primitive is `WORKING` at repo/static-test and BridgeLab live-proof level:
   - `player_remove_item`
   - policy-disabled by default
   - scoped to the online player
@@ -63,25 +64,43 @@ Implemented native actions in the first safe slice:
   - selects enchant IDs from `item_enchantment_random_tiers`
   - defaults to a guaranteed first enchant plus 15% chance to preserve existing enchant slots
   - supports tier clamps/options (`minimum_tier`, `forced_tier`, `bonus_tier`, `bonus_tier_chance_pct`) and `selected_enchant_slot_index` for exactly one-slot rerolls
-- Random enchant consumable item-use, operator-selected kill grant, and scoped watcher grant paths are `WORKING` for the original `910007` proof; the current retune is repo `WORKING` / live `PARTIAL` until in-game focused vellum use is proven:
+- Random enchant consumable item-use, operator-selected kill grant, scoped watcher grant, and current two-vellum retune are `WORKING` for player `5406`:
   - item `910007` (`Unstable Enchanting Vellum`) stacks to `999`, drops from scoped kill rolls at `7%`, applies up to three enchants, preserves existing enchant slots at 15%, and has a 10% chance per roll to use tier 5
   - item `910008` (`Enchanting Vellum`) stacks to `999`, drops from scoped kill rolls at `3.5%`, opens a target-item menu followed by an enchant-slot submenu, and rerolls exactly one chosen slot with weighted tiers: 40% tier 3, 30% tier 4, 30% tier 5
   - native `ItemScript` opens menus for eligible equipped items and calls the same random-enchant helper; selected scoped kill rolls submit `player_add_item` for consumables instead of mutating gear directly
   - old repo SQL/script/tests, BridgeLab native build, lab SQL apply, deploy/restart, direct native grant request `160`, live stack proof, user in-game right-click/enchant/consume proof for player `5406`, forced scoped kill-roll request `161`, and watcher requests `162`/`163` are `WORKING`
-  - new dual-drop idempotency and focused slot behavior are repo-tested, with BridgeLab SQL apply, native rebuild/restart to worldserver pid `33620`, `debug_ping` request `164`, direct grant requests `165` / `166`, character inventory persistence, and watcher pid `30224` `WORKING`; in-game focused menu/slot-reroll proof is pending
+  - new dual-drop idempotency and focused slot behavior are repo-tested, with BridgeLab SQL apply, native rebuild/restart, direct grant requests, character inventory persistence, watcher arming, and user in-game acceptance complete
 
-Bone Lure item-use lane is repo/build/DB/grant `WORKING` and live gameplay `PARTIAL`:
+Bone Lure item-use lane is `WORKING` for the accepted BridgeLab gameplay slice:
 
 - item `910009` (`Bone Lure Charm`) uses a known bomb target spell only for client ground-target UX
 - native `ItemScript` owns the mutation, consumes the item only after spawn, and refuses non-scoped players
 - creature `920102` (`Bone Lure Obelisk`) is a native `CreatureScript` lure with owner-scaled health, 75% damage reduction, DoT/status immunity, 30-second duration, and repeated 200-yard non-boss taunt pulses
-- BridgeLab SQL apply, native compile, updater apply, worldserver restart to pid `20232`, watcher restart to pid `18768`, native `debug_ping` request `262`, and direct grant request `263` for five charms are done; in-game proof remains pending
+- BridgeLab SQL apply, native compile, updater apply, worldserver restart to pid `20232`, watcher restart to pid `18768`, native `debug_ping` request `262`, direct grant request `263` for five charms, and user gameplay acceptance are complete
+- detailed taunt/leash regression should be rerun before broadening the mechanic
 
 Everything risky should be proven in `D:\WOW\WM_BridgeLab` before promotion.
 
 `quest_add` now emits a native bridge `quest/granted` row on success so WM can observe the grant through the same event spine instead of relying only on the action result.
 For WM force-grant parity, `quest_add` mirrors GM `.quest add` sanity checks: reject item-start quests and already-active quests, but do not reuse `player->CanTakeQuest()`, because that is stricter than the existing SOAP/GM path and can reject repeatable/operator WM grants that are supposed to succeed.
 The higher-level WM `quest_grant` action now prefers native `quest_add` when bridge config, player scope, and policy are ready, and falls back to SOAP only when native is not currently available.
+
+## Player Marker Aura Discovery
+
+The bridge now has a scoped player-aura sensor for finding the real character during multi-character tests. It emits `aura.applied` / `aura.removed` only when `WmBridge.Emit.Aura = 1`, the player is allowed by `WmBridge.PlayerGuidAllowList` or `wm_bridge_player_scope`, and the spell is in `WmBridge.Emit.AuraSpellAllowList` (`946602,132,687,770` by default). This is a sensing lane, not a new freeform mutation lane.
+
+Default discovery uses WM-owned shell `946602` (`WM Watcher Beacon`): an undispellable, no-duration dummy aura with fitting watcher text/icon and no gameplay stat, damage, control, or periodic effect. Stock `132` remains only a compatibility fallback for older lab runs.
+
+For a short "find the logged-in character" run, enable `WmBridge.PlayerGuidAllowList = "*"` only temporarily, apply the marker aura in-game, then scan and scope the latest marker:
+
+```powershell
+python -m wm.sources.native_bridge.configure --config-path D:\WOW\WM_BridgeLab\run\configs\modules\mod_wm_bridge.conf --allow-all --reload-via-soap --summary
+python -m wm.sources.native_bridge.player_marker scan --spell-id 946602 --since-seconds 300 --summary
+python -m wm.sources.native_bridge.player_marker scope-latest --spell-id 946602 --since-seconds 300 --summary
+python -m wm.sources.native_bridge.configure --config-path D:\WOW\WM_BridgeLab\run\configs\modules\mod_wm_bridge.conf --clear --reload-via-soap --summary
+```
+
+After the GUID is known, return the bridge to DB-backed per-player scope and start the normal native watcher for that GUID. Do not leave wildcard player observation enabled.
 
 ## Tables
 

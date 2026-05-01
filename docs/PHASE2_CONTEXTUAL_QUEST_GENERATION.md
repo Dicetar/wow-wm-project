@@ -1,4 +1,11 @@
+Status: STALE
+Last verified: 2026-04-28
+Verified by: Codex
+Doc type: design
+
 # Phase 2 — Contextual Quest Generation
+
+This note is historical planning context. It is superseded by [ROADMAP.md](ROADMAP.md), which frames context generation as part of the per-character journey, arc/reward factory, and locked-contract LLM tracks. Use current-state docs before using any implementation target in this file.
 
 This note defines the **next safe continuation step** after the live quest publish / edit / rollback slice.
 

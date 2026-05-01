@@ -13,6 +13,7 @@ venv/
 .worktrees/
 .pytest-tmp/
 .wm-bootstrap/
+.wm-tools/
 artifacts/
 data/repack/
 data/test_tmp/

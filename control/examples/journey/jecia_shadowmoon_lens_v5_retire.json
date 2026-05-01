@@ -1,0 +1,13 @@
+{
+  "schema_version": "wm.character_journey.seed.v1",
+  "player_guid": 5406,
+  "arc_states": [
+    {
+      "arc_key": "jecia_shadowmoon_lens_v5",
+      "stage_key": "retired_choice_reward_not_visible",
+      "status": "retired",
+      "branch_key": "zone_fitting_visible_item_power",
+      "summary": "Retired after the DB-correct one-option choice reward path still showed no reward in the live quest details panel. Replaced by fresh v6 IDs with fixed reward columns and sanitized generated quest flags."
+    }
+  ]
+}

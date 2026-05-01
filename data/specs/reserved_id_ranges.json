@@ -16,6 +16,12 @@
       "end": 910999,
       "purpose": "WM private reward items, equipped-gate items, and item prototypes"
     },
+    "item_cache_escape": {
+      "entity_type": "item",
+      "start": 919000,
+      "end": 919999,
+      "purpose": "WM private reward item replacements after a visible item id is retired for stale or polluted live client identity"
+    },
     "spell": {
       "start": 947000,
       "end": 947999,

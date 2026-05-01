@@ -1,185 +1,269 @@
 Status: PARTIAL
-Last verified: 2026-04-26
+Last verified: 2026-05-01
 Verified by: Codex
 Doc type: handoff
 
-# Next Chat Handoff
+# WM Project Handoff For Next Chat
 
-This is the short, practical handoff for continuing WM work in a fresh chat.
+Repo: `D:\WOW\wm-project`
+Branch: `main`, tracking `origin/main`
+State: dirty as hell. Do not stage broadly. Do not "clean up" unrelated files.
 
-Use this with:
+## Read First
 
-- [Documentation Index](README_OPERATIONS_INDEX.md)
-- [Roadmap](ROADMAP.md)
-- [WM Platform Handoff](WM_PLATFORM_HANDOFF.md)
-- [Work Summary](WORK_SUMMARY.md)
-- [Summon and Spell Platform Status](SUMMON_SPELL_PLATFORM_STATUS.md)
-- [Custom ID Ledger](CUSTOM_ID_LEDGER.md)
+Read these before touching code:
 
-## Repo State
+1. `AGENTS.md`
+2. `docs/README_OPERATIONS_INDEX.md`
+3. `docs/CODEX_WORKING_RULES.md`
+4. `docs/WM_PLATFORM_HANDOFF.md`
+5. `docs/WORK_SUMMARY.md`
+6. `docs/ROADMAP.md`
+7. `docs/SUMMON_SPELL_PLATFORM_STATUS.md`
+8. `docs/SUMMON_FAILURE_POSTMORTEM.md`
+9. `docs/CUSTOM_ID_LEDGER.md`
+10. `docs/native-bridge-action-bus.md`
+11. `docs/NEXT_CHAT_HANDOFF.md`
+12. `docs/ARC_REWARD_FACTORY_V1.md` if present
 
-Repo path: `D:\WOW\wm-project`
+Trust current-state docs and postmortems over old phase docs. Transcript files are history, not operating instructions.
 
-Default validation player: `5406` / Jecia
+## Non-Negotiables
 
-BridgeLab MySQL is `127.0.0.1:33307`. Do not use default `3306` for BridgeLab proof.
+- Never reuse failed visible IDs. Fresh ID + retire/cleanup old ID.
+- Python owns decisions, validation, audit, publishing, arcs, state.
+- Native owns sensing, typed actions, runtime effects.
+- No freeform SQL/GM/LLM mutation lane as architecture.
+- BridgeLab player is `5406` / Jecia.
+- BridgeLab MySQL is `127.0.0.1:33307`, not `3306`.
+- Preserve dirty worktree. Many files were already changed before the last chat.
 
-The repo is an external-first World Master platform for AzerothCore:
+## Current Priority
 
-- Python WM owns decisions, validation, audit, publishing, rollback, and operator workflow.
-- Native modules own sensing and typed atomic actions.
-- `control/` is the operator and future LLM contract lane.
-- Freeform SQL, freeform GM commands, and direct LLM mutation are not supported architecture.
-- The roadmap direction is per-character World Master progression: personal arcs, exclusive rewards/unlocks, item-granted abilities, visible shell powers, live scenes, companion behavior, and conversation steering.
+Immediate priority is to move back to roadmap feature work using the proven strategies documented in [Working Strategies V1](WORKING_STRATEGIES_V1.md). The user's new-character pipeline test on Broug is accepted as working: watcher scoping, combat proficiencies, linked quests, custom ability rewards, Impossible Guard, Skirmisher's Mark, Deflect, Counterstrike Stance, Vulnerable/Deflected states, and Riposte are no longer the active debugging loop unless a concrete regression is reported.
 
-## Current Working Areas
+Bonebound Restorer movement/casting is live-proven by the user as working. The remaining Echo x3-range DPS spell clone and Echo Destroyer movement-speed retune stay `PARTIAL` until live retest, but they are no longer the active request unless the user asks for them.
 
-- Event spine: canonical events, projection, rule evaluation, reaction logs, cooldowns, inspect/watch/run flows.
-- Control lane: `wm.control.new`, `wm.control.validate`, `wm.control.apply`, `wm.control.audit`, stale-event policy, idempotency, wrong-player rejection, and native request audit extraction.
-- Native bridge: typed action queue, player scope, policy rows, primitive action packs, and BridgeLab control/audit proof for the first scene primitives.
-- Reactive bounty templates: fast operator install path through bundled templates and reserved quest slots.
-- Dynamic auto-bounty: opt-in 4 consecutive same-entry kills within 300 seconds, zone-based turn-in NPC selection, random suitable equipment reward selection, player-scoped native bridge cursor/evaluation, one-event BridgeLab apply batches, a one-hour dynamic-rule freshness gate, one unresolved dynamic auto-bounty per player by default, full managed quest-slot seeding before BridgeLab proof, and pre-arm backlog marking when arming from end.
-- Bounty publishing: repeatable quest semantics through `quest_template_addon.SpecialFlags |= 1`, level-scaled money, XP difficulty, item rewards, spell rewards, and reputation rewards where schema supports them.
-- Custom ID governance: exact claims live in `data/specs/custom_id_registry.json`; docs mirror that ledger.
-- Spell shell path: named shell/client patch/server DBC pipeline is working at repo/artifact level, with `940001` as the Bonebound Alpha lane.
-- Bonebound Alpha: supported summon lane is single Alpha on shell `940001`, creature entry `920100`, echo entry `920101`; Omega is retired. Visible Alpha/Echo bleed is live `WORKING` after the 2026-04-25 BridgeLab proof: melee hooks apply visible target aura `772`, physical ticks are WM-owned, Echo bleed stacks independently by caster GUID plus target GUID, and tick damage is attack-power-primary through `bleed_damage_per_attack_power_pct=20`.
-- Persistent combat proficiencies: Shield, Leather, and Dual Wield are explicit-GUID grants backed by DBC validity, not login hooks or class overrides.
-- BridgeLab solo dungeon tuning: active config files are staged for solo 5-player dungeons at 75% original 5-player HP, 50% damage, 75% XP, and 2x dungeon loot. Config-load proof is `WORKING` because the files contain the expected values and current worldserver pid `32420` started after they were written; live dungeon feel is still `PARTIAL` until an in-game check.
+Latest deployed Echo changes:
 
-## Current Partial or Open Areas
+- Restorers keep seek target for 30s.
+- Restorers move at `1.5x` Alpha speed.
+- Destroyers move at `1.75x` Alpha speed through `alpha_echo_movement_speed_multiplier`.
+- Restorers use `MoveChase` instead of enemy `MoveFollow`.
+- Restorer seek movement is fixed by `Attack(victim, false)` plus no pre-chase `AttackStop()`.
+- Restorer DPS moved off stock Mind Blast `8092` onto fresh WM-owned clone `946099`.
+- `946099` is cloned from `8092` in server Spell.dbc with the same cast/effect/visual/icon fields and `RangeIndex=157` (`90yd`, 3x stock Mind Blast `30yd`).
+- Stock Mind Blast `8092` is verified still default `RangeIndex=4`.
+- `wm echo status` / `wm echo state` is now deployed as a scoped diagnostic. It reports seek/follow mode, radius, tracked/live Echo counts, Restorer target/ready/casting/pending/cooldown/range/LOS counts, DPS spell-info availability, and first-Restorer target/range/cast details.
+- Client patch package was rebuilt and installed after the client closed. Extracted `patch-z.mpq` verification found `946099:range=157:cast=16:effect0=2:visual2=3057:icon=95:name=Echo Mind Blast`.
 
-- Phase 1 native bounty parity remains `PARTIAL` until a full live trigger -> grant -> complete -> reward -> suppress -> cooldown -> regrant loop is rerun on current code.
-- Dynamic auto-bounty live proof is `WORKING` for the trigger/grant leg and still `PARTIAL` for the full playcycle. On 2026-04-26, Jecia's `Hederine Slayer` (`7463`) streak created quest `910103`, reward item `20631` (`Mendicant's Slippers`), native `quest_add` request `312` reached `done`, native bridge emitted `quest/granted` event `31367`, WM recorded event `5483`, and SOAP/DB later showed quest `910103` complete (`status=1`, `mobcount1=4`). A pre-fix single-open gate miss then created current active quest `910102` (`Bounty: Hederine Initiate`); the code now prioritizes active rules and scans all player auto-rule quest IDs instead of the 50 newest updated rows. Complete -> reward -> suppress -> cooldown -> regrant still needs proof on `910102` or a later clean bounty.
-- Random enchant consumable item-use, operator-selected kill grant, and scoped watcher grant paths are live `WORKING` for the original `910007` proof; the current two-vellum retune is repo `WORKING` / live `PARTIAL` until user in-game focused vellum use is proven. Native action `player_random_enchant_item` remains policy-disabled by default. The player-facing path now grants `910007` (`Unstable Enchanting Vellum`) at `7%` and `910008` (`Enchanting Vellum`) at `3.5%` from scoped kill rolls when `WM_RANDOM_ENCHANT_ON_KILL_ENABLED=1`; it still requires player scope and does not run globally. `910007` stacks to `999`, applies up to three enchants, preserves existing slots at 15%, and has a 10% chance per roll to use tier 5. `910008` stacks to `999`, lets the player choose target item then enchant slot, and rerolls one chosen slot with weighted tiers: 40% tier 3, 30% tier 4, 30% tier 5. Old proof covered direct grant request `160`, live stack proof, user right-click/enchant/consume proof, forced scoped kill-roll request `161`, and watcher requests `162`/`163`. On 2026-04-25, SQL `2026_04_25_02_wm_bridge_enchanting_vellum_variants.sql` was applied, `mod-wm-bridge` was rebuilt/restarted to worldserver pid `33620`, native request `164` reached `done` for `debug_ping`, requests `165` / `166` granted `910007` / `910008`, inventory persistence showed `910007` count `40` and `910008` count `1`, and watcher pid `30224` was armed from end with random enchant drops enabled at `7%` / `3.5%`. The weighted tier change was rebuilt/restarted to worldserver pid `31360`; request `260` `debug_ping` reached `done`, request `261` extra `910008` grant failed with `player_not_online`, and watcher pid `27240` is now armed from end.
-- Bone Lure consumable is no longer the active proof target; user accepted the lane as OK before moving back to roadmap work. Repo/build/DB/grant status remains `WORKING`: item `910009` (`Bone Lure Charm`) and creature `920102` (`Bone Lure Obelisk`) are claimed, SQL `2026_04_25_03_wm_bridge_bone_lure_obelisk.sql` is applied, native compile is clean, worldserver pid `20232` ran the proof build, native request `262` `debug_ping` reached `done`, request `263` granted five charms, and gameplay was accepted by user. Keep detailed taunt/leash regression proof in mind before broadening the mechanic.
-- Reactive area-pressure scene feature is repo `WORKING` / live `PARTIAL`: `WM_EVENT_AREA_PRESSURE_SCENE_ENABLED=1` makes the existing area-pressure opportunity compose typed native `world_announce_to_player`, `player_restore_health_power`, and optional visible `player_apply_aura` actions. `Start-BridgeLabNativeWatch.ps1 -EnableAreaPressureScene` exposes the BridgeLab proof lane. Native action idempotency now includes trigger identity plus `idempotency_suffix`, preventing repeated event triggers from reusing the first native request.
-- Bonebound Alpha/Echo visible bleed is `WORKING` after user live proof on 2026-04-25. Echo bleed stacks independently by caster GUID plus target GUID, and ticks scale primarily from caster melee attack power (`bleed_damage_per_attack_power_pct=20`). Echo Destroyer seek/follow/range/teleport control and Echo Restorer Mind Blast/positioning/speed/seek retune are deployed on BridgeLab pid `28000`: active WM player can type `wm echo seek`, `wm echo seek 60`, `wm echo range 60`, `wm echo follow`, or `wm echo teleport` / `wm echo tp` / `wm echo recall`; seek radius is per-player runtime state clamped to `5-100` yards. Restorers should cast visible Mind Blast `8092` at up to `100` yards, participate in seek as ranged casters, spread in closer formation slots between player and Destroyers, and move at Destroyer-matched template/runtime speed. Live proof still needs confirmation. Echo mount/dismount restore still needs live proof.
-- 2026-04-27 retune after the above: seek now chooses nearest eligible hostile to Jecia, not nearest to each Echo; Restorers can leave the close support ring in seek mode to get into visible cast range; Restorer Mind Blast starts a real visible `8092` cast instead of a fake delayed triggered hit; active Echo names force object-visibility refresh; Bonebound Echo Stasis adds active Echo counts into the saved pool instead of replacing it and restores only when no Echoes are active; Echo follow slots use deterministic formation rings with a 1.6 yard spacing target to reduce model-merge. BridgeLab worldserver pid is now `28000`; live proof is still needed.
-- 2026-04-27 server-error cleanup: Jecia had stale stock visual/template spells `116`, `133`, `403`, `770`, `1459`, and `16827` persisted in `character_spell`, causing AzerothCore login validation errors and deletion messages. Those rows were deleted from BridgeLab, and `wm.content.workbench` now blocks those IDs from persistent player learn paths. Stock visual/template spell IDs remain allowed as DBC seed/effect/visual references only.
-- Bonebound Alpha Demonology passive compatibility is not globally proven.
-- Combat proficiency playerbot negative proof is still open.
-- Client-visible spell shell polish remains open for animation/action-bar/relog lifecycle.
-- Generic shell-bank V2 families need one live proof per family before marking client lab proof `WORKING`.
+This was deployed after the user reported "Good, its working. But Restorers definitely need more range on their damage spell. Make it x3." and then "increase movespeed of Destroyers - they engage slower than casters".
 
-## Immediate Bug Context
+## What To Do Next
 
-Latest live issue is resolved for the trigger/grant leg. Root cause on 2026-04-26 was not perception: the dynamic auto-bounty planner could resolve a bounty, but lab `wm_reserved_slot` only had quest rows `910000-910099`, so there were zero free quest slots even though the ledger range is `910000-910999`. The old path silently returned `None` on slot exhaustion and then marked kills evaluated.
+AHBot was the latest infrastructure interruption before returning to features:
 
-Fixes now in repo:
+- Official `azerothcore/mod-ah-bot` was already current at `a680cc1`, but the long config the user pointed at is from `NathanHandley/mod-ah-bot` / Auction Bot Plus.
+- BridgeLab active module is now swapped to `NathanHandley/mod-ah-bot` commit `1822d96072a5168a775551fa5017ec947c9fbf7b`, with `src/wm_loader_compat.cpp` preserved for the generated `mod-ahbot` loader name.
+- `Configure-BridgeLabRuntime.ps1` now rebases legacy short AHBot configs from the fork's long dist file and writes the Auction Bot Plus profile: shared neutral AH, `40000` Neutral lots, Alliance/Horde `0`, seller and buyer enabled on GUID `1`, half AH deposit/cut in `worldserver.conf`, buyout `-30%/+20%`, bid `70-100%` of buyout, custom WM IDs disabled, and poor/generic/quest/key/misc/quiver weights zeroed.
+- `scripts/repack/Apply-LatestBaselineConfigDefaults.ps1` carries the same profile for the non-BridgeLab run tree.
+- `sql/bootstrap/bridge_lab_ahbot_market.sql` remains as legacy fallback and now disables poor, quest/key/misc, custom, deprecated/test/NPC-equip rows.
+- Build/deploy proof on 2026-05-01: forced CMake reconfigure after stale old AHBot source list, native build succeeded with the existing duplicate-loader warning only, old 40,000 AHBot auctions were purged while worldserver was stopped, BridgeLab worldserver restarted to pid `36324`, and DB proof showed neutral AH repopulating from `6000` to `16000` lots owned by GUID `1` with zero bad class/poor/custom rows and zero zero-price rows. Full tests passed: `554 passed`.
+- Gameplay-browser proof is still `PARTIAL` until the user opens the AH and confirms the market feels useful.
 
-- native bridge cursor key is per-player: `last_seen:player:<guid>`, with a legacy `last_seen` fallback.
-- `execute_event_spine()` passes `player_guid` into unprojected/unevaluated event reads, so a scoped run does not evaluate other characters' backlog.
-- BridgeLab auto-bounty watcher starts with `--batch-size 1` to avoid multiple apply plans in one iteration.
-- dynamic auto-bounty creation ignores stale queued kills by default via `WM_REACTIVE_AUTO_BOUNTY_MAX_EVENT_AGE_SECONDS=3600`.
-- dynamic auto-bounty creation is serial per player by default via `WM_REACTIVE_AUTO_BOUNTY_SINGLE_OPEN_PER_PLAYER=1`; this prevents fast pulls from stacking several fresh WM bounty quests before the player can complete or clear the first one.
-- repo scripts no longer write global `AiPlayerbot.EnableBroadcasts = 0`; that is a temporary runtime safety switch only, not a WM deployment behavior.
-- `ReactiveAutoBountyManager` now raises a visible operator error when a valid dynamic plan cannot allocate a reserved quest slot.
-- `Start-BridgeLabAutoBounty.ps1` seeds quest slots `910000-910999` before arming.
-- `wm.events.watch --mark-existing-evaluated-on-arm` marks already recorded scoped event backlog evaluated when paired with `--arm-from-end`; the auto-bounty starter uses it by default so pre-arm events do not create the first active rule.
-- the unresolved-bounty gate no longer limits the player auto-rule scan to 50 rows; it orders active rules first, then updated time, so bulk deactivation cannot hide the actual open quest behind newer inactive rows.
+The previous user direction to log into another character and run the full WM pipeline produced the Broug proof below. Do not restart that pipeline from scratch unless the user asks for a new character.
 
-Live recovery was applied:
+New marker workflow is repo/build/deploy `WORKING`; live marker proof is still `PENDING` until the user applies the marker on the new character:
 
-- the full managed quest slot range was seeded in BridgeLab: existing `100`, inserted `900`.
-- watcher restarted cleanly on pid `21272` with `mark_existing_evaluated_on_arm=true`, cursor `last_seen:player:5406`, and no active auto rules / no unevaluated backlog before the fresh proof.
-- fresh `Hederine Slayer` (`7463`) kills produced quest `910103` (`Bounty: Hederine Slayer`), native request `312` `done`, native bridge event `31367`, and WM event `5483`; later `saveall` showed `910103` complete with `mobcount1=4`.
-- current active rule is `reactive_bounty:auto:zone:618:subject:7461` for quest `910102` (`Bounty: Hederine Initiate`). SOAP reports `910102` incomplete; after `saveall`, DB showed `mobcount1=2`. Finish `910102` with two more `7461` kills, then turn in at Witch Doctor Mau'ari (`10307`) to prove reward/cooldown/regrant.
+- `mod-wm-bridge` now has an opt-in aura sensor for player marker spells, gated by `WmBridge.Emit.Aura` and `WmBridge.Emit.AuraSpellAllowList = "946602,132,687,770"`.
+- Default marker is WM-owned shell `946602` (`WM Watcher Beacon`), an undispellable no-duration dummy aura with no gameplay effect. Stock `132` is only a compatibility fallback.
+- Follow-up requested by user: change the `946602` icon away from the current eye icon to a cleaner Dalaran/arcane/logo-like icon in the next presentation-only DBC refresh. Do not change the marker ID or behavior for this cosmetic pass.
+- Current deployed marker proof on 2026-04-30: BridgeLab worldserver pid `30756`, client `patch-z.mpq` rebuilt/installed after the client closed, server and extracted client DBC rows both verify `946602:dispel=0:duration=0:effect1=6:basepoints1=0:aura1=4:icon=135:visual1=0:visual2=0`, and native ping request `581` returned `pong`.
+- `python -m wm.sources.native_bridge.configure --config-path D:\WOW\WM_BridgeLab\run\configs\modules\mod_wm_bridge.conf --allow-all --reload-via-soap --summary` enables temporary wildcard observation when the new character GUID is unknown.
+- `python -m wm.sources.native_bridge.player_marker scan --spell-id 946602 --since-seconds 300 --summary` lists recent marker aura applications.
+- `python -m wm.sources.native_bridge.player_marker scope-latest --spell-id 946602 --since-seconds 300 --summary` scopes the latest marked player in `wm_bridge_player_scope`.
+- `python -m wm.sources.native_bridge.configure --config-path D:\WOW\WM_BridgeLab\run\configs\modules\mod_wm_bridge.conf --clear --reload-via-soap --summary` turns wildcard config observation back off; DB-backed scope remains in `wm_bridge_player_scope`.
+- For unknown-character discovery only, wildcard bridge observation may be used briefly, then must be turned off. Do not leave `WmBridge.PlayerGuidAllowList = "*"` running.
 
-Previous Whelp failure context:
+After marker discovery identifies a future new character, start the normal native watcher for that GUID and proceed with watcher, bounty, custom item reward, ability, and passive testing. Broug's current slice is already accepted.
 
-The user killed "Crimson Whelps", but the live event stream showed exact entries:
+Current Broug status:
 
-- `1043` = `Lost Whelp`
-- `1069` = `Crimson Whelp`
+- Marker discovery found `5405` / `Broug` through aura `946602`; wildcard observation was cleared immediately after scoping.
+- Broug is a level `4` human rogue in Elwynn/Northshire. Latest snapshot showed nearby Kobold Vermin `6` and Kobold Worker `257`.
+- Scoped watcher is running for Broug as pid `8876` with `--arm-from-end` and `--mark-existing-evaluated-on-arm`.
+- User redirected first feature work to combat proficiency: copy Jecia's shield pipeline and grant Broug two-handed swords, two-handed axes, polearms, Mail, and level-40 Plate.
+- Repo changes extend `python -m wm.spells.shield_proficiency` and SQL `native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql`.
+- BridgeLab SQL was reapplied with Rogue-compatible DBC masks, client `patch-z.mpq` was rebuilt/installed with `SkillRaceClassInfo.dbc` and `SkillLineAbility.dbc` combat rows, worldserver restarted to pid `10360`, `WmSpells.PlayerGuidAllowList = "5405,5406"`, and `python -m wm.spells.shield_proficiency --player-guid 5405 --mode apply --summary --player-level-override 4` returned `ok=true`.
+- Broug DB rows now include skills `55`, `118`, `172`, `229`, `413`, `414`, and `433`, and spells `107`, `197`, `200`, `202`, `674`, `8737`, `9077`, and `9116`. Weapon skill caps are level-scaled and preserved on reapply: `55=18/20`, `172=1/20`, `229=1/20`. Plate skill `293` and spell `750` are absent because Broug is below level `40`; the active `wm_spell_grant` metadata records Plate as locked until level `40`.
+- Fix applied after the user screenshot showed no two-handed rows: `src/wm/spells/shield_proficiency.py` now uses `level * 5` weapon caps, preserves existing skill progress on reapply, and `native_modules/mod-wm-spells/src/wm_spell_runtime.cpp` materializes only active explicit `combat_proficiency` grants in-memory by learning missing proficiency passives and setting scoped skill values. Do not revive broad class/default/playerbot grant paths.
+- Focused Broug/DBC tests passed: `38 passed`. Full tests passed: `python -m pytest -q` -> `542 passed`. Client `patch-z.mpq` was rebuilt/installed, server `Spell.dbc` was staged for `946098`, `946603`, and `946800`; latest no-aura restage refreshed `946603`, latest Skirmisher movement restage refreshed `946098`, BridgeLab worldserver restarted to pid `18080`, and native ping request `601` returned `pong`.
+- Broug in-game proof is accepted as working for the current feature slice. Combat proficiencies, linked quests, and custom abilities should be treated as proven for Broug unless the user reports a specific regression. Plate still remains intentionally locked until level `40`.
+- Broug guard progression is `WORKING` for the current scope. Fresh base shell `946800` (`Impossible Guard`) is reserved and learned by Broug. Old visible shell `946801` (`broug_mobile_marksman_v1`) is `BROKEN`/retired after live proof that the passive moving pulse felt strange; never reuse it. Failed shell `946604` (`broug_skirmisher_mark_v2`) is also `BROKEN`/retired because it presented as a self-buff/toggle instead of a Throw/Shoot-like active attack; never reuse it. Fresh targeted active replacement `946098` (`broug_skirmisher_shot_v1`) fires one Broug-scoped native ranged/thrown attack at the selected hostile target, using equipped ranged weapon speed and normal ranged auto-attack scaling while moving, without globally patching stock Throw or Auto Shot. Latest `946098` DBC row removes the inherited Throw ranged-slot flag and clears movement interrupt fields (`attrs=0x410010`, interrupt/aura/channel interrupt `0`). Broug DB proof has only `946098` and `946800` active in `character_spell`; `946801` and `946604` are revoked with `replaced_by=946098`. Fresh reward shells `946603` (`Deflect`) and `946802` (`Riposte Instinct`) plus linked quests `910180` -> `910181` and hidden credit entries `920104` / `920105` are implemented through SQL `2026_04_30_02_wm_spell_broug_deflect_rewards.sql` and native quest-complete hooks. User reported quests done and abilities working on 2026-05-01.
+- Latest Deflect correction: `946603` now disables Impossible Guard during the iframe, clears queued forced parries on activation, blocks caught damage immediately, and delays the stun/reflected hit until iframe end while playing a melee attack animation/sound. Icons changed to Retaliation `278` for Deflect and Overpower `26` for Impossible Guard, verified in client payload, extracted MPQ, and server `Spell.dbc`. The latest `946603` DBC row has zero dispel, duration, effect, aura, base-point, and misc payload, so casting Deflect should not create a visible buff; stale saved `character_aura(guid=5405, spell=946603)` was deleted. Gameplay is accepted for the current Broug scope.
+- Current Deflect rework state: fresh visible shells `946200` (`Vulnerable`) and `946201` (`Deflected`) are deployed, both icon `558`. Existing active `946603` remains the Deflect button and stays aura-free. Runtime is a rooted `650ms` guard (`100ms` pre, `450ms` parry animation, `100ms` post), hostile melee/direct spell/direct AoE/periodic/aura blocking, and one Vulnerable stack per blocked attacker/caster. Fresh stance shell `946605` (`Counterstrike Stance`) is now a real stance aura (`SPELL_AURA_MOD_SHAPESHIFT`, form `13`, `StanceBarOrder=1`), not a DB-backed pseudo-toggle; Deflect auto-counterattacks only if Broug has the live `946605` aura when the window resolves. Root cause of the old timed-buff display was the DBC materializer writing `duration_index` to field `37` (`MaxLevel`) instead of real field `40`; this is fixed. Focused tests passed (`43`), full tests passed (`551`), SQL correction applied and verified `counterattack_requires_aura=true`, server and extracted client DBC staged `946605` with stance category `47`, permanent `duration_index=21`, Rogue family `8`, `damage_class=0`, `prevention_type=0`, and `stance_bar_order=1`; client `patch-z.mpq` installed, stale saved timed `character_aura(guid=5405, spell=946605)` was deleted, native build passed with one existing duplicate-loader warning and `0` errors, BridgeLab worldserver pid `35284`. User live acceptance on 2026-05-01 makes this `WORKING` for Broug's current scope.
+- Latest Deflected stack/stun correction: `946200` and `946201` now have DBC `StackAmount=255` so stack counts can render visibly; server `Spell.dbc`, client payload, and extracted MPQ verify `duration=3/36`, `stack=255`, `effect=6`, `aura=4`, icon `558`. Native now force-creates the harmless visible marker aura if normal `AddAura` is blocked by immunity, hooks `UNITHOOK_ON_AURA_REMOVE`, releases native forced stun when `Deflected` is removed/expires, and restarts creature attack against its current victim after release. Focused tests passed (`43`), full suite passed (`551`), native build passed with one existing duplicate-loader warning and `0` errors, BridgeLab worldserver pid `24388`, and client `patch-z.mpq` installed after the client closed. User live proof accepted the result.
+- Latest Deflected aura-owned stun correction: user live proof confirmed `Deflected` stack numbers were visible, but mobs could sometimes stay half-disabled. Native no longer uses a separate forced-stun expiry timer; `946201` aura presence is now the stun contract. While present, runtime enforces `UNIT_STATE_STUNNED`, cast stop, and movement stop; when absent, runtime releases native stun and restarts creature combat. Focused Broug/shell tests passed (`13`), full suite passed (`551`), native build passed with one existing duplicate-loader warning and `0` errors, BridgeLab worldserver pid `12612`. User then reported quests done and abilities working, so this correction is accepted as `WORKING` for the current scope. No client patch was needed for this server-only correction.
 
-WM detected burst thresholds and applied reactions:
+Restorer/Destroyer retests are lower priority now unless the user asks for them again. If they do:
 
-- `Lost Whelp` bounty: quest `910046`
-- `Crimson Whelp` bounty: quest `910047`
+During the retest, have Jecia run `wm echo status` after enabling seek mode and while enemies are active. Expected: `dps_spell=1`, first Restorer `range1` at distances up to roughly `90yd`, fewer parking/range failures, and visibly faster Echo Destroyer engagement due to `1.75x` Alpha movement.
 
-Both quest rows were repeatable:
+If they still stand still or `dps_spell=0`, do not blindly tweak speed/range again. Check whether server/client DBC and behavior config are loaded for `946099`.
 
-- `quest_template_addon.SpecialFlags = 1`
+Confirmed structural issue from 2026-04-29 live status:
 
-The problem was native request idempotency. `quest_grant` used a stable native request key based only on rule/player/quest:
+- Live status showed `restorer_targeted=10`, `no_los=0`, `dps_spell=1`, `out_range=10`, `ready=0`, and `cooldown=10`.
+- Target selection, LOS, spell data, and cast-state were not the blocker.
+- AzerothCore chase movement stops itself when `owner->GetVictim() != chaseTarget`.
+- Restorers were only setting target GUID/combat flags, so passive caster `MoveChase` immediately lost its target and stopped.
+- Current fix establishes a non-melee victim with `Attack(victim, false)` and avoids clearing it before `MoveChase`.
+- New range retune deliberately does not mutate stock `8092`; `946099` owns the custom Restorer DPS range.
 
-```python
-f"{plan.plan_key}:native:quest_add:{quest_id}"
-```
+Inspect these symbols first:
 
-That caused later bursts for the same bounty rule to reuse the first completed `wm_bridge_action_request`, so no fresh native `quest_add` request was enqueued.
+- `MoveBoneboundPriestEchoToSafePosition`
+- `SelectBoneboundEchoSeekTarget`
+- `SelectBoneboundPriestEnemyTarget`
+- `TryStartBoneboundPriestDpsCast`
+- `UpdateBoneboundPriestDpsCast`
+- `CommandBoneboundPriestEchoSeek`
+- `ApplyBoneboundAlphaEchoRuntime`
 
-The fix is in `src/wm/events/executor.py`: native quest grant idempotency now includes trigger identity from `plan.metadata["source_event_key"]`, `opportunity_metadata["source_event_key"]`, or `opportunity_metadata["trigger_event_id"]`.
+Main file:
 
-Regression coverage is in `tests/test_event_executor.py`: repeated grants with the same plan key and quest ID but different trigger source keys must submit different native idempotency keys.
+- `native_modules/mod-wm-spells/src/wm_spell_runtime.cpp`
 
-## Useful Commands
+Tests:
 
-Set BridgeLab DB environment first:
+- `tests/test_bonebound_runtime.py`
+
+## Debug Plan If Restorers Still Fail
+
+Answer these in order:
+
+1. Does each Restorer have an enemy target GUID?
+2. Is `TryStartBoneboundPriestDpsCast` called?
+3. Does `wm echo status` show `dps_spell=1` and first Restorer `range1` at distances where old `8092` would be out of range?
+4. Does `UpdateBoneboundPriestDpsCast` fire damage after cast time?
+5. Is `MoveIdle()` cancelling/interrupting the visible cast loop?
+6. Is `AttackStop()` or passive react state suppressing a core spellcast path?
+
+If needed, add temporary scoped runtime logging for player `5406` only. Remove or gate it before finalizing.
+
+Do not add more random tuning until the failed condition is known.
+
+## Acceptance Criteria
+
+Restorers are `WORKING` only when live proves:
+
+- In seek mode, Restorers acquire a target and keep it for roughly 30s while alive.
+- They move into practical range instead of parking far behind Jecia.
+- They visibly cast their DPS spell or support spells.
+- They do not jitter.
+- They do not stand idle while valid enemies are fighting Alpha/Echoes/Jecia.
+- They catch up better than before due to `1.5x` speed.
+- They do not steal XP/loot credit from Jecia's pet-kill flow.
+
+If any of those are not observed, status stays `PARTIAL`.
+
+## Build And Verify
+
+Use these commands:
 
 ```powershell
+git status --short --branch
+
 $env:PYTHONPATH='src'
 $env:WM_WORLD_DB_PORT='33307'
 $env:WM_CHAR_DB_PORT='33307'
-```
+$env:WM_CHAR_DB_HOST='127.0.0.1'
+$env:WM_WORLD_DB_HOST='127.0.0.1'
 
-Inspect recent live events:
-
-```powershell
-python -m wm.events.inspect --player-guid 5406 --limit 40 --summary
-```
-
-Inspect dynamic auto-bounty state:
-
-```powershell
-python -m wm.reactive.auto_bounty --player-guid 5406 --summary
-```
-
-Start clean dynamic auto-bounty lane:
-
-```powershell
-.\scripts\bridge_lab\Start-BridgeLabAutoBounty.ps1 -PlayerGuid 5406 -Mode apply -BatchSize 1 -ReactiveAutoBountyMaxEventAgeSeconds 3600
-```
-
-Check watcher:
-
-```powershell
-.\scripts\bridge_lab\Get-BridgeLabNativeWatchStatus.ps1 -WorkspaceRoot D:\WOW\wm-project -TailLines 10
-```
-
-Focused tests for the latest bounty/watch path:
-
-```powershell
-python -m pytest tests/test_event_executor.py tests/test_event_rules.py tests/test_reactive_auto_bounty.py tests/test_bounty_reward_picker.py -q
-```
-
-Full tests:
-
-```powershell
+python -m pytest -q tests/test_bonebound_runtime.py
 python -m pytest -q
+
+.\scripts\bridge_lab\Build-BridgeLabIncremental.ps1 -WorkspaceRoot D:\WOW\WM_BridgeLab -Target worldserver -NoStageRuntime
+.\scripts\bridge_lab\Stage-BridgeLabServerSpellDbc.ps1 -SeedProfile castable -SpellId 946099
+.\scripts\bridge_lab\Deploy-BridgeLabWorldServer.ps1 -WorkspaceRoot D:\WOW\WM_BridgeLab -WmSpellsPlayerGuidAllowList "5406"
 ```
 
-## Hard Rules
+Native ping:
 
-- Trust current-state docs over roadmap/design notes.
-- Classify outcomes as `WORKING`, `PARTIAL`, `BROKEN`, or `UNKNOWN`.
-- Do not reuse stock spell IDs as permanent WM carriers.
-- Do not remove or hijack stock Summon Voidwalker `697`.
-- Do not revive Bonebound Omega without a new structural design and live damage/resource proof.
-- Do not restore combat proficiencies with login/update `SetSkill` hooks, class equip overrides, `playercreateinfo_skills`, `mod_learnspells`, or playerbot maintenance.
-- Do not mutate accepted/rewarded quest IDs for visible reward iteration; allocate a fresh reserved quest slot.
-- Do not mix stale `reactive_bounty:template:*` rows with the dynamic auto-bounty lane.
-- Dynamic auto-bounty streaks are exact `subject_entry`, not display name, creature family, or dungeon pull.
-- Do not make WM BridgeLab scripts globally disable playerbot broadcasts as a permanent fix. Scope WM event capture through WM bridge allowlists/player scope, and fix playerbot broadcast crashes in the playerbot path.
-- Hidden server effects need player-facing indication through an aura, buff, debuff, message, or tooltip, and hidden logic must be gated by the visible state/duration.
-- After three failed attempts on the same approach, stop and document the structural reason before changing code again.
+```powershell
+python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --action-kind debug_ping --payload-json '{}' --idempotency-key "manual:debug_ping:$(Get-Date -Format yyyyMMddHHmmss)" --wait --summary
+```
 
-## Next Best Step
+Last known live runtime:
 
-Next best step is to finish the active `Bounty: Hederine Initiate` quest `910102`, then prove reward/cooldown/regrant. Jecia needs two more `Hederine Initiate` (`7461`) kills based on the latest saved DB state, then turn in at Witch Doctor Mau'ari (`10307`). Verify:
+- `authserver` pid `31316`
+- `worldserver` pid `12612`
+- Broug quest/ability slice is accepted by user as working after the latest Deflected stun sync fix; no additional Broug client MPQ install is needed for that server-only correction
+- `mod-aoe-loot` is installed in BridgeLab and pinned in `bootstrap/sources.lock.json` at commit `2ddf6ff75bdbfee3c81f2c149a07126f1d0bf200`: cloned under `D:\WOW\WM_BridgeLab\src\modules\mod-aoe-loot`, junctioned into `src\azerothcore\modules`, CMake-reconfigured into the static module loader, rebuilt with `0 Warning(s), 0 Error(s)`, config `mod_aoe_loot.conf` installed/enabled with range `55`, and 8 `module_string` rows applied. Gameplay proof of `.aoeloot on/off` and actual nearby corpse loot merge is pending.
 
-- `character_queststatus(5406, 910102).mobcount1` reaches `4`
-- turn-in works and reward state emits
-- immediate extra streaks do not create a second dynamic bounty while the first one is still unresolved
-- immediate retrigger is suppressed
-- cooldown reopens a new fresh request
+## Recent Landmines
+
+Quest publishing:
+
+- User is furious about reused IDs, correctly.
+- Never reuse visible failed quest/item/spell IDs.
+- If a quest reward is wrong or absent, do not keep mutating the same visible ID.
+- Use fresh reserved IDs and retire old rows cleanly.
+
+Playerbot/broadcast:
+
+- Keep WM broadcast/events scoped to active WM player.
+- Do not globally spam or globally disable playerbot behavior unless explicitly requested.
+
+Restorer work:
+
+- After three failed Restorer attempts, stop and write root cause.
+- Current Restorer attempts already include movement and range tuning. If still broken, treat it as a structural cast/AI problem.
+
+## Roadmap After Restorers
+
+Restorers basic seek/cast positioning was live-proven by the user, then the chat moved back to roadmap work. The current x3 Restorer range, Destroyer speed, Lens Focus, and Lens Command slices remain `PARTIAL` until live retest.
+
+Current release-pipeline feature work:
+
+- `python -m wm.content.release <spec> --plan --summary` renders release gates and commands.
+- `python -m wm.content.release <spec> --packet --summary` emits validation, plan, compiled artifacts, and live-proof checklist in one packet.
+- `python -m wm.content.release <spec> --write-packet-dir <dir> --summary` writes `release_packet.json` and compiled artifact files, refusing overwrite unless `--force` is used.
+- `python -m wm.content.release --audit-dir control/examples/content_releases --summary` validates every release template and currently reports 18/18 valid specs.
+- `python -m wm.candidates.release_pack --context-pack-json <context-pack.json> --summary` builds a deterministic `wm.release_candidate_pack.v1` from context-pack generation input. It emits validated repeatable-bounty, story-arc, shell-ability, and native-scene specs with `PACKET_READY`, and blocks managed item power until a fresh item entry plus base item are supplied. Use `--reserved-item-entry <fresh-item-entry> --base-item-entry <known-good-base-item-entry>` to make the managed item-power lane packet-ready, `--write-candidates-dir <dir>` to write the pack plus ready `*.release.json` files, `--write-packets` to write each candidate's release packet/artifacts in `<candidate>.packet/`, and `--write-test-manifest` to write `release_test_manifest.json` for the next BridgeLab proof pass.
+- Story arc specs can emit `wm.character_journey.seed.v1` and a non-mutating branch-lock contract for first-completed-choice forks.
+- Scene specs can emit `control.scene.v1`; `--scene-action-roster` currently reports 13 release-ready scene verbs and 5 blocked future gameobject/weather verbs.
+- `--ability-roster` currently reports 16 ready/variant ability lanes and 5 future-blocked lanes.
+
+Roadmap direction:
+
+- WM is a per-character World Master progression engine.
+- Prioritize "wild stuff":
+  - character arcs
+  - exclusive rewards
+  - item-granted abilities
+  - shell-bank visible powers
+  - companion behaviors
+  - live scenes/director features
+  - random enchant/rune systems
+  - conversation steering
+- Platform work is a gate, not the product.
+
+Do not do broad coordinator splits or abstract refactors before the current companion runtime is stable.
+
+## Dirty Worktree Areas
+
+Expect dirty changes in:
+
+- docs/roadmap/handoff files
+- spell shell bank
+- custom ID registry and reserved ranges
+- random enchant vellums
+- native bridge random enchant code
+- native WM spell runtime
+- quest/item publishing and rollback
+- arc/reward factory files
+- BridgeLab launcher scripts
+- tests
+
+Do not assume all changes belong to one feature. Group by subsystem before staging or committing.

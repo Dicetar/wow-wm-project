@@ -18,7 +18,9 @@ namespace WmBridge
         bool emitLoot = true;
         bool emitGossip = true;
         bool emitArea = true;
+        bool emitAura = false;
         bool allowAllPlayers = false;
+        bool allowAllAuraSpells = false;
         bool dbControlEnabled = false;
         uint32 dbControlRefreshIntervalMs = 5000;
         bool actionQueueEnabled = false;
@@ -26,6 +28,7 @@ namespace WmBridge
         bool aoeLootEnabled = false;
         float aoeLootRadius = 35.0f;
         uint32 aoeLootMaxCorpses = 25;
+        std::unordered_set<uint32> auraSpellAllowList;
         std::unordered_set<uint32> playerGuidAllowList;
         std::unordered_set<uint32> dbPlayerGuidAllowList;
     };
@@ -52,6 +55,7 @@ namespace WmBridge
     void LoadConfig();
     bool IsPlayerGuidAllowed(uint32 playerGuid);
     bool IsPlayerAllowed(Player const* player);
+    bool IsAuraSpellAllowed(uint32 spellId);
     void RefreshRuntimeControls(uint32 diff);
 
     EventRow MakePlayerScopedEvent(Player const* player, std::string const& eventFamily, std::string const& eventType);

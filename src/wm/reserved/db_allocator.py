@@ -202,15 +202,28 @@ def _build_slot(row: dict[str, Any]) -> ReservedSlot:
 
 
 def _slot_is_allocatable(slot: ReservedSlot) -> bool:
+    registry = load_custom_id_registry()
+    namespace_by_entity_type = {
+        "item": "item",
+        "quest": "quest",
+        "spell": "spell",
+        "creature_template": "creature_template",
+        "gossip_menu": "gossip_menu",
+        "npc_text": "npc_text",
+    }
+    namespace = namespace_by_entity_type.get(slot.entity_type)
+    claim = registry.claim_by_id(namespace=namespace, id=int(slot.reserved_id)) if namespace is not None else None
+    if claim is not None and claim.status == "BROKEN":
+        return False
+
     if slot.entity_type != "spell":
         return True
 
-    registry = load_custom_id_registry()
     managed_range = registry.range_by_key(namespace="spell", range_key="managed_spell_slots")
     if managed_range is not None and not (managed_range.start_id <= int(slot.reserved_id) <= managed_range.end_id):
         return False
 
-    return registry.claim_by_id(namespace="spell", id=int(slot.reserved_id)) is None
+    return claim is None
 
 
 def _sql_string(value: str) -> str:

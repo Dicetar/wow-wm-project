@@ -39,6 +39,7 @@ Current emitted slice:
 - `gossip.opened`
 - `gossip.selected`
 - `area.entered`
+- `aura.applied` / `aura.removed` for configured marker spells only when `WmBridge.Emit.Aura = 1`
 
 Native action bus:
 

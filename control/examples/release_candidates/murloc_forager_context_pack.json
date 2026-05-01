@@ -1,0 +1,61 @@
+{
+  "schema_version": "wm.context_pack.v1",
+  "pack_id": "context:5406:creature:46:example",
+  "status": "WORKING",
+  "player_guid": 5406,
+  "target_profile": {
+    "entry": 46,
+    "name": "Murloc Forager",
+    "level_min": 9,
+    "level_max": 10,
+    "mechanical_type": "HUMANOID",
+    "faction_label": "Murloc"
+  },
+  "generation_input": {
+    "player": {
+      "guid": 5406,
+      "name": "Jecia"
+    },
+    "trigger": {
+      "event_type": "kill",
+      "source": "native_bridge",
+      "source_event_key": "example:murloc_forager"
+    },
+    "target": {
+      "entry": 46,
+      "name": "Murloc Forager",
+      "mechanical_type": "HUMANOID",
+      "faction_label": "Murloc"
+    },
+    "history": {
+      "kill_count": 3,
+      "summary_lines": [
+        "Jecia has been thinning the shoreline murlocs."
+      ]
+    },
+    "journey": {
+      "eligibility": {
+        "ready_for_arc_factory": true,
+        "blocked_reasons": [],
+        "active_arc_keys": [
+          "jecia_world_master_awakened"
+        ],
+        "unlock_refs": [
+          "shell_spell:940001"
+        ],
+        "reward_refs": [
+          "item:910006"
+        ]
+      },
+      "steering": [
+        {
+          "key": "visible_first",
+          "body": "Prioritize visible wild powers."
+        }
+      ]
+    },
+    "eligible_recipe_ids": [
+      "reactive_bounty"
+    ]
+  }
+}

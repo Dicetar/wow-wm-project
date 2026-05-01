@@ -2,6 +2,7 @@
 #include "ScriptMgr.h"
 #include "Item.h"
 #include "Player.h"
+#include "QuestDef.h"
 #include "wm_spell_runtime.h"
 
 #include <algorithm>
@@ -21,6 +22,7 @@ namespace
         std::optional<float> huntRadius;
         bool rangeOnly = false;
         bool teleportOnly = false;
+        bool statusOnly = false;
         std::string error;
     };
 
@@ -103,6 +105,12 @@ namespace
                     return true;
                 }
 
+                if (first == "status" || first == "state")
+                {
+                    command.statusOnly = true;
+                    return true;
+                }
+
                 if (!IsEchoModeAlias(first))
                     return false;
 
@@ -140,14 +148,18 @@ namespace
             ? WmSpells::ExecuteBoneboundEchoTeleport(player)
             : (command.rangeOnly
                 ? WmSpells::ExecuteBoneboundEchoSeekRange(player, *command.huntRadius)
-                : WmSpells::ExecuteBoneboundEchoMode(player, command.mode, command.huntRadius));
+                : (command.statusOnly
+                    ? WmSpells::DescribeBoneboundEchoStatus(player)
+                    : WmSpells::ExecuteBoneboundEchoMode(player, command.mode, command.huntRadius)));
         if (!result.ok)
         {
-            handler.PSendSysMessage("WM Echoes: mode change failed ({})", result.message);
+            handler.PSendSysMessage(command.statusOnly ? "WM Echoes: status failed ({})" : "WM Echoes: mode change failed ({})", result.message);
             return true;
         }
 
-        if (command.teleportOnly)
+        if (command.statusOnly)
+            handler.PSendSysMessage("WM Echoes: status {}", result.message);
+        else if (command.teleportOnly)
             handler.PSendSysMessage("WM Echoes: teleported to your position.");
         else if (command.rangeOnly)
             handler.PSendSysMessage("WM Echoes: seek range set to {:.1f} yards.", *command.huntRadius);
@@ -180,13 +192,17 @@ public:
         WmSpells::MaintainBoneboundSummons(player);
         WmSpells::MaintainIntellectBlockPassive(player);
         WmSpells::MaintainCombatProficiencies(player);
+        WmSpells::MaintainBrougGuard(player, 0);
         WmSpells::MaintainNightWatchersLens(player, 0);
+        WmSpells::MaintainLanathelStance(player, 0);
     }
 
     void OnPlayerAfterUpdate(Player* player, uint32 diff) override
     {
         if (!player)
             return;
+
+        WmSpells::TickBrougGuard(player, diff);
 
         uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
         uint32& timer = gBoneboundMaintenanceTimers[ownerGuid];
@@ -200,7 +216,9 @@ public:
         WmSpells::MaintainBoneboundSummons(player);
         WmSpells::MaintainIntellectBlockPassive(player);
         WmSpells::MaintainCombatProficiencies(player);
+        WmSpells::MaintainBrougGuard(player, BONEBOUND_MAINTENANCE_INTERVAL_MS);
         WmSpells::MaintainNightWatchersLens(player, BONEBOUND_MAINTENANCE_INTERVAL_MS);
+        WmSpells::MaintainLanathelStance(player, BONEBOUND_MAINTENANCE_INTERVAL_MS);
     }
 
     void OnPlayerBeforeLogout(Player* player) override
@@ -212,12 +230,14 @@ public:
         gBoneboundMaintenanceTimers.erase(ownerGuid);
         WmSpells::ForgetBoneboundCompanions(player);
         WmSpells::ForgetIntellectBlockPassive(player);
+        WmSpells::ForgetBrougGuard(player);
         WmSpells::ForgetNightWatchersLens(player);
+        WmSpells::ForgetLanathelStance(player);
     }
 
     void OnPlayerEquip(Player* player, Item* item, uint8 /*bag*/, uint8 /*slot*/, bool /*update*/) override
     {
-        if (!item || !item->GetTemplate() || item->GetTemplate()->ItemId != 910006)
+        if (!item || !item->GetTemplate() || (item->GetTemplate()->ItemId != 910006 && item->GetTemplate()->ItemId != 910013))
             return;
 
         WmSpells::MaintainNightWatchersLens(player, 0);
@@ -225,7 +245,7 @@ public:
 
     void OnPlayerUnequip(Player* player, Item* item) override
     {
-        if (!item || !item->GetTemplate() || item->GetTemplate()->ItemId != 910006)
+        if (!item || !item->GetTemplate() || (item->GetTemplate()->ItemId != 910006 && item->GetTemplate()->ItemId != 910013))
             return;
 
         WmSpells::ForgetNightWatchersLens(player);
@@ -254,6 +274,23 @@ public:
     bool OnPlayerCanUseChat(Player* player, uint32 /*type*/, uint32 /*language*/, std::string& msg, Channel* /*channel*/) override
     {
         return !HandleEchoModeChatCommand(player, msg);
+    }
+
+    bool OnPlayerBeforeQuestComplete(Player* player, uint32 questId) override
+    {
+        std::string reason;
+        bool canComplete = WmSpells::CanCompleteBrougGuardQuest(player, questId, &reason);
+        if (!canComplete && player)
+            ChatHandler(player->GetSession()).PSendSysMessage("WM Broug: quest completion blocked ({})", reason);
+        return canComplete;
+    }
+
+    void OnPlayerCompleteQuest(Player* player, Quest const* quest) override
+    {
+        if (!quest)
+            return;
+
+        WmSpells::HandleBrougGuardQuestComplete(player, quest->GetQuestId());
     }
 
 };

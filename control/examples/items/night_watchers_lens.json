@@ -2,7 +2,7 @@
   "item_entry": 910006,
   "base_item_entry": 2994,
   "name": "Night Watcher's Lens",
-  "description": "Weapon auto-attacks and wand shots have a 10% chance to mark the target for 10 sec. The visible mark cuts defenses by 50% and doubles attack crit/proc chances; reapplying refreshes it.",
+  "description": "Weapon auto-attacks and wand shots have a 10% chance to mark the target for 10 sec. The visible mark cuts defenses by 50%, doubles attack crit/proc chances, and causes your non-wand direct spells to deal 15% more damage.",
   "item_class": 4,
   "item_subclass": 1,
   "inventory_type": 1,

@@ -4,7 +4,8 @@
   "notes": [
     "This file is the exact-claim authority for custom IDs already used by WM.",
     "Exact duplicate ids are forbidden only within the same namespace.",
-    "reserved_id_ranges.json remains coarse allocator policy only; do not use it as the exact-claim ledger."
+    "reserved_id_ranges.json remains coarse allocator policy only; do not use it as the exact-claim ledger.",
+    "Never reuse a visible content ID after a failed, stale, or player-visible dirty iteration. Retire the old claim and publish the replacement on a fresh ID."
   ],
   "ranges": [
     {
@@ -23,7 +24,7 @@
       "end_id": 946999,
       "purpose": "Generic cast-shape shell-bank V2 space for client-prepatched WM spell shells.",
       "status": "WORKING",
-      "allocation_rule": "Use for generic client-visible cast shapes only; keep behavior generic and bind bespoke logic server-side."
+      "allocation_rule": "Use for generic client-visible cast shapes only; the full 946000-946999 band is allocated as ten 100-slot families, so do not treat old 100-id gaps as free space."
     },
     {
       "namespace": "spell",
@@ -53,6 +54,15 @@
       "allocation_rule": "Allocate through wm_reserved_slot entity type `item`."
     },
     {
+      "namespace": "item",
+      "range_key": "managed_item_cache_escape_slots",
+      "start_id": 919000,
+      "end_id": 919999,
+      "purpose": "Managed WM item slots reserved for clean client-cache escape replacements after polluted 9100xx item identities.",
+      "status": "PARTIAL",
+      "allocation_rule": "Use only after retiring a dirty visible item ID; allocate through wm_reserved_slot entity type `item`."
+    },
+    {
       "namespace": "gossip_menu",
       "range_key": "wm_gossip_menu_slots",
       "start_id": 912000,
@@ -69,6 +79,15 @@
       "purpose": "WM-authored dialogue text blocks.",
       "status": "UNKNOWN",
       "allocation_rule": "Reserve for future WM dialogue work; current repo usage is limited."
+    },
+    {
+      "namespace": "spellitemenchantment_dbc",
+      "range_key": "wm_random_enchant_vellum_rows",
+      "start_id": 100500,
+      "end_id": 100599,
+      "purpose": "WM-owned server DBC item-enchantment rows for random vellum pools where no stock enchant row has the requested effect.",
+      "status": "PARTIAL",
+      "allocation_rule": "Claim exact rows before adding spellitemenchantment_dbc overrides; custom client tooltip text requires matching client DBC work if the stock client cache does not know the row."
     }
   ],
   "claims": [
@@ -144,6 +163,274 @@
     },
     {
       "namespace": "spell",
+      "id": 946099,
+      "key": "echo_restorer_mind_blast_x3_v1",
+      "kind": "creature_spell_shell",
+      "purpose": "WM-owned Echo Restorer filler DPS spell cloned from stock Mind Blast 8092 with the existing 90-yard SpellRange row for 3x stock range.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_29_00_wm_spell_echo_restorer_mind_blast_x3.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Stock Mind Blast 8092 remains unmodified and is used only as the DBC clone seed.",
+        "Server/client DBC materialization must stage this row before Restorers can cast it as a normal visible spell."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946601,
+      "key": "lanathel_blood_queen_stance_v1",
+      "kind": "shell_spell",
+      "purpose": "Named WM self-cast shell for a persistent Lana'thel transformation stance with native riding-scaled land and flight movement.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_27_00_wm_spell_lanathel_stance.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Uses Blood-Queen Lana'thel display 31165 at reduced player scale.",
+        "Native runtime owns toggle state, model, dismount, land speed, flight enablement, and relog persistence.",
+        "BridgeLab on 2026-04-27 has SQL, server DBC, client patch, native rebuild/restart, and character_spell grant in place; live in-game cast/form proof is still pending."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946602,
+      "key": "wm_watcher_beacon_v1",
+      "kind": "shell_spell",
+      "purpose": "Dedicated WM-owned player discovery marker aura for finding and scoping the active character during short watcher setup windows.",
+      "status": "PARTIAL",
+      "owner_system": "native_bridge_marker_discovery",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "src/wm/sources/native_bridge/player_marker.py",
+        "docs/native-bridge-action-bus.md"
+      ],
+      "notes": [
+        "Undispellable no-duration dummy aura marker. It is visible to the player but has no gameplay stat, damage, control, or periodic effect.",
+        "Use this instead of stock spell 132 for durable watcher-target discovery. Stock 132 remains a compatibility fallback only."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946200,
+      "key": "broug_vulnerable_v1",
+      "kind": "shell_spell",
+      "purpose": "Broug Deflect visible Vulnerable debuff shell. Runtime applies one stack per blocked hostile event and consumes all stacks on the next nonzero damage event.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "src/wm/spells/broug_guard.py",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_05_01_00_wm_spell_broug_deflect_rework.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "Fresh visible ID. Do not replace it with retired Broug shells 946604 or 946801.",
+        "Client row must be undispellable, stackable, 60 seconds, and use icon 558 from stock Forceful Deflection.",
+        "User live acceptance on 2026-05-01 closed the current Broug proof."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946201,
+      "key": "broug_deflected_v1",
+      "kind": "shell_spell",
+      "purpose": "Broug Deflect visible Deflected status shell. Runtime applies stacks equal to consumed Vulnerable stacks and native forced stun remains the real control path.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "src/wm/spells/broug_guard.py",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_05_01_00_wm_spell_broug_deflect_rework.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "Fresh visible ID for the forced-stun stack state; gameplay control is still native and duration is runtime-driven.",
+        "Client row must be undispellable, stackable, runtime duration, and use icon 558 from stock Forceful Deflection.",
+        "User live acceptance on 2026-05-01 closed the current Broug proof."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946603,
+      "key": "broug_deflect_v1",
+      "kind": "shell_spell",
+      "purpose": "Broug quest reward active shell for a 5-energy animation-timed Deflect window that roots Broug, prevents hostile damage/effects, marks attackers Vulnerable, and optionally counterattacks once based on Counterstrike Stance.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_02_wm_spell_broug_deflect_rewards.sql",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_05_01_00_wm_spell_broug_deflect_rework.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "Fresh active shell. It must not reuse stock Parry, Shield Reflection, or Rogue defensive spells as the permanent WM carrier.",
+        "Deflect itself stays aura-free; Vulnerable 946200 and Deflected 946201 provide visible target states.",
+        "Automatic window-end counterattack is controlled by fresh stance shell 946605.",
+        "User live acceptance on 2026-05-01 closed the current Broug proof for cast behavior, quest reward, and combat behavior."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946605,
+      "key": "broug_deflect_counter_stance_v1",
+      "kind": "shell_spell",
+      "purpose": "Broug stance-style dispatch shell that toggles whether Deflect automatically counterattacks at the end of its guard window.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "src/wm/spells/broug_guard.py",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_05_01_01_wm_spell_broug_deflect_counter_stance.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "Fresh visible spellbook button. Do not reuse retired toggle shell 946604 or retired passive shell 946801.",
+        "The corrected shell is a real shapeshift-style stance aura; native runtime gates Deflect's automatic counterattack on the live 946605 aura.",
+        "When held inactive, Deflect still blocks and applies Vulnerable, but skips its own automatic counterattack so the player can consume Vulnerable with a chosen next hit.",
+        "User live acceptance on 2026-05-01 closed the current Broug proof."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946800,
+      "key": "broug_universal_parry_v1",
+      "kind": "shell_spell",
+      "purpose": "Broug-scoped passive shell for parrying hostile weapon, spell, and periodic-effect damage through native grant-gated mitigation.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "src/wm/spells/broug_guard.py",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_01_wm_spell_broug_guard_passives.sql",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "Fresh generic passive shell. It must not reuse stock Parry or Shield behavior as the permanent WM carrier.",
+        "User live acceptance on 2026-05-01 closed the current Broug proof for mitigation, presentation, and counter progression."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946801,
+      "key": "broug_mobile_marksman_v1",
+      "kind": "shell_spell",
+      "purpose": "Retired Broug-scoped passive shell for a native moving ranged/throwing pulse that felt wrong in live testing.",
+      "status": "BROKEN",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "src/wm/spells/broug_guard.py",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_03_wm_spell_broug_skirmisher_mark_active.sql",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_01_wm_spell_broug_guard_passives.sql",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "replaced_by": "spell:946098",
+      "player_guid_scope": 5405,
+      "notes": [
+        "Visible passive shell is retired because the moving pulse gameplay was strange in live testing.",
+        "Do not reuse this ID; use fresh targeted active shell 946098 instead."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946098,
+      "key": "broug_skirmisher_shot_v1",
+      "kind": "shell_spell",
+      "purpose": "Broug-scoped targeted active shell for firing one native ranged/thrown attack that uses normal ranged auto-attack scaling while moving.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "src/wm/spells/broug_guard.py",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_04_wm_spell_broug_skirmisher_shot.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "native_modules/mod-wm-spells/src/wm_spell_shell_scripts.cpp",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "Fresh targeted active replacement for failed visible shells 946801 and 946604.",
+        "This is not a self-buff or toggle. Runtime fires one ranged/thrown native attack per cast and enforces ranged weapon-speed readiness.",
+        "User live acceptance on 2026-05-01 closed the current Broug proof for target cast UX, moving use, visible feedback, damage scaling, and progression."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946604,
+      "key": "broug_skirmisher_mark_v2",
+      "kind": "shell_spell",
+      "purpose": "Retired Broug-scoped self-aura toggle shell for starting or stopping a native ranged/thrown auto-attack loop.",
+      "status": "BROKEN",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "src/wm/spells/broug_guard.py",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_03_wm_spell_broug_skirmisher_mark_active.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_04_wm_spell_broug_skirmisher_shot.sql",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "replaced_by": "spell:946098",
+      "player_guid_scope": 5405,
+      "notes": [
+        "Live proof failed because this presented as a self-buff/toggle instead of a targeted Throw/Shoot-like active attack.",
+        "Do not reuse this ID; use fresh targeted active shell 946098 instead."
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 946802,
+      "key": "broug_auto_retaliation_v1",
+      "kind": "shell_spell",
+      "purpose": "Broug quest reward passive shell for automatic native strike-back damage when Impossible Guard parries hostile damage.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "control/runtime/spell_shell_bank.json",
+        "client_patches/wm_spell_shell_bank/manifest.json",
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_02_wm_spell_broug_deflect_rewards.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "Fresh passive shell. It does not alter stock Revenge, Riposte, or melee outcome tables.",
+        "User live acceptance on 2026-05-01 closed the current Broug proof after the 1000-deflect quest reward."
+      ]
+    },
+    {
+      "namespace": "spell",
       "id": 945000,
       "key": "bonebound_servant_slash_v1",
       "kind": "shell_spell",
@@ -170,6 +457,23 @@
       "source_paths": [
         "control/examples/spells/defias_pursuit_instinct.json",
         "docs/SPELL_SLOT_PIPELINE_V1.md"
+      ]
+    },
+    {
+      "namespace": "spell",
+      "id": 947950,
+      "key": "wm_vellum_all_stats_ratings_aura_v1",
+      "kind": "server_spell_dbc_row",
+      "purpose": "Server-only equip aura used by the random vellum +10% all stats / +10 ratings enchant.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-bridge",
+      "source_paths": [
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_05_01_04_wm_bridge_vellum_enchant_pool_expansion.sql",
+        "docs/CUSTOM_ID_LEDGER.md"
+      ],
+      "notes": [
+        "Not a client-cast shell and not a stock spell carrier; item enchant type EQUIP_SPELL applies it from server DBC.",
+        "Ratings are implemented through stock SPELL_AURA_MOD_RATING, which is flat rating rather than percentage rating."
       ]
     },
     {
@@ -215,6 +519,202 @@
       "player_guid_scope": 5406
     },
     {
+      "namespace": "quest",
+      "id": 910180,
+      "key": "broug_one_thousand_impossible_guards",
+      "kind": "quest_template",
+      "purpose": "Broug linked progression quest: land 1000 Impossible Guard parries to earn Deflect.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_02_wm_spell_broug_deflect_rewards.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "Fresh quest ID. Completion is backed by hidden kill-credit entry 920104 plus wm_broug_guard_counter('universal_parry').",
+        "User live acceptance on 2026-05-01 reported the quest done and reward ability working."
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910181,
+      "key": "broug_one_thousand_deflections",
+      "kind": "quest_template",
+      "purpose": "Broug linked progression quest: land 1000 Deflect successes to earn Riposte Instinct.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_02_wm_spell_broug_deflect_rewards.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "Fresh quest ID. It is linked after 910180 and uses hidden kill-credit entry 920105 plus wm_broug_guard_counter('deflect_success').",
+        "User live acceptance on 2026-05-01 reported the quest done and reward passive working."
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910152,
+      "key": "jecia_shadowmoon_lens_v1_retired",
+      "kind": "quest_template",
+      "purpose": "Retired Shadowmoon Lens arc attempt that showed a stale/wrong reward identity in the live quest reward panel.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md",
+        "docs/CUSTOM_ID_LEDGER.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "quest:910171",
+      "notes": [
+        "Do not reuse this quest ID. It was removed from the live questgiver path and the reserved slot must remain retired."
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910154,
+      "key": "jecia_shadowmoon_lens_v2_retired",
+      "kind": "quest_template",
+      "purpose": "Retired Shadowmoon Lens v2 quest attempt that still showed a stale/wrong reward identity in the live quest reward panel.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md",
+        "docs/CUSTOM_ID_LEDGER.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "quest:910171",
+      "notes": [
+        "Do not reuse this quest ID. It was removed from the live questgiver path and the reserved slot must remain retired."
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910155,
+      "key": "jecia_shadowmoon_lens_v3_retired",
+      "kind": "quest_template",
+      "purpose": "Retired Shadowmoon Lens v3 quest attempt where the live reward panel resolved RewardMoney 19600 as Pebble of Kajaro.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "quest:910171",
+      "notes": [
+        "Do not reuse this quest ID. The DB row used RewardItem1=919001, but RewardMoney=19600 leaked into the visible reward item slot in the live quest details panel."
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910160,
+      "key": "jecia_shadowmoon_lens_v4_retired",
+      "kind": "quest_template",
+      "purpose": "Retired Shadowmoon Lens v4 quest attempt where fixed reward presentation showed no reward in the live quest details panel.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "quest:910171",
+      "notes": [
+        "Do not reuse this quest ID. BridgeLab DB was correct, but fixed RewardItem1 did not render in the live quest details panel."
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910167,
+      "key": "jecia_shadowmoon_lens_v5_retired",
+      "kind": "quest_template",
+      "purpose": "Retired Shadowmoon Lens v5 quest attempt where one-option choice reward presentation still showed no reward in the live quest details panel.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "quest:910171",
+      "notes": [
+        "Do not reuse this quest ID. The row was DB-correct, but the quest details panel still showed no reward; it inherited unsafe generated quest Flags=128 from Oronok defaults."
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910168,
+      "key": "jecia_shadowmoon_lens_v6_retired",
+      "kind": "quest_template",
+      "purpose": "Retired Shadowmoon Lens v6 quest attempt superseded by a direct clone of known-working quest 910151.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "quest:910171",
+      "notes": [
+        "Do not reuse this quest ID for visible quest reward iteration. It was replaced by a direct clone of known-working quest 910151 with only identity/objective/turn-in/reward changed."
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910169,
+      "key": "jecia_shadowmoon_lens_v7_retired",
+      "kind": "quest_template",
+      "purpose": "Retired Shadowmoon Lens v7 quest attempt where RewardMoney 1296 rendered as item 1296 Blackrock Mace in the live quest reward panel.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "control/examples/journey/jecia_shadowmoon_lens_v7_retire.json",
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "quest:910171",
+      "notes": [
+        "Do not reuse this quest ID for visible quest reward iteration. The DB row used RewardItem1=919005, but RewardMoney=1296 leaked into the visible reward item slot as Blackrock Mace."
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910170,
+      "key": "jecia_shadowmoon_lens_v8_retired",
+      "kind": "quest_template",
+      "purpose": "Retired Shadowmoon Lens v8 quest attempt that still showed stale source objective text and no visible reward on Oronok.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "control/examples/journey/jecia_shadowmoon_lens_v8_retire.json",
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "quest:910171",
+      "notes": [
+        "Do not reuse this quest ID for visible quest reward iteration. The row missed LogDescription and QuestCompletionLog updates, and the live quest panel still showed stale Defias objective text."
+      ]
+    },
+    {
+      "namespace": "quest",
+      "id": 910171,
+      "key": "jecia_shadowmoon_lens_v9",
+      "kind": "quest_template",
+      "purpose": "Fresh Shadowmoon Lens arc quest moved from Oronok to Earthmender Wilda with all quest text fields overwritten.",
+      "status": "PARTIAL",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "control/examples/arcs/jecia_shadowmoon_lens_arc_v9.json",
+        "control/examples/items/shadowmoon_watchers_lens_v9.json",
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Live publish changes the questgiver and ender to Earthmender Wilda 21027, targets Enraged Water Spirits 21059, uses reward item 910013, overwrites LogDescription/QuestDescription/QuestCompletionLog/ObjectiveText1, and keeps RewardMoney=0."
+      ]
+    },
+    {
       "namespace": "item",
       "id": 910006,
       "key": "night_watchers_lens",
@@ -226,6 +726,173 @@
         "control/examples/items/night_watchers_lens.json",
         "docs/ITEM_SLOT_PIPELINE_V1.md",
         "docs/WM_PLATFORM_HANDOFF.md"
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 910010,
+      "key": "shadowmoon_watchers_lens_retired",
+      "kind": "managed_item_slot",
+      "purpose": "Retired Shadowmoon Lens item attempt that appeared as a stale/wrong item identity in the live quest reward panel.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md",
+        "docs/CUSTOM_ID_LEDGER.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "item:910013",
+      "notes": [
+        "Do not reuse this item ID. The DB row looked correct, but the live client reward panel resolved it as `Pebble of Kajaro`.",
+        "Cleanup path is rollback/delete item_template row, retire reserved slot, and republish on a fresh ID."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 910011,
+      "key": "shadowmoon_watchers_lens_v2_retired",
+      "kind": "managed_item_slot",
+      "purpose": "Retired Shadowmoon Lens v2 item attempt that still appeared as a stale/wrong item identity in the live quest reward panel.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md",
+        "docs/CUSTOM_ID_LEDGER.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "item:910013",
+      "notes": [
+        "Do not reuse this item ID. The live reward panel still resolved it as `Pebble of Kajaro`.",
+        "Cleanup path is rollback/delete item_template row, retire reserved slot, and republish on a fresh cache-escape item ID."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 919001,
+      "key": "shadowmoon_watchers_lens_v3_retired",
+      "kind": "managed_item_slot",
+      "purpose": "Retired Shadowmoon Lens v3 item paired with the failed quest-details money-as-item reward panel attempt.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "item:910013",
+      "notes": [
+        "Do not reuse this item ID for visible content. The item row was correct, but the paired quest used RewardMoney=19600, which rendered as Pebble of Kajaro in the live quest details panel."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 919002,
+      "key": "shadowmoon_watchers_lens_v4_retired",
+      "kind": "managed_item_slot",
+      "purpose": "Retired Shadowmoon Lens v4 item paired with the failed fixed-reward quest details presentation.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "item:910013",
+      "notes": [
+        "Do not reuse this item ID for visible quest reward iteration. The paired quest did not show any reward in the live quest details panel."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 919003,
+      "key": "shadowmoon_watchers_lens_v5_retired",
+      "kind": "managed_item_slot",
+      "purpose": "Retired Shadowmoon Lens v5 item paired with the failed one-option choice reward presentation.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "item:910013",
+      "notes": [
+        "Do not reuse this item ID for visible quest reward iteration. The paired quest showed no reward in the live quest details panel."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 919004,
+      "key": "shadowmoon_watchers_lens_v6_retired",
+      "kind": "managed_item_slot",
+      "purpose": "Retired Shadowmoon Lens v6 item superseded by the v7 known-working quest clone proof.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "item:910013",
+      "notes": [
+        "Do not reuse this item ID for visible quest reward iteration. It was replaced by v7 item 919005 for a direct clone of known-working quest 910151."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 919005,
+      "key": "shadowmoon_watchers_lens_v7_retired",
+      "kind": "managed_item_slot",
+      "purpose": "Retired Shadowmoon Lens v7 item paired with the failed RewardMoney-as-item live quest reward panel proof.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "control/examples/journey/jecia_shadowmoon_lens_v7_retire.json",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "native_modules/mod-wm-spells/src/wm_spell_player_scripts.cpp",
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "item:910013",
+      "notes": [
+        "Do not reuse this item ID for visible quest reward iteration. The paired quest 910169 showed Blackrock Mace because RewardMoney 1296 leaked into the reward slot."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 910012,
+      "key": "shadowmoon_watchers_lens_v8_retired",
+      "kind": "managed_item_slot",
+      "purpose": "Retired Shadowmoon Lens v8 item paired with the failed Oronok quest reward-panel proof.",
+      "status": "BROKEN",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "control/examples/journey/jecia_shadowmoon_lens_v8_retire.json",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "native_modules/mod-wm-spells/src/wm_spell_player_scripts.cpp",
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "replaced_by": "item:910013",
+      "notes": [
+        "Do not reuse this item ID for visible quest reward iteration. The paired quest 910170 showed no visible reward on Oronok."
+      ]
+    },
+    {
+      "namespace": "item",
+      "id": 910013,
+      "key": "shadowmoon_watchers_lens_v9",
+      "kind": "managed_item_slot",
+      "purpose": "Level-70 Shadowmoon-fitted managed WM reward item cloned from the known-working Night Watcher's Lens row shape for the Earthmender Wilda questgiver proof.",
+      "status": "PARTIAL",
+      "owner_system": "arc_reward_factory",
+      "source_paths": [
+        "control/examples/items/shadowmoon_watchers_lens_v9.json",
+        "control/examples/arcs/jecia_shadowmoon_lens_arc_v9.json",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "native_modules/mod-wm-spells/src/wm_spell_player_scripts.cpp",
+        "docs/ARC_REWARD_FACTORY_V1.md"
+      ],
+      "player_guid_scope": 5406,
+      "notes": [
+        "Fresh low-band replacement for retired item IDs 910010, 910011, 910012, 919001, 919002, 919003, 919004, and 919005. The item is gated by visible aura 132 plus target debuff 770.",
+        "Uses base_item_entry 910006 to preserve the known-working item row shape while changing level, quality, and stats for level-70 Shadowmoon proof."
       ]
     },
     {
@@ -347,6 +1014,44 @@
     },
     {
       "namespace": "creature_template",
+      "id": 920104,
+      "key": "broug_parry_credit",
+      "kind": "wm_creature_entry",
+      "purpose": "Hidden kill-credit-only quest objective entry for Broug's 1000 Impossible Guard parry quest.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_02_wm_spell_broug_deflect_rewards.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "No world spawn. Native runtime calls KilledMonsterCredit(920104) after a counted Impossible Guard parry.",
+        "User live acceptance on 2026-05-01 reported the linked quest complete."
+      ]
+    },
+    {
+      "namespace": "creature_template",
+      "id": 920105,
+      "key": "broug_deflect_credit",
+      "kind": "wm_creature_entry",
+      "purpose": "Hidden kill-credit-only quest objective entry for Broug's 1000 Deflect success quest.",
+      "status": "WORKING",
+      "owner_system": "mod-wm-spells",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_02_wm_spell_broug_deflect_rewards.sql",
+        "native_modules/mod-wm-spells/src/wm_spell_runtime.cpp",
+        "docs/BROUG_GUARD_PIPELINE_V1.md"
+      ],
+      "player_guid_scope": 5405,
+      "notes": [
+        "No world spawn. Native runtime calls KilledMonsterCredit(920105) after a successful Deflect window catches hostile damage.",
+        "User live acceptance on 2026-05-01 reported the linked quest complete."
+      ]
+    },
+    {
+      "namespace": "creature_template",
       "id": 920102,
       "key": "bone_lure_obelisk",
       "kind": "wm_creature_entry",
@@ -366,6 +1071,65 @@
       ]
     },
     {
+      "namespace": "spellitemenchantment_dbc",
+      "id": 100520,
+      "key": "wm_vellum_haste_rating_52",
+      "kind": "dbc_override_row",
+      "purpose": "WM-owned item-enchantment row for +52 Haste Rating in the random vellum combat-ratings pool.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-bridge",
+      "source_paths": [
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_05_01_04_wm_bridge_vellum_enchant_pool_expansion.sql"
+      ],
+      "notes": [
+        "Server DBC row uses ITEM_ENCHANTMENT_TYPE_STAT with ITEM_MOD_HASTE_RATING; client tooltip text requires matching client SpellItemEnchantment.dbc if the client does not know this row."
+      ]
+    },
+    {
+      "namespace": "spellitemenchantment_dbc",
+      "id": 100525,
+      "key": "wm_vellum_expertise_rating_25",
+      "kind": "dbc_override_row",
+      "purpose": "WM-owned item-enchantment row for +25 Expertise Rating in the random vellum combat-ratings pool.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-bridge",
+      "source_paths": [
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_05_01_04_wm_bridge_vellum_enchant_pool_expansion.sql"
+      ],
+      "notes": [
+        "Server DBC row uses ITEM_ENCHANTMENT_TYPE_STAT with ITEM_MOD_EXPERTISE_RATING; client tooltip text requires matching client SpellItemEnchantment.dbc if the client does not know this row."
+      ]
+    },
+    {
+      "namespace": "spellitemenchantment_dbc",
+      "id": 100530,
+      "key": "wm_vellum_all_stats_ratings",
+      "kind": "dbc_override_row",
+      "purpose": "WM-owned item-enchantment row for +10% all stats and +10 all ratings in the random vellum stats pool.",
+      "status": "PARTIAL",
+      "owner_system": "mod-wm-bridge",
+      "source_paths": [
+        "native_modules/mod-wm-bridge/data/sql/world/updates/2026_05_01_04_wm_bridge_vellum_enchant_pool_expansion.sql"
+      ],
+      "notes": [
+        "Uses custom server spell 947950 through ITEM_ENCHANTMENT_TYPE_EQUIP_SPELL.",
+        "AzerothCore exposes flat all-rating aura support; percentage rating scaling is not represented by stock item-enchant DBC effects."
+      ]
+    },
+    {
+      "namespace": "skillraceclassinfo_dbc",
+      "id": 100055,
+      "key": "two_handed_swords_skill_validity",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that makes Two-Handed Swords skill 55 login-valid before explicit grant handling.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
       "namespace": "skillraceclassinfo_dbc",
       "id": 100118,
       "key": "dual_wield_skill_validity",
@@ -375,6 +1139,58 @@
       "owner_system": "combat_proficiency",
       "source_paths": [
         "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_04_wm_spell_dual_wield_skill_validity.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skillraceclassinfo_dbc",
+      "id": 100172,
+      "key": "two_handed_axes_skill_validity",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that makes Two-Handed Axes skill 172 login-valid before explicit grant handling.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skillraceclassinfo_dbc",
+      "id": 100229,
+      "key": "polearms_skill_validity",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that makes Polearms skill 229 login-valid before explicit grant handling.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skillraceclassinfo_dbc",
+      "id": 100293,
+      "key": "plate_skill_validity",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that makes Plate skill 293 login-valid from level 40 before explicit grant handling.",
+      "status": "PARTIAL",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skillraceclassinfo_dbc",
+      "id": 100413,
+      "key": "mail_skill_validity",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that makes Mail skill 413 login-valid before explicit grant handling.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql",
         "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
       ]
     },
@@ -401,6 +1217,71 @@
       "owner_system": "combat_proficiency",
       "source_paths": [
         "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_15_02_wm_spell_shield_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skilllineability_dbc",
+      "id": 100055,
+      "key": "two_handed_swords_passive_spellline",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that binds stock passive 202 to Two-Handed Swords skill 55.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skilllineability_dbc",
+      "id": 100172,
+      "key": "two_handed_axes_passive_spellline",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that binds stock passive 197 to Two-Handed Axes skill 172.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skilllineability_dbc",
+      "id": 100229,
+      "key": "polearms_passive_spellline",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that binds stock passive 200 to Polearms skill 229.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skilllineability_dbc",
+      "id": 100293,
+      "key": "plate_passive_spellline",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that binds stock passive 750 to Plate skill 293.",
+      "status": "PARTIAL",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql",
+        "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
+      ]
+    },
+    {
+      "namespace": "skilllineability_dbc",
+      "id": 100413,
+      "key": "mail_passive_spellline",
+      "kind": "dbc_override_row",
+      "purpose": "WM DBC override row that binds stock passive 8737 to Mail skill 413.",
+      "status": "WORKING",
+      "owner_system": "combat_proficiency",
+      "source_paths": [
+        "native_modules/mod-wm-spells/data/sql/world/updates/2026_04_30_00_wm_spell_two_hand_weapon_proficiency.sql",
         "docs/SUMMON_SPELL_PLATFORM_STATUS.md"
       ]
     },

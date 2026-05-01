@@ -25,8 +25,8 @@ The shell bank solves one specific problem: stock 3.3.5 clients do not know abou
 - source contract: `control/runtime/spell_shell_bank.json`
 - family generation model:
   - pinned compatibility shells stay on `940000`, `940001`, `944000`, and `945000`
-  - generic V2 families pre-seed five cast-shape families in `946000-946999`
-  - each generic family gets 100 usable slots plus a 100-id reserve gap
+  - generic V2 families pre-seed ten cast-shape families in `946000-946999`
+  - each generic family gets 100 usable slots; the former 100-id reserve gaps are now allocated to missing cast shapes
 
 ## First install target
 
@@ -73,7 +73,7 @@ Reserved future pet-active shell:
    - `python -m wm.spells.client_patch build --source-dbc D:\WOW\Azerothcore_WoTLK_Rebuild\run\data\dbc\Spell.dbc --include all --summary`
    - default output: `.wm-bootstrap\state\client-patches\wm_spell_shell_bank\patch-z.mpq`
    - this uses repo-local Ladik MPQ Editor at `.wm-bootstrap\tools\mpqeditor\x64\MPQEditor.exe`
-   - the payload includes full replacement `DBFilesClient\Spell.dbc` and `DBFilesClient\SkillLineAbility.dbc`
+   - the payload includes full replacement `DBFilesClient\Spell.dbc`, `DBFilesClient\SkillLineAbility.dbc`, and `DBFilesClient\SkillRaceClassInfo.dbc`
 3. Install the generated package:
    - `python -m wm.spells.client_patch build --source-dbc D:\WOW\Azerothcore_WoTLK_Rebuild\run\data\dbc\Spell.dbc --include all --install --summary`
    - install target: `D:\WOW\world of warcraft 3.3.5a hd\Data\patch-z.mpq`
@@ -90,8 +90,8 @@ This repo does not commit the binary patch output. It commits the shell contract
 - shell IDs and metadata are committed in repo
 - exact shell claims are tracked in `data/specs/custom_id_registry.json`
 - `WORKING`: repo-owned patch builder exists at `python -m wm.spells.client_patch`
-- `WORKING`: on 2026-04-17, Codex downloaded official Ladik MPQ Editor into `.wm-bootstrap\tools\mpqeditor`, built `.wm-bootstrap\state\client-patches\wm_spell_shell_bank\patch-z.mpq`, and verified extraction of both `DBFilesClient\Spell.dbc` and `DBFilesClient\SkillLineAbility.dbc`
-- `WORKING`: the generated client payload includes named shell text for `940000`, `940001`, `944000`, and `945000`, plus the generic V2 cast-shape families in `946000-946999`
+- `WORKING`: on 2026-04-17, Codex downloaded official Ladik MPQ Editor into `.wm-bootstrap\tools\mpqeditor`, built `.wm-bootstrap\state\client-patches\wm_spell_shell_bank\patch-z.mpq`, and verified extraction of `DBFilesClient\Spell.dbc`, `DBFilesClient\SkillLineAbility.dbc`, and `DBFilesClient\SkillRaceClassInfo.dbc`
+- `WORKING`: the generated client payload includes named shell text for `940000`, `940001`, `944000`, `945000`, `946099`, `946600`, `946601`, and `946602`, plus the generic V2 cast-shape families in `946000-946999`
 - `WORKING`: `940001` presentation now has icon `221`, 3 second cast time through index `14`, 180 mana cost, Summon Voidwalker visual `4054`, and a Warlock/Demonology `SkillLineAbility.dbc` mapping cloned from Summon Voidwalker
 - `WORKING`: server `940001` can be staged with `-SeedProfile castable`, which keeps the WM-owned shell id but now has explicit presentation fields for icon/cast/cost/visual instead of relying only on the Raise-Ghoul seed defaults
 - `PARTIAL`: the refreshed package is installed and BridgeLab worldserver restarted on pid `8580`; in-game client spellbook, action-bar, cast, recast, dismiss, and relog proof is pending after fresh client restart

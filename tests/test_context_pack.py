@@ -69,6 +69,8 @@ class ContextPackBuilderTests(unittest.TestCase):
         self.assertEqual(data["policy"]["id"], "direct_apply")
         self.assertEqual(data["native_context_snapshot"]["snapshot_id"], 91)
         self.assertEqual(data["generation_input"]["player"]["name"], "Jecia")
+        self.assertTrue(data["generation_input"]["journey"]["eligibility"]["ready_for_arc_factory"])
+        self.assertEqual(data["generation_input"]["journey"]["eligibility"]["active_arc_keys"], ["murloc"])
         self.assertEqual(data["generation_input"]["journey"]["active_arc_keys"], ["murloc"])
         self.assertEqual(data["generation_input"]["journey"]["unlock_refs"], ["spell:900001"])
         self.assertEqual(data["generation_input"]["journey"]["steering"][0]["key"], "visible_first")
@@ -219,6 +221,7 @@ class _CharacterLoader:
                 )
             ],
             prompt_queue=[PromptQueueEntry(character_guid=character_guid, prompt_kind="branch_choice", body="What next?")],
+            status="WORKING",
         )
 
 

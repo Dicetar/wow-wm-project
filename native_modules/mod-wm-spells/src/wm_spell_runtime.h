@@ -13,6 +13,9 @@
 #include <vector>
 
 class SpellInfo;
+class Aura;
+class AuraApplication;
+enum AuraRemoveMode : uint8;
 
 namespace WmSpells
 {
@@ -114,6 +117,7 @@ namespace WmSpells
         float alphaEchoFollowDistance = 2.6f;
         float alphaEchoFollowAngle = PET_FOLLOW_ANGLE;
         float alphaEchoHuntRadius = 35.0f;
+        float alphaEchoMovementSpeedMultiplier = 1.75f;
         bool alphaEchoCountAuraEnabled = true;
         uint32 alphaEchoCountAuraSpellId = 467;
         uint32 alphaEchoCountAuraRefreshMs = 3000;
@@ -149,8 +153,8 @@ namespace WmSpells
         uint32 priestEchoMassDispelMinAffected = 3;
         uint32 priestEchoMassDispelMinSeverity = 8;
         uint32 priestEchoMassDispelMaxRemovals = 8;
-        uint32 priestEchoDpsSpellId = 8092;
-        uint32 priestEchoDpsDamageSpellId = 8092;
+        uint32 priestEchoDpsSpellId = 946099;
+        uint32 priestEchoDpsDamageSpellId = 946099;
         uint32 priestEchoDpsCastTimeMs = 1500;
         uint32 priestEchoDpsDamagePct = 19;
         uint32 priestEchoDpsCooldownMs = 2500;
@@ -186,6 +190,67 @@ namespace WmSpells
         uint32 maxBlockRating = 0;
     };
 
+    struct BrougUniversalParryConfig
+    {
+        uint32 shellSpellId = 946800;
+        float baseChancePct = 30.0f;
+        float strengthToChancePct = 0.45f;
+        float agilityToChancePct = 0.45f;
+        float expertiseToChancePct = 2.5f;
+        float weaponMasteryToChancePct = 0.25f;
+        float attackPowerToChancePct = 0.0f;
+        float maxChancePct = 90.0f;
+        std::string counterKey = "universal_parry";
+        bool countSpellDamage = true;
+        bool countPeriodicDamage = true;
+    };
+
+    struct BrougSkirmisherMarkConfig
+    {
+        uint32 shellSpellId = 946098;
+        float minRangeYards = 0.0f;
+        float maxRangeYards = 35.0f;
+        uint32 damagePct = 100;
+        uint32 minAttackIntervalMs = 500;
+        uint32 maxAttackIntervalMs = 6000;
+        uint32 visualSpellId = 75;
+        uint32 impactSoundId = 7140;
+        std::string counterKey = "skirmisher_shot_hit";
+    };
+
+    struct BrougDeflectConfig
+    {
+        uint32 shellSpellId = 946603;
+        uint32 parryPreMs = 100;
+        uint32 parryAnimationMs = 450;
+        uint32 parryPostMs = 100;
+        uint32 windowMs = 650;
+        uint32 cooldownMs = 500;
+        uint32 energyCost = 5;
+        uint32 stunMs = 1000;
+        uint32 vulnerableSpellId = 946200;
+        uint32 deflectedSpellId = 946201;
+        uint32 vulnerableDurationMs = 60000;
+        uint32 maxVulnerableStacks = 255;
+        bool counterattackEnabledDefault = false;
+        uint32 baseDamage = 1;
+        uint32 weaponDamagePct = 120;
+        uint32 attackPowerPct = 80;
+        uint32 visualSpellId = 946603;
+        std::string counterKey = "deflect_success";
+    };
+
+    struct BrougAutoRetaliationConfig
+    {
+        uint32 shellSpellId = 946802;
+        uint32 cooldownMs = 250;
+        uint32 baseDamage = 1;
+        uint32 weaponDamagePct = 80;
+        uint32 attackPowerPct = 35;
+        uint32 visualSpellId = 78;
+        std::string counterKey = "auto_retaliation";
+    };
+
     struct BoneboundEchoStasisConfig
     {
         uint32 shellSpellId = 946600;
@@ -194,20 +259,45 @@ namespace WmSpells
         uint32 soulShardCount = 1;
     };
 
+    struct LanathelStanceConfig
+    {
+        uint32 shellSpellId = 946601;
+        uint32 displayId = 31165;
+        float displayScale = 0.35f;
+        uint32 ridingSkillId = SKILL_RIDING;
+        uint32 apprenticeRidingSkill = 75;
+        uint32 journeymanRidingSkill = 150;
+        uint32 expertRidingSkill = 225;
+        uint32 artisanRidingSkill = 300;
+        uint32 masterRidingSkill = 375;
+        float baseLandSpeedRate = 1.4f;
+        float apprenticeLandSpeedRate = 1.6f;
+        float journeymanLandSpeedRate = 2.0f;
+        float expertFlightSpeedRate = 2.5f;
+        float artisanFlightSpeedRate = 3.8f;
+        float masterFlightSpeedRate = 4.1f;
+        bool flightRequiresFlyableArea = true;
+    };
+
     RuntimeConfig const& GetConfig();
     void LoadConfig();
     bool IsPlayerAllowed(Player* player);
     bool IsBoneboundShellSpell(Player* player, uint32 spellId);
     bool IsSupportedBehaviorKind(std::string const& behaviorKind);
+    bool ShouldAllowShellDefaultEffect(Player const* player, uint32 spellId, uint8 effIndex);
     std::optional<BehaviorRecord> LoadBehaviorRecord(uint32 shellSpellId);
-    SpellCastResult CheckShellCast(Player* player, uint32 shellSpellId = 0);
+    SpellCastResult CheckShellCast(Player* player, uint32 shellSpellId = 0, Unit* explicitTarget = nullptr);
     SpellCastResult CheckBoneboundCorpseTarget(Player* player, uint32 shellSpellId = 0);
     BehaviorExecutionResult ExecuteBoneboundServant(Player* player, uint32 createdBySpellId, bool persistPet);
     BehaviorExecutionResult ExecuteBoneboundEchoStasis(Player* player, uint32 shellSpellId);
-    BehaviorExecutionResult ExecuteShellBehavior(Player* player, uint32 shellSpellId, bool persistPetFallback);
+    BehaviorExecutionResult ExecuteLanathelStance(Player* player, uint32 shellSpellId);
+    BehaviorExecutionResult ExecuteBrougSkirmisherMark(Player* player, uint32 shellSpellId, Unit* explicitTarget = nullptr);
+    BehaviorExecutionResult ExecuteBrougDeflect(Player* player, uint32 shellSpellId);
+    BehaviorExecutionResult ExecuteShellBehavior(Player* player, uint32 shellSpellId, bool persistPetFallback, Unit* explicitTarget = nullptr);
     BehaviorExecutionResult ExecuteBoneboundEchoMode(Player* player, std::string const& mode, std::optional<float> huntRadiusOverride = std::nullopt);
     BehaviorExecutionResult ExecuteBoneboundEchoSeekRange(Player* player, float huntRadius);
     BehaviorExecutionResult ExecuteBoneboundEchoTeleport(Player* player);
+    BehaviorExecutionResult DescribeBoneboundEchoStatus(Player* player);
     void UpdateTrackedCompanions(uint32 diff);
     void MaintainBoneboundSummons(Player* player);
     void ForgetBoneboundCompanions(Player* player);
@@ -215,12 +305,33 @@ namespace WmSpells
     void HandleBoneboundMeleeDamage(Unit* attacker, Unit* victim, uint32& damage);
     void MaintainIntellectBlockPassive(Player* player);
     void MaintainCombatProficiencies(Player* player);
+    void TickBrougGuard(Player* player, uint32 diff);
+    void MaintainBrougGuard(Player* player, uint32 diff);
     void ForgetIntellectBlockPassive(Player* player);
+    void ForgetBrougGuard(Player* player);
     void MaintainNightWatchersLens(Player* player, uint32 diff);
     void ForgetNightWatchersLens(Player* player);
+    void MaintainLanathelStance(Player* player, uint32 diff);
+    void ForgetLanathelStance(Player* player);
     bool IsNightWatchersLensMarked(Unit const* unit);
     void HandleNightWatchersLensWeaponDamage(Unit* attacker, Unit* victim, uint32& damage);
     void HandleNightWatchersLensSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo);
+    void HandleBrougGuardMeleeDamage(Unit* attacker, Unit* victim, uint32& damage);
+    void HandleBrougGuardSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo);
+    void HandleBrougGuardPeriodicDamage(Unit* attacker, Unit* victim, uint32& damage, SpellInfo const* spellInfo);
+    void HandleBrougGuardAuraApply(Unit* unit, Aura* aura);
+    void HandleBrougGuardAuraRemove(Unit* unit, AuraApplication* aurApp, AuraRemoveMode mode);
+    void HandleBrougGuardMeleeOutcome(
+        Unit const* attacker,
+        Unit const* victim,
+        WeaponAttackType attType,
+        int32& crit_chance,
+        int32& miss_chance,
+        int32& dodge_chance,
+        int32& parry_chance,
+        int32& block_chance);
+    bool CanCompleteBrougGuardQuest(Player* player, uint32 questId, std::string* reason = nullptr);
+    void HandleBrougGuardQuestComplete(Player* player, uint32 questId);
     void HandleNightWatchersLensDefenseExposure(
         Unit const* attacker,
         Unit const* victim,

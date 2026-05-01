@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 VALID_CUSTOM_ID_STATUSES = {"WORKING", "PARTIAL", "BROKEN", "UNKNOWN"}
+VISIBLE_ID_NAMESPACES = {"item", "quest", "spell", "creature_template", "gameobject", "gossip_menu", "npc_text"}
 
 
 @dataclass(slots=True)
@@ -164,6 +165,13 @@ def validate_custom_id_registry(path: str | Path | None = None) -> RegistryValid
                 RegistryIssue(
                     path=f"{path_prefix}.status",
                     message=f"Unknown status `{status}`. Expected one of {', '.join(sorted(VALID_CUSTOM_ID_STATUSES))}.",
+                )
+            )
+        if status == "BROKEN" and namespace in VISIBLE_ID_NAMESPACES and entry.get("replaced_by") in (None, ""):
+            result.issues.append(
+                RegistryIssue(
+                    path=f"{path_prefix}.replaced_by",
+                    message="BROKEN visible ID claims must name a fresh replacement with replaced_by.",
                 )
             )
         source_paths = entry.get("source_paths")

@@ -1,5 +1,5 @@
 Status: PARTIAL
-Last verified: 2026-04-15
+Last verified: 2026-04-28
 Verified by: Codex
 Doc type: reference
 
@@ -34,7 +34,8 @@ The builder composes existing systems:
   - player GUID
   - target creature entry
   - optional source event
-  - character state
+- character state
+- journey eligibility snapshot for arc/reward/power consumers
   - resolved target profile
   - resolver-built subject card
   - journal summary and journal source flags
@@ -44,6 +45,7 @@ The builder composes existing systems:
   - eligible control recipes and default policy metadata
   - latest native context snapshot, when available
   - compact `generation_input` for deterministic downstream proposal building
+  - `generation_input.journey.eligibility` with active arc refs, unlock refs, reward refs, steering keys, prompt kinds, blockers, and `ready_for_arc_factory`
 - `python -m wm.context.builder --help` works.
 - Unit tests prove:
   - fully wired event-backed pack assembly
@@ -112,6 +114,7 @@ Current expected result for the snapshot command is `WORKING` when player `5406`
 - `WORKING`: bridge-lab proof on 2026-04-14 against `127.0.0.1:33307` after `sql/dev/seed_journal_context_5406_world.sql`; `python -m wm.context.builder --event-id 603 --summary --no-native-snapshot` produced `status: WORKING`, `trigger_event_type: kill`, `journal_status: WORKING`, and `eligible_recipes: kill_burst_bounty`.
 - `WORKING`: bridge-lab native snapshot proof on 2026-04-15 consumed action request `31`, wrote `wm_bridge_context_snapshot` row `1`, and `python -m wm.context.builder --event-id 603 --summary` produced `native_snapshot: true` with `status: WORKING`.
 - `WORKING`: duplicate snapshot CLI runs with the same idempotency key now find the existing matching snapshot instead of waiting for a newer row and misreporting `PARTIAL`.
+- `WORKING`: BridgeLab proof on 2026-04-27 for player `5406` / target creature `46` returned `generation_input.journey.eligibility.ready_for_arc_factory = true` with active arc `jecia_world_master_awakened`, unlock refs `combat_proficiency:118` and `shell_spell:940001`, reward ref `item:910006`, and no blockers.
 - `BROKEN`: no current repo evidence.
 - `UNKNOWN`: target or event resolution failure.
 

@@ -3,7 +3,7 @@ param(
     [string]$Configuration = "RelWithDebInfo",
     [int]$GracefulWaitSeconds = 20,
     [int]$ForceAfterSeconds = 5,
-    [string]$WmSpellsPlayerGuidAllowList = "5406"
+    [string]$WmSpellsPlayerGuidAllowList = "5406,5405"
 )
 
 $ErrorActionPreference = "Stop"
@@ -71,16 +71,21 @@ function Get-LabWorldProcess {
 $buildExe = Join-Path $WorkspaceRoot ("build\bin\" + $Configuration + "\worldserver.exe")
 $runRoot = Join-Path $WorkspaceRoot "run"
 $runExe = Join-Path $runRoot "bin\worldserver.exe"
+$bridgeConfig = Join-Path $runRoot "configs\modules\mod_wm_bridge.conf"
 $spellsConfig = Join-Path $runRoot "configs\modules\mod_wm_spells.conf"
+$buildBridgeDist = Join-Path $WorkspaceRoot ("build\bin\" + $Configuration + "\configs\modules\mod_wm_bridge.conf.dist")
 $buildSpellsDist = Join-Path $WorkspaceRoot ("build\bin\" + $Configuration + "\configs\modules\mod_wm_spells.conf.dist")
 
+Ensure-ConfigFile -Path $bridgeConfig -FallbackDistPath $buildBridgeDist
 Ensure-ConfigFile -Path $spellsConfig -FallbackDistPath $buildSpellsDist
 
-foreach ($required in @($buildExe, $runExe, $spellsConfig)) {
+foreach ($required in @($buildExe, $runExe, $bridgeConfig, $spellsConfig)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "Required path not found: $required"
     }
 }
+Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.Emit.Aura" -Value "1"
+Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.Emit.AuraSpellAllowList" -Value """946602,132,687,770"""
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.Enable" -Value "1"
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """$WmSpellsPlayerGuidAllowList"""
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.Enable" -Value "1"

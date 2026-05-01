@@ -2,6 +2,7 @@ param(
     [string]$ProjectRoot = "D:\WOW\wm-project",
     [string]$BridgeLabRoot = "D:\WOW\WM_BridgeLab",
     [int]$PlayerGuid = 5406,
+    [string]$WmSpellsPlayerGuidAllowList = "",
     [int]$LabMySqlPort = 33307,
     [int]$WorldServerPort = 8095,
     [int]$SoapPort = 7879,
@@ -14,6 +15,8 @@ param(
     [switch]$ResetBountyRules,
     [switch]$KeepExistingEventBacklog,
     [switch]$DisableRandomEnchantOnKill,
+    [switch]$SkipBridgeLabCompatibilitySql,
+    [switch]$SkipBridgeLabAhBotMarketSql,
     [switch]$SkipPlayerbotsDatabaseSync,
     [switch]$ConfigOnly,
     [switch]$PrintIdle,
@@ -148,6 +151,40 @@ function Sync-PlayerbotsDatabaseInfo {
     Write-Host "bridge_lab_playerbots_db_sync=true path=$ConfigPath port=$Port"
 }
 
+function Invoke-BridgeLabMySqlFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$MySqlExe,
+        [Parameter(Mandatory = $true)]
+        [int]$Port,
+        [Parameter(Mandatory = $true)]
+        [string]$Database,
+        [Parameter(Mandatory = $true)]
+        [string]$SqlPath
+    )
+
+    Resolve-ExistingPath -Path $MySqlExe -Label "BridgeLab mysql.exe" | Out-Null
+    Resolve-ExistingPath -Path $SqlPath -Label "BridgeLab compatibility SQL" | Out-Null
+
+    $normalizedSqlPath = $SqlPath.Replace("\", "/")
+    if ($DryRun.IsPresent) {
+        Write-Host "dry_run_mysql_source=$normalizedSqlPath database=$Database port=$Port"
+        return
+    }
+
+    & $MySqlExe `
+        "--host=127.0.0.1" `
+        "--port=$Port" `
+        "--user=acore" `
+        "--password=acore" `
+        "--database=$Database" `
+        "--execute=source $normalizedSqlPath"
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "BridgeLab MySQL source failed with exit code $LASTEXITCODE`: $SqlPath"
+    }
+}
+
 function Start-LabServerProcess {
     param(
         [Parameter(Mandatory = $true)]
@@ -194,6 +231,9 @@ $worldConfig = Join-Path $runDir "configs\worldserver.conf"
 $playerbotsConfig = Join-Path $runDir "configs\modules\playerbots.conf"
 $runtimeGuard = Join-Path $runDir "helpers\Test-RuntimeDllGuard.ps1"
 $dllLock = Join-Path $BridgeLabRoot "state\runtime-dlls.lock.json"
+$mysqlExe = Join-Path $BridgeLabRoot "deps\mysql\bin\mysql.exe"
+$bridgeLabCompatibilitySql = Join-Path $ProjectRoot "sql\bootstrap\bridge_lab_ipp_character_quest_compat.sql"
+$bridgeLabAhBotMarketSql = Join-Path $ProjectRoot "sql\bootstrap\bridge_lab_ahbot_market.sql"
 
 $startMySqlScript = Resolve-ExistingPath -Path (Join-Path $ProjectRoot "scripts\bridge_lab\Start-BridgeLabMySql.ps1") -Label "Start-BridgeLabMySql.ps1"
 $configureScript = Resolve-ExistingPath -Path (Join-Path $ProjectRoot "scripts\bridge_lab\Configure-BridgeLabRuntime.ps1") -Label "Configure-BridgeLabRuntime.ps1"
@@ -201,6 +241,14 @@ $syncRealmlistScript = Resolve-ExistingPath -Path (Join-Path $ProjectRoot "scrip
 $restartWorldScript = Resolve-ExistingPath -Path (Join-Path $ProjectRoot "scripts\bridge_lab\Restart-BridgeLabWorldServer.ps1") -Label "Restart-BridgeLabWorldServer.ps1"
 $startNativeWatchScript = Resolve-ExistingPath -Path (Join-Path $ProjectRoot "scripts\bridge_lab\Start-BridgeLabNativeWatch.ps1") -Label "Start-BridgeLabNativeWatch.ps1"
 $startAutoBountyScript = Resolve-ExistingPath -Path (Join-Path $ProjectRoot "scripts\bridge_lab\Start-BridgeLabAutoBounty.ps1") -Label "Start-BridgeLabAutoBounty.ps1"
+
+$effectiveWmSpellsAllowList = $WmSpellsPlayerGuidAllowList
+if ([string]::IsNullOrWhiteSpace($effectiveWmSpellsAllowList)) {
+    $effectiveWmSpellsAllowList = [string]$PlayerGuid
+    if ($PlayerGuid -ne 5405) {
+        $effectiveWmSpellsAllowList = "$effectiveWmSpellsAllowList,5405"
+    }
+}
 
 Resolve-ExistingPath -Path $runDir -Label "BridgeLab run directory" | Out-Null
 Resolve-ExistingPath -Path $authExe -Label "BridgeLab authserver.exe" | Out-Null
@@ -215,7 +263,7 @@ if ($ConfigureRuntime.IsPresent -and -not $SkipConfigure.IsPresent) {
         "-WorldServerPort", ([string]$WorldServerPort),
         "-SoapPort", ([string]$SoapPort),
         "-DataDir", $DataDir,
-        "-WmSpellsPlayerGuidAllowList", ([string]$PlayerGuid),
+        "-WmSpellsPlayerGuidAllowList", $effectiveWmSpellsAllowList,
         "-UpdatePlayerbotsDatabaseInfo"
     )
 }
@@ -240,6 +288,22 @@ Invoke-BridgeLabScript -Path $startMySqlScript -Arguments @(
     "-WorkspaceRoot", $BridgeLabRoot,
     "-Port", ([string]$LabMySqlPort)
 )
+
+if (-not $SkipBridgeLabCompatibilitySql.IsPresent) {
+    Invoke-BridgeLabMySqlFile `
+        -MySqlExe $mysqlExe `
+        -Port $LabMySqlPort `
+        -Database "acore_characters" `
+        -SqlPath $bridgeLabCompatibilitySql
+}
+
+if (-not $SkipBridgeLabAhBotMarketSql.IsPresent) {
+    Invoke-BridgeLabMySqlFile `
+        -MySqlExe $mysqlExe `
+        -Port $LabMySqlPort `
+        -Database "acore_world" `
+        -SqlPath $bridgeLabAhBotMarketSql
+}
 
 Invoke-BridgeLabScript -Path $syncRealmlistScript -Arguments @(
     "-WorkspaceRoot", $BridgeLabRoot,

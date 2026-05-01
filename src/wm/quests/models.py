@@ -37,6 +37,7 @@ class BountyQuestReward:
     reward_item_entry: int | None = None
     reward_item_name: str | None = None
     reward_item_count: int = 1
+    reward_item_mode: str = "fixed"
     reward_xp_difficulty: int | None = None
     reward_spell_id: int | None = None
     reward_spell_display_id: int | None = None
@@ -53,6 +54,7 @@ class BountyQuestReward:
             self.reward_item_entry = int(self.reward_item.entry)
             if self.reward_item.name not in (None, ""):
                 self.reward_item_name = self.reward_item.name
+        self.reward_item_mode = str(self.reward_item_mode or "fixed")
         if self.reward_xp_difficulty not in (None, ""):
             self.reward_xp_difficulty = int(self.reward_xp_difficulty)
         if self.reward_spell_id not in (None, ""):

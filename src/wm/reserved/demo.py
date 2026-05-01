@@ -13,11 +13,12 @@ def main() -> None:
     ranges = payload.get("ranges", {})
 
     slots = []
-    for entity_type, spec in ranges.items():
+    for range_key, spec in ranges.items():
         start = spec.get("start")
         end = spec.get("end")
         if start is None or end is None:
             continue
+        entity_type = str(spec.get("entity_type") or range_key)
         slots.extend(build_slots_from_range(entity_type, int(start), int(end)))
 
     first_spell = allocate_next_free_slot(

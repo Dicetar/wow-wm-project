@@ -1,0 +1,85 @@
+{
+  "schema_version": "wm.arc_reward_factory.personal_arc.v1",
+  "arc_key": "jecia_lens_turns_v1",
+  "player_guid": 5406,
+  "title": "The Lens Turns",
+  "summary": "Jecia turns the Night Watcher's Lens from a bounty reward into the first explicit World Master arc reward: a visible item effect tied to her personal journey state.",
+  "beats": [
+    {
+      "beat_key": "lens_resonates",
+      "label": "The Lens Resonates",
+      "kind": "setup",
+      "description": "The lens reacts to Jecia's recent fights and marks Defias activity as the next pressure point."
+    },
+    {
+      "beat_key": "thin_the_bandits",
+      "label": "Thin The Bandits",
+      "kind": "quest_objective",
+      "description": "Jecia drives back a small Defias group so the item reward has a concrete story beat."
+    },
+    {
+      "beat_key": "bind_the_reward",
+      "label": "Bind The Reward",
+      "kind": "reward",
+      "description": "The reward is recorded in the character journey spine as a reusable eligibility fact for future powers and scenes."
+    }
+  ],
+  "target": {
+    "creature_entry": 116,
+    "target_name": "Defias Bandits",
+    "kill_count": 4
+  },
+  "turn_in_npc": {
+    "entry": 261,
+    "name": "Guard Thomas"
+  },
+  "quest": {
+    "title": "Jecia: The Lens Turns",
+    "quest_level": 18,
+    "min_level": 12,
+    "grant_mode": "npc_start",
+    "quest_description": "The Night Watcher's Lens pulls Jecia's attention back toward Defias movement near Elwynn. Thin their numbers, then return to Guard Thomas.",
+    "objective_text": "Slay 4 Defias Bandits.",
+    "request_items_text": "Drive back 4 Defias Bandits, then report to Guard Thomas.",
+    "offer_reward_text": "Guard Thomas studies the lens and nods. Whatever is guiding you, it has teeth. Keep it close."
+  },
+  "reward": {
+    "kind": "managed_item",
+    "item_draft_path": "control/examples/items/night_watchers_lens.json",
+    "item_entry": 910006,
+    "item_name": "Night Watcher's Lens",
+    "item_count": 1,
+    "is_equipped_gate": true
+  },
+  "journey_updates": {
+    "stage_key": "lens_arc_quest_published",
+    "branch_key": "visible_item_power",
+    "conversation_steering": [
+      {
+        "steering_key": "prefer_visible_item_powers",
+        "steering_kind": "operator_direction",
+        "body": "Prefer future rewards that expose their hidden server behavior through visible item, aura, debuff, tooltip, or combat-message state.",
+        "priority": 70,
+        "source": "operator",
+        "is_active": true,
+        "metadata": {
+          "arc_key": "jecia_lens_turns_v1"
+        }
+      }
+    ],
+    "prompt_queue": [
+      {
+        "prompt_kind": "arc_branch_choice",
+        "body": "Offer the next Jecia branch as either a companion upgrade, an item-granted alternate ability, or a live scene intervention."
+      }
+    ]
+  },
+  "runtime_sync": {
+    "mode": "auto",
+    "item_commands": [],
+    "quest_commands": []
+  },
+  "notes": [
+    "This is the first Arc + Reward Factory V1 scenario: a short personal arc, a fresh quest slot, and a visible managed item reward."
+  ]
+}

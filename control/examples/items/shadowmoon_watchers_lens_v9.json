@@ -1,0 +1,63 @@
+{
+  "item_entry": 910013,
+  "base_item_entry": 910006,
+  "name": "Shadowmoon Watcher's Lens",
+  "description": "Weapon auto-attacks and wand shots have a 10% chance to mark the target for 10 sec. The visible mark cuts defenses by 50%, doubles attack crit/proc chances, and causes your non-wand direct spells to deal 15% more damage.",
+  "item_class": 4,
+  "item_subclass": 1,
+  "inventory_type": 1,
+  "quality": 4,
+  "item_level": 125,
+  "required_level": 70,
+  "bonding": 1,
+  "buy_price": 0,
+  "sell_price": 0,
+  "max_count": 1,
+  "stackable": 1,
+  "allowable_class": -1,
+  "allowable_race": -1,
+  "clear_stats": true,
+  "clear_spells": true,
+  "stats": [
+    {
+      "stat_type": 5,
+      "stat_value": 36
+    },
+    {
+      "stat_type": 7,
+      "stat_value": 42
+    },
+    {
+      "stat_type": 32,
+      "stat_value": 22
+    },
+    {
+      "stat_type": 45,
+      "stat_value": 58
+    }
+  ],
+  "spells": [
+    {
+      "spell_id": 132,
+      "trigger": 1,
+      "charges": 0,
+      "ppm_rate": 0.0,
+      "cooldown_ms": -1,
+      "category": 0,
+      "category_cooldown_ms": -1
+    }
+  ],
+  "tags": [
+    "wm_generated",
+    "managed_item_slot",
+    "quest_reward",
+    "arc_reward",
+    "shadowmoon_watchers_lens",
+    "working_lens_clone_item_shape",
+    "level_70",
+    "visible_aura_marker",
+    "target_debuff_proc",
+    "changed_questgiver",
+    "native_indicated_effect"
+  ]
+}

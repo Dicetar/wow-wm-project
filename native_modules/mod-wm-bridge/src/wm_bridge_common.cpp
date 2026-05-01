@@ -30,10 +30,10 @@ namespace
         return value;
     }
 
-    std::unordered_set<uint32> ParsePlayerGuidAllowList(std::string const& rawValue, bool& allowAllPlayers)
+    std::unordered_set<uint32> ParseUInt32AllowList(std::string const& rawValue, bool& allowAll)
     {
         std::unordered_set<uint32> result;
-        allowAllPlayers = false;
+        allowAll = false;
 
         std::stringstream stream(rawValue);
         std::string token;
@@ -47,7 +47,7 @@ namespace
 
             if (token == "*")
             {
-                allowAllPlayers = true;
+                allowAll = true;
                 result.clear();
                 return result;
             }
@@ -154,6 +154,7 @@ namespace WmBridge
         gBridgeConfig.emitLoot = sConfigMgr->GetOption<bool>("WmBridge.Emit.Loot", true);
         gBridgeConfig.emitGossip = sConfigMgr->GetOption<bool>("WmBridge.Emit.Gossip", true);
         gBridgeConfig.emitArea = sConfigMgr->GetOption<bool>("WmBridge.Emit.Area", true);
+        gBridgeConfig.emitAura = sConfigMgr->GetOption<bool>("WmBridge.Emit.Aura", false);
         gBridgeConfig.dbControlEnabled = sConfigMgr->GetOption<bool>("WmBridge.DbControl.Enable", false);
         gBridgeConfig.dbControlRefreshIntervalMs = sConfigMgr->GetOption<uint32>("WmBridge.DbControl.RefreshIntervalMS", 5000);
         gBridgeConfig.actionQueueEnabled = sConfigMgr->GetOption<bool>("WmBridge.ActionQueue.Enable", false);
@@ -163,10 +164,16 @@ namespace WmBridge
         gBridgeConfig.aoeLootMaxCorpses = sConfigMgr->GetOption<uint32>("WmBridge.AoeLoot.MaxCorpses", 25);
 
         bool allowAllPlayers = false;
-        gBridgeConfig.playerGuidAllowList = ParsePlayerGuidAllowList(
+        gBridgeConfig.playerGuidAllowList = ParseUInt32AllowList(
             sConfigMgr->GetOption<std::string>("WmBridge.PlayerGuidAllowList", ""),
             allowAllPlayers);
         gBridgeConfig.allowAllPlayers = allowAllPlayers;
+
+        bool allowAllAuraSpells = false;
+        gBridgeConfig.auraSpellAllowList = ParseUInt32AllowList(
+            sConfigMgr->GetOption<std::string>("WmBridge.Emit.AuraSpellAllowList", "946602,132,687,770"),
+            allowAllAuraSpells);
+        gBridgeConfig.allowAllAuraSpells = allowAllAuraSpells;
         if (!gBridgeConfig.dbControlEnabled)
         {
             gBridgeConfig.dbPlayerGuidAllowList.clear();
@@ -198,6 +205,17 @@ namespace WmBridge
         }
 
         return IsPlayerGuidAllowed(static_cast<uint32>(player->GetGUID().GetCounter()));
+    }
+
+    bool IsAuraSpellAllowed(uint32 spellId)
+    {
+        if (!gBridgeConfig.emitAura || spellId == 0)
+        {
+            return false;
+        }
+
+        return gBridgeConfig.allowAllAuraSpells
+            || gBridgeConfig.auraSpellAllowList.find(spellId) != gBridgeConfig.auraSpellAllowList.end();
     }
 
     void RefreshRuntimeControls(uint32 diff)

@@ -112,17 +112,42 @@ $playerbotSettings = [ordered]@{
 $ahbotSettings = [ordered]@{
     "AuctionHouseBot.Account"                         = "$AhbotAccount"
     "AuctionHouseBot.GUID"                            = "$AhbotGuid"
-    "AuctionHouseBot.EnableSeller"                    = "1"
-    "AuctionHouseBot.EnableBuyer"                     = "0"
-    "AuctionHouseBot.ItemsPerCycle"                   = "100"
-    "AuctionHouseBot.UseBuyPriceForSeller"            = "0"
+    "AuctionHouseBot.GUIDs"                           = "$AhbotGuid"
+    "AuctionHouseBot.EnableSeller"                    = "true"
+    "AuctionHouseBot.EnableBuyer"                     = "1"
+    "AuctionHouseBot.Buyer.Enabled"                   = "true"
+    "AuctionHouseBot.MinutesBetweenBuyCycle"          = "1:3"
+    "AuctionHouseBot.MinutesBetweenSellCycle"         = "1"
+    "AuctionHouseBot.ItemsPerCycle"                   = "2000"
+    "AuctionHouseBot.UseBuyPriceForSeller"            = "1"
     "AuctionHouseBot.UseBuyPriceForBuyer"             = "0"
-    "AuctionHouseBot.UseMarketPriceForSeller"         = "0"
-    "AuctionHouseBot.MarketResetThreshold"            = "25"
-    "AuctionHouseBot.ConsiderOnlyBotAuctions"         = "0"
+    "AuctionHouseBot.UseMarketPriceForSeller"         = "1"
+    "AuctionHouseBot.MarketResetThreshold"            = "10"
+    "AuctionHouseBot.ConsiderOnlyBotAuctions"         = "1"
     "AuctionHouseBot.DuplicatesCount"                 = "0"
-    "AuctionHouseBot.DivisibleStacks"                 = "0"
-    "AuctionHouseBot.ElapsingTimeClass"               = "1"
+    "AuctionHouseBot.DivisibleStacks"                 = "1"
+    "AuctionHouseBot.ElapsingTimeClass"               = "0"
+    "AuctionHouseBot.ReturnExpiredAuctionItemsToBot"  = "false"
+    "AuctionHouseBot.Alliance.MinItems"               = "0"
+    "AuctionHouseBot.Alliance.MaxItems"               = "0"
+    "AuctionHouseBot.Horde.MinItems"                  = "0"
+    "AuctionHouseBot.Horde.MaxItems"                  = "0"
+    "AuctionHouseBot.Neutral.MinItems"                = "40000"
+    "AuctionHouseBot.Neutral.MaxItems"                = "40000"
+    "AuctionHouseBot.BuyoutVariationReducePercent"    = "0.30"
+    "AuctionHouseBot.BuyoutVariationAddPercent"       = "0.20"
+    "AuctionHouseBot.BidVariationHighReducePercent"   = "0"
+    "AuctionHouseBot.BidVariationLowReducePercent"    = "0.30"
+    "AuctionHouseBot.Buyer.BuyCandidatesPerBuyCycle"  = "25:75"
+    "AuctionHouseBot.Buyer.AcceptablePriceModifier"   = "1.20"
+    "AuctionHouseBot.Buyer.AlwaysBidMaxCalculatedPrice" = "false"
+    "AuctionHouseBot.Buyer.PreventOverpayingForVendorItems" = "true"
+    "AuctionHouseBot.Buyer.BidAgainstPlayers"         = "false"
+    "AuctionHouseBot.AdvancedListingRules.UseDropRates.Enabled" = "true"
+    "AuctionHouseBot.AdvancedListingRules.UseDropRates.MinDropRate" = "0.005"
+    "AuctionHouseBot.DisabledItemTextFilter"          = "true"
+    "AuctionHouseBot.DisabledRecipeProducedItemFilterEnabled" = "false"
+    "AuctionHouseBot.DisabledCustomItemIDs"           = "900000-999999"
     "AuctionHouseBot.VendorItems"                     = "0"
     "AuctionHouseBot.VendorTradeGoods"                = "0"
     "AuctionHouseBot.LootItems"                       = "1"
@@ -135,14 +160,14 @@ $ahbotSettings = [ordered]@{
     "AuctionHouseBot.Bind_When_Equipped"              = "1"
     "AuctionHouseBot.Bind_When_Use"                   = "1"
     "AuctionHouseBot.Bind_Quest_Item"                 = "0"
-    "AuctionHouseBot.DisableConjured"                 = "0"
+    "AuctionHouseBot.DisableConjured"                 = "1"
     "AuctionHouseBot.DisableGems"                     = "0"
-    "AuctionHouseBot.DisableMoney"                    = "0"
-    "AuctionHouseBot.DisableMoneyLoot"                = "0"
-    "AuctionHouseBot.DisableLootable"                 = "0"
-    "AuctionHouseBot.DisableKeys"                     = "0"
-    "AuctionHouseBot.DisableDuration"                 = "0"
-    "AuctionHouseBot.DisableBOP_Or_Quest_NoReqLevel"  = "0"
+    "AuctionHouseBot.DisableMoney"                    = "1"
+    "AuctionHouseBot.DisableMoneyLoot"                = "1"
+    "AuctionHouseBot.DisableLootable"                 = "1"
+    "AuctionHouseBot.DisableKeys"                     = "1"
+    "AuctionHouseBot.DisableDuration"                 = "1"
+    "AuctionHouseBot.DisableBOP_Or_Quest_NoReqLevel"  = "1"
     "AuctionHouseBot.DisableWarriorItems"             = "0"
     "AuctionHouseBot.DisablePaladinItems"             = "0"
     "AuctionHouseBot.DisableHunterItems"              = "0"
@@ -178,6 +203,41 @@ $ahbotSettings = [ordered]@{
     "AuctionHouseBot.TRACE_SELLER"                    = "0"
 }
 
+$ahBotPlusCategories = @(
+    "Consumable", "Container", "Weapon", "Gem", "Armor", "Reagent", "Projectile",
+    "TradeGood", "Generic", "Recipe", "Quiver", "Quest", "Key", "Misc", "Glyph"
+)
+$ahBotPlusQualities = @("Poor", "Normal", "Uncommon", "Rare", "Epic", "Legendary", "Artifact", "Heirloom")
+$ahBotPlusListingWeights = [ordered]@{
+    "AuctionHouseBot.ListProportion.CategoryConsumable.QualityNormal" = "12"
+    "AuctionHouseBot.ListProportion.CategoryConsumable.QualityUncommon" = "8"
+    "AuctionHouseBot.ListProportion.CategoryConsumable.QualityRare" = "3"
+    "AuctionHouseBot.ListProportion.CategoryConsumable.QualityEpic" = "1"
+    "AuctionHouseBot.ListProportion.CategoryContainer.QualityNormal" = "3"
+    "AuctionHouseBot.ListProportion.CategoryContainer.QualityUncommon" = "2"
+    "AuctionHouseBot.ListProportion.CategoryContainer.QualityRare" = "1"
+    "AuctionHouseBot.ListProportion.CategoryWeapon.QualityUncommon" = "18"
+    "AuctionHouseBot.ListProportion.CategoryWeapon.QualityRare" = "8"
+    "AuctionHouseBot.ListProportion.CategoryWeapon.QualityEpic" = "2"
+    "AuctionHouseBot.ListProportion.CategoryGem.QualityUncommon" = "8"
+    "AuctionHouseBot.ListProportion.CategoryGem.QualityRare" = "4"
+    "AuctionHouseBot.ListProportion.CategoryGem.QualityEpic" = "1"
+    "AuctionHouseBot.ListProportion.CategoryArmor.QualityUncommon" = "24"
+    "AuctionHouseBot.ListProportion.CategoryArmor.QualityRare" = "10"
+    "AuctionHouseBot.ListProportion.CategoryArmor.QualityEpic" = "3"
+    "AuctionHouseBot.ListProportion.CategoryReagent.QualityNormal" = "6"
+    "AuctionHouseBot.ListProportion.CategoryProjectile.QualityNormal" = "4"
+    "AuctionHouseBot.ListProportion.CategoryTradeGood.QualityNormal" = "35"
+    "AuctionHouseBot.ListProportion.CategoryTradeGood.QualityUncommon" = "12"
+    "AuctionHouseBot.ListProportion.CategoryTradeGood.QualityRare" = "4"
+    "AuctionHouseBot.ListProportion.CategoryTradeGood.QualityEpic" = "1"
+    "AuctionHouseBot.ListProportion.CategoryRecipe.QualityNormal" = "8"
+    "AuctionHouseBot.ListProportion.CategoryRecipe.QualityUncommon" = "10"
+    "AuctionHouseBot.ListProportion.CategoryRecipe.QualityRare" = "4"
+    "AuctionHouseBot.ListProportion.CategoryRecipe.QualityEpic" = "1"
+    "AuctionHouseBot.ListProportion.CategoryGlyph.QualityNormal" = "12"
+}
+
 $dungeonMasterSettings = [ordered]@{
     "DungeonMaster.Roguelike.Buff.1"  = '"15366,Songflower Serenade,100"'
     "DungeonMaster.Roguelike.Buff.2"  = '"22888,Rallying Cry,80"'
@@ -205,6 +265,16 @@ foreach ($entry in $playerbotSettings.GetEnumerator()) {
 }
 
 foreach ($entry in $ahbotSettings.GetEnumerator()) {
+    Set-OrAddConfigValue -Path $ahbotConfig -Key $entry.Key -Value $entry.Value
+}
+
+foreach ($category in $ahBotPlusCategories) {
+    foreach ($quality in $ahBotPlusQualities) {
+        Set-OrAddConfigValue -Path $ahbotConfig -Key "AuctionHouseBot.ListProportion.Category$category.Quality$quality" -Value "0"
+    }
+}
+
+foreach ($entry in $ahBotPlusListingWeights.GetEnumerator()) {
     Set-OrAddConfigValue -Path $ahbotConfig -Key $entry.Key -Value $entry.Value
 }
 

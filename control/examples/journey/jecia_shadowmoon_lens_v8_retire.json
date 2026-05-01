@@ -1,0 +1,13 @@
+{
+  "schema_version": "wm.character_journey.seed.v1",
+  "player_guid": 5406,
+  "arc_states": [
+    {
+      "arc_key": "jecia_shadowmoon_lens_v8",
+      "stage_key": "retired_oronok_stale_source_text",
+      "status": "retired",
+      "branch_key": "zone_fitting_visible_item_power",
+      "summary": "Retired after live proof still showed stale source quest objective text and no visible reward on Oronok."
+    }
+  ]
+}

@@ -9,6 +9,9 @@
 #include "Random.h"
 
 #include <algorithm>
+#include <cctype>
+#include <initializer_list>
+#include <sstream>
 
 namespace
 {
@@ -18,6 +21,88 @@ namespace
     uint32 ClampEnchantTier(uint32 tier)
     {
         return std::clamp<uint32>(tier, RANDOM_ENCHANT_MIN_TIER, RANDOM_ENCHANT_MAX_TIER);
+    }
+
+    char const* RandomEnchantClassKey(Item const* item)
+    {
+        return item && item->GetTemplate() && item->GetTemplate()->Class == ITEM_CLASS_WEAPON ? "WEAPON" : "ARMOR";
+    }
+
+    std::string EnchantDescription(SpellItemEnchantmentEntry const* enchant)
+    {
+        if (!enchant || !enchant->description[0])
+        {
+            return "";
+        }
+
+        return enchant->description[0];
+    }
+
+    std::string LowerCopy(std::string value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return value;
+    }
+
+    bool ContainsAny(std::string const& haystack, std::initializer_list<char const*> needles)
+    {
+        for (char const* needle : needles)
+        {
+            if (haystack.find(needle) != std::string::npos)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    WmBridge::RandomEnchant::EnchantCategory ClassifyEnchant(SpellItemEnchantmentEntry const* enchant)
+    {
+        std::string text = LowerCopy(EnchantDescription(enchant));
+
+        if (ContainsAny(text, {"strength", "agility", "stamina", "intellect", "spirit", "all stats", "mana", "health"}))
+        {
+            return WmBridge::RandomEnchant::EnchantCategory::Stats;
+        }
+
+        if (ContainsAny(text, {"resistance", "resist"}))
+        {
+            return WmBridge::RandomEnchant::EnchantCategory::Resistances;
+        }
+
+        if (ContainsAny(text, {"defense", "dodge", "parry", "block", "armor", "shield"}))
+        {
+            return WmBridge::RandomEnchant::EnchantCategory::Defense;
+        }
+
+        if (ContainsAny(text, {"critical", "crit", "hit", "haste", "expertise", "resilience", "penetration rating"}))
+        {
+            return WmBridge::RandomEnchant::EnchantCategory::CombatRatings;
+        }
+
+        if (ContainsAny(text, {"damage", "spell power", "attack power", "healing", "ranged", "fire", "frost", "nature", "shadow", "arcane", "holy", "bleed", "massacre", "icebreaker", "berserking"}))
+        {
+            return WmBridge::RandomEnchant::EnchantCategory::Damage;
+        }
+
+        if (ContainsAny(text, {"speed", "threat", "stealth", "mount", "fishing", "skinning", "mining", "herbalism"}))
+        {
+            return WmBridge::RandomEnchant::EnchantCategory::Utility;
+        }
+
+        return WmBridge::RandomEnchant::EnchantCategory::Other;
+    }
+
+    std::string EnchantChoiceLabel(uint32 enchantId, SpellItemEnchantmentEntry const* enchant)
+    {
+        std::ostringstream label;
+        label << "#" << enchantId;
+        std::string description = EnchantDescription(enchant);
+        if (!description.empty())
+        {
+            label << ": " << description;
+        }
+        return label.str();
     }
 
     uint8 RandomEnchantTierForItem(Item const* item)
@@ -116,6 +201,121 @@ namespace RandomEnchant
         return itemTemplate->Class == ITEM_CLASS_WEAPON || itemTemplate->Class == ITEM_CLASS_ARMOR;
     }
 
+    char const* EnchantCategoryLabel(EnchantCategory category)
+    {
+        switch (category)
+        {
+            case EnchantCategory::Stats:
+                return "Stats";
+            case EnchantCategory::Damage:
+                return "Damage / Power";
+            case EnchantCategory::CombatRatings:
+                return "Combat ratings";
+            case EnchantCategory::Defense:
+                return "Defense";
+            case EnchantCategory::Resistances:
+                return "Resistances";
+            case EnchantCategory::Utility:
+                return "Utility";
+            case EnchantCategory::Other:
+            default:
+                return "Other";
+        }
+    }
+
+    bool DecodeEnchantCategory(uint32 categoryCode, EnchantCategory& category)
+    {
+        switch (categoryCode)
+        {
+            case 1:
+                category = EnchantCategory::Stats;
+                return true;
+            case 2:
+                category = EnchantCategory::Damage;
+                return true;
+            case 3:
+                category = EnchantCategory::CombatRatings;
+                return true;
+            case 4:
+                category = EnchantCategory::Defense;
+                return true;
+            case 5:
+                category = EnchantCategory::Resistances;
+                return true;
+            case 6:
+                category = EnchantCategory::Utility;
+                return true;
+            case 7:
+                category = EnchantCategory::Other;
+                return true;
+            default:
+                category = EnchantCategory::Other;
+                return false;
+        }
+    }
+
+    std::vector<EnchantCategory> EnchantCategoryOrder()
+    {
+        return {
+            EnchantCategory::Stats,
+            EnchantCategory::Damage,
+            EnchantCategory::CombatRatings,
+            EnchantCategory::Defense,
+            EnchantCategory::Resistances,
+            EnchantCategory::Utility,
+            EnchantCategory::Other,
+        };
+    }
+
+    std::vector<EnchantChoice> ListEnchantChoicesForItem(Item* item, uint32 tier, EnchantCategory category)
+    {
+        std::vector<EnchantChoice> choices;
+        if (!IsEligibleItem(item))
+        {
+            return choices;
+        }
+
+        tier = ClampEnchantTier(tier);
+        char const* classKey = RandomEnchantClassKey(item);
+        QueryResult result = WorldDatabase.Query(
+            "SELECT DISTINCT `enchantID` FROM `item_enchantment_random_tiers` "
+            "WHERE `tier` = {} "
+            "AND (`exclusiveSubClass` IS NULL OR `exclusiveSubClass` = {}) "
+            "AND (`class` = '{}' OR `class` = 'ANY') "
+            "ORDER BY `enchantID`",
+            tier,
+            item->GetTemplate()->SubClass,
+            classKey);
+        if (!result)
+        {
+            return choices;
+        }
+
+        do
+        {
+            uint32 enchantId = result->Fetch()[0].Get<uint32>();
+            SpellItemEnchantmentEntry const* enchant = sSpellItemEnchantmentStore.LookupEntry(enchantId);
+            if (!enchant)
+            {
+                continue;
+            }
+
+            EnchantCategory enchantCategory = ClassifyEnchant(enchant);
+            if (enchantCategory != category)
+            {
+                continue;
+            }
+
+            EnchantChoice choice;
+            choice.enchantId = enchantId;
+            choice.category = enchantCategory;
+            choice.label = EnchantChoiceLabel(enchantId, enchant);
+            choices.push_back(choice);
+        } while (result->NextRow());
+
+        return choices;
+    }
+
     uint32 SelectRandomEnchantForItem(Item* item)
     {
         return SelectRandomEnchantForItem(item, ApplyOptions());
@@ -128,7 +328,7 @@ namespace RandomEnchant
             return 0;
         }
 
-        char const* classKey = item->GetTemplate()->Class == ITEM_CLASS_WEAPON ? "WEAPON" : "ARMOR";
+        char const* classKey = RandomEnchantClassKey(item);
         uint32 tier = ResolveRandomEnchantTierForItem(item, options);
         if (tier == 0)
         {
@@ -241,6 +441,54 @@ namespace RandomEnchant
         {
             result.message = "random_enchant_preserved_existing";
         }
+
+        return result;
+    }
+
+    ApplyResult ApplyExactToItem(Player* player, Item* item, uint32 enchantId, int32 selectedEnchantSlotIndex)
+    {
+        ApplyResult result;
+        if (!player)
+        {
+            result.message = "player_not_online";
+            return result;
+        }
+        if (!IsEligibleItem(item))
+        {
+            result.message = "item_not_random_enchant_eligible";
+            return result;
+        }
+        if (selectedEnchantSlotIndex < 0 || selectedEnchantSlotIndex > 2)
+        {
+            result.message = "invalid_enchant_slot";
+            return result;
+        }
+        if (!sSpellItemEnchantmentStore.LookupEntry(enchantId))
+        {
+            result.message = "invalid_enchant_id";
+            return result;
+        }
+
+        result.ok = true;
+        result.message = "deterministic_enchant_applied";
+        result.itemEntry = item->GetEntry();
+        result.itemGuidLow = static_cast<uint32>(item->GetGUID().GetCounter());
+        result.firstEnchantId = enchantId;
+        result.lastEnchantId = enchantId;
+
+        EnchantmentSlot enchantSlots[3] = {PERM_ENCHANTMENT_SLOT, TEMP_ENCHANTMENT_SLOT, BONUS_ENCHANTMENT_SLOT};
+        EnchantmentSlot slot = enchantSlots[selectedEnchantSlotIndex];
+        uint32 oldEnchantId = item->GetEnchantmentId(slot);
+        if (oldEnchantId != 0)
+        {
+            ++result.replacedCount;
+        }
+
+        player->ApplyEnchantment(item, slot, false);
+        item->SetEnchantment(slot, enchantId, 0, 0, player->GetGUID());
+        player->ApplyEnchantment(item, slot, true);
+        item->SetState(ITEM_CHANGED, player);
+        ++result.appliedCount;
 
         return result;
     }

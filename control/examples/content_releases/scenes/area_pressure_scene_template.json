@@ -1,0 +1,60 @@
+{
+  "schema_version": "wm.scene.release.native_sequence.v1",
+  "content_kind": "scene",
+  "player_guid": 5406,
+  "scene_key": "template_area_pressure_scene",
+  "scene_type": "area_pressure",
+  "slot_policy": "no_visible_id_required",
+  "trigger": {
+    "kind": "area_pressure",
+    "source_event_required": true,
+    "max_event_age_seconds": 600,
+    "notes": "Use a fresh native/event-spine trigger row; stale copied events must not apply live scenes."
+  },
+  "runtime": {
+    "native_actions_required": true,
+    "audit_required": true,
+    "player_scope_required": true,
+    "control_scene_required": true
+  },
+  "steps": [
+    {
+      "step_key": "restore",
+      "native_action_kind": "player_restore_health_power",
+      "payload": {
+        "health_percent": 25,
+        "power_percent": 20,
+        "power_type": "active"
+      },
+      "risk_level": "low",
+      "idempotency_suffix": "restore",
+      "expected_effect": "The scoped player receives a small visible survival intervention.",
+      "requires_live_proof": true
+    },
+    {
+      "step_key": "visible_aura",
+      "native_action_kind": "player_apply_aura",
+      "payload": {
+        "spell_id": 687
+      },
+      "risk_level": "medium",
+      "idempotency_suffix": "visible-aura",
+      "expected_effect": "The scoped player receives a visible aura during the pressure scene.",
+      "requires_live_proof": true
+    },
+    {
+      "step_key": "announce",
+      "native_action_kind": "world_announce_to_player",
+      "payload": {
+        "message": "WM pressure spike: hold the line."
+      },
+      "risk_level": "low",
+      "idempotency_suffix": "announce",
+      "expected_effect": "The scoped player sees a local WM scene message.",
+      "requires_live_proof": true
+    }
+  ],
+  "cleanup": {
+    "required": false
+  }
+}

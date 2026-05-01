@@ -1,0 +1,13 @@
+{
+  "schema_version": "wm.character_journey.seed.v1",
+  "player_guid": 5406,
+  "arc_states": [
+    {
+      "arc_key": "jecia_shadowmoon_lens_v7",
+      "stage_key": "retired_money_as_item_leak",
+      "status": "retired",
+      "branch_key": "zone_fitting_visible_item_power",
+      "summary": "Retired after live proof showed RewardMoney 1296 rendering as item 1296 Blackrock Mace in the quest reward panel."
+    }
+  ]
+}

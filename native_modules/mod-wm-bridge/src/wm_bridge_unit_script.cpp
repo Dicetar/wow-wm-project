@@ -1,6 +1,8 @@
 #include "Creature.h"
 #include "Player.h"
 #include "ScriptMgr.h"
+#include "SpellAuras.h"
+#include "SpellInfo.h"
 #include "Unit.h"
 #include "UnitScript.h"
 #include "wm_bridge_common.h"
@@ -44,12 +46,58 @@ namespace
 
         WmBridge::EmitEvent(row);
     }
+
+    void EmitPlayerAura(Player* player, Aura const* aura, char const* eventType, AuraRemoveMode removeMode = AURA_REMOVE_NONE)
+    {
+        if (!player || !aura || !WmBridge::GetConfig().emitAura)
+        {
+            return;
+        }
+
+        SpellInfo const* spellInfo = aura->GetSpellInfo();
+        uint32 spellId = spellInfo ? spellInfo->Id : aura->GetId();
+        if (!WmBridge::IsAuraSpellAllowed(spellId) || !WmBridge::IsPlayerAllowed(player))
+        {
+            return;
+        }
+
+        auto row = WmBridge::MakePlayerScopedEvent(player, "aura", eventType);
+        row.subjectType = "spell";
+        row.subjectEntry = spellId;
+
+        std::string payload;
+        bool firstField = true;
+        WmBridge::JsonBegin(payload, firstField);
+        WmBridge::JsonAppendString(payload, firstField, "player_name", player->GetName());
+        WmBridge::JsonAppendNumber(payload, firstField, "player_guid", static_cast<long long>(player->GetGUID().GetCounter()));
+        WmBridge::JsonAppendNumber(payload, firstField, "spell_id", static_cast<long long>(spellId));
+        if (spellInfo)
+        {
+            WmBridge::JsonAppendString(payload, firstField, "spell_name", spellInfo->SpellName[0]);
+            WmBridge::JsonAppendString(payload, firstField, "aura_name", spellInfo->SpellName[0]);
+        }
+        WmBridge::JsonAppendString(payload, firstField, "caster_guid", aura->GetCasterGUID().ToString());
+        WmBridge::JsonAppendNumber(payload, firstField, "duration_ms", static_cast<long long>(aura->GetDuration()));
+        WmBridge::JsonAppendNumber(payload, firstField, "max_duration_ms", static_cast<long long>(aura->GetMaxDuration()));
+        if (removeMode != AURA_REMOVE_NONE)
+        {
+            WmBridge::JsonAppendNumber(payload, firstField, "remove_mode", static_cast<long long>(removeMode));
+        }
+        WmBridge::JsonEnd(payload);
+        row.payloadJson = payload;
+
+        WmBridge::EmitEvent(row);
+    }
 }
 
 class wm_bridge_unit_script : public UnitScript
 {
 public:
-    wm_bridge_unit_script() : UnitScript("wm_bridge_unit_script", true, {UNITHOOK_ON_UNIT_DEATH})
+    wm_bridge_unit_script() : UnitScript("wm_bridge_unit_script", true, {
+        UNITHOOK_ON_UNIT_DEATH,
+        UNITHOOK_ON_AURA_APPLY,
+        UNITHOOK_ON_AURA_REMOVE
+    })
     {
     }
 
@@ -79,6 +127,29 @@ public:
         }
 
         EmitOwnedUnitKill(owner, killed, killer);
+    }
+
+    void OnAuraApply(Unit* unit, Aura* aura) override
+    {
+        Player* player = unit ? unit->ToPlayer() : nullptr;
+        if (!player)
+        {
+            return;
+        }
+
+        EmitPlayerAura(player, aura, "applied");
+    }
+
+    void OnAuraRemove(Unit* unit, AuraApplication* aurApp, AuraRemoveMode mode) override
+    {
+        Player* player = unit ? unit->ToPlayer() : nullptr;
+        Aura const* aura = aurApp ? aurApp->GetBase() : nullptr;
+        if (!player || !aura)
+        {
+            return;
+        }
+
+        EmitPlayerAura(player, aura, "removed", mode);
     }
 };
 

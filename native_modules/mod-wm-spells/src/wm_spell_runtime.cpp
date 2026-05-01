@@ -1,10 +1,13 @@
 #include "wm_spell_runtime.h"
 
 #include "CellImpl.h"
+#include "Chat.h"
 #include "Config.h"
 #include "Creature.h"
 #include "CreatureAI.h"
 #include "DatabaseEnv.h"
+#include "DBCStores.h"
+#include "GameTime.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
 #include "Group.h"
@@ -31,13 +34,40 @@
 #include <string>
 #include <vector>
 
+namespace WmSpells
+{
+    bool IsNightWatchersLensMarkedBy(Unit const* unit, Player const* player);
+}
+
 namespace
 {
     using namespace std::chrono_literals;
 
     constexpr uint32 COMBAT_PROFICIENCY_SHELL_ID = 944000;
+    constexpr uint32 BROUG_DEFLECT_SHELL_ID = 946603;
+    constexpr uint32 BROUG_VULNERABLE_SHELL_ID = 946200;
+    constexpr uint32 BROUG_DEFLECTED_SHELL_ID = 946201;
+    constexpr uint32 BROUG_DEFLECT_COUNTER_STANCE_SHELL_ID = 946605;
+    constexpr uint32 BROUG_SKIRMISHER_MARK_SHELL_ID = 946098;
+    constexpr uint32 BROUG_RETIRED_SKIRMISHER_TOGGLE_SHELL_ID = 946604;
+    constexpr uint32 BROUG_UNIVERSAL_PARRY_SHELL_ID = 946800;
+    constexpr uint32 BROUG_RETIRED_MOBILE_MARKSMAN_SHELL_ID = 946801;
+    constexpr uint32 BROUG_AUTO_RETALIATION_SHELL_ID = 946802;
+    constexpr uint32 BROUG_PARRY_QUEST_ID = 910180;
+    constexpr uint32 BROUG_DEFLECT_QUEST_ID = 910181;
+    constexpr uint32 BROUG_PARRY_CREDIT_CREATURE_ENTRY = 920104;
+    constexpr uint32 BROUG_DEFLECT_CREDIT_CREATURE_ENTRY = 920105;
+    constexpr uint32 SHIELD_SPELL_ID = 107;
+    constexpr uint32 SHIELD_BLOCK_SPELL_ID = 9116;
+    constexpr uint32 LEATHER_ARMOR_SPELL_ID = 9077;
+    constexpr uint32 MAIL_ARMOR_SPELL_ID = 8737;
+    constexpr uint32 PLATE_ARMOR_SPELL_ID = 750;
     constexpr uint32 DUAL_WIELD_SPELL_ID = 674;
+    constexpr uint32 TWO_HANDED_SWORDS_SPELL_ID = 202;
+    constexpr uint32 TWO_HANDED_AXES_SPELL_ID = 197;
+    constexpr uint32 POLEARMS_SPELL_ID = 200;
     constexpr uint32 NIGHT_WATCHERS_LENS_ITEM_ENTRY = 910006;
+    constexpr uint32 SHADOWMOON_WATCHERS_LENS_ITEM_ENTRY = 910013;
     // Detect Invisibility is a client-known, visible marker aura that fits the lens fantasy.
     // The WM-owned proc mechanic below is gated on this aura plus the equipped item.
     constexpr uint32 NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID = 132;
@@ -46,13 +76,19 @@ namespace
     constexpr uint32 NIGHT_WATCHERS_LENS_MARK_DURATION_MS = 10000;
     constexpr float NIGHT_WATCHERS_LENS_PROC_CHANCE_PCT = 10.0f;
     constexpr float NIGHT_WATCHERS_LENS_MARK_PROC_MULTIPLIER = 2.0f;
+    constexpr uint32 NIGHT_WATCHERS_LENS_SPELL_FOCUS_DAMAGE_BONUS_PCT = 15;
+    constexpr char BROUG_UNIVERSAL_PARRY_COUNTER_KEY[] = "universal_parry";
+    constexpr char BROUG_SKIRMISHER_SHOT_COUNTER_KEY[] = "skirmisher_shot_hit";
+    constexpr char BROUG_DEFLECT_COUNTER_KEY[] = "deflect_success";
+    constexpr char BROUG_AUTO_RETALIATION_COUNTER_KEY[] = "auto_retaliation";
     // Rend is a client-known bleed debuff. WM owns the damage; this aura is the visible status/timer.
     constexpr uint32 BONEBOUND_BLEED_VISIBLE_AURA_SPELL_ID = 772;
     // Thorns is a client-known positive buff marker; WM strips its effects and only uses the stack count.
     constexpr uint32 BONEBOUND_ECHO_COUNT_DEFAULT_AURA_SPELL_ID = 467;
     constexpr uint32 BONEBOUND_SLASH_SPELL_ID = 945000;
     constexpr uint32 BONEBOUND_ECHO_SEEK_TARGET_STICKY_MS = 30000;
-    constexpr float BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE = 35.0f;
+    constexpr uint32 BONEBOUND_RESTORER_MIND_BLAST_X3_SPELL_ID = 946099;
+    constexpr float BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE = 100.0f;
     constexpr float BONEBOUND_ECHO_MIN_FOLLOW_SEPARATION_YARDS = 1.6f;
     constexpr float WM_PI = 3.14159265358979323846f;
 
@@ -64,6 +100,57 @@ namespace
     std::unordered_map<uint32, bool> gBoneboundEchoHuntModeByPlayer;
     std::unordered_map<uint32, float> gBoneboundEchoHuntRadiusByPlayer;
     std::unordered_map<uint32, uint32> gBoneboundEchoCountAuraByPlayer;
+
+    struct LanathelStanceRuntimeState
+    {
+        uint32 shellSpellId = 0;
+        uint32 displayId = 0;
+        float displayScale = 1.0f;
+        float landSpeedRate = 1.0f;
+        float flightSpeedRate = 1.0f;
+        bool flightAllowed = false;
+    };
+
+    std::unordered_map<uint32, LanathelStanceRuntimeState> gLanathelStanceByPlayer;
+    std::optional<bool> gLanathelStanceStateTableAvailable;
+    std::optional<bool> gBrougGuardCounterTableAvailable;
+
+    struct BrougGuardRuntimeState
+    {
+        bool hasUniversalParry = false;
+        bool hasSkirmisherMark = false;
+        bool hasDeflect = false;
+        bool hasDeflectCounterStance = false;
+        bool hasAutoRetaliation = false;
+        WmSpells::BrougUniversalParryConfig universalParry;
+        WmSpells::BrougSkirmisherMarkConfig skirmisherMark;
+        WmSpells::BrougDeflectConfig deflect;
+        WmSpells::BrougAutoRetaliationConfig autoRetaliation;
+        uint32 skirmisherAttackTimerMs = 0;
+        uint64 deflectWindowUntilMs = 0;
+        uint64 deflectRootUntilMs = 0;
+        uint64 deflectParryFeedbackAtMs = 0;
+        uint64 deflectCooldownUntilMs = 0;
+        bool deflectParryFeedbackPlayed = false;
+        ObjectGuid deflectPrimaryAttackerGuid = ObjectGuid::Empty;
+        uint64 deflectPendingResolveAtMs = 0;
+        uint32 deflectPendingDamage = 0;
+        std::unordered_map<ObjectGuid, uint32> deflectCaughtStacksByAttacker;
+        uint64 autoRetaliationCooldownUntilMs = 0;
+    };
+
+    struct BrougPendingForcedParry
+    {
+        ObjectGuid attackerGuid;
+        uint32 playerGuid = 0;
+        uint64 expiresAtMs = 0;
+        bool countEvent = false;
+    };
+
+    std::unordered_map<uint32, BrougGuardRuntimeState> gBrougGuardByPlayer;
+    std::unordered_set<uint32> gBrougCounterStanceToggleOffByPlayer;
+    std::unordered_set<ObjectGuid> gBrougDeflectedStunUnits;
+    std::unordered_map<ObjectGuid, BrougPendingForcedParry> gBrougPendingForcedParryByVictim;
 
     struct NightWatchersLensMarkState
     {
@@ -144,6 +231,26 @@ namespace
     {
         ObjectGuid targetGuid;
         uint32 remainingStickyMs = 0;
+    };
+
+    struct CombatProficiencyRuntimeGrant
+    {
+        uint32 skillId = 0;
+        uint32 spellId = 0;
+        bool scalesWithLevel = false;
+        uint8 minPlayerLevel = 1;
+    };
+
+    constexpr CombatProficiencyRuntimeGrant COMBAT_PROFICIENCY_RUNTIME_GRANTS[] = {
+        {SKILL_SHIELD, SHIELD_SPELL_ID, false, 1},
+        {SKILL_SHIELD, SHIELD_BLOCK_SPELL_ID, false, 1},
+        {SKILL_LEATHER, LEATHER_ARMOR_SPELL_ID, false, 1},
+        {SKILL_MAIL, MAIL_ARMOR_SPELL_ID, false, 1},
+        {SKILL_DUAL_WIELD, DUAL_WIELD_SPELL_ID, false, 1},
+        {SKILL_2H_SWORDS, TWO_HANDED_SWORDS_SPELL_ID, true, 1},
+        {SKILL_2H_AXES, TWO_HANDED_AXES_SPELL_ID, true, 1},
+        {SKILL_POLEARMS, POLEARMS_SPELL_ID, true, 1},
+        {SKILL_PLATE_MAIL, PLATE_ARMOR_SPELL_ID, false, 40},
     };
 
     std::vector<BoneboundBleedState> gBoneboundBleeds;
@@ -478,6 +585,8 @@ namespace
         WmSpells::BoneboundBehaviorConfig config;
         config.shellSpellId = shellSpellId;
         config.persistPet = persistPet;
+        config.priestEchoDpsSpellId = BONEBOUND_RESTORER_MIND_BLAST_X3_SPELL_ID;
+        config.priestEchoDpsDamageSpellId = BONEBOUND_RESTORER_MIND_BLAST_X3_SPELL_ID;
         config.requireCorpse = gConfig.boneboundRequireCorpse;
         config.creatureEntry = gConfig.boneboundCreatureEntry;
         config.name = gConfig.boneboundName;
@@ -520,6 +629,15 @@ namespace
         return behaviorKind == "passive_intellect_block_v1";
     }
 
+    bool IsBrougGuardBehaviorKind(std::string const& behaviorKind)
+    {
+        return behaviorKind == "broug_universal_parry_v1"
+            || behaviorKind == "broug_skirmisher_shot_v1"
+            || behaviorKind == "broug_deflect_v1"
+            || behaviorKind == "broug_deflect_counter_stance_v1"
+            || behaviorKind == "broug_auto_retaliation_v1";
+    }
+
     bool IsBoneboundEchoModeBehaviorKind(std::string const& behaviorKind)
     {
         return behaviorKind == "bonebound_echo_mode_v1";
@@ -528,6 +646,11 @@ namespace
     bool IsBoneboundEchoStasisBehaviorKind(std::string const& behaviorKind)
     {
         return behaviorKind == "bonebound_echo_stasis_v1";
+    }
+
+    bool IsLanathelStanceBehaviorKind(std::string const& behaviorKind)
+    {
+        return behaviorKind == "lanathel_blood_queen_stance_v1";
     }
 
     bool IsBoneboundShellOrBehavior(uint32 shellSpellId)
@@ -756,6 +879,8 @@ namespace
             config.alphaEchoFollowAngle = *value;
         if (std::optional<float> value = ExtractJsonFloat(configJson, "alpha_echo_hunt_radius"))
             config.alphaEchoHuntRadius = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "alpha_echo_movement_speed_multiplier"))
+            config.alphaEchoMovementSpeedMultiplier = *value;
         if (std::optional<bool> value = ExtractJsonBool(configJson, "alpha_echo_count_aura_enabled"))
             config.alphaEchoCountAuraEnabled = *value;
         if (std::optional<uint32> value = ExtractJsonUInt(configJson, "alpha_echo_count_aura_spell_id"))
@@ -890,6 +1015,150 @@ namespace
         return config;
     }
 
+    std::optional<WmSpells::BrougUniversalParryConfig> BuildBrougUniversalParryConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (record.behaviorKind != "broug_universal_parry_v1" || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BrougUniversalParryConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "base_chance_pct"))
+            config.baseChancePct = std::clamp(*value, 0.0f, 100.0f);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "strength_to_chance_pct"))
+            config.strengthToChancePct = std::max(0.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "agility_to_chance_pct"))
+            config.agilityToChancePct = std::max(0.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "expertise_to_chance_pct"))
+            config.expertiseToChancePct = std::max(0.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "weapon_mastery_to_chance_pct"))
+            config.weaponMasteryToChancePct = std::max(0.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "attack_power_to_chance_pct"))
+            config.attackPowerToChancePct = std::max(0.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "max_chance_pct"))
+            config.maxChancePct = std::clamp(*value, 0.0f, 100.0f);
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "counter_key"))
+            config.counterKey = value->empty() ? BROUG_UNIVERSAL_PARRY_COUNTER_KEY : *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "count_spell_damage"))
+            config.countSpellDamage = *value;
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "count_periodic_damage"))
+            config.countPeriodicDamage = *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::BrougSkirmisherMarkConfig> BuildBrougSkirmisherMarkConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (record.behaviorKind != "broug_skirmisher_shot_v1" || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BrougSkirmisherMarkConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "min_range_yards"))
+            config.minRangeYards = std::max(0.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "max_range_yards"))
+            config.maxRangeYards = std::clamp(*value, 5.0f, 100.0f);
+        if (config.minRangeYards > config.maxRangeYards)
+            config.minRangeYards = 0.0f;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "damage_pct"))
+            config.damagePct = std::clamp<uint32>(*value, 1u, 500u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "min_attack_interval_ms"))
+            config.minAttackIntervalMs = std::clamp<uint32>(*value, 250u, 10000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "max_attack_interval_ms"))
+            config.maxAttackIntervalMs = std::clamp<uint32>(*value, 250u, 30000u);
+        if (config.minAttackIntervalMs > config.maxAttackIntervalMs)
+            config.maxAttackIntervalMs = config.minAttackIntervalMs;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "visual_spell_id"))
+            config.visualSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "impact_sound_id"))
+            config.impactSoundId = *value;
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "counter_key"))
+            config.counterKey = value->empty() ? BROUG_SKIRMISHER_SHOT_COUNTER_KEY : *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::BrougDeflectConfig> BuildBrougDeflectConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (record.behaviorKind != "broug_deflect_v1" || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BrougDeflectConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "parry_pre_ms"))
+            config.parryPreMs = std::clamp<uint32>(*value, 0u, 1000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "parry_animation_ms"))
+            config.parryAnimationMs = std::clamp<uint32>(*value, 50u, 2000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "parry_post_ms"))
+            config.parryPostMs = std::clamp<uint32>(*value, 0u, 1000u);
+        config.windowMs = std::clamp<uint32>(
+            config.parryPreMs + config.parryAnimationMs + config.parryPostMs,
+            50u,
+            3000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "window_ms"))
+            config.windowMs = std::clamp<uint32>(*value, 50u, 3000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "cooldown_ms"))
+            config.cooldownMs = std::clamp<uint32>(*value, 0u, 60000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "energy_cost"))
+            config.energyCost = std::clamp<uint32>(*value, 0u, 100u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "stun_ms"))
+            config.stunMs = std::clamp<uint32>(*value, 0u, 10000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "deflected_stun_ms_per_stack"))
+            config.stunMs = std::clamp<uint32>(*value, 0u, 10000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "vulnerable_spell_id"))
+            config.vulnerableSpellId = *value == 0 ? BROUG_VULNERABLE_SHELL_ID : *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "deflected_spell_id"))
+            config.deflectedSpellId = *value == 0 ? BROUG_DEFLECTED_SHELL_ID : *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "vulnerable_duration_ms"))
+            config.vulnerableDurationMs = std::clamp<uint32>(*value, 1000u, 300000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "max_vulnerable_stacks"))
+            config.maxVulnerableStacks = std::clamp<uint32>(*value, 1u, 255u);
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "counterattack_enabled_default"))
+            config.counterattackEnabledDefault = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "base_damage"))
+            config.baseDamage = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "weapon_damage_pct"))
+            config.weaponDamagePct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "attack_power_pct"))
+            config.attackPowerPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "visual_spell_id"))
+            config.visualSpellId = *value;
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "counter_key"))
+            config.counterKey = value->empty() ? BROUG_DEFLECT_COUNTER_KEY : *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::BrougAutoRetaliationConfig> BuildBrougAutoRetaliationConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (record.behaviorKind != "broug_auto_retaliation_v1" || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BrougAutoRetaliationConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "cooldown_ms"))
+            config.cooldownMs = std::clamp<uint32>(*value, 0u, 60000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "base_damage"))
+            config.baseDamage = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "weapon_damage_pct"))
+            config.weaponDamagePct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "attack_power_pct"))
+            config.attackPowerPct = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "visual_spell_id"))
+            config.visualSpellId = *value;
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "counter_key"))
+            config.counterKey = value->empty() ? BROUG_AUTO_RETALIATION_COUNTER_KEY : *value;
+
+        return config;
+    }
+
     std::optional<WmSpells::BoneboundEchoStasisConfig> BuildBoneboundEchoStasisConfig(WmSpells::BehaviorRecord const& record)
     {
         if (!IsBoneboundEchoStasisBehaviorKind(record.behaviorKind) || record.status == "disabled")
@@ -907,6 +1176,243 @@ namespace
             config.soulShardCount = *value;
 
         return config;
+    }
+
+    std::optional<WmSpells::LanathelStanceConfig> BuildLanathelStanceConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (!IsLanathelStanceBehaviorKind(record.behaviorKind) || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::LanathelStanceConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "display_id"))
+            config.displayId = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "display_scale"))
+            config.displayScale = std::clamp(*value, 0.05f, 3.0f);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "riding_skill_id"))
+            config.ridingSkillId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "apprentice_riding_skill"))
+            config.apprenticeRidingSkill = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "journeyman_riding_skill"))
+            config.journeymanRidingSkill = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "expert_riding_skill"))
+            config.expertRidingSkill = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "artisan_riding_skill"))
+            config.artisanRidingSkill = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "master_riding_skill"))
+            config.masterRidingSkill = *value;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "base_land_speed_rate"))
+            config.baseLandSpeedRate = std::max(1.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "apprentice_land_speed_rate"))
+            config.apprenticeLandSpeedRate = std::max(1.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "journeyman_land_speed_rate"))
+            config.journeymanLandSpeedRate = std::max(1.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "expert_flight_speed_rate"))
+            config.expertFlightSpeedRate = std::max(1.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "artisan_flight_speed_rate"))
+            config.artisanFlightSpeedRate = std::max(1.0f, *value);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "master_flight_speed_rate"))
+            config.masterFlightSpeedRate = std::max(1.0f, *value);
+        if (std::optional<bool> value = ExtractJsonBool(configJson, "flight_requires_flyable_area"))
+            config.flightRequiresFlyableArea = *value;
+
+        return config;
+    }
+
+    bool LanathelStanceStateTableExists()
+    {
+        if (gLanathelStanceStateTableAvailable.value_or(false))
+            return *gLanathelStanceStateTableAvailable;
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT 1 FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wm_lanathel_stance_state' LIMIT 1");
+        if (result)
+            gLanathelStanceStateTableAvailable = true;
+        return result ? true : false;
+    }
+
+    std::optional<uint32> LoadStoredLanathelStanceShell(uint32 playerGuid)
+    {
+        if (playerGuid == 0 || !LanathelStanceStateTableExists())
+            return std::nullopt;
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT ShellSpellID FROM wm_lanathel_stance_state "
+            "WHERE PlayerGUID = {} AND Active = 1 LIMIT 1",
+            playerGuid);
+        if (!result)
+            return std::nullopt;
+
+        Field* fields = result->Fetch();
+        return fields[0].Get<uint32>();
+    }
+
+    void StoreLanathelStanceState(uint32 playerGuid, uint32 shellSpellId)
+    {
+        if (playerGuid == 0 || shellSpellId == 0 || !LanathelStanceStateTableExists())
+            return;
+
+        WorldDatabase.Execute(
+            "INSERT INTO wm_lanathel_stance_state "
+            "(PlayerGUID, ShellSpellID, Active, StoredAt, UpdatedAt) VALUES "
+            "({}, {}, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) "
+            "ON DUPLICATE KEY UPDATE "
+            "ShellSpellID = VALUES(ShellSpellID), Active = 1, UpdatedAt = CURRENT_TIMESTAMP",
+            playerGuid,
+            shellSpellId);
+    }
+
+    void ClearLanathelStanceState(uint32 playerGuid)
+    {
+        if (playerGuid == 0 || !LanathelStanceStateTableExists())
+            return;
+
+        WorldDatabase.Execute(
+            "UPDATE wm_lanathel_stance_state SET Active = 0, UpdatedAt = CURRENT_TIMESTAMP WHERE PlayerGUID = {}",
+            playerGuid);
+    }
+
+    uint32 ResolveLanathelRidingSkill(Player* player, WmSpells::LanathelStanceConfig const& config)
+    {
+        if (!player || config.ridingSkillId == 0)
+            return 0;
+
+        return player->GetBaseSkillValue(config.ridingSkillId);
+    }
+
+    float ResolveLanathelLandSpeedRate(Player* player, WmSpells::LanathelStanceConfig const& config)
+    {
+        uint32 ridingSkill = ResolveLanathelRidingSkill(player, config);
+        if (ridingSkill >= config.journeymanRidingSkill)
+            return config.journeymanLandSpeedRate;
+        if (ridingSkill >= config.apprenticeRidingSkill)
+            return config.apprenticeLandSpeedRate;
+        return config.baseLandSpeedRate;
+    }
+
+    float ResolveLanathelFlightSpeedRate(Player* player, WmSpells::LanathelStanceConfig const& config)
+    {
+        uint32 ridingSkill = ResolveLanathelRidingSkill(player, config);
+        if (ridingSkill >= config.masterRidingSkill)
+            return config.masterFlightSpeedRate;
+        if (ridingSkill >= config.artisanRidingSkill)
+            return config.artisanFlightSpeedRate;
+        return config.expertFlightSpeedRate;
+    }
+
+    bool IsLanathelFlightEnvironment(Player* player, WmSpells::LanathelStanceConfig const& config)
+    {
+        if (!player || ResolveLanathelRidingSkill(player, config) < config.expertRidingSkill)
+            return false;
+
+        if (!config.flightRequiresFlyableArea)
+            return true;
+
+        if (!player->IsOutdoors())
+            return false;
+
+        AreaTableEntry const* areaEntry = sAreaTableStore.LookupEntry(player->GetAreaId());
+        if (!areaEntry)
+            areaEntry = sAreaTableStore.LookupEntry(player->GetZoneId());
+        if (!areaEntry || !areaEntry->IsFlyable() || (areaEntry->flags & AREA_FLAG_NO_FLY_ZONE) != 0)
+            return false;
+
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(config.shellSpellId);
+        return spellInfo && player->canFlyInZone(player->GetMapId(), player->GetZoneId(), spellInfo);
+    }
+
+    void RestoreLanathelTransient(Player* player, bool clearFlight)
+    {
+        if (!player)
+            return;
+
+        if (clearFlight)
+        {
+            if (player->IsFlying())
+                player->GetMotionMaster()->MoveFall();
+            if (player->CanFly())
+                player->SetCanFly(false);
+        }
+
+        player->RestoreDisplayId();
+        player->SetObjectScale(1.0f);
+        player->UpdateSpeed(MOVE_RUN, true);
+        player->UpdateSpeed(MOVE_SWIM, true);
+        player->UpdateSpeed(MOVE_FLIGHT, true);
+    }
+
+    void ApplyLanathelStance(Player* player, WmSpells::LanathelStanceConfig const& config)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        bool wasFlightAllowed = false;
+        if (auto it = gLanathelStanceByPlayer.find(playerGuid); it != gLanathelStanceByPlayer.end())
+            wasFlightAllowed = it->second.flightAllowed;
+
+        player->Dismount();
+        player->RemoveAurasByType(SPELL_AURA_MOUNTED);
+        if (config.displayId != 0)
+            player->SetDisplayId(config.displayId, config.displayScale);
+
+        float landSpeedRate = ResolveLanathelLandSpeedRate(player, config);
+        bool flightAllowed = IsLanathelFlightEnvironment(player, config);
+        float flightSpeedRate = ResolveLanathelFlightSpeedRate(player, config);
+
+        if (flightAllowed)
+        {
+            if (!player->CanFly())
+                player->SetCanFly(true);
+            player->SetSpeed(MOVE_FLIGHT, flightSpeedRate, true);
+        }
+        else
+        {
+            if (wasFlightAllowed && player->IsFlying())
+                player->GetMotionMaster()->MoveFall();
+            if (player->CanFly())
+                player->SetCanFly(false);
+            player->UpdateSpeed(MOVE_FLIGHT, true);
+        }
+
+        player->SetSpeed(MOVE_RUN, landSpeedRate, true);
+        player->SetSpeed(MOVE_SWIM, landSpeedRate, true);
+
+        LanathelStanceRuntimeState state;
+        state.shellSpellId = config.shellSpellId;
+        state.displayId = config.displayId;
+        state.displayScale = config.displayScale;
+        state.landSpeedRate = landSpeedRate;
+        state.flightSpeedRate = flightSpeedRate;
+        state.flightAllowed = flightAllowed;
+        gLanathelStanceByPlayer[playerGuid] = state;
+    }
+
+    std::optional<WmSpells::LanathelStanceConfig> LoadActiveLanathelStanceConfig(Player* player)
+    {
+        if (!player)
+            return std::nullopt;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        uint32 shellSpellId = 0;
+        if (auto it = gLanathelStanceByPlayer.find(playerGuid); it != gLanathelStanceByPlayer.end())
+            shellSpellId = it->second.shellSpellId;
+        if (shellSpellId == 0)
+        {
+            std::optional<uint32> storedShellSpellId = LoadStoredLanathelStanceShell(playerGuid);
+            if (storedShellSpellId.has_value())
+                shellSpellId = *storedShellSpellId;
+        }
+        if (shellSpellId == 0)
+            return std::nullopt;
+
+        std::optional<WmSpells::BehaviorRecord> behaviorRecord = WmSpells::LoadBehaviorRecord(shellSpellId);
+        if (!behaviorRecord.has_value())
+            return std::nullopt;
+        return BuildLanathelStanceConfig(*behaviorRecord);
     }
 
     bool IsBoneboundPet(Pet* pet)
@@ -1482,6 +1988,43 @@ namespace
         return bestTarget;
     }
 
+    Unit* SelectNightWatchersLensMarkedBoneboundSeekTarget(Player* owner, Creature* seeker, float radius)
+    {
+        if (!owner || !seeker || radius <= 0.0f || owner->GetMapId() != seeker->GetMapId())
+            return nullptr;
+
+        std::list<Unit*> nearby;
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(owner, owner, radius);
+        Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(owner, nearby, check);
+        Cell::VisitObjects(owner, searcher, radius);
+
+        Unit* bestTarget = nullptr;
+        float bestDistance = std::numeric_limits<float>::max();
+        for (Unit* candidate : nearby)
+        {
+            if (!candidate
+                || candidate == owner
+                || candidate == seeker
+                || !candidate->IsAlive()
+                || candidate->GetMapId() != owner->GetMapId()
+                || !owner->IsWithinDistInMap(candidate, radius)
+                || owner->IsFriendlyTo(candidate)
+                || !seeker->CanCreatureAttack(candidate, true)
+                || !seeker->IsWithinLOSInMap(candidate)
+                || !WmSpells::IsNightWatchersLensMarkedBy(candidate, owner))
+                continue;
+
+            float distance = owner->GetDistance(candidate);
+            if (!bestTarget || distance < bestDistance)
+            {
+                bestTarget = candidate;
+                bestDistance = distance;
+            }
+        }
+
+        return bestTarget;
+    }
+
     bool IsValidBoneboundSeekTarget(Player* owner, Creature* seeker, Unit* target)
     {
         return owner
@@ -1517,11 +2060,25 @@ namespace
             }
             else if (stickyIt->second.remainingStickyMs > 0)
             {
+                if (!WmSpells::IsNightWatchersLensMarkedBy(stickyTarget, owner))
+                {
+                    if (Unit* markedTarget = SelectNightWatchersLensMarkedBoneboundSeekTarget(owner, seeker, radius))
+                    {
+                        if (markedTarget != stickyTarget)
+                        {
+                            stickyIt->second.targetGuid = markedTarget->GetGUID();
+                            stickyIt->second.remainingStickyMs = BONEBOUND_ECHO_SEEK_TARGET_STICKY_MS;
+                            return markedTarget;
+                        }
+                    }
+                }
                 return stickyTarget;
             }
         }
 
-        Unit* selectedTarget = SelectNearestBoneboundSeekTarget(owner, seeker, radius);
+        Unit* selectedTarget = SelectNightWatchersLensMarkedBoneboundSeekTarget(owner, seeker, radius);
+        if (!selectedTarget)
+            selectedTarget = SelectNearestBoneboundSeekTarget(owner, seeker, radius);
         if (selectedTarget)
         {
             BoneboundEchoSeekTargetState& stickyState = gBoneboundEchoSeekTargetByCaster[echoGuid];
@@ -1926,7 +2483,7 @@ namespace
         if (!std::isfinite(spellRange) || spellRange <= 0.0f)
             return std::min(configuredRange, BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE);
 
-        return std::min(configuredRange, std::min(BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE, std::max(5.0f, spellRange + 1.5f)));
+        return std::min(configuredRange, std::min(BONEBOUND_PRIEST_ECHO_MAX_EFFECTIVE_CAST_RANGE, std::max(5.0f, spellRange)));
     }
 
     bool UpdateBoneboundPriestDpsCast(
@@ -2377,7 +2934,6 @@ namespace
         if (!priestEcho || !owner || priestEcho->IsNonMeleeSpellCast(false))
             return;
 
-        priestEcho->AttackStop();
         float followDistance = std::max(1.2f, state.followDistance);
         float minEnemyDistance = std::max(3.0f, config.priestEchoSafeMinEnemyDistance);
         if (enemy && IsBoneboundEchoHuntMode(state.ownerGuid))
@@ -2398,6 +2954,7 @@ namespace
             return;
         }
 
+        priestEcho->AttackStop();
         if ((enemy && priestEcho->IsWithinDistInMap(enemy, minEnemyDistance))
             || !priestEcho->IsWithinDistInMap(owner, followDistance + 5.0f))
             priestEcho->GetMotionMaster()->MoveFollow(owner, followDistance, state.followAngle);
@@ -2497,7 +3054,7 @@ namespace
         return bestTarget;
     }
 
-    Unit* SelectBoneboundPriestEnemyTarget(Creature* priestEcho, Player* owner, Pet* alphaPet, uint32 ownerGuid, WmSpells::BoneboundBehaviorConfig const& config)
+    Unit* SelectBoneboundPriestEnemyTarget(Creature* priestEcho, Player* owner, Pet* alphaPet, uint32 ownerGuid, WmSpells::BoneboundBehaviorConfig const& config, uint32 diff)
     {
         if (!priestEcho || !owner)
             return nullptr;
@@ -2522,7 +3079,7 @@ namespace
         if (!priestEcho || !victim || !victim->IsAlive() || !priestEcho->CanCreatureAttack(victim, true))
             return;
 
-        priestEcho->AttackStop();
+        priestEcho->Attack(victim, false);
         priestEcho->SetTarget(victim->GetGUID());
         priestEcho->SetFacingToObject(victim);
         priestEcho->SetInCombatWith(victim);
@@ -2607,7 +3164,7 @@ namespace
         }
 
         uint32& dpsCooldown = gBoneboundPriestDpsCooldownByCaster[echoGuid];
-        Unit* enemy = SelectBoneboundPriestEnemyTarget(priestEcho, owner, alphaPet, state.ownerGuid, config);
+        Unit* enemy = SelectBoneboundPriestEnemyTarget(priestEcho, owner, alphaPet, state.ownerGuid, config, diff);
         if (enemy && IsBoneboundEchoHuntMode(state.ownerGuid))
             CommandBoneboundPriestEchoSeek(priestEcho, enemy);
         if (!supportCast && dpsCooldown == 0 && !priestEcho->IsNonMeleeSpellCast(false) && config.priestEchoDpsSpellId != 0)
@@ -2656,7 +3213,7 @@ namespace
         // Creature stat recalculation restores template fields; copy Alpha values after it.
         ApplyOwnerTransferBonuses(echo, owner, config, false);
         CopyAlphaFinalStatsToEcho(alphaPet, echo, refillHealth);
-        MatchBoneboundEchoMovementSpeed(alphaPet, echo, priestEcho ? config.priestEchoMovementSpeedMultiplier : 1.0f);
+        MatchBoneboundEchoMovementSpeed(alphaPet, echo, priestEcho ? config.priestEchoMovementSpeedMultiplier : config.alphaEchoMovementSpeedMultiplier);
         echo->SetReactState(priestEcho ? REACT_PASSIVE : REACT_DEFENSIVE);
     }
 
@@ -3151,6 +3708,1125 @@ namespace
         return BuildIntellectBlockPassiveConfig(record);
     }
 
+    std::optional<BrougGuardRuntimeState> LoadActiveBrougGuardState(Player* player, BrougGuardRuntimeState const* previousState)
+    {
+        if (!player || !WmSpells::IsPlayerAllowed(player))
+            return std::nullopt;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT b.ShellSpellID, b.BehaviorKind, b.ConfigJSON, b.Status "
+            "FROM wm_spell_grant g "
+            "JOIN wm_spell_behavior b ON b.ShellSpellID = g.ShellSpellID "
+            "WHERE g.PlayerGUID = {} "
+            "  AND g.RevokedAt IS NULL "
+            "  AND b.BehaviorKind IN ('broug_universal_parry_v1', 'broug_skirmisher_shot_v1', 'broug_deflect_v1', 'broug_deflect_counter_stance_v1', 'broug_auto_retaliation_v1') "
+            "  AND b.Status = 'active' "
+            "ORDER BY g.GrantID DESC",
+            playerGuid);
+
+        if (!result)
+            return std::nullopt;
+
+        BrougGuardRuntimeState state;
+        if (previousState)
+        {
+            state.skirmisherAttackTimerMs = previousState->skirmisherAttackTimerMs;
+            state.deflectWindowUntilMs = previousState->deflectWindowUntilMs;
+            state.deflectRootUntilMs = previousState->deflectRootUntilMs;
+            state.deflectParryFeedbackAtMs = previousState->deflectParryFeedbackAtMs;
+            state.deflectCooldownUntilMs = previousState->deflectCooldownUntilMs;
+            state.deflectParryFeedbackPlayed = previousState->deflectParryFeedbackPlayed;
+            state.deflectPrimaryAttackerGuid = previousState->deflectPrimaryAttackerGuid;
+            state.deflectPendingResolveAtMs = previousState->deflectPendingResolveAtMs;
+            state.deflectPendingDamage = previousState->deflectPendingDamage;
+            state.deflectCaughtStacksByAttacker = previousState->deflectCaughtStacksByAttacker;
+            state.autoRetaliationCooldownUntilMs = previousState->autoRetaliationCooldownUntilMs;
+        }
+        do
+        {
+            Field* fields = result->Fetch();
+            WmSpells::BehaviorRecord record;
+            record.shellSpellId = fields[0].Get<uint32>();
+            record.behaviorKind = fields[1].Get<std::string>();
+            record.configJson = fields[2].Get<std::string>();
+            record.status = fields[3].Get<std::string>();
+
+            if (!state.hasUniversalParry)
+            {
+                std::optional<WmSpells::BrougUniversalParryConfig> parryConfig = BuildBrougUniversalParryConfig(record);
+                if (parryConfig.has_value())
+                {
+                    state.universalParry = *parryConfig;
+                    state.hasUniversalParry = true;
+                    continue;
+                }
+            }
+
+            if (!state.hasSkirmisherMark)
+            {
+                std::optional<WmSpells::BrougSkirmisherMarkConfig> marksmanConfig = BuildBrougSkirmisherMarkConfig(record);
+                if (marksmanConfig.has_value())
+                {
+                    state.skirmisherMark = *marksmanConfig;
+                    state.hasSkirmisherMark = true;
+                    continue;
+                }
+            }
+
+            if (!state.hasDeflect)
+            {
+                std::optional<WmSpells::BrougDeflectConfig> deflectConfig = BuildBrougDeflectConfig(record);
+                if (deflectConfig.has_value())
+                {
+                    state.deflect = *deflectConfig;
+                    state.hasDeflect = true;
+                    continue;
+                }
+            }
+
+            if (!state.hasDeflectCounterStance && record.behaviorKind == "broug_deflect_counter_stance_v1" && record.status == "active")
+            {
+                state.hasDeflectCounterStance = true;
+                continue;
+            }
+
+            if (!state.hasAutoRetaliation)
+            {
+                std::optional<WmSpells::BrougAutoRetaliationConfig> retaliationConfig = BuildBrougAutoRetaliationConfig(record);
+                if (retaliationConfig.has_value())
+                {
+                    state.autoRetaliation = *retaliationConfig;
+                    state.hasAutoRetaliation = true;
+                    continue;
+                }
+            }
+        } while (result->NextRow());
+
+        if (!state.hasUniversalParry
+            && !state.hasSkirmisherMark
+            && !state.hasDeflect
+            && !state.hasDeflectCounterStance
+            && !state.hasAutoRetaliation)
+            return std::nullopt;
+
+        return state;
+    }
+
+    bool BrougGuardCounterTableExists()
+    {
+        if (gBrougGuardCounterTableAvailable.has_value())
+            return *gBrougGuardCounterTableAvailable;
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT 1 FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wm_broug_guard_counter' LIMIT 1");
+        gBrougGuardCounterTableAvailable = result ? true : false;
+        return result ? true : false;
+    }
+
+    void RecordBrougGuardCounter(uint32 playerGuid, std::string const& counterKey, uint32 increment = 1)
+    {
+        if (playerGuid == 0 || counterKey.empty() || increment == 0 || !BrougGuardCounterTableExists())
+            return;
+
+        WorldDatabase.Execute(
+            "INSERT INTO wm_broug_guard_counter "
+            "(PlayerGUID, CounterKey, CounterValue, UpdatedAt) VALUES "
+            "({}, {}, {}, CURRENT_TIMESTAMP) "
+            "ON DUPLICATE KEY UPDATE "
+            "CounterValue = CounterValue + VALUES(CounterValue), UpdatedAt = CURRENT_TIMESTAMP",
+            playerGuid,
+            SqlString(counterKey),
+            increment);
+    }
+
+    float ResolveBrougAttackPower(Player* player, bool ranged)
+    {
+        if (!player)
+            return 0.0f;
+
+        if (ranged)
+        {
+            float baseAttackPower = static_cast<float>(player->GetInt32Value(UNIT_FIELD_RANGED_ATTACK_POWER));
+            float attackPowerMods = static_cast<float>(player->GetInt32Value(UNIT_FIELD_RANGED_ATTACK_POWER_MODS));
+            float attackPowerMultiplier = player->GetFloatValue(UNIT_FIELD_RANGED_ATTACK_POWER_MULTIPLIER);
+            return std::max(0.0f, (baseAttackPower + attackPowerMods) * (1.0f + attackPowerMultiplier));
+        }
+
+        float baseAttackPower = static_cast<float>(player->GetInt32Value(UNIT_FIELD_ATTACK_POWER));
+        float attackPowerMods = static_cast<float>(player->GetInt32Value(UNIT_FIELD_ATTACK_POWER_MODS));
+        float attackPowerMultiplier = player->GetFloatValue(UNIT_FIELD_ATTACK_POWER_MULTIPLIER);
+        return std::max(0.0f, (baseAttackPower + attackPowerMods) * (1.0f + attackPowerMultiplier));
+    }
+
+    float ResolveBrougUniversalParryExpertisePct(Player* player)
+    {
+        if (!player)
+            return 0.0f;
+
+        float mainHand = std::max(0.0f, player->GetExpertiseDodgeOrParryReduction(BASE_ATTACK));
+        float offHand = player->HasOffhandWeaponForAttack()
+            ? std::max(0.0f, player->GetExpertiseDodgeOrParryReduction(OFF_ATTACK))
+            : 0.0f;
+        return std::max(mainHand, offHand);
+    }
+
+    float ResolveBrougUniversalParryWeaponMasteryPct(Player* player, Unit* attacker)
+    {
+        if (!player)
+            return 0.0f;
+
+        float skillCap = static_cast<float>(std::max<uint16>(1, player->GetMaxSkillValueForLevel()));
+        float mainHandSkill = static_cast<float>(player->GetWeaponSkillValue(BASE_ATTACK, attacker));
+        float offHandSkill = player->HasOffhandWeaponForAttack()
+            ? static_cast<float>(player->GetWeaponSkillValue(OFF_ATTACK, attacker))
+            : 0.0f;
+        float bestSkill = std::max(mainHandSkill, offHandSkill);
+
+        // Treat capped weapon skill as 100% mastery, and allow weapon-skill rating
+        // to push the mastery contribution slightly above cap without exploding.
+        return std::clamp(bestSkill / skillCap, 0.0f, 1.25f) * 100.0f;
+    }
+
+    float ResolveBrougUniversalParryChance(Player* player, Unit* attacker, WmSpells::BrougUniversalParryConfig const& config)
+    {
+        if (!player)
+            return 0.0f;
+
+        float strength = std::max(0.0f, player->GetTotalStatValue(STAT_STRENGTH));
+        float agility = std::max(0.0f, player->GetTotalStatValue(STAT_AGILITY));
+        float expertisePct = ResolveBrougUniversalParryExpertisePct(player);
+        float weaponMasteryPct = ResolveBrougUniversalParryWeaponMasteryPct(player, attacker);
+        float attackPower = ResolveBrougAttackPower(player, false);
+        float chance = config.baseChancePct
+            + strength * config.strengthToChancePct
+            + agility * config.agilityToChancePct
+            + expertisePct * config.expertiseToChancePct
+            + weaponMasteryPct * config.weaponMasteryToChancePct
+            + attackPower * config.attackPowerToChancePct;
+        return std::clamp(chance, 0.0f, config.maxChancePct);
+    }
+
+    bool IsBrougHostileDamage(Unit* attacker, Unit* victim)
+    {
+        return attacker
+            && victim
+            && attacker != victim
+            && attacker->IsAlive()
+            && victim->IsAlive()
+            && attacker->IsValidAttackTarget(victim);
+    }
+
+    void CreditBrougQuestProgress(Player* player, uint32 creditCreatureEntry);
+    void TryBrougAutoRetaliation(Player* player, Unit* target, BrougGuardRuntimeState& state);
+    uint64 BrougNowMs();
+    void ConsumeBrougVulnerableForDamage(Unit* attacker, Unit* victim, uint32& damage);
+    void ApplyBrougForcedStun(Player* player, Unit* target, uint32 stunMs, uint32 deflectedSpellId, uint32 deflectedStacks);
+
+    bool IsBrougDeflectWindowActive(BrougGuardRuntimeState const& state, uint64 nowMs)
+    {
+        return state.hasDeflect && state.deflectWindowUntilMs != 0 && state.deflectWindowUntilMs >= nowMs;
+    }
+
+    void ClearBrougPendingDeflect(BrougGuardRuntimeState& state)
+    {
+        state.deflectPrimaryAttackerGuid = ObjectGuid::Empty;
+        state.deflectPendingResolveAtMs = 0;
+        state.deflectPendingDamage = 0;
+        state.deflectCaughtStacksByAttacker.clear();
+    }
+
+    void ClearBrougDeflectWindow(Player* player, BrougGuardRuntimeState& state)
+    {
+        if (player && state.deflectRootUntilMs != 0)
+            player->SetControlled(false, UNIT_STATE_ROOT);
+
+        state.deflectWindowUntilMs = 0;
+        state.deflectRootUntilMs = 0;
+        state.deflectParryFeedbackAtMs = 0;
+        state.deflectParryFeedbackPlayed = false;
+        ClearBrougPendingDeflect(state);
+    }
+
+    uint32 ResolveBrougParryEmote(Player* player)
+    {
+        if (!player)
+            return EMOTE_ONESHOT_PARRY_UNARMED;
+
+        Item* mainHand = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
+        if (!mainHand || !mainHand->GetTemplate())
+            return EMOTE_ONESHOT_PARRY_UNARMED;
+
+        switch (mainHand->GetTemplate()->SubClass)
+        {
+            case ITEM_SUBCLASS_WEAPON_SWORD2:
+            case ITEM_SUBCLASS_WEAPON_AXE2:
+            case ITEM_SUBCLASS_WEAPON_MACE2:
+            case ITEM_SUBCLASS_WEAPON_POLEARM:
+            case ITEM_SUBCLASS_WEAPON_STAFF:
+            case ITEM_SUBCLASS_WEAPON_FISHING_POLE:
+                return EMOTE_ONESHOT_PARRY2H;
+            default:
+                return EMOTE_ONESHOT_PARRY1H;
+        }
+    }
+
+    void PlayBrougParryFeedback(Player* player)
+    {
+        if (!player || !player->IsInWorld())
+            return;
+
+        player->HandleEmoteCommand(ResolveBrougParryEmote(player));
+        player->PlayDistanceSound(11904);
+    }
+
+    uint32 ResolveBrougAttackEmote(Player* player)
+    {
+        if (!player)
+            return EMOTE_ONESHOT_ATTACK_UNARMED;
+
+        Item* mainHand = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
+        if (!mainHand || !mainHand->GetTemplate())
+            return EMOTE_ONESHOT_ATTACK_UNARMED;
+
+        switch (mainHand->GetTemplate()->SubClass)
+        {
+            case ITEM_SUBCLASS_WEAPON_SWORD2:
+            case ITEM_SUBCLASS_WEAPON_AXE2:
+            case ITEM_SUBCLASS_WEAPON_MACE2:
+            case ITEM_SUBCLASS_WEAPON_POLEARM:
+            case ITEM_SUBCLASS_WEAPON_STAFF:
+            case ITEM_SUBCLASS_WEAPON_FISHING_POLE:
+                return EMOTE_ONESHOT_ATTACK2H_LOOSE;
+            default:
+                return EMOTE_ONESHOT_ATTACK1H;
+        }
+    }
+
+    void PlayBrougDeflectStrikeFeedback(Player* player, Unit* target)
+    {
+        if (!player || !player->IsInWorld())
+            return;
+
+        if (target)
+            player->SetInFront(target);
+        player->SetSheath(SHEATH_STATE_MELEE);
+        player->HandleEmoteCommand(ResolveBrougAttackEmote(player));
+        player->PlayDistanceSound(11904);
+    }
+
+    void DealBrougDeflectCounterDamage(Player* player, Unit* target, uint32 damage)
+    {
+        if (!player || !target || damage == 0 || !target->IsAlive())
+            return;
+
+        ConsumeBrougVulnerableForDamage(player, target, damage);
+        if (damage == 0)
+            return;
+
+        CalcDamageInfo damageInfo;
+        damageInfo.attacker = player;
+        damageInfo.target = target;
+        damageInfo.blocked_amount = 0;
+        damageInfo.HitInfo = HITINFO_NORMALSWING;
+        damageInfo.TargetState = VICTIMSTATE_HIT;
+        damageInfo.attackType = BASE_ATTACK;
+        damageInfo.procAttacker = PROC_FLAG_DONE_MELEE_AUTO_ATTACK | PROC_FLAG_DONE_MAINHAND_ATTACK;
+        damageInfo.procVictim = PROC_FLAG_TAKEN_MELEE_AUTO_ATTACK;
+        damageInfo.cleanDamage = 0;
+        damageInfo.hitOutCome = MELEE_HIT_NORMAL;
+
+        for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
+        {
+            damageInfo.damages[i].damageSchoolMask = i == 0 ? player->GetMeleeDamageSchoolMask(BASE_ATTACK, i) : SPELL_SCHOOL_MASK_NORMAL;
+            damageInfo.damages[i].damage = i == 0 ? damage : 0;
+            damageInfo.damages[i].absorb = 0;
+            damageInfo.damages[i].resist = 0;
+        }
+
+        PlayBrougDeflectStrikeFeedback(player, target);
+        player->SendMeleeAttackStart(target);
+        player->SendAttackStateUpdate(&damageInfo);
+        player->DealMeleeDamage(&damageInfo, true);
+        player->SendMeleeAttackStop(target);
+    }
+
+    uint32 ResolveBrougRangedEmote(Item const* item)
+    {
+        if (!item || !item->GetTemplate())
+            return EMOTE_ONESHOT_ATTACK_THROWN;
+
+        switch (item->GetTemplate()->SubClass)
+        {
+            case ITEM_SUBCLASS_WEAPON_BOW:
+            case ITEM_SUBCLASS_WEAPON_CROSSBOW:
+                return EMOTE_ONESHOT_ATTACK_BOW;
+            case ITEM_SUBCLASS_WEAPON_GUN:
+                return EMOTE_ONESHOT_ATTACK_RIFLE;
+            case ITEM_SUBCLASS_WEAPON_THROWN:
+            default:
+                return EMOTE_ONESHOT_ATTACK_THROWN;
+        }
+    }
+
+    void PlayBrougSkirmisherFeedback(Player* player, Item const* item, uint32 impactSoundId)
+    {
+        if (!player || !player->IsInWorld())
+            return;
+
+        player->SetSheath(SHEATH_STATE_RANGED);
+        player->HandleEmoteCommand(ResolveBrougRangedEmote(item));
+        if (impactSoundId != 0)
+            player->PlayDistanceSound(impactSoundId);
+    }
+
+    bool ResolveBrougUniversalParryRoll(
+        Unit* attacker,
+        Unit* victim,
+        Player*& player,
+        uint32& playerGuid,
+        BrougGuardRuntimeState*& state)
+    {
+        player = nullptr;
+        playerGuid = 0;
+        state = nullptr;
+
+        if (!IsBrougHostileDamage(attacker, victim))
+            return false;
+
+        player = victim->ToPlayer();
+        if (!player || !WmSpells::IsPlayerAllowed(player))
+            return false;
+
+        playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+        if (stateIt == gBrougGuardByPlayer.end() || !stateIt->second.hasUniversalParry)
+            return false;
+
+        state = &stateIt->second;
+        if (IsBrougDeflectWindowActive(*state, BrougNowMs()))
+            return false;
+
+        WmSpells::BrougUniversalParryConfig const& config = state->universalParry;
+        float chancePct = ResolveBrougUniversalParryChance(player, attacker, config);
+        return chancePct > 0.0f && roll_chance_f(chancePct);
+    }
+
+    void RecordBrougUniversalParrySuccess(
+        Player* player,
+        uint32 playerGuid,
+        BrougGuardRuntimeState& state,
+        Unit* attacker,
+        bool countEvent)
+    {
+        if (countEvent)
+        {
+            RecordBrougGuardCounter(playerGuid, state.universalParry.counterKey, 1);
+            CreditBrougQuestProgress(player, BROUG_PARRY_CREDIT_CREATURE_ENTRY);
+        }
+        TryBrougAutoRetaliation(player, attacker, state);
+    }
+
+    bool TryQueueBrougUniversalMeleeParry(Unit* attacker, Unit* victim, uint32 damage, bool countEvent)
+    {
+        if (damage == 0)
+            return false;
+
+        uint64 nowMs = BrougNowMs();
+        if (victim)
+        {
+            auto existing = gBrougPendingForcedParryByVictim.find(victim->GetGUID());
+            if (existing != gBrougPendingForcedParryByVictim.end())
+            {
+                if (existing->second.expiresAtMs >= nowMs && attacker && existing->second.attackerGuid == attacker->GetGUID())
+                    return true;
+
+                gBrougPendingForcedParryByVictim.erase(existing);
+            }
+        }
+
+        Player* player = nullptr;
+        uint32 playerGuid = 0;
+        BrougGuardRuntimeState* state = nullptr;
+        if (!ResolveBrougUniversalParryRoll(attacker, victim, player, playerGuid, state))
+            return false;
+
+        gBrougPendingForcedParryByVictim[victim->GetGUID()] = {attacker->GetGUID(), playerGuid, nowMs + 1000, countEvent};
+        return true;
+    }
+
+    bool TryBrougUniversalParry(Unit* attacker, Unit* victim, uint32& damage, bool countEvent)
+    {
+        if (damage == 0)
+            return false;
+
+        Player* player = nullptr;
+        uint32 playerGuid = 0;
+        BrougGuardRuntimeState* state = nullptr;
+        if (!ResolveBrougUniversalParryRoll(attacker, victim, player, playerGuid, state))
+            return false;
+
+        damage = 0;
+        PlayBrougParryFeedback(player);
+        RecordBrougUniversalParrySuccess(player, playerGuid, *state, attacker, countEvent);
+        return true;
+    }
+
+    bool IsBrougRangedWeapon(Item const* item)
+    {
+        if (!item || !item->GetTemplate() || item->GetTemplate()->Class != ITEM_CLASS_WEAPON)
+            return false;
+
+        switch (item->GetTemplate()->SubClass)
+        {
+            case ITEM_SUBCLASS_WEAPON_BOW:
+            case ITEM_SUBCLASS_WEAPON_GUN:
+            case ITEM_SUBCLASS_WEAPON_THROWN:
+            case ITEM_SUBCLASS_WEAPON_CROSSBOW:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    Unit* SelectBrougSkirmisherTarget(Player* player, WmSpells::BrougSkirmisherMarkConfig const& config, Unit* explicitTarget = nullptr)
+    {
+        if (!player)
+            return nullptr;
+
+        Unit* target = explicitTarget;
+        if (!target)
+            target = ObjectAccessor::GetUnit(*player, player->GetTarget());
+        if (!target || !target->IsAlive() || !player->IsValidAttackTarget(target))
+            target = player->GetVictim();
+        if (!target || !target->IsAlive() || !player->IsValidAttackTarget(target))
+            return nullptr;
+        if (!player->IsWithinDistInMap(target, config.maxRangeYards) || !player->IsWithinLOSInMap(target))
+            return nullptr;
+        if (config.minRangeYards > 0.0f && player->GetDistance(target) < config.minRangeYards)
+            return nullptr;
+
+        return target;
+    }
+
+    uint32 ResolveBrougSkirmisherAttackIntervalMs(Player* player, WmSpells::BrougSkirmisherMarkConfig const& config)
+    {
+        if (!player)
+            return config.minAttackIntervalMs;
+
+        uint32 attackTime = player->GetAttackTime(RANGED_ATTACK);
+        return std::clamp<uint32>(attackTime, config.minAttackIntervalMs, config.maxAttackIntervalMs);
+    }
+
+    bool IsBrougSkirmisherTargetReady(Player* player, Unit* target, WmSpells::BrougSkirmisherMarkConfig const& config, bool notify)
+    {
+        if (!player || !target || !target->IsAlive() || !player->IsValidAttackTarget(target))
+            return false;
+
+        if (!player->IsWithinLOSInMap(target))
+            return false;
+
+        if (!player->IsWithinDistInMap(target, config.maxRangeYards)
+            || (config.minRangeYards > 0.0f && player->GetDistance(target) < config.minRangeYards))
+        {
+            if (notify)
+                player->SendAttackSwingNotInRange();
+            return false;
+        }
+
+        if (!player->HasInArc(WM_PI, target))
+        {
+            if (notify)
+                player->SendAttackSwingBadFacingAttack();
+            return false;
+        }
+
+        return true;
+    }
+
+    void FinalizeBrougSkirmisherDamageInfo(CalcDamageInfo& damageInfo)
+    {
+        if (!(damageInfo.HitInfo & HITINFO_MISS))
+            damageInfo.HitInfo |= HITINFO_AFFECTS_VICTIM;
+
+        uint32 tmpHitInfo[MAX_ITEM_PROTO_DAMAGES] = {};
+        for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
+        {
+            Unit::DealDamageMods(damageInfo.target, damageInfo.damages[i].damage, &damageInfo.damages[i].absorb);
+            if (damageInfo.damages[i].damage == 0)
+                continue;
+
+            damageInfo.procVictim |= PROC_FLAG_TAKEN_DAMAGE;
+            DamageInfo wrapped(damageInfo, i);
+            Unit::CalcAbsorbResist(wrapped);
+            damageInfo.damages[i].absorb = wrapped.GetAbsorb();
+            damageInfo.damages[i].resist = wrapped.GetResist();
+
+            if (damageInfo.damages[i].absorb)
+                tmpHitInfo[i] |= (damageInfo.damages[i].damage - damageInfo.damages[i].absorb == 0 ? HITINFO_FULL_ABSORB : HITINFO_PARTIAL_ABSORB);
+            if (damageInfo.damages[i].resist)
+                tmpHitInfo[i] |= (damageInfo.damages[i].damage - damageInfo.damages[i].resist == 0 ? HITINFO_FULL_RESIST : HITINFO_PARTIAL_RESIST);
+
+            damageInfo.damages[i].damage = wrapped.GetDamage();
+        }
+
+        if ((tmpHitInfo[0] & HITINFO_FULL_ABSORB) != 0)
+            damageInfo.HitInfo |= ((tmpHitInfo[1] & HITINFO_PARTIAL_ABSORB) != 0) ? HITINFO_PARTIAL_ABSORB : HITINFO_FULL_ABSORB;
+        else
+            damageInfo.HitInfo |= (tmpHitInfo[0] & HITINFO_PARTIAL_ABSORB);
+
+        if ((tmpHitInfo[0] & HITINFO_FULL_RESIST) != 0)
+            damageInfo.HitInfo |= ((tmpHitInfo[1] & HITINFO_PARTIAL_RESIST) != 0) ? HITINFO_PARTIAL_RESIST : HITINFO_FULL_RESIST;
+        else
+            damageInfo.HitInfo |= (tmpHitInfo[0] & HITINFO_PARTIAL_RESIST);
+    }
+
+    bool BuildBrougSkirmisherDamageInfo(Player* player, Unit* target, WmSpells::BrougSkirmisherMarkConfig const& config, CalcDamageInfo& damageInfo)
+    {
+        if (!player || !target)
+            return false;
+
+        damageInfo.attacker = player;
+        damageInfo.target = target;
+        damageInfo.blocked_amount = 0;
+        damageInfo.HitInfo = 0;
+        damageInfo.TargetState = 0;
+        damageInfo.attackType = RANGED_ATTACK;
+        damageInfo.procAttacker = PROC_FLAG_DONE_RANGED_AUTO_ATTACK;
+        damageInfo.procVictim = PROC_FLAG_TAKEN_RANGED_AUTO_ATTACK;
+        damageInfo.cleanDamage = 0;
+        damageInfo.hitOutCome = MELEE_HIT_EVADE;
+
+        for (uint8 i = 0; i < MAX_ITEM_PROTO_DAMAGES; ++i)
+        {
+            damageInfo.damages[i].damageSchoolMask = i == 0 ? player->GetMeleeDamageSchoolMask(RANGED_ATTACK, i) : SPELL_SCHOOL_MASK_NORMAL;
+            damageInfo.damages[i].damage = 0;
+            damageInfo.damages[i].absorb = 0;
+            damageInfo.damages[i].resist = 0;
+        }
+
+        SpellSchoolMask schoolMask = SpellSchoolMask(damageInfo.damages[0].damageSchoolMask);
+        if (target->IsImmunedToDamageOrSchool(schoolMask))
+        {
+            damageInfo.HitInfo |= HITINFO_NORMALSWING;
+            damageInfo.TargetState = VICTIMSTATE_IS_IMMUNE;
+            damageInfo.hitOutCome = MELEE_HIT_NORMAL;
+            return true;
+        }
+
+        uint32 damage = player->CalculateDamage(RANGED_ATTACK, false, true, 1 << 0);
+        damage = player->MeleeDamageBonusDone(target, damage, RANGED_ATTACK, nullptr, schoolMask);
+        damage = target->MeleeDamageBonusTaken(player, damage, RANGED_ATTACK, nullptr, schoolMask);
+        if (config.damagePct != 100)
+            damage = std::max<uint32>(1u, (static_cast<uint64>(damage) * config.damagePct) / 100u);
+
+        if (Unit::IsDamageReducedByArmor(schoolMask))
+        {
+            uint32 reduced = Unit::CalcArmorReducedDamage(player, target, damage, nullptr, 0, RANGED_ATTACK);
+            damageInfo.cleanDamage += damage - reduced;
+            damage = reduced;
+        }
+
+        damageInfo.damages[0].damage = damage;
+        damageInfo.hitOutCome = player->RollMeleeOutcomeAgainst(target, RANGED_ATTACK);
+
+        switch (damageInfo.hitOutCome)
+        {
+            case MELEE_HIT_EVADE:
+                damageInfo.HitInfo |= HITINFO_MISS | HITINFO_SWINGNOHITSOUND;
+                damageInfo.TargetState = VICTIMSTATE_EVADES;
+                damageInfo.damages[0].damage = 0;
+                damageInfo.cleanDamage = 0;
+                return true;
+            case MELEE_HIT_MISS:
+                damageInfo.HitInfo |= HITINFO_MISS;
+                damageInfo.TargetState = VICTIMSTATE_INTACT;
+                damageInfo.damages[0].damage = 0;
+                damageInfo.cleanDamage = 0;
+                break;
+            case MELEE_HIT_CRIT:
+                damageInfo.HitInfo |= HITINFO_CRITICALHIT;
+                damageInfo.TargetState = VICTIMSTATE_HIT;
+                damageInfo.damages[0].damage *= 2;
+                if (float mod = target->GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_RANGED_CRIT_DAMAGE); mod != 0.0f)
+                    AddPct(damageInfo.damages[0].damage, mod);
+                break;
+            case MELEE_HIT_PARRY:
+                damageInfo.TargetState = VICTIMSTATE_PARRY;
+                damageInfo.cleanDamage += damageInfo.damages[0].damage;
+                damageInfo.damages[0].damage = 0;
+                break;
+            case MELEE_HIT_DODGE:
+                damageInfo.TargetState = VICTIMSTATE_DODGE;
+                damageInfo.cleanDamage += damageInfo.damages[0].damage;
+                damageInfo.damages[0].damage = 0;
+                break;
+            case MELEE_HIT_BLOCK:
+                damageInfo.TargetState = VICTIMSTATE_HIT;
+                damageInfo.HitInfo |= HITINFO_BLOCK;
+                damageInfo.blocked_amount = target->GetShieldBlockValue();
+                damageInfo.cleanDamage += std::min(damageInfo.blocked_amount, damageInfo.damages[0].damage);
+                if (damageInfo.blocked_amount >= damageInfo.damages[0].damage)
+                {
+                    damageInfo.blocked_amount = damageInfo.damages[0].damage;
+                    damageInfo.damages[0].damage = 0;
+                    damageInfo.TargetState = VICTIMSTATE_BLOCKS;
+                }
+                else
+                {
+                    damageInfo.damages[0].damage -= damageInfo.blocked_amount;
+                }
+                break;
+            case MELEE_HIT_NORMAL:
+            default:
+                damageInfo.TargetState = VICTIMSTATE_HIT;
+                break;
+        }
+
+        FinalizeBrougSkirmisherDamageInfo(damageInfo);
+        return true;
+    }
+
+    bool FireBrougSkirmisherShot(Player* player, Unit* target, BrougGuardRuntimeState& state)
+    {
+        if (!player || !target || !state.hasSkirmisherMark)
+            return false;
+
+        WmSpells::BrougSkirmisherMarkConfig const& config = state.skirmisherMark;
+        Item* rangedItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
+        if (!IsBrougRangedWeapon(rangedItem) || !player->HasRangedWeaponForAttack())
+            return false;
+        if (!IsBrougSkirmisherTargetReady(player, target, config, true))
+            return false;
+
+        CalcDamageInfo damageInfo;
+        if (!BuildBrougSkirmisherDamageInfo(player, target, config, damageInfo))
+            return false;
+
+        PlayBrougSkirmisherFeedback(player, rangedItem, config.impactSoundId);
+        player->SendAttackStateUpdate(&damageInfo);
+        player->DealMeleeDamage(&damageInfo, true);
+
+        DamageInfo procDamageInfo(damageInfo);
+        Unit::ProcSkillsAndAuras(
+            damageInfo.attacker,
+            damageInfo.target,
+            damageInfo.procAttacker,
+            damageInfo.procVictim,
+            procDamageInfo.GetHitMask(),
+            procDamageInfo.GetDamage(),
+            damageInfo.attackType,
+            nullptr,
+            nullptr,
+            -1,
+            nullptr,
+            &procDamageInfo);
+
+        RecordBrougGuardCounter(static_cast<uint32>(player->GetGUID().GetCounter()), config.counterKey, 1);
+        return true;
+    }
+
+    uint64 BrougNowMs()
+    {
+        return static_cast<uint64>(GameTime::GetGameTimeMS().count());
+    }
+
+    uint32 ResolveBrougStrikeBackDamage(Player* player, uint32 baseDamage, uint32 weaponDamagePct, uint32 attackPowerPct)
+    {
+        if (!player)
+            return 0;
+
+        float minDamage = player->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE);
+        float maxDamage = player->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE);
+        float weaponRoll = std::max(0.0f, frand(std::min(minDamage, maxDamage), std::max(minDamage, maxDamage)));
+        float attackPower = ResolveBrougAttackPower(player, false);
+        float damage = static_cast<float>(baseDamage)
+            + weaponRoll * (static_cast<float>(weaponDamagePct) / 100.0f)
+            + attackPower * (static_cast<float>(attackPowerPct) / 100.0f);
+        return std::max<uint32>(1u, static_cast<uint32>(std::round(damage)));
+    }
+
+    void DealBrougStrikeBackDamage(Player* player, Unit* target, uint32 damage, uint32 visualSpellId)
+    {
+        if (!player || !target || damage == 0 || !target->IsAlive())
+            return;
+
+        ConsumeBrougVulnerableForDamage(player, target, damage);
+        if (damage == 0)
+            return;
+
+        SpellInfo const* spellInfo = visualSpellId != 0 ? sSpellMgr->GetSpellInfo(visualSpellId) : nullptr;
+        if (spellInfo)
+            player->SendSpellNonMeleeDamageLog(target, spellInfo, damage, SPELL_SCHOOL_MASK_NORMAL, 0, 0, true, 0, false);
+
+        Unit::DealDamage(player, target, damage, nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NORMAL, spellInfo, true);
+    }
+
+    Aura* ApplyBrougVisibleAura(Player* player, Unit* target, uint32 spellId)
+    {
+        if (!player || !target || spellId == 0)
+            return nullptr;
+
+        if (Aura* aura = target->GetAura(spellId, player->GetGUID()))
+            return aura;
+
+        if (Aura* aura = player->AddAura(spellId, target))
+            return aura;
+
+        // Deflect marker auras are gameplay-owned visible state. If the target is
+        // spell-immune, still create the harmless marker while native owns effects.
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+        if (!spellInfo)
+            return nullptr;
+
+        Aura* aura = Aura::TryCreate(spellInfo, MAX_EFFECT_MASK, target, player);
+        if (aura)
+            aura->ApplyForTargets();
+        return aura;
+    }
+
+    bool HasBrougDeflectedAura(Unit* target)
+    {
+        return target && target->HasAura(BROUG_DEFLECTED_SHELL_ID);
+    }
+
+    void RestartBrougStunnedCreature(Unit* target)
+    {
+        if (!target)
+            return;
+
+        if (!target->IsAlive() || target->HasUnitState(UNIT_STATE_STUNNED))
+            return;
+
+        if (Creature* creature = target->ToCreature())
+        {
+            Unit* victim = creature->GetVictim();
+            if (!victim)
+                victim = creature->SelectVictim();
+
+            if (victim)
+            {
+                creature->SetTarget(victim->GetGUID());
+                if (creature->AI())
+                    creature->AI()->AttackStart(victim);
+            }
+        }
+    }
+
+    void EnsureBrougDeflectedStun(Player* player, Unit* target)
+    {
+        if (!target || !target->IsAlive() || !HasBrougDeflectedAura(target))
+            return;
+
+        if (!target->HasUnitState(UNIT_STATE_STUNNED))
+            target->SetControlled(true, UNIT_STATE_STUNNED, player);
+
+        target->CastStop();
+        if (target->HasUnitState(UNIT_STATE_MOVING))
+            target->StopMoving();
+
+        gBrougDeflectedStunUnits.insert(target->GetGUID());
+    }
+
+    void ReleaseBrougForcedStun(Unit* target)
+    {
+        if (!target || HasBrougDeflectedAura(target))
+            return;
+
+        target->SetControlled(false, UNIT_STATE_STUNNED);
+        RestartBrougStunnedCreature(target);
+    }
+
+    Aura* ApplyBrougDeflectedStacks(Player* player, Unit* target, uint32 deflectedSpellId, uint32 stacks, uint32 durationMs)
+    {
+        if (!player || !target || deflectedSpellId == 0 || stacks == 0 || durationMs == 0 || !target->IsAlive())
+            return nullptr;
+
+        Aura* aura = target->GetAura(deflectedSpellId, player->GetGUID());
+        bool newlyApplied = false;
+        if (!aura)
+        {
+            aura = ApplyBrougVisibleAura(player, target, deflectedSpellId);
+            newlyApplied = aura != nullptr;
+        }
+        if (!aura)
+            return nullptr;
+
+        uint32 currentStacks = newlyApplied ? 0u : aura->GetStackAmount();
+        uint8 nextStacks = static_cast<uint8>(std::min<uint32>(255u, currentStacks + stacks));
+        aura->SetStackAmount(nextStacks);
+
+        int32 duration = static_cast<int32>(std::min<uint32>(durationMs, static_cast<uint32>(std::numeric_limits<int32>::max())));
+        duration = std::max<int32>(duration, aura->GetDuration());
+        aura->SetMaxDuration(duration);
+        aura->SetDuration(duration);
+        return aura;
+    }
+
+    void ApplyBrougForcedStun(Player* player, Unit* target, uint32 stunMs, uint32 deflectedSpellId, uint32 deflectedStacks)
+    {
+        if (!player || !target || stunMs == 0 || !target->IsAlive())
+            return;
+
+        Aura* aura = ApplyBrougDeflectedStacks(player, target, deflectedSpellId, deflectedStacks, stunMs);
+        if (!aura)
+            return;
+
+        EnsureBrougDeflectedStun(player, target);
+    }
+
+    bool ResolveBrougVulnerableCaster(Aura* aura, Player*& player, BrougGuardRuntimeState*& state)
+    {
+        player = nullptr;
+        state = nullptr;
+        if (!aura)
+            return false;
+
+        Unit* caster = aura->GetCaster();
+        player = caster ? caster->ToPlayer() : nullptr;
+        if (!player || !WmSpells::IsPlayerAllowed(player))
+            return false;
+
+        auto stateIt = gBrougGuardByPlayer.find(static_cast<uint32>(player->GetGUID().GetCounter()));
+        if (stateIt != gBrougGuardByPlayer.end() && stateIt->second.hasDeflect)
+            state = &stateIt->second;
+        return true;
+    }
+
+    void ConsumeBrougVulnerableForDamage(Unit* /*attacker*/, Unit* victim, uint32& damage)
+    {
+        if (!victim || damage == 0)
+            return;
+
+        Aura* aura = victim->GetAura(BROUG_VULNERABLE_SHELL_ID);
+        if (!aura)
+            return;
+
+        Player* broug = nullptr;
+        BrougGuardRuntimeState* state = nullptr;
+        if (!ResolveBrougVulnerableCaster(aura, broug, state))
+            return;
+
+        uint32 stacks = std::max<uint32>(1u, aura->GetStackAmount());
+        uint32 stunMsPerStack = state ? state->deflect.stunMs : 1000u;
+        uint32 deflectedSpellId = state ? state->deflect.deflectedSpellId : BROUG_DEFLECTED_SHELL_ID;
+        uint64 scaledDamage = static_cast<uint64>(damage) * static_cast<uint64>(1u + stacks);
+        damage = static_cast<uint32>(std::min<uint64>(scaledDamage, std::numeric_limits<uint32>::max()));
+
+        aura->Remove(AURA_REMOVE_BY_DEFAULT);
+        uint64 stunDuration = static_cast<uint64>(stunMsPerStack) * static_cast<uint64>(stacks);
+        ApplyBrougForcedStun(
+            broug,
+            victim,
+            static_cast<uint32>(std::min<uint64>(stunDuration, std::numeric_limits<uint32>::max())),
+            deflectedSpellId,
+            stacks);
+    }
+
+    void UpdateBrougForcedStuns(Player* player)
+    {
+        if (!player || gBrougDeflectedStunUnits.empty())
+            return;
+
+        for (auto it = gBrougDeflectedStunUnits.begin(); it != gBrougDeflectedStunUnits.end();)
+        {
+            Unit* unit = ObjectAccessor::GetUnit(*player, *it);
+            if (!unit)
+            {
+                it = gBrougDeflectedStunUnits.erase(it);
+                continue;
+            }
+
+            if (HasBrougDeflectedAura(unit))
+            {
+                EnsureBrougDeflectedStun(player, unit);
+                ++it;
+                continue;
+            }
+
+            ReleaseBrougForcedStun(unit);
+            it = gBrougDeflectedStunUnits.erase(it);
+        }
+    }
+
+    void CreditBrougQuestProgress(Player* player, uint32 creditCreatureEntry)
+    {
+        if (!player || creditCreatureEntry == 0)
+            return;
+
+        player->KilledMonsterCredit(creditCreatureEntry);
+    }
+
+    void TryBrougAutoRetaliation(Player* player, Unit* target, BrougGuardRuntimeState& state)
+    {
+        if (!player || !target || !state.hasAutoRetaliation || !target->IsAlive())
+            return;
+
+        uint64 nowMs = BrougNowMs();
+        if (state.autoRetaliationCooldownUntilMs > nowMs)
+            return;
+
+        WmSpells::BrougAutoRetaliationConfig const& config = state.autoRetaliation;
+        state.autoRetaliationCooldownUntilMs = nowMs + static_cast<uint64>(config.cooldownMs);
+        uint32 damage = ResolveBrougStrikeBackDamage(player, config.baseDamage, config.weaponDamagePct, config.attackPowerPct);
+        DealBrougStrikeBackDamage(player, target, damage, config.visualSpellId);
+        RecordBrougGuardCounter(static_cast<uint32>(player->GetGUID().GetCounter()), config.counterKey, 1);
+    }
+
+    void ApplyBrougVulnerableStack(Player* player, Unit* target, WmSpells::BrougDeflectConfig const& config)
+    {
+        if (!player || !target || !target->IsAlive() || config.vulnerableSpellId == 0)
+            return;
+
+        Aura* aura = target->GetAura(config.vulnerableSpellId, player->GetGUID());
+        bool newlyApplied = false;
+        if (!aura)
+        {
+            aura = ApplyBrougVisibleAura(player, target, config.vulnerableSpellId);
+            newlyApplied = aura != nullptr;
+        }
+        if (!aura)
+            return;
+
+        uint32 currentStacks = newlyApplied ? 0u : aura->GetStackAmount();
+        uint32 cappedStacks = std::min<uint32>(config.maxVulnerableStacks, currentStacks + 1u);
+        aura->SetStackAmount(static_cast<uint8>(std::min<uint32>(255u, cappedStacks)));
+        int32 duration = static_cast<int32>(std::min<uint32>(config.vulnerableDurationMs, static_cast<uint32>(std::numeric_limits<int32>::max())));
+        aura->SetMaxDuration(duration);
+        aura->SetDuration(duration);
+    }
+
+    void CaptureBrougDeflectEvent(Player* player, uint32 playerGuid, BrougGuardRuntimeState& state, Unit* attacker)
+    {
+        if (!player || !attacker || !attacker->IsAlive())
+            return;
+
+        WmSpells::BrougDeflectConfig const& config = state.deflect;
+        ApplyBrougVulnerableStack(player, attacker, config);
+        ObjectGuid attackerGuid = attacker->GetGUID();
+        uint32& caughtStacks = state.deflectCaughtStacksByAttacker[attackerGuid];
+        if (caughtStacks < config.maxVulnerableStacks)
+            ++caughtStacks;
+
+        if (state.deflectPrimaryAttackerGuid == ObjectGuid::Empty)
+        {
+            state.deflectPrimaryAttackerGuid = attackerGuid;
+            state.deflectPendingResolveAtMs = state.deflectWindowUntilMs;
+            state.deflectPendingDamage = ResolveBrougStrikeBackDamage(player, config.baseDamage, config.weaponDamagePct, config.attackPowerPct);
+        }
+
+        RecordBrougGuardCounter(playerGuid, config.counterKey, 1);
+        CreditBrougQuestProgress(player, BROUG_DEFLECT_CREDIT_CREATURE_ENTRY);
+    }
+
+    Unit* ResolveBrougDeflectCounterTarget(Player* player, BrougGuardRuntimeState& state)
+    {
+        if (!player)
+            return nullptr;
+
+        if (state.deflectPrimaryAttackerGuid != ObjectGuid::Empty)
+        {
+            if (Unit* primary = ObjectAccessor::GetUnit(*player, state.deflectPrimaryAttackerGuid))
+                if (primary->IsAlive())
+                    return primary;
+        }
+
+        for (auto const& caught : state.deflectCaughtStacksByAttacker)
+        {
+            if (Unit* unit = ObjectAccessor::GetUnit(*player, caught.first))
+                if (unit->IsAlive())
+                    return unit;
+        }
+
+        return nullptr;
+    }
+
+    bool IsBrougDeflectCounterStanceActive(Player const* player)
+    {
+        return player && player->HasAura(BROUG_DEFLECT_COUNTER_STANCE_SHELL_ID);
+    }
+
+    void ResolveBrougPendingDeflect(Player* player, BrougGuardRuntimeState& state)
+    {
+        if (!player || state.deflectPendingResolveAtMs == 0)
+            return;
+
+        uint64 nowMs = BrougNowMs();
+        if (state.deflectPendingResolveAtMs > nowMs)
+            return;
+
+        uint32 reflectedDamage = state.deflectPendingDamage;
+        bool counterattackEnabled = IsBrougDeflectCounterStanceActive(player);
+        Unit* attacker = counterattackEnabled ? ResolveBrougDeflectCounterTarget(player, state) : nullptr;
+        ClearBrougPendingDeflect(state);
+        state.deflectWindowUntilMs = 0;
+
+        if (!counterattackEnabled)
+            return;
+
+        if (!attacker || !attacker->IsAlive())
+            return;
+
+        DealBrougDeflectCounterDamage(player, attacker, reflectedDamage);
+    }
+
+    void TickBrougDeflectWindow(Player* player, BrougGuardRuntimeState& state)
+    {
+        uint64 nowMs = BrougNowMs();
+        if (state.deflectParryFeedbackAtMs != 0
+            && !state.deflectParryFeedbackPlayed
+            && state.deflectParryFeedbackAtMs <= nowMs)
+        {
+            PlayBrougParryFeedback(player);
+            state.deflectParryFeedbackPlayed = true;
+        }
+
+        ResolveBrougPendingDeflect(player, state);
+
+        if (state.deflectRootUntilMs != 0 && state.deflectRootUntilMs <= nowMs && player)
+        {
+            player->SetControlled(false, UNIT_STATE_ROOT);
+            state.deflectRootUntilMs = 0;
+        }
+
+        if (state.deflectPendingResolveAtMs == 0
+            && state.deflectWindowUntilMs != 0
+            && state.deflectWindowUntilMs < nowMs)
+        {
+            state.deflectWindowUntilMs = 0;
+            state.deflectParryFeedbackAtMs = 0;
+            state.deflectParryFeedbackPlayed = false;
+        }
+    }
+
+    bool TryBrougDeflect(Unit* attacker, Unit* victim, uint32& damage)
+    {
+        if (damage == 0 || !IsBrougHostileDamage(attacker, victim))
+            return false;
+
+        Player* player = victim->ToPlayer();
+        if (!player || !WmSpells::IsPlayerAllowed(player))
+            return false;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+        if (stateIt == gBrougGuardByPlayer.end() || !stateIt->second.hasDeflect)
+            return false;
+
+        BrougGuardRuntimeState& state = stateIt->second;
+        uint64 nowMs = BrougNowMs();
+        if (state.deflectWindowUntilMs == 0 || state.deflectWindowUntilMs < nowMs)
+            return false;
+
+        WmSpells::BrougDeflectConfig const& config = state.deflect;
+        state.deflectCooldownUntilMs = std::max(state.deflectCooldownUntilMs, nowMs + static_cast<uint64>(config.cooldownMs));
+        damage = 0;
+        CaptureBrougDeflectEvent(player, playerGuid, state, attacker);
+        return true;
+    }
+
     bool HasActiveCombatProficiencyGrant(Player* player)
     {
         if (!player || !WmSpells::IsPlayerAllowed(player))
@@ -3169,13 +4845,50 @@ namespace
         return result != nullptr;
     }
 
+    uint16 ResolveCombatProficiencySkillMax(Player* player, CombatProficiencyRuntimeGrant const& grant)
+    {
+        if (!player)
+            return 1;
+
+        if (grant.scalesWithLevel)
+            return std::max<uint16>(1, player->GetMaxSkillValueForLevel());
+
+        return 1;
+    }
+
+    void EnsureCombatProficiencyRuntimeGrant(Player* player, CombatProficiencyRuntimeGrant const& grant)
+    {
+        if (!player || grant.skillId == 0 || grant.spellId == 0)
+            return;
+
+        if (player->GetLevel() < grant.minPlayerLevel)
+            return;
+
+        if (!player->HasSpell(grant.spellId))
+            player->learnSpell(grant.spellId, false);
+
+        uint16 targetMax = ResolveCombatProficiencySkillMax(player, grant);
+        uint16 currentValue = player->HasSkill(grant.skillId) ? player->GetPureSkillValue(grant.skillId) : 0;
+        uint16 currentMax = player->HasSkill(grant.skillId) ? player->GetPureMaxSkillValue(grant.skillId) : 0;
+        if (player->HasSkill(grant.skillId) && currentValue >= 1 && currentMax >= targetMax)
+            return;
+
+        uint16 targetValue = std::max<uint16>(1, currentValue);
+        targetMax = std::max<uint16>(targetMax, currentMax);
+        player->SetSkill(static_cast<uint16>(grant.skillId), player->GetSkillStep(static_cast<uint16>(grant.skillId)), targetValue, targetMax);
+    }
+
     bool IsNightWatchersLensEquipped(Player* player)
     {
         if (!player)
             return false;
 
         Item* headItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_HEAD);
-        return headItem && headItem->GetTemplate() && headItem->GetTemplate()->ItemId == NIGHT_WATCHERS_LENS_ITEM_ENTRY;
+        if (!headItem || !headItem->GetTemplate())
+            return false;
+
+        uint32 itemEntry = headItem->GetTemplate()->ItemId;
+        return itemEntry == NIGHT_WATCHERS_LENS_ITEM_ENTRY || itemEntry == SHADOWMOON_WATCHERS_LENS_ITEM_ENTRY;
     }
 
     void EnsureNightWatchersLensAura(Player* player)
@@ -3352,8 +5065,19 @@ namespace WmSpells
     {
         return IsBoneboundBehaviorKind(behaviorKind)
             || IsIntellectBlockBehaviorKind(behaviorKind)
+            || IsBrougGuardBehaviorKind(behaviorKind)
             || IsBoneboundEchoModeBehaviorKind(behaviorKind)
-            || IsBoneboundEchoStasisBehaviorKind(behaviorKind);
+            || IsBoneboundEchoStasisBehaviorKind(behaviorKind)
+            || IsLanathelStanceBehaviorKind(behaviorKind);
+    }
+
+    bool ShouldAllowShellDefaultEffect(Player const* player, uint32 spellId, uint8 effIndex)
+    {
+        if (spellId != BROUG_DEFLECT_COUNTER_STANCE_SHELL_ID || effIndex != 0 || !player)
+            return false;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        return gBrougCounterStanceToggleOffByPlayer.find(playerGuid) == gBrougCounterStanceToggleOffByPlayer.end();
     }
 
     std::optional<BehaviorRecord> LoadBehaviorRecord(uint32 shellSpellId)
@@ -3377,7 +5101,7 @@ namespace WmSpells
         return record;
     }
 
-    SpellCastResult CheckShellCast(Player* player, uint32 shellSpellId)
+    SpellCastResult CheckShellCast(Player* player, uint32 shellSpellId, Unit* explicitTarget)
     {
         if (!player)
             return SPELL_FAILED_CASTER_DEAD;
@@ -3416,7 +5140,73 @@ namespace WmSpells
                 : SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
         }
 
+        if (IsLanathelStanceBehaviorKind(behaviorRecord->behaviorKind))
+            return BuildLanathelStanceConfig(*behaviorRecord).has_value()
+                ? SPELL_CAST_OK
+                : SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
         if (IsIntellectBlockBehaviorKind(behaviorRecord->behaviorKind))
+            return SPELL_CAST_OK;
+
+        if (behaviorRecord->behaviorKind == "broug_skirmisher_shot_v1")
+        {
+            uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+            auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+            BrougGuardRuntimeState const* previousState = stateIt != gBrougGuardByPlayer.end() ? &stateIt->second : nullptr;
+            std::optional<BrougGuardRuntimeState> loaded = LoadActiveBrougGuardState(player, previousState);
+            if (!loaded.has_value() || !loaded->hasSkirmisherMark)
+                return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+            gBrougGuardByPlayer[playerGuid] = *loaded;
+            BrougGuardRuntimeState const& state = gBrougGuardByPlayer[playerGuid];
+            if (state.skirmisherAttackTimerMs > 0)
+                return SPELL_FAILED_NOT_READY;
+
+            Item* rangedItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
+            if (!IsBrougRangedWeapon(rangedItem) || !player->HasRangedWeaponForAttack())
+                return SPELL_FAILED_EQUIPPED_ITEM;
+
+            Unit* target = SelectBrougSkirmisherTarget(player, state.skirmisherMark, explicitTarget);
+            return target ? SPELL_CAST_OK : SPELL_FAILED_BAD_TARGETS;
+        }
+
+        if (behaviorRecord->behaviorKind == "broug_deflect_v1")
+        {
+            uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+            auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+            BrougGuardRuntimeState const* previousState = stateIt != gBrougGuardByPlayer.end() ? &stateIt->second : nullptr;
+            std::optional<BrougGuardRuntimeState> loaded = LoadActiveBrougGuardState(player, previousState);
+            if (!loaded.has_value() || !loaded->hasDeflect)
+                return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+            gBrougGuardByPlayer[playerGuid] = *loaded;
+            BrougGuardRuntimeState const& state = gBrougGuardByPlayer[playerGuid];
+            uint64 nowMs = BrougNowMs();
+            if (state.deflectCooldownUntilMs > nowMs)
+                return SPELL_FAILED_NOT_READY;
+            if (state.deflect.energyCost > 0 && player->GetPower(POWER_ENERGY) < state.deflect.energyCost)
+                return SPELL_FAILED_NO_POWER;
+            return SPELL_CAST_OK;
+        }
+
+        if (behaviorRecord->behaviorKind == "broug_deflect_counter_stance_v1")
+        {
+            uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+            auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+            BrougGuardRuntimeState const* previousState = stateIt != gBrougGuardByPlayer.end() ? &stateIt->second : nullptr;
+            std::optional<BrougGuardRuntimeState> loaded = LoadActiveBrougGuardState(player, previousState);
+            if (!loaded.has_value() || !loaded->hasDeflect || !loaded->hasDeflectCounterStance)
+                return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+            gBrougGuardByPlayer[playerGuid] = *loaded;
+            if (IsBrougDeflectCounterStanceActive(player))
+                gBrougCounterStanceToggleOffByPlayer.insert(playerGuid);
+            else
+                gBrougCounterStanceToggleOffByPlayer.erase(playerGuid);
+            return SPELL_CAST_OK;
+        }
+
+        if (IsBrougGuardBehaviorKind(behaviorRecord->behaviorKind))
             return SPELL_CAST_OK;
 
         std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, true);
@@ -3578,7 +5368,162 @@ namespace WmSpells
         };
     }
 
-    BehaviorExecutionResult ExecuteShellBehavior(Player* player, uint32 shellSpellId, bool persistPetFallback)
+    BehaviorExecutionResult ExecuteLanathelStance(Player* player, uint32 shellSpellId)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+
+        std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(shellSpellId);
+        if (!behaviorRecord.has_value())
+            return {false, "shell_behavior_missing"};
+        std::optional<LanathelStanceConfig> stanceConfig = BuildLanathelStanceConfig(*behaviorRecord);
+        if (!stanceConfig.has_value())
+            return {false, "lanathel_stance_disabled"};
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        bool active = gLanathelStanceByPlayer.find(playerGuid) != gLanathelStanceByPlayer.end()
+            || LoadStoredLanathelStanceShell(playerGuid).has_value();
+        if (active)
+        {
+            ClearLanathelStanceState(playerGuid);
+            RestoreLanathelTransient(player, true);
+            gLanathelStanceByPlayer.erase(playerGuid);
+            return {true, "lanathel_stance_disabled"};
+        }
+
+        StoreLanathelStanceState(playerGuid, shellSpellId);
+        ApplyLanathelStance(player, *stanceConfig);
+
+        LanathelStanceRuntimeState const& state = gLanathelStanceByPlayer[playerGuid];
+        return {
+            true,
+            "lanathel_stance_enabled:flight="
+                + std::string(state.flightAllowed ? "1" : "0")
+                + ":land_speed="
+                + std::to_string(state.landSpeedRate)
+                + ":flight_speed="
+                + std::to_string(state.flightSpeedRate),
+        };
+    }
+
+    BehaviorExecutionResult ExecuteBrougSkirmisherMark(Player* player, uint32 shellSpellId, Unit* explicitTarget)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+        BrougGuardRuntimeState const* previousState = stateIt != gBrougGuardByPlayer.end() ? &stateIt->second : nullptr;
+        std::optional<BrougGuardRuntimeState> loaded = LoadActiveBrougGuardState(player, previousState);
+        if (!loaded.has_value() || !loaded->hasSkirmisherMark)
+            return {false, "broug_skirmisher_not_granted"};
+
+        gBrougGuardByPlayer[playerGuid] = *loaded;
+        BrougGuardRuntimeState& state = gBrougGuardByPlayer[playerGuid];
+        if (state.skirmisherMark.shellSpellId != shellSpellId)
+            return {false, "broug_skirmisher_shell_mismatch"};
+
+        if (state.skirmisherAttackTimerMs > 0)
+            return {false, "broug_skirmisher_not_ready"};
+
+        Item* rangedItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
+        if (!IsBrougRangedWeapon(rangedItem) || !player->HasRangedWeaponForAttack())
+            return {false, "broug_skirmisher_ranged_weapon_required"};
+        Unit* target = SelectBrougSkirmisherTarget(player, state.skirmisherMark, explicitTarget);
+        if (!target)
+            return {false, "broug_skirmisher_target_required"};
+
+        if (!FireBrougSkirmisherShot(player, target, state))
+            return {false, "broug_skirmisher_fire_failed"};
+        state.skirmisherAttackTimerMs = ResolveBrougSkirmisherAttackIntervalMs(player, state.skirmisherMark);
+        return {true, "broug_skirmisher_shot_fired"};
+    }
+
+    BehaviorExecutionResult ExecuteBrougDeflectCounterStance(Player* player, uint32 shellSpellId)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+        if (shellSpellId != BROUG_DEFLECT_COUNTER_STANCE_SHELL_ID)
+            return {false, "broug_deflect_counter_stance_shell_mismatch"};
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+        BrougGuardRuntimeState const* previousState = stateIt != gBrougGuardByPlayer.end() ? &stateIt->second : nullptr;
+        std::optional<BrougGuardRuntimeState> loaded = LoadActiveBrougGuardState(player, previousState);
+        if (!loaded.has_value() || !loaded->hasDeflect || !loaded->hasDeflectCounterStance)
+            return {false, "broug_deflect_counter_stance_not_granted"};
+
+        gBrougGuardByPlayer[playerGuid] = *loaded;
+        bool toggledOff = gBrougCounterStanceToggleOffByPlayer.erase(playerGuid) > 0;
+        if (toggledOff)
+        {
+            player->RemoveAurasDueToSpell(BROUG_DEFLECT_COUNTER_STANCE_SHELL_ID);
+            ChatHandler(player->GetSession()).PSendSysMessage("WM Broug: Counterstrike Stance inactive.");
+            return {true, "broug_deflect_counter_stance_inactive"};
+        }
+
+        bool active = IsBrougDeflectCounterStanceActive(player);
+
+        ChatHandler(player->GetSession()).PSendSysMessage(
+            "WM Broug: Counterstrike Stance {}.",
+            active ? "active" : "cast");
+        return {
+            true,
+            active
+                ? "broug_deflect_counter_stance_active"
+                : "broug_deflect_counter_stance_cast",
+        };
+    }
+
+    BehaviorExecutionResult ExecuteBrougDeflect(Player* player, uint32 shellSpellId)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+        BrougGuardRuntimeState const* previousState = stateIt != gBrougGuardByPlayer.end() ? &stateIt->second : nullptr;
+        std::optional<BrougGuardRuntimeState> loaded = LoadActiveBrougGuardState(player, previousState);
+        if (!loaded.has_value() || !loaded->hasDeflect)
+            return {false, "broug_deflect_not_granted"};
+
+        gBrougGuardByPlayer[playerGuid] = *loaded;
+        BrougGuardRuntimeState& state = gBrougGuardByPlayer[playerGuid];
+        if (state.deflect.shellSpellId != shellSpellId)
+            return {false, "broug_deflect_shell_mismatch"};
+
+        uint64 nowMs = BrougNowMs();
+        if (state.deflectCooldownUntilMs > nowMs)
+            return {false, "broug_deflect_not_ready"};
+        if (state.deflect.energyCost > 0 && player->GetPower(POWER_ENERGY) < state.deflect.energyCost)
+            return {false, "broug_deflect_no_power"};
+        ClearBrougPendingDeflect(state);
+        gBrougPendingForcedParryByVictim.erase(player->GetGUID());
+        state.deflectWindowUntilMs = nowMs + static_cast<uint64>(state.deflect.windowMs);
+        state.deflectRootUntilMs = state.deflectWindowUntilMs;
+        state.deflectParryFeedbackAtMs = nowMs + static_cast<uint64>(state.deflect.parryPreMs);
+        state.deflectParryFeedbackPlayed = false;
+        state.deflectCooldownUntilMs = nowMs + static_cast<uint64>(state.deflect.cooldownMs);
+        if (state.deflect.energyCost > 0)
+            player->ModifyPower(POWER_ENERGY, -static_cast<int32>(state.deflect.energyCost));
+        player->SetControlled(true, UNIT_STATE_ROOT, player);
+        if (state.deflect.parryPreMs == 0)
+        {
+            PlayBrougParryFeedback(player);
+            state.deflectParryFeedbackPlayed = true;
+        }
+        return {true, "broug_deflect_window_open"};
+    }
+
+    BehaviorExecutionResult ExecuteShellBehavior(Player* player, uint32 shellSpellId, bool persistPetFallback, Unit* explicitTarget)
     {
         std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(shellSpellId);
         if (!behaviorRecord.has_value())
@@ -3590,8 +5535,26 @@ namespace WmSpells
             return {true, "intellect_block_passive_maintained"};
         }
 
+        if (behaviorRecord->behaviorKind == "broug_deflect_v1")
+            return ExecuteBrougDeflect(player, shellSpellId);
+
+        if (behaviorRecord->behaviorKind == "broug_deflect_counter_stance_v1")
+            return ExecuteBrougDeflectCounterStance(player, shellSpellId);
+
+        if (behaviorRecord->behaviorKind == "broug_skirmisher_shot_v1")
+            return ExecuteBrougSkirmisherMark(player, shellSpellId, explicitTarget);
+
+        if (IsBrougGuardBehaviorKind(behaviorRecord->behaviorKind))
+        {
+            MaintainBrougGuard(player, 0);
+            return {true, "broug_guard_passive_maintained"};
+        }
+
         if (IsBoneboundEchoStasisBehaviorKind(behaviorRecord->behaviorKind))
             return ExecuteBoneboundEchoStasis(player, shellSpellId);
+
+        if (IsLanathelStanceBehaviorKind(behaviorRecord->behaviorKind))
+            return ExecuteLanathelStance(player, shellSpellId);
 
         std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, persistPetFallback);
         if (!runtimeConfig.has_value())
@@ -3668,6 +5631,179 @@ namespace WmSpells
         }
 
         return {true, "bonebound_echo_teleported:" + std::to_string(teleported)};
+    }
+
+    BehaviorExecutionResult DescribeBoneboundEchoStatus(Player* player)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+
+        uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        Pet* alphaPet = player->GetPet();
+        bool alphaOnline = alphaPet && IsBoneboundPet(alphaPet);
+
+        std::optional<BoneboundBehaviorConfig> runtimeConfig;
+        if (alphaOnline)
+            runtimeConfig = LoadActiveBoneboundConfig(alphaPet->GetUInt32Value(UNIT_CREATED_BY_SPELL), false);
+
+        bool huntMode = IsBoneboundEchoHuntMode(ownerGuid);
+        float huntRadius = ResolveBoneboundEchoHuntRadius(ownerGuid, runtimeConfig);
+        uint32 radiusYards = static_cast<uint32>(std::round(huntRadius));
+
+        bool dpsSpellInfoOk = false;
+        if (runtimeConfig.has_value())
+        {
+            uint32 damageSpellId = runtimeConfig->priestEchoDpsDamageSpellId != 0
+                ? runtimeConfig->priestEchoDpsDamageSpellId
+                : runtimeConfig->priestEchoDpsSpellId;
+            dpsSpellInfoOk = runtimeConfig->priestEchoDpsSpellId != 0
+                && sSpellMgr->GetSpellInfo(runtimeConfig->priestEchoDpsSpellId)
+                && sSpellMgr->GetSpellInfo(damageSpellId);
+        }
+
+        uint32 tracked = 0;
+        uint32 live = 0;
+        uint32 destroyers = 0;
+        uint32 restorers = 0;
+        uint32 restorerTargeted = 0;
+        uint32 restorerReady = 0;
+        uint32 restorerCasting = 0;
+        uint32 restorerPending = 0;
+        uint32 restorerCooldown = 0;
+        uint32 restorerNoTarget = 0;
+        uint32 restorerOutOfRange = 0;
+        uint32 restorerNoLos = 0;
+        uint32 restorerLensMarked = 0;
+        std::string firstRestorer = "";
+
+        for (auto const& [echoGuid, state] : gBoneboundAlphaEchoes)
+        {
+            if (state.ownerGuid != ownerGuid)
+                continue;
+
+            ++tracked;
+            Creature* echo = ObjectAccessor::GetCreature(*player, state.echoGuid);
+            if (!echo || !echo->IsAlive() || echo->GetMapId() != player->GetMapId())
+                continue;
+
+            ++live;
+            if (!IsBoneboundPriestEcho(state))
+            {
+                ++destroyers;
+                continue;
+            }
+
+            ++restorers;
+            Unit* target = nullptr;
+            if (Unit* victim = echo->GetVictim(); IsValidBoneboundSeekTarget(player, echo, victim))
+                target = victim;
+            if (!target)
+            {
+                Unit* selected = ObjectAccessor::GetUnit(*player, echo->GetTarget());
+                if (IsValidBoneboundSeekTarget(player, echo, selected))
+                    target = selected;
+            }
+            if (!target)
+            {
+                auto seekIt = gBoneboundEchoSeekTargetByCaster.find(echoGuid);
+                if (seekIt != gBoneboundEchoSeekTargetByCaster.end())
+                {
+                    Unit* selected = ObjectAccessor::GetUnit(*player, seekIt->second.targetGuid);
+                    if (IsValidBoneboundSeekTarget(player, echo, selected))
+                        target = selected;
+                }
+            }
+            if (!target && huntMode)
+            {
+                Unit* selected = SelectNightWatchersLensMarkedBoneboundSeekTarget(player, echo, huntRadius);
+                if (!selected)
+                    selected = SelectNearestBoneboundSeekTarget(player, echo, huntRadius);
+                if (IsValidBoneboundSeekTarget(player, echo, selected))
+                    target = selected;
+            }
+            if (!target && alphaPet)
+            {
+                Unit* selected = alphaPet->GetVictim();
+                if (IsValidBoneboundSeekTarget(player, echo, selected))
+                    target = selected;
+            }
+
+            bool hasTarget = target != nullptr;
+            bool inRange = false;
+            bool hasLos = false;
+            bool lensMarked = hasTarget && WmSpells::IsNightWatchersLensMarkedBy(target, player);
+            if (hasTarget)
+            {
+                ++restorerTargeted;
+                if (lensMarked)
+                    ++restorerLensMarked;
+                if (runtimeConfig.has_value())
+                    inRange = echo->IsWithinDistInMap(target, ResolveBoneboundPriestVisibleDpsCastRange(echo, *runtimeConfig));
+                hasLos = echo->IsWithinLOSInMap(target);
+                if (!inRange)
+                    ++restorerOutOfRange;
+                if (!hasLos)
+                    ++restorerNoLos;
+            }
+            else
+            {
+                ++restorerNoTarget;
+            }
+
+            bool casting = echo->IsNonMeleeSpellCast(false);
+            if (casting)
+                ++restorerCasting;
+
+            bool pending = gBoneboundPriestDpsCastByCaster.find(echoGuid) != gBoneboundPriestDpsCastByCaster.end();
+            if (pending)
+                ++restorerPending;
+
+            uint32 cooldownMs = 0;
+            if (auto cooldownIt = gBoneboundPriestDpsCooldownByCaster.find(echoGuid); cooldownIt != gBoneboundPriestDpsCooldownByCaster.end())
+                cooldownMs = cooldownIt->second;
+            if (cooldownMs != 0)
+                ++restorerCooldown;
+
+            if (hasTarget && inRange && hasLos && !casting && !pending && cooldownMs == 0 && dpsSpellInfoOk)
+                ++restorerReady;
+
+            if (firstRestorer.empty())
+            {
+                firstRestorer = " first=t";
+                firstRestorer += hasTarget ? std::to_string(static_cast<uint32>(target->GetGUID().GetCounter())) : "0";
+                if (hasTarget)
+                    firstRestorer += ":d" + std::to_string(static_cast<uint32>(std::round(echo->GetDistance(target))));
+                firstRestorer += ":los" + std::to_string(hasLos ? 1 : 0);
+                firstRestorer += ":range" + std::to_string(inRange ? 1 : 0);
+                firstRestorer += ":mark" + std::to_string(lensMarked ? 1 : 0);
+                firstRestorer += ":cast" + std::to_string(casting ? 1 : 0);
+                firstRestorer += ":cd" + std::to_string(cooldownMs);
+                firstRestorer += ":pending" + std::to_string(pending ? 1 : 0);
+            }
+        }
+
+        std::string message = "mode=" + std::string(huntMode ? "seek" : "follow")
+            + " radius=" + std::to_string(radiusYards)
+            + " alpha=" + std::string(alphaOnline ? "1" : "0")
+            + " tracked=" + std::to_string(tracked)
+            + " live=" + std::to_string(live)
+            + " destroyers=" + std::to_string(destroyers)
+            + " restorers=" + std::to_string(restorers)
+            + " restorer_targeted=" + std::to_string(restorerTargeted)
+            + " ready=" + std::to_string(restorerReady)
+            + " casting=" + std::to_string(restorerCasting)
+            + " pending=" + std::to_string(restorerPending)
+            + " cooldown=" + std::to_string(restorerCooldown)
+            + " no_target=" + std::to_string(restorerNoTarget)
+            + " out_range=" + std::to_string(restorerOutOfRange)
+            + " no_los=" + std::to_string(restorerNoLos)
+            + " marked=" + std::to_string(restorerLensMarked)
+            + " dps_spell=" + std::string(dpsSpellInfoOk ? "1" : "0")
+            + firstRestorer;
+
+        return {true, message};
     }
 
     BehaviorExecutionResult ExecuteBoneboundEchoMode(Player* player, std::string const& mode, std::optional<float> huntRadiusOverride)
@@ -4008,17 +6144,80 @@ namespace WmSpells
         if (!player || !WmSpells::IsPlayerAllowed(player))
             return;
 
-        if (!player->HasSpell(DUAL_WIELD_SPELL_ID) || player->CanDualWield())
-            return;
-
         if (!HasActiveCombatProficiencyGrant(player))
             return;
 
+        for (CombatProficiencyRuntimeGrant const& grant : COMBAT_PROFICIENCY_RUNTIME_GRANTS)
+            EnsureCombatProficiencyRuntimeGrant(player, grant);
+
         // character_spell is the persistent truth; AzerothCore keeps Dual Wield
         // as a volatile runtime flag, so materialize it only for explicit WM grants.
+        if (!player->HasSpell(DUAL_WIELD_SPELL_ID) || player->CanDualWield())
+            return;
+
         player->CastSpell(player, DUAL_WIELD_SPELL_ID, true);
         if (!player->CanDualWield())
             player->SetCanDualWield(true);
+    }
+
+    void TickBrougGuard(Player* player, uint32 /*diff*/)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        UpdateBrougForcedStuns(player);
+        auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+        if (stateIt == gBrougGuardByPlayer.end())
+            return;
+
+        if (!IsPlayerAllowed(player))
+        {
+            gBrougCounterStanceToggleOffByPlayer.erase(playerGuid);
+            gBrougGuardByPlayer.erase(stateIt);
+            return;
+        }
+
+        TickBrougDeflectWindow(player, stateIt->second);
+    }
+
+    void MaintainBrougGuard(Player* player, uint32 diff)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        UpdateBrougForcedStuns(player);
+        if (!IsPlayerAllowed(player))
+        {
+            if (auto stateIt = gBrougGuardByPlayer.find(playerGuid); stateIt != gBrougGuardByPlayer.end())
+                ClearBrougDeflectWindow(player, stateIt->second);
+            gBrougCounterStanceToggleOffByPlayer.erase(playerGuid);
+            gBrougGuardByPlayer.erase(playerGuid);
+            return;
+        }
+
+        BrougGuardRuntimeState const* previousState = nullptr;
+        if (auto stateIt = gBrougGuardByPlayer.find(playerGuid); stateIt != gBrougGuardByPlayer.end())
+            previousState = &stateIt->second;
+
+        std::optional<BrougGuardRuntimeState> loaded = LoadActiveBrougGuardState(player, previousState);
+        if (!loaded.has_value())
+        {
+            if (auto stateIt = gBrougGuardByPlayer.find(playerGuid); stateIt != gBrougGuardByPlayer.end())
+                ClearBrougDeflectWindow(player, stateIt->second);
+            gBrougCounterStanceToggleOffByPlayer.erase(playerGuid);
+            gBrougGuardByPlayer.erase(playerGuid);
+            return;
+        }
+
+        BrougGuardRuntimeState& state = gBrougGuardByPlayer[playerGuid];
+        state = *loaded;
+        TickBrougDeflectWindow(player, state);
+        if (state.skirmisherAttackTimerMs > diff)
+            state.skirmisherAttackTimerMs -= diff;
+        else
+            state.skirmisherAttackTimerMs = 0;
     }
 
     void ForgetIntellectBlockPassive(Player* player)
@@ -4027,6 +6226,130 @@ namespace WmSpells
             return;
 
         ApplyIntellectBlockRating(player, 0);
+    }
+
+    void ForgetBrougGuard(Player* player)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+        if (stateIt != gBrougGuardByPlayer.end())
+            ClearBrougDeflectWindow(player, stateIt->second);
+        gBrougCounterStanceToggleOffByPlayer.erase(playerGuid);
+        gBrougGuardByPlayer.erase(playerGuid);
+    }
+
+    bool CanCompleteBrougGuardQuest(Player* player, uint32 questId, std::string* reason)
+    {
+        if (questId != BROUG_PARRY_QUEST_ID && questId != BROUG_DEFLECT_QUEST_ID)
+            return true;
+
+        if (!player)
+        {
+            if (reason)
+                *reason = "player_not_online";
+            return false;
+        }
+
+        if (!IsPlayerAllowed(player))
+        {
+            if (reason)
+                *reason = "player_not_allowed";
+            return false;
+        }
+
+        char const* counterKey = questId == BROUG_PARRY_QUEST_ID
+            ? BROUG_UNIVERSAL_PARRY_COUNTER_KEY
+            : BROUG_DEFLECT_COUNTER_KEY;
+        if (!BrougGuardCounterTableExists())
+        {
+            if (reason)
+                *reason = "counter_table_missing";
+            return false;
+        }
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT CounterValue FROM wm_broug_guard_counter "
+            "WHERE PlayerGUID = {} AND CounterKey = {} LIMIT 1",
+            static_cast<uint32>(player->GetGUID().GetCounter()),
+            SqlString(counterKey));
+        uint64 counterValue = result ? result->Fetch()[0].Get<uint64>() : 0;
+        if (counterValue < 1000)
+        {
+            if (reason)
+                *reason = std::string("counter_below_required:") + counterKey + "=" + std::to_string(counterValue);
+            return false;
+        }
+
+        if (reason)
+            *reason = "ok";
+        return true;
+    }
+
+    void HandleBrougGuardQuestComplete(Player* player, uint32 questId)
+    {
+        if (!player || (questId != BROUG_PARRY_QUEST_ID && questId != BROUG_DEFLECT_QUEST_ID))
+            return;
+
+        if (!IsPlayerAllowed(player))
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+
+        struct BrougQuestRewardShell
+        {
+            uint32 shellSpellId;
+            char const* behaviorKind;
+            char const* capability;
+        };
+
+        std::vector<BrougQuestRewardShell> rewards;
+        if (questId == BROUG_PARRY_QUEST_ID)
+        {
+            rewards.push_back({BROUG_DEFLECT_SHELL_ID, "broug_deflect_v1", "deflect"});
+            rewards.push_back({BROUG_DEFLECT_COUNTER_STANCE_SHELL_ID, "broug_deflect_counter_stance_v1", "deflect_counter_stance"});
+        }
+        else
+        {
+            rewards.push_back({BROUG_AUTO_RETALIATION_SHELL_ID, "broug_auto_retaliation_v1", "auto_retaliation"});
+        }
+
+        for (BrougQuestRewardShell const& reward : rewards)
+        {
+            if (!player->HasSpell(reward.shellSpellId))
+                player->learnSpell(reward.shellSpellId, false);
+
+            std::string metadata = "{\"capability\":\"" + std::string(reward.capability)
+                + "\",\"behavior_kind\":\"" + reward.behaviorKind
+                + "\",\"source\":\"broug_guard_quest\",\"status\":\"PARTIAL\"}";
+            WorldDatabase.Execute(
+                "UPDATE wm_spell_grant "
+                "SET GrantKind = 'broug_guard_reward', SourceQuestID = {}, Author = 'mod-wm-spells', MetadataJSON = {} "
+                "WHERE PlayerGUID = {} AND ShellSpellID = {} AND RevokedAt IS NULL",
+                questId,
+                SqlString(metadata),
+                playerGuid,
+                reward.shellSpellId);
+            WorldDatabase.Execute(
+                "INSERT INTO wm_spell_grant "
+                "(PlayerGUID, ShellSpellID, GrantKind, SourceQuestID, Author, MetadataJSON) "
+                "SELECT {}, {}, 'broug_guard_reward', {}, 'mod-wm-spells', {} "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM wm_spell_grant "
+                "WHERE PlayerGUID = {} AND ShellSpellID = {} AND RevokedAt IS NULL"
+                ")",
+                playerGuid,
+                reward.shellSpellId,
+                questId,
+                SqlString(metadata),
+                playerGuid,
+                reward.shellSpellId);
+        }
+
+        player->SaveToDB(false, false);
+        MaintainBrougGuard(player, 0);
     }
 
     void MaintainNightWatchersLens(Player* player, uint32 /*diff*/)
@@ -4053,6 +6376,47 @@ namespace WmSpells
             player->RemoveAurasDueToSpell(NIGHT_WATCHERS_LENS_VISIBLE_AURA_SPELL_ID);
     }
 
+    void MaintainLanathelStance(Player* player, uint32 /*diff*/)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        if (!IsPlayerAllowed(player))
+        {
+            if (gLanathelStanceByPlayer.find(playerGuid) != gLanathelStanceByPlayer.end())
+                ForgetLanathelStance(player);
+            return;
+        }
+
+        std::optional<LanathelStanceConfig> config = LoadActiveLanathelStanceConfig(player);
+        if (!config.has_value())
+        {
+            if (gLanathelStanceByPlayer.find(playerGuid) != gLanathelStanceByPlayer.end())
+                ForgetLanathelStance(player);
+            return;
+        }
+
+        if (!player->IsAlive())
+        {
+            RestoreLanathelTransient(player, true);
+            gLanathelStanceByPlayer.erase(playerGuid);
+            return;
+        }
+
+        ApplyLanathelStance(player, *config);
+    }
+
+    void ForgetLanathelStance(Player* player)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        RestoreLanathelTransient(player, true);
+        gLanathelStanceByPlayer.erase(playerGuid);
+    }
+
     bool IsNightWatchersLensMarked(Unit const* unit)
     {
         if (!unit)
@@ -4066,6 +6430,32 @@ namespace WmSpells
         return aura && aura->GetDuration() > 0;
     }
 
+    bool IsNightWatchersLensMarkedBy(Unit const* unit, Player const* player)
+    {
+        if (!unit || !player)
+            return false;
+
+        auto markIt = gNightWatchersLensMarksByTarget.find(unit->GetGUID().GetRawValue());
+        if (markIt == gNightWatchersLensMarksByTarget.end() || markIt->second.casterGuid != player->GetGUID())
+            return false;
+
+        Aura* aura = unit->GetAura(NIGHT_WATCHERS_LENS_MARK_DEBUFF_SPELL_ID, player->GetGUID());
+        return aura && aura->GetDuration() > 0;
+    }
+
+    void ApplyNightWatchersLensSpellFocus(Player* player, Unit* victim, int32& damage, SpellInfo const* spellInfo)
+    {
+        if (!player || !victim || !spellInfo || damage <= 0)
+            return;
+
+        if (!HasNightWatchersLensReady(player) || !IsNightWatchersLensMarkedBy(victim, player))
+            return;
+
+        int64 focusedDamage = static_cast<int64>(damage)
+            + (static_cast<int64>(damage) * NIGHT_WATCHERS_LENS_SPELL_FOCUS_DAMAGE_BONUS_PCT) / 100;
+        damage = static_cast<int32>(std::min<int64>(focusedDamage, std::numeric_limits<int32>::max()));
+    }
+
     void HandleNightWatchersLensWeaponDamage(Unit* attacker, Unit* victim, uint32& damage)
     {
         TryProcNightWatchersLensMark(attacker, victim, damage);
@@ -4073,10 +6463,203 @@ namespace WmSpells
 
     void HandleNightWatchersLensSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo)
     {
-        if (damage <= 0 || !IsNightWatchersLensWandShot(spellInfo))
+        if (damage <= 0 || !attacker)
             return;
 
-        TryProcNightWatchersLensMark(attacker, victim, static_cast<uint32>(damage));
+        if (IsNightWatchersLensWandShot(spellInfo))
+        {
+            TryProcNightWatchersLensMark(attacker, victim, static_cast<uint32>(damage));
+            return;
+        }
+
+        ApplyNightWatchersLensSpellFocus(attacker->ToPlayer(), victim, damage, spellInfo);
+    }
+
+    void HandleBrougGuardMeleeDamage(Unit* attacker, Unit* victim, uint32& damage)
+    {
+        if (TryBrougDeflect(attacker, victim, damage))
+            return;
+
+        ConsumeBrougVulnerableForDamage(attacker, victim, damage);
+        if (damage == 0)
+            return;
+
+        TryQueueBrougUniversalMeleeParry(attacker, victim, damage, true);
+    }
+
+    void HandleBrougGuardSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo)
+    {
+        if (damage <= 0)
+            return;
+
+        // ModifySpellDamageTaken covers single-target spells and direct AoE hits.
+        uint32 deflectDamage = static_cast<uint32>(damage);
+        if (TryBrougDeflect(attacker, victim, deflectDamage))
+        {
+            damage = 0;
+            return;
+        }
+
+        ConsumeBrougVulnerableForDamage(attacker, victim, deflectDamage);
+        damage = static_cast<int32>(std::min<uint32>(deflectDamage, static_cast<uint32>(std::numeric_limits<int32>::max())));
+        if (damage <= 0)
+            return;
+
+        Player* player = victim ? victim->ToPlayer() : nullptr;
+        if (!player)
+            return;
+
+        auto stateIt = gBrougGuardByPlayer.find(static_cast<uint32>(player->GetGUID().GetCounter()));
+        bool countEvent = stateIt != gBrougGuardByPlayer.end()
+            && stateIt->second.hasUniversalParry
+            && stateIt->second.universalParry.countSpellDamage;
+        uint32 unsignedDamage = static_cast<uint32>(damage);
+        if (TryBrougUniversalParry(attacker, victim, unsignedDamage, countEvent))
+        {
+            damage = 0;
+            if (attacker && spellInfo)
+                attacker->SendSpellMiss(player, spellInfo->Id, SPELL_MISS_PARRY);
+        }
+    }
+
+    void HandleBrougGuardPeriodicDamage(Unit* attacker, Unit* victim, uint32& damage, SpellInfo const* /*spellInfo*/)
+    {
+        if (damage == 0)
+            return;
+
+        if (TryBrougDeflect(attacker, victim, damage))
+            return;
+
+        ConsumeBrougVulnerableForDamage(attacker, victim, damage);
+        if (damage == 0)
+            return;
+
+        Player* player = victim ? victim->ToPlayer() : nullptr;
+        if (!player)
+            return;
+
+        auto stateIt = gBrougGuardByPlayer.find(static_cast<uint32>(player->GetGUID().GetCounter()));
+        bool countEvent = stateIt != gBrougGuardByPlayer.end()
+            && stateIt->second.hasUniversalParry
+            && stateIt->second.universalParry.countPeriodicDamage;
+        TryBrougUniversalParry(attacker, victim, damage, countEvent);
+    }
+
+    void HandleBrougGuardAuraApply(Unit* unit, Aura* aura)
+    {
+        if (!unit || !aura)
+            return;
+
+        uint32 auraSpellId = aura->GetId();
+        if (auraSpellId == BROUG_DEFLECTED_SHELL_ID)
+        {
+            Player* caster = nullptr;
+            if (Unit* casterUnit = aura->GetCaster())
+                caster = casterUnit->ToPlayer();
+            EnsureBrougDeflectedStun(caster, unit);
+            return;
+        }
+
+        if (auraSpellId == BROUG_VULNERABLE_SHELL_ID)
+            return;
+
+        Player* player = unit->ToPlayer();
+        if (!player || !WmSpells::IsPlayerAllowed(player))
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+        if (stateIt == gBrougGuardByPlayer.end() || !IsBrougDeflectWindowActive(stateIt->second, BrougNowMs()))
+            return;
+
+        SpellInfo const* spellInfo = aura->GetSpellInfo();
+        if (!spellInfo || spellInfo->IsPositive())
+            return;
+
+        Unit* caster = aura->GetCaster();
+        if (!caster)
+            caster = ObjectAccessor::GetUnit(*player, aura->GetCasterGUID());
+        if (!IsBrougHostileDamage(caster, player))
+            return;
+
+        CaptureBrougDeflectEvent(player, playerGuid, stateIt->second, caster);
+        aura->Remove(AURA_REMOVE_BY_DEFAULT);
+    }
+
+    void HandleBrougGuardAuraRemove(Unit* unit, AuraApplication* aurApp, AuraRemoveMode /*mode*/)
+    {
+        if (!unit || !aurApp)
+            return;
+
+        Aura* aura = aurApp->GetBase();
+        if (!aura || aura->GetId() != BROUG_DEFLECTED_SHELL_ID)
+            return;
+
+        if (HasBrougDeflectedAura(unit))
+            return;
+
+        ReleaseBrougForcedStun(unit);
+        gBrougDeflectedStunUnits.erase(unit->GetGUID());
+    }
+
+    void HandleBrougGuardMeleeOutcome(
+        Unit const* attacker,
+        Unit const* victim,
+        WeaponAttackType /*attType*/,
+        int32& crit_chance,
+        int32& miss_chance,
+        int32& dodge_chance,
+        int32& parry_chance,
+        int32& block_chance)
+    {
+        if (!attacker || !victim)
+            return;
+
+        auto it = gBrougPendingForcedParryByVictim.find(victim->GetGUID());
+        if (it == gBrougPendingForcedParryByVictim.end())
+            return;
+
+        uint64 nowMs = BrougNowMs();
+        if (auto stateIt = gBrougGuardByPlayer.find(it->second.playerGuid);
+            stateIt != gBrougGuardByPlayer.end() && IsBrougDeflectWindowActive(stateIt->second, nowMs))
+        {
+            gBrougPendingForcedParryByVictim.erase(it);
+            return;
+        }
+
+        if (it->second.expiresAtMs < nowMs || it->second.attackerGuid != attacker->GetGUID())
+        {
+            gBrougPendingForcedParryByVictim.erase(it);
+            return;
+        }
+
+        if ((!victim->HasInArc(WM_PI, attacker) && !victim->HasIgnoreHitDirectionAura())
+            || victim->IsNonMeleeSpellCast(false, false, true)
+            || victim->HasUnitState(UNIT_STATE_CONTROLLED))
+        {
+            gBrougPendingForcedParryByVictim.erase(it);
+            return;
+        }
+
+        Player* player = const_cast<Unit*>(victim)->ToPlayer();
+        uint32 playerGuid = it->second.playerGuid;
+        bool countEvent = it->second.countEvent;
+        gBrougPendingForcedParryByVictim.erase(it);
+
+        if (!player || playerGuid == 0)
+            return;
+
+        auto stateIt = gBrougGuardByPlayer.find(playerGuid);
+        if (stateIt == gBrougGuardByPlayer.end() || !stateIt->second.hasUniversalParry)
+            return;
+
+        crit_chance = 0;
+        miss_chance = 0;
+        dodge_chance = 0;
+        block_chance = 0;
+        parry_chance = std::max<int32>(parry_chance, 30000);
+        PlayBrougParryFeedback(player);
+        RecordBrougUniversalParrySuccess(player, playerGuid, stateIt->second, const_cast<Unit*>(attacker), countEvent);
     }
 
     void HandleNightWatchersLensDefenseExposure(

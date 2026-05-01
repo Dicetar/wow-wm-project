@@ -1,0 +1,55 @@
+{
+  "schema_version": "wm.quest.release.story_arc.v1",
+  "quest_kind": "story_arc",
+  "player_guid": 5406,
+  "arc_key": "jecia_choice_arc_template_v1",
+  "nodes": [
+    {
+      "node_key": "start",
+      "quest_schema": "wm.quest.release.one_shot.v1",
+      "fresh_reserved_required": true
+    },
+    {
+      "node_key": "choice_a",
+      "quest_schema": "wm.quest.release.one_shot.v1",
+      "fresh_reserved_required": true
+    },
+    {
+      "node_key": "choice_b",
+      "quest_schema": "wm.quest.release.one_shot.v1",
+      "fresh_reserved_required": true
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "to": "choice_a",
+      "kind": "branch_unlocks"
+    },
+    {
+      "from": "start",
+      "to": "choice_b",
+      "kind": "branch_unlocks"
+    }
+  ],
+  "fork_groups": [
+    {
+      "group_key": "choose_first_wins",
+      "choice_node_keys": [
+        "choice_a",
+        "choice_b"
+      ],
+      "lock_policy": "first_turn_in_locks_others"
+    }
+  ],
+  "journey_updates": {
+    "stage_key": "choice_offered",
+    "branch_key": "pending_choice"
+  },
+  "runtime_sync": {
+    "mode": "auto"
+  },
+  "notes": [
+    "Template only. First completed branch must be recorded in character journey state and sibling choices must be locked or removed through proven typed quest actions."
+  ]
+}

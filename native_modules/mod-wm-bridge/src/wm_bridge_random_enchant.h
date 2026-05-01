@@ -3,6 +3,7 @@
 #include "Common.h"
 
 #include <string>
+#include <vector>
 
 class Item;
 class Player;
@@ -11,6 +12,24 @@ namespace WmBridge
 {
 namespace RandomEnchant
 {
+    enum class EnchantCategory : uint8
+    {
+        Stats = 1,
+        Damage = 2,
+        CombatRatings = 3,
+        Defense = 4,
+        Resistances = 5,
+        Utility = 6,
+        Other = 7,
+    };
+
+    struct EnchantChoice
+    {
+        uint32 enchantId = 0;
+        EnchantCategory category = EnchantCategory::Other;
+        std::string label;
+    };
+
     struct ApplyOptions
     {
         uint32 maxEnchants = 3;
@@ -41,8 +60,13 @@ namespace RandomEnchant
 
     ApplyOptions DefaultApplyOptionsFromConfig();
     bool IsEligibleItem(Item const* item);
+    char const* EnchantCategoryLabel(EnchantCategory category);
+    bool DecodeEnchantCategory(uint32 categoryCode, EnchantCategory& category);
+    std::vector<EnchantCategory> EnchantCategoryOrder();
+    std::vector<EnchantChoice> ListEnchantChoicesForItem(Item* item, uint32 tier, EnchantCategory category);
     uint32 SelectRandomEnchantForItem(Item* item);
     uint32 SelectRandomEnchantForItem(Item* item, ApplyOptions const& options);
     ApplyResult ApplyToItem(Player* player, Item* item, ApplyOptions const& options);
+    ApplyResult ApplyExactToItem(Player* player, Item* item, uint32 enchantId, int32 selectedEnchantSlotIndex);
 }
 }

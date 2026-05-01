@@ -80,6 +80,20 @@ def validate_bounty_quest_draft(draft: BountyQuestDraft) -> ValidationResult:
                 severity="warning",
             )
         )
+    if draft.reward.reward_item_mode not in {"fixed", "choice"}:
+        issues.append(
+            ValidationIssue(
+                path="reward.reward_item_mode",
+                message="Reward item mode must be `fixed` or `choice`.",
+            )
+        )
+    if draft.reward.reward_item_mode == "choice" and draft.reward.reward_item_entry is None:
+        issues.append(
+            ValidationIssue(
+                path="reward.reward_item_mode",
+                message="Choice reward mode requires a reward item entry.",
+            )
+        )
     if draft.reward.reward_item_count < 1 or draft.reward.reward_item_count > 20:
         issues.append(
             ValidationIssue(

@@ -1,4 +1,11 @@
+Status: STALE
+Last verified: 2026-04-28
+Verified by: Codex
+Doc type: design
+
 # Content Candidates V2
+
+This note is historical candidate-layer planning. Current candidate work should follow [ROADMAP.md](ROADMAP.md), [Context Pack V1](CONTEXT_PACK_V1.md), and current-state handoffs; do not treat the next-target section here as the active roadmap.
 
 ## What changed from V1
 

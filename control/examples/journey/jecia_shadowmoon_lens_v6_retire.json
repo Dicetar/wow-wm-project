@@ -1,0 +1,13 @@
+{
+  "schema_version": "wm.character_journey.seed.v1",
+  "player_guid": 5406,
+  "arc_states": [
+    {
+      "arc_key": "jecia_shadowmoon_lens_v6",
+      "stage_key": "retired_generated_reward_not_used",
+      "status": "retired",
+      "branch_key": "zone_fitting_visible_item_power",
+      "summary": "Retired before further gameplay proof so the live quest could be republished as a direct clone of known-working quest 910151 with fresh IDs."
+    }
+  ]
+}

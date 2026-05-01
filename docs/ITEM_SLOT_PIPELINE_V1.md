@@ -46,6 +46,8 @@ This matches the slot-based architecture established earlier for WM item work.
   - equip spell `132` with trigger `1`, used as the visible `Detect Invisibility` marker aura for the lens
   - native effect in `mod-wm-spells`: while the lens is equipped and the visible aura is present, player weapon auto-attacks and wand auto-repeat shots have a 10% chance to apply or refresh a visible 10-second target debuff (`770`, Faerie Fire)
   - while the WM-tracked target debuff is active, melee/ranged attack outcome rolls against that target halve the defense/miss/dodge/parry/block values covered by the current hook and double the attack crit chance in that hook
+  - Lens Focus feature: while the player's own visible mark is active on a target, that Lens wearer deals 15% more non-wand direct spell damage to that target
+  - Lens Command feature: Bonebound Echo seek mode prefers the Lens wearer's currently marked target over ordinary nearest-target selection, so the visible debuff doubles as a companion focus signal
   - WM-owned proc hooks can opt into the "effect chance x2" rule while the visible debuff is active; Bonebound Alpha Echo proc chance now doubles against a WM-marked target
 - Quest `910024` (`Bounty: Nightbane Dark Runner - Lens`) rewards item `910006` x1 plus the existing 12 silver.
 - Retired test slot `910021` was not a valid visual proof after reward mutation because the player had already accepted/rewarded that quest ID before the item reward was attached; use a fresh quest slot when changing visible quest rewards.

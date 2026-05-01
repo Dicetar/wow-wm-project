@@ -126,12 +126,48 @@ class ReservedDbAllocatorTests(unittest.TestCase):
         self.assertEqual(len(allocator.executed), 1)
         self.assertIn("ReservedID = 947001", allocator.executed[0])
 
-    def test_non_spell_slots_are_not_filtered_by_spell_registry_rules(self) -> None:
+    def test_non_spell_slots_skip_broken_registry_claims(self) -> None:
         allocator = RecordingReservedSlotDbAllocator(
             [
                 {
                     "EntityType": "quest",
-                    "ReservedID": "910000",
+                    "ReservedID": "910152",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                },
+                {
+                    "EntityType": "quest",
+                    "ReservedID": "910154",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                },
+                {
+                    "EntityType": "quest",
+                    "ReservedID": "910155",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                },
+                {
+                    "EntityType": "quest",
+                    "ReservedID": "910160",
+                    "SlotStatus": "free",
+                    "ArcKey": None,
+                    "CharacterGUID": None,
+                    "SourceQuestID": None,
+                    "NotesJSON": None,
+                },
+                {
+                    "EntityType": "quest",
+                    "ReservedID": "910171",
                     "SlotStatus": "free",
                     "ArcKey": None,
                     "CharacterGUID": None,
@@ -145,7 +181,7 @@ class ReservedDbAllocatorTests(unittest.TestCase):
 
         self.assertIsNotNone(slot)
         assert slot is not None
-        self.assertEqual(slot.reserved_id, 910000)
+        self.assertEqual(slot.reserved_id, 910171)
 
 
 if __name__ == "__main__":

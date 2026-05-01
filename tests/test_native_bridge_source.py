@@ -405,6 +405,15 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertEqual(snapshot.player_guid_allowlist, [])
         self.assertTrue(snapshot.allows_player(5406))
 
+    def test_configure_can_render_wildcard_allowlist_for_short_debug_runs(self) -> None:
+        text = set_allowlist("[worldserver]\n", [], allow_all=True)
+        snapshot = parse_bridge_runtime_config(text)
+
+        self.assertIn('WmBridge.PlayerGuidAllowList = "*"', text)
+        self.assertTrue(snapshot.allow_all_players)
+        self.assertEqual(snapshot.player_guid_allowlist, [])
+        self.assertTrue(snapshot.allows_player(5406))
+
     def test_native_module_has_action_queue_scaffold(self) -> None:
         root = Path("native_modules/mod-wm-bridge/src")
         expected_files = {
@@ -453,6 +462,26 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertIn("killer->IsPet()", source)
         self.assertIn("killer->IsTotem()", source)
         self.assertIn('MakePlayerScopedEvent(player, "combat", "kill")', source)
+
+    def test_native_bridge_can_emit_scoped_player_marker_aura_events(self) -> None:
+        common_header = Path("native_modules/mod-wm-bridge/src/wm_bridge_common.h").read_text(encoding="utf-8")
+        common_source = Path("native_modules/mod-wm-bridge/src/wm_bridge_common.cpp").read_text(encoding="utf-8")
+        unit_source = Path("native_modules/mod-wm-bridge/src/wm_bridge_unit_script.cpp").read_text(encoding="utf-8")
+        dist_config = Path("native_modules/mod-wm-bridge/conf/mod_wm_bridge.conf.dist").read_text(encoding="utf-8")
+
+        self.assertIn("bool emitAura", common_header)
+        self.assertIn("auraSpellAllowList", common_header)
+        self.assertIn("IsAuraSpellAllowed", common_source)
+        self.assertIn('GetOption<bool>("WmBridge.Emit.Aura"', common_source)
+        self.assertIn('GetOption<std::string>("WmBridge.Emit.AuraSpellAllowList"', common_source)
+        self.assertIn("UNITHOOK_ON_AURA_APPLY", unit_source)
+        self.assertIn("UNITHOOK_ON_AURA_REMOVE", unit_source)
+        self.assertIn('MakePlayerScopedEvent(player, "aura", eventType)', unit_source)
+        self.assertIn('row.subjectType = "spell"', unit_source)
+        self.assertIn('JsonAppendNumber(payload, firstField, "spell_id"', unit_source)
+        self.assertIn('JsonAppendString(payload, firstField, "aura_name"', unit_source)
+        self.assertIn("WmBridge.Emit.Aura = 0", dist_config)
+        self.assertIn('WmBridge.Emit.AuraSpellAllowList = "946602,132,687,770"', dist_config)
 
     def test_python_native_catalog_has_no_duplicate_ids(self) -> None:
         kinds = native_action_kind_ids()

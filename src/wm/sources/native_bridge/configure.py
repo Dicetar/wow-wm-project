@@ -22,6 +22,7 @@ class BridgeConfigUpdateResult:
     new_allowlist: list[int]
     changed: bool
     reload_requested: bool
+    allow_all_players: bool = False
     reload_result: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -48,22 +49,27 @@ def update_bridge_player_allowlist(
     player_guids: list[int],
     append: bool = False,
     clear: bool = False,
+    allow_all: bool = False,
 ) -> BridgeConfigUpdateResult:
+    if allow_all and (clear or player_guids):
+        raise ValueError("allow_all cannot be combined with clear or player_guids")
     if clear and player_guids:
         raise ValueError("clear cannot be combined with player_guids")
-    if not clear and not player_guids:
-        raise ValueError("player_guids are required unless clear is true")
+    if not clear and not allow_all and not player_guids:
+        raise ValueError("player_guids are required unless clear or allow_all is true")
 
     existing_text = config_path.read_text(encoding="utf-8") if config_path.exists() else "[worldserver]\n"
     previous_allowlist = parse_allowlist(existing_text)
-    if clear:
+    if allow_all:
+        new_allowlist = []
+    elif clear:
         new_allowlist: list[int] = []
     elif append:
         new_allowlist = sorted({*previous_allowlist, *[int(guid) for guid in player_guids]})
     else:
         new_allowlist = sorted({int(guid) for guid in player_guids})
 
-    updated_text = set_allowlist(existing_text, new_allowlist)
+    updated_text = set_allowlist(existing_text, new_allowlist, allow_all=allow_all)
     changed = updated_text != existing_text
     if changed:
         config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,6 +79,7 @@ def update_bridge_player_allowlist(
         config_path=str(config_path),
         previous_allowlist=previous_allowlist,
         new_allowlist=new_allowlist,
+        allow_all_players=allow_all,
         changed=changed,
         reload_requested=False,
     )
@@ -109,8 +116,11 @@ def parse_bridge_runtime_config(config_text: str) -> BridgeRuntimeConfigSnapshot
     )
 
 
-def set_allowlist(config_text: str, player_guids: list[int]) -> str:
-    rendered = f'{ALLOWLIST_KEY} = "{",".join(str(int(guid)) for guid in sorted(set(player_guids)))}"'
+def set_allowlist(config_text: str, player_guids: list[int], *, allow_all: bool = False) -> str:
+    if allow_all:
+        rendered = f'{ALLOWLIST_KEY} = "*"'
+    else:
+        rendered = f'{ALLOWLIST_KEY} = "{",".join(str(int(guid)) for guid in sorted(set(player_guids)))}"'
     lines = config_text.splitlines()
     output: list[str] = []
     replaced = False
@@ -181,6 +191,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--player-guid", type=int, action="append", default=[])
     parser.add_argument("--append", action="store_true")
     parser.add_argument("--clear", action="store_true")
+    parser.add_argument("--allow-all", action="store_true", help="Set WmBridge.PlayerGuidAllowList to '*' for a short debug run.")
     parser.add_argument("--reload-via-soap", action="store_true")
     parser.add_argument("--reload-command", default=".reload config")
     parser.add_argument("--summary", action="store_true")
@@ -197,6 +208,7 @@ def main(argv: list[str] | None = None) -> int:
         player_guids=[int(guid) for guid in args.player_guid],
         append=bool(args.append),
         clear=bool(args.clear),
+        allow_all=bool(args.allow_all),
     )
     if args.reload_via_soap:
         command_result = _reload_config_via_soap(settings=settings, command=str(args.reload_command))
@@ -212,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"config_path={payload['config_path']} changed={payload['changed']} "
             f"previous={','.join(str(v) for v in result.previous_allowlist) or '<empty>'} "
-            f"new={','.join(str(v) for v in result.new_allowlist) or '<empty>'} "
+            f"new={'*' if result.allow_all_players else (','.join(str(v) for v in result.new_allowlist) or '<empty>')} "
             f"reload_requested={result.reload_requested}"
         )
         if result.reload_result is not None:

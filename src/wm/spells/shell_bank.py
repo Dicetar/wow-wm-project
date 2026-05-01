@@ -39,6 +39,7 @@ class SpellShellDefinition:
     required_level: int
     icon_hint: str | None
     tooltip: str | None
+    patch_seed_template: str | None
     client_presentation: dict[str, Any] | None
     patch_state: str | None
     notes: list[str]
@@ -161,6 +162,11 @@ def load_spell_shell_bank(path: str | Path | None = None) -> SpellShellBank:
             required_level=int(entry.get("required_level") or 1),
             icon_hint=(str(entry["icon_hint"]) if entry.get("icon_hint") not in (None, "") else None),
             tooltip=(str(entry["tooltip"]) if entry.get("tooltip") not in (None, "") else None),
+            patch_seed_template=(
+                str(entry["patch_seed_template"])
+                if entry.get("patch_seed_template") not in (None, "")
+                else None
+            ),
             client_presentation=(
                 dict(entry["client_presentation"])
                 if isinstance(entry.get("client_presentation"), dict)
@@ -218,7 +224,7 @@ def generate_patch_rows(path: str | Path | None = None) -> list[SpellShellPatchR
             label=shell.label,
             targeting=shell.targeting,
             cooldown_family=family.cooldown_family,
-            seed_template=family.patch_seed_template,
+            seed_template=shell.patch_seed_template or family.patch_seed_template,
             slot_index=slot_index,
             is_named_override=True,
             behavior_kind=shell.behavior_kind,

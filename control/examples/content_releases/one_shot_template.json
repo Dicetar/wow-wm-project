@@ -1,0 +1,32 @@
+{
+  "schema_version": "wm.quest.release.one_shot.v1",
+  "quest_kind": "one_shot",
+  "player_guid": 5406,
+  "slot_policy": "fresh_reserved_required",
+  "repeatable": false,
+  "quest": {
+    "quest_level": 70,
+    "min_level": 68,
+    "grant_mode": "npc_start",
+    "template_defaults": {
+      "SpecialFlags": 0
+    }
+  },
+  "objective": {
+    "kind": "talk",
+    "npc_entry": 21027,
+    "npc_name": "Earthmender Wilda",
+    "count": 1
+  },
+  "reward": {
+    "kind": "none",
+    "fresh_visible_reward_ids_required": true
+  },
+  "links": [],
+  "runtime_sync": {
+    "mode": "auto"
+  },
+  "notes": [
+    "Standalone done-and-done quest. Do not add PrevQuestID, NextQuestID, RewardNextQuest, ExclusiveGroup, or non-empty links."
+  ]
+}

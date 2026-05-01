@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Protocol
 
+from wm.character.eligibility import build_journey_eligibility
 from wm.character.reader import CharacterStateBundle, load_character_state
 from wm.config import Settings
 from wm.control.registry import ControlRegistry
@@ -403,6 +404,7 @@ def _build_generation_input(
     unlocks = (character_state or {}).get("unlocks") or []
     rewards = (character_state or {}).get("rewards") or []
     conversation_steering = (character_state or {}).get("conversation_steering") or []
+    eligibility = build_journey_eligibility(character_state).to_dict()
     counters = asdict(journal.counters) if journal.counters is not None else {}
     active_rules = quest_runtime.get("active_rules") or []
     quest_states = sorted(
@@ -445,6 +447,7 @@ def _build_generation_input(
             "summary_lines": journal.summary.history_lines if journal.summary is not None else [],
         },
         "journey": {
+            "eligibility": eligibility,
             "active_arc_keys": [
                 str(arc.get("arc_key"))
                 for arc in arc_states

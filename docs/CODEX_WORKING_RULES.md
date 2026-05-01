@@ -30,6 +30,20 @@ Before proposing a new subsystem, inspect the existing ones first:
 
 Do not propose a greenfield router, runner, registry, or middleware layer if the repo already has one that can be extended.
 
+On this Windows host, bare `rg` may resolve to the bundled Codex app copy and fail with `Access is denied`. Prefer the repo-local ripgrep binary:
+
+```powershell
+.\.wm-bootstrap\tools\ripgrep\rg.exe -n "pattern" docs src native_modules control tests
+```
+
+Fallback path:
+
+```powershell
+.\.wm-tools\rg.exe
+```
+
+If both local binaries are unavailable, use `Get-ChildItem ... | Select-String` and record the tooling gap. Do not treat a bare `rg` access-denied error as a search result.
+
 ### 2. Split client truth from server truth before spell work
 
 Before implementing or proposing any spell-related change, answer these two questions explicitly:
@@ -57,6 +71,17 @@ Before changing native code for spells, creatures, pets, or runtime hooks, write
 If you cannot state those assumptions, do not implement yet.
 
 ## Architecture protocol
+
+### 0. Never reuse dirty visible IDs
+
+Visible content IDs are permanent player/client-facing identities. If a quest, item, spell, creature, gameobject, gossip menu, or NPC text ID reaches a live client, bad cache state, failed proof, wrong tooltip, wrong reward panel, or stale behavior, do not edit that ID back into service.
+
+Rules:
+
+- Retire the old ID in `data/specs/custom_id_registry.json` with `status: BROKEN` and `replaced_by`.
+- Clean up the old live rows through rollback/purge paths and leave the reserved slot `retired`, not `free` or `staged`.
+- Publish the replacement on a fresh ID and update native gates, scenarios, docs, and tests to point only at the fresh ID.
+- Do not keep bad example JSON files around where a future operator can accidentally run them.
 
 ### 1. Keep the WM split intact
 

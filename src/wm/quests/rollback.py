@@ -151,7 +151,7 @@ class QuestRollbackManager:
                 for statement in restore_statements:
                     self._execute_world(statement)
                 if table_presence.get("wm_reserved_slot", False):
-                    slot_status = "active" if restored_tables.get("quest_template", 0) > 0 else "staged"
+                    slot_status = "active" if restored_tables.get("quest_template", 0) > 0 else "retired"
                     self._execute_world(
                         "UPDATE wm_reserved_slot SET "
                         f"SlotStatus = {_sql_string(slot_status)} "

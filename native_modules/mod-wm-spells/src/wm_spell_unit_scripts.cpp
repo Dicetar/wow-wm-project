@@ -1,4 +1,5 @@
 #include "ScriptMgr.h"
+#include "SpellAuras.h"
 #include "Unit.h"
 #include "UnitScript.h"
 #include "wm_spell_runtime.h"
@@ -12,7 +13,10 @@ public:
         {
             UNITHOOK_MODIFY_MELEE_DAMAGE,
             UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN,
-            UNITHOOK_ON_BEFORE_ROLL_MELEE_OUTCOME_AGAINST
+            UNITHOOK_MODIFY_PERIODIC_DAMAGE_AURAS_TICK,
+            UNITHOOK_ON_BEFORE_ROLL_MELEE_OUTCOME_AGAINST,
+            UNITHOOK_ON_AURA_APPLY,
+            UNITHOOK_ON_AURA_REMOVE
         })
     {
     }
@@ -21,11 +25,28 @@ public:
     {
         WmSpells::HandleNightWatchersLensWeaponDamage(attacker, target, damage);
         WmSpells::HandleBoneboundMeleeDamage(attacker, target, damage);
+        WmSpells::HandleBrougGuardMeleeDamage(attacker, target, damage);
     }
 
     void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo) override
     {
         WmSpells::HandleNightWatchersLensSpellDamage(attacker, target, damage, spellInfo);
+        WmSpells::HandleBrougGuardSpellDamage(attacker, target, damage, spellInfo);
+    }
+
+    void ModifyPeriodicDamageAurasTick(Unit* target, Unit* attacker, uint32& damage, SpellInfo const* spellInfo) override
+    {
+        WmSpells::HandleBrougGuardPeriodicDamage(attacker, target, damage, spellInfo);
+    }
+
+    void OnAuraApply(Unit* unit, Aura* aura) override
+    {
+        WmSpells::HandleBrougGuardAuraApply(unit, aura);
+    }
+
+    void OnAuraRemove(Unit* unit, AuraApplication* aurApp, AuraRemoveMode mode) override
+    {
+        WmSpells::HandleBrougGuardAuraRemove(unit, aurApp, mode);
     }
 
     void OnBeforeRollMeleeOutcomeAgainst(
@@ -50,6 +71,15 @@ public:
             victimMaxSkillValueForLevel,
             attackerWeaponSkill,
             victimDefenseSkill,
+            crit_chance,
+            miss_chance,
+            dodge_chance,
+            parry_chance,
+            block_chance);
+        WmSpells::HandleBrougGuardMeleeOutcome(
+            attacker,
+            victim,
+            attType,
             crit_chance,
             miss_chance,
             dodge_chance,

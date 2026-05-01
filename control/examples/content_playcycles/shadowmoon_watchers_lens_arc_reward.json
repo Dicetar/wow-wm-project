@@ -1,0 +1,45 @@
+{
+  "schema_version": "wm.content_playcycle.item_effect.v1",
+  "cycle_key": "shadowmoon_watchers_lens_arc_reward_v1",
+  "player_guid": 5406,
+  "item_draft_path": "control/examples/items/shadowmoon_watchers_lens_v9.json",
+  "item_entry": 910013,
+  "effect_label": "Shadowmoon Watcher's Lens",
+  "runtime_sync": {
+    "mode": "auto",
+    "item_commands": [
+      ".reload item_template"
+    ],
+    "rollback_commands": [
+      ".reload item_template"
+    ],
+    "notes": [
+      "This is the arc reward proof lane for quest 910171. Do not direct-grant the item while reward-panel proof is pending."
+    ]
+  },
+  "direct_grant": {
+    "enabled": false,
+    "count": 1,
+    "soulbound": true,
+    "wait": true,
+    "risk_level": "medium",
+    "max_attempts": 3,
+    "expires_seconds": 60,
+    "cleanup_on_rollback": false,
+    "remove_count": 1
+  },
+  "promotion_bounty_template": {},
+  "verify_expectations": {
+    "inventory_receipt": "optional",
+    "require_publish_log": true,
+    "require_rollback_snapshot": true,
+    "require_reserved_slot": true,
+    "visible_wearer_aura": "Existing client-known aura spell 132 on the wearer.",
+    "visible_target_debuff": "Existing client-known debuff spell 770 on the target."
+  },
+  "notes": [
+    "Use BridgeLab MySQL on 127.0.0.1:33307 for player 5406 / Jecia.",
+    "Quest 910171 is the intended acquisition path. This scenario verifies the managed item and native-indicated effect lane without bypassing the quest.",
+    "Shadowmoon Watcher's Lens uses the same native wearer aura and target debuff logic as Night Watcher's Lens, gated by item 910013."
+  ]
+}

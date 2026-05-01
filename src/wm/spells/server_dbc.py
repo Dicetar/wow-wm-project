@@ -15,33 +15,104 @@ SERVER_SEED_TEMPLATE_SOURCE_SPELL_IDS: dict[str, int] = {
     "wm_summon_pet": 133,
     "wm_passive_aura": 107,
     "wm_pet_active": 16827,
+    "wm_watcher_marker": 24755,
     "wm_unit_target_projectile": 133,
+    "wm_weapon_ranged_attack": 2764,
+    "wm_friendly_target_effect": 2061,
+    "wm_mind_blast": 8092,
     "wm_unit_target_effect": 770,
+    "wm_target_centered_aoe": 27243,
     "wm_ground_target_aoe": 5740,
+    "wm_caster_centered_aoe": 1449,
     "wm_self_aura": 1459,
+    "wm_random_targets": 48505,
+    "wm_frontal_cone": 120,
 }
 
 CASTABLE_SERVER_SEED_TEMPLATE_SOURCE_SPELL_IDS: dict[str, int] = {
     "wm_summon_pet": 49126,
     "wm_passive_aura": 107,
     "wm_pet_active": 16827,
+    "wm_watcher_marker": 24755,
     "wm_unit_target_projectile": 133,
+    "wm_weapon_ranged_attack": 2764,
+    "wm_friendly_target_effect": 2061,
+    "wm_mind_blast": 8092,
     "wm_unit_target_effect": 770,
+    "wm_target_centered_aoe": 27243,
     "wm_ground_target_aoe": 5740,
+    "wm_caster_centered_aoe": 1449,
     "wm_self_aura": 1459,
+    "wm_random_targets": 48505,
+    "wm_frontal_cone": 120,
 }
 
+ATTRIBUTES_FIELD = 4
+ATTRIBUTES_EX_FIELD = 5
+ATTRIBUTES_EX_2_FIELD = 6
+ATTRIBUTES_EX_3_FIELD = 7
+ATTRIBUTES_EX_4_FIELD = 8
+ATTRIBUTES_EX_5_FIELD = 9
+ATTRIBUTES_EX_6_FIELD = 10
+ATTRIBUTES_EX_7_FIELD = 11
+CATEGORY_FIELD = 1
+INTERRUPT_FLAGS_FIELD = 31
+AURA_INTERRUPT_FLAGS_FIELD = 32
+CHANNEL_INTERRUPT_FLAGS_FIELD = 33
 CASTING_TIME_INDEX_FIELD = 28
+RECOVERY_TIME_FIELD = 29
+CATEGORY_RECOVERY_TIME_FIELD = 30
+DISPEL_TYPE_FIELD = 2
 POWER_TYPE_FIELD = 41
 MANA_COST_FIELD = 42
+MAX_LEVEL_FIELD = 37
+BASE_LEVEL_FIELD = 38
+SPELL_LEVEL_FIELD = 39
+DURATION_INDEX_FIELD = 40
+STACK_AMOUNT_FIELD = 49
 REAGENT_START_FIELD = 52
 REAGENT_COUNT_START_FIELD = 60
 REAGENT_SLOT_COUNT = 8
+EQUIPPED_ITEM_CLASS_FIELD = 68
+EQUIPPED_ITEM_SUBCLASS_MASK_FIELD = 69
+EQUIPPED_ITEM_INVENTORY_TYPE_MASK_FIELD = 70
 SPELL_ICON_ID_FIELD = 133
 ACTIVE_ICON_ID_FIELD = 134
+SPELL_PRIORITY_FIELD = 135
 SPELL_VISUAL_ID_1_FIELD = 130
 SPELL_VISUAL_ID_2_FIELD = 131
 MANA_COST_PERCENTAGE_FIELD = 204
+START_RECOVERY_CATEGORY_FIELD = 205
+START_RECOVERY_TIME_FIELD = 206
+SPELL_FAMILY_NAME_FIELD = 208
+SPELL_FAMILY_FLAGS_1_FIELD = 209
+SPELL_FAMILY_FLAGS_2_FIELD = 210
+SPELL_FAMILY_FLAGS_3_FIELD = 211
+STANCE_BAR_ORDER_FIELD = 215
+RANGE_INDEX_FIELD = 46
+EFFECT_1_FIELD = 71
+EFFECT_2_FIELD = 72
+EFFECT_3_FIELD = 73
+EFFECT_DIE_SIDES_1_FIELD = 74
+EFFECT_DIE_SIDES_2_FIELD = 75
+EFFECT_DIE_SIDES_3_FIELD = 76
+EFFECT_BASE_POINTS_1_FIELD = 80
+EFFECT_BASE_POINTS_2_FIELD = 81
+EFFECT_BASE_POINTS_3_FIELD = 82
+EFFECT_IMPLICIT_TARGET_A_1_FIELD = 86
+EFFECT_IMPLICIT_TARGET_A_2_FIELD = 87
+EFFECT_IMPLICIT_TARGET_A_3_FIELD = 88
+EFFECT_IMPLICIT_TARGET_B_1_FIELD = 89
+EFFECT_IMPLICIT_TARGET_B_2_FIELD = 90
+EFFECT_IMPLICIT_TARGET_B_3_FIELD = 91
+EFFECT_APPLY_AURA_NAME_1_FIELD = 95
+EFFECT_APPLY_AURA_NAME_2_FIELD = 96
+EFFECT_APPLY_AURA_NAME_3_FIELD = 97
+EFFECT_MISC_VALUE_1_FIELD = 110
+EFFECT_MISC_VALUE_2_FIELD = 111
+EFFECT_MISC_VALUE_3_FIELD = 112
+DAMAGE_CLASS_FIELD = 213
+PREVENTION_TYPE_FIELD = 214
 
 
 @dataclass(slots=True)
@@ -259,21 +330,81 @@ def _seed_template_source_spell_ids(seed_profile: str) -> dict[str, int]:
 
 
 def _apply_server_presentation(record: bytearray, row: SpellShellPatchRow) -> None:
-    if len(record) < (MANA_COST_PERCENTAGE_FIELD + 1) * 4:
+    if len(record) < (STANCE_BAR_ORDER_FIELD + 1) * 4:
         return
     presentation = dict(row.client_presentation or {})
     for key, field_index in {
+        "category": CATEGORY_FIELD,
         "cast_time_index": CASTING_TIME_INDEX_FIELD,
+        "dispel_type": DISPEL_TYPE_FIELD,
+        "max_level": MAX_LEVEL_FIELD,
+        "base_level": BASE_LEVEL_FIELD,
+        "spell_level": SPELL_LEVEL_FIELD,
+        "duration_index": DURATION_INDEX_FIELD,
+        "stack_amount": STACK_AMOUNT_FIELD,
+        "recovery_time": RECOVERY_TIME_FIELD,
+        "category_recovery_time": CATEGORY_RECOVERY_TIME_FIELD,
+        "effect_1": EFFECT_1_FIELD,
+        "effect_2": EFFECT_2_FIELD,
+        "effect_3": EFFECT_3_FIELD,
+        "effect_die_sides_1": EFFECT_DIE_SIDES_1_FIELD,
+        "effect_die_sides_2": EFFECT_DIE_SIDES_2_FIELD,
+        "effect_die_sides_3": EFFECT_DIE_SIDES_3_FIELD,
+        "effect_base_points_1": EFFECT_BASE_POINTS_1_FIELD,
+        "effect_base_points_2": EFFECT_BASE_POINTS_2_FIELD,
+        "effect_base_points_3": EFFECT_BASE_POINTS_3_FIELD,
+        "effect_implicit_target_a_1": EFFECT_IMPLICIT_TARGET_A_1_FIELD,
+        "effect_implicit_target_a_2": EFFECT_IMPLICIT_TARGET_A_2_FIELD,
+        "effect_implicit_target_a_3": EFFECT_IMPLICIT_TARGET_A_3_FIELD,
+        "effect_implicit_target_b_1": EFFECT_IMPLICIT_TARGET_B_1_FIELD,
+        "effect_implicit_target_b_2": EFFECT_IMPLICIT_TARGET_B_2_FIELD,
+        "effect_implicit_target_b_3": EFFECT_IMPLICIT_TARGET_B_3_FIELD,
+        "effect_apply_aura_name_1": EFFECT_APPLY_AURA_NAME_1_FIELD,
+        "effect_apply_aura_name_2": EFFECT_APPLY_AURA_NAME_2_FIELD,
+        "effect_apply_aura_name_3": EFFECT_APPLY_AURA_NAME_3_FIELD,
         "power_type": POWER_TYPE_FIELD,
         "mana_cost": MANA_COST_FIELD,
         "spell_visual_id_1": SPELL_VISUAL_ID_1_FIELD,
         "spell_visual_id_2": SPELL_VISUAL_ID_2_FIELD,
         "spell_icon_id": SPELL_ICON_ID_FIELD,
+        "active_icon_id": ACTIVE_ICON_ID_FIELD,
+        "spell_priority": SPELL_PRIORITY_FIELD,
         "mana_cost_percentage": MANA_COST_PERCENTAGE_FIELD,
+        "start_recovery_category": START_RECOVERY_CATEGORY_FIELD,
+        "start_recovery_time": START_RECOVERY_TIME_FIELD,
+        "spell_family_name": SPELL_FAMILY_NAME_FIELD,
+        "spell_family_flags_1": SPELL_FAMILY_FLAGS_1_FIELD,
+        "spell_family_flags_2": SPELL_FAMILY_FLAGS_2_FIELD,
+        "spell_family_flags_3": SPELL_FAMILY_FLAGS_3_FIELD,
+        "stance_bar_order": STANCE_BAR_ORDER_FIELD,
+        "range_index": RANGE_INDEX_FIELD,
+        "attributes": ATTRIBUTES_FIELD,
+        "attributes_ex": ATTRIBUTES_EX_FIELD,
+        "attributes_ex_2": ATTRIBUTES_EX_2_FIELD,
+        "attributes_ex_3": ATTRIBUTES_EX_3_FIELD,
+        "attributes_ex_4": ATTRIBUTES_EX_4_FIELD,
+        "attributes_ex_5": ATTRIBUTES_EX_5_FIELD,
+        "attributes_ex_6": ATTRIBUTES_EX_6_FIELD,
+        "attributes_ex_7": ATTRIBUTES_EX_7_FIELD,
+        "interrupt_flags": INTERRUPT_FLAGS_FIELD,
+        "aura_interrupt_flags": AURA_INTERRUPT_FLAGS_FIELD,
+        "channel_interrupt_flags": CHANNEL_INTERRUPT_FLAGS_FIELD,
+        "damage_class": DAMAGE_CLASS_FIELD,
+        "prevention_type": PREVENTION_TYPE_FIELD,
     }.items():
         if key in presentation:
             struct.pack_into("<I", record, field_index * 4, int(presentation[key]))
-    if "spell_icon_id" in presentation:
+    for key, field_index in {
+        "equipped_item_class": EQUIPPED_ITEM_CLASS_FIELD,
+        "equipped_item_subclass_mask": EQUIPPED_ITEM_SUBCLASS_MASK_FIELD,
+        "equipped_item_inventory_type_mask": EQUIPPED_ITEM_INVENTORY_TYPE_MASK_FIELD,
+        "effect_misc_value_1": EFFECT_MISC_VALUE_1_FIELD,
+        "effect_misc_value_2": EFFECT_MISC_VALUE_2_FIELD,
+        "effect_misc_value_3": EFFECT_MISC_VALUE_3_FIELD,
+    }.items():
+        if key in presentation:
+            struct.pack_into("<i", record, field_index * 4, int(presentation[key]))
+    if "spell_icon_id" in presentation and "active_icon_id" not in presentation:
         struct.pack_into("<I", record, ACTIVE_ICON_ID_FIELD * 4, 0)
     for reagent_index in range(1, REAGENT_SLOT_COUNT + 1):
         item_key = f"reagent_{reagent_index}_item_id"

@@ -12,6 +12,7 @@ from wm.content.playcycle import load_item_effect_scenario
 
 
 SCENARIO_PATH = Path("control/examples/content_playcycles/night_watchers_lens_item_effect.json")
+SHADOWMOON_SCENARIO_PATH = Path("control/examples/content_playcycles/shadowmoon_watchers_lens_arc_reward.json")
 
 
 class FakePublishResult:
@@ -229,6 +230,18 @@ class ContentPlaycycleScenarioTests(unittest.TestCase):
         self.assertEqual(scenario.player_guid, 5406)
         self.assertEqual(scenario.item_entry, 910006)
         self.assertTrue(scenario.item_draft_path.is_absolute())
+
+    def test_loads_shadowmoon_arc_reward_without_direct_grant(self) -> None:
+        scenario = load_item_effect_scenario(SHADOWMOON_SCENARIO_PATH)
+
+        self.assertEqual(scenario.schema_version, "wm.content_playcycle.item_effect.v1")
+        self.assertEqual(scenario.cycle_key, "shadowmoon_watchers_lens_arc_reward_v1")
+        self.assertEqual(scenario.player_guid, 5406)
+        self.assertEqual(scenario.item_entry, 910013)
+        self.assertEqual(scenario.effect_label, "Shadowmoon Watcher's Lens")
+        self.assertFalse(scenario.direct_grant["enabled"])
+        self.assertEqual(scenario.verify_expectations["inventory_receipt"], "optional")
+        self.assertIn("Quest 910171", " ".join(scenario.notes))
 
     def test_rejects_freeform_mutation_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

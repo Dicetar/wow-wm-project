@@ -57,6 +57,8 @@ class FakeMysqlClient:
                 "RewardMoney",
                 "RewardItem1",
                 "RewardAmount1",
+                "RewardChoiceItemID1",
+                "RewardChoiceItemQuantity1",
                 "RewardXPDifficulty",
                 "RewardSpell",
                 "RewardDisplaySpell",
@@ -199,6 +201,30 @@ class QuestPublishTests(unittest.TestCase):
         self.assertIn("22888", insert)
         self.assertIn("72", insert)
         self.assertIn("75", insert)
+
+    def test_publish_plan_can_use_single_choice_item_reward(self) -> None:
+        publisher = RecordingQuestPublisher(client=FakeMysqlClient(), settings=self._settings())
+        draft = build_bounty_quest_draft(
+            quest_id=910001,
+            questgiver_entry=1498,
+            questgiver_name="Bethor Iceshard",
+            target_profile=self._target(),
+            kill_count=8,
+            reward_money_copper=0,
+            reward_item_entry=45574,
+            reward_item_name="Stormwind Tabard",
+            reward_item_mode="choice",
+        )
+
+        result = publisher.publish(draft=draft, mode="apply")
+
+        self.assertTrue(result.applied)
+        insert = next(statement for statement in publisher.executed_statements if "INSERT INTO quest_template" in statement)
+        self.assertIn("RewardItem1", insert)
+        self.assertIn("RewardAmount1", insert)
+        self.assertIn("RewardChoiceItemID1", insert)
+        self.assertIn("RewardChoiceItemQuantity1", insert)
+        self.assertIn("45574", insert)
 
     def test_preflight_rejects_requested_rich_rewards_when_schema_lacks_columns(self) -> None:
         columns_without_rich_rewards = [

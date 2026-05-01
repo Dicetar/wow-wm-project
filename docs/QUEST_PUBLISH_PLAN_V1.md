@@ -1,4 +1,11 @@
+Status: STALE
+Last verified: 2026-04-28
+Verified by: Codex
+Doc type: design
+
 # Quest Publish Plan V1
+
+This note is historical publish planning. Current quest publishing status lives in [Quest Draft Pipeline V1](QUEST_DRAFT_PIPELINE_V1.md), [Work Summary](WORK_SUMMARY.md), and [WM Platform Handoff](WM_PLATFORM_HANDOFF.md). Use [ROADMAP.md](ROADMAP.md) for product direction.
 
 ## What this slice does
 

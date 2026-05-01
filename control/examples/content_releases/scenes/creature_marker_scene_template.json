@@ -1,0 +1,80 @@
+{
+  "schema_version": "wm.scene.release.native_sequence.v1",
+  "content_kind": "scene",
+  "player_guid": 5406,
+  "scene_key": "template_creature_marker_scene",
+  "scene_type": "creature_marker",
+  "slot_policy": "no_visible_id_required",
+  "trigger": {
+    "kind": "manual_operator",
+    "source_event_required": false,
+    "notes": "Manual lab scene template; convert to an event trigger before product release."
+  },
+  "runtime": {
+    "native_actions_required": true,
+    "audit_required": true,
+    "player_scope_required": true,
+    "control_scene_required": true
+  },
+  "steps": [
+    {
+      "step_key": "spawn",
+      "native_action_kind": "creature_spawn",
+      "payload": {
+        "creature_entry": 920101,
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "duration_ms": 15000,
+        "distance": 4.0,
+        "angle_offset": -0.9,
+        "follow_player": true,
+        "follow_distance": 4.0,
+        "follow_angle": -0.9
+      },
+      "risk_level": "medium",
+      "idempotency_suffix": "spawn",
+      "expected_effect": "A temporary WM-owned marker appears near the scoped player.",
+      "requires_live_proof": true
+    },
+    {
+      "step_key": "say",
+      "native_action_kind": "creature_say",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "text": "Marker established."
+      },
+      "risk_level": "low",
+      "idempotency_suffix": "say",
+      "expected_effect": "The WM-owned marker says a short line.",
+      "requires_live_proof": true
+    },
+    {
+      "step_key": "emote",
+      "native_action_kind": "creature_emote",
+      "payload": {
+        "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+        "text": "fades into blue sparks."
+      },
+      "risk_level": "low",
+      "idempotency_suffix": "emote",
+      "expected_effect": "The WM-owned marker performs a visible emote.",
+      "requires_live_proof": true
+    }
+  ],
+  "cleanup": {
+    "required": true,
+    "expires_seconds": 30,
+    "steps": [
+      {
+        "step_key": "despawn",
+        "native_action_kind": "creature_despawn",
+        "payload": {
+          "arc_key": "scene:{scene_id}:{player_guid}:{run_key}"
+        },
+        "risk_level": "medium",
+        "idempotency_suffix": "despawn",
+        "expected_effect": "The marker despawns through the WM-owned creature guard.",
+        "requires_live_proof": true
+      }
+    ]
+  }
+}
