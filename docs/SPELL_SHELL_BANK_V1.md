@@ -96,6 +96,23 @@ The builder emits both `DBFilesClient\Spell.dbc` and `DBFilesClient\SkillLineAbi
 
 Named shell presentation must be client truth, not runtime guesswork. For `940001`, the contract currently sets icon `221` (`Spell_Shadow_AnimateDead`), cast time index `14` (3 seconds), mana cost `180`, Summon Voidwalker visual `4054`, and a `SkillLineAbility.dbc` row cloned from Summon Voidwalker (`697`) so the shell appears in the Warlock spellbook instead of the common/general tab.
 
+### Aura shell isolation
+
+Every named WM aura shell cloned from a stock buff must explicitly clear inherited stock family identity unless that stock interaction is intentional and tested. Fresh WM spell IDs are not enough by themselves: DBC family fields can still make unrelated auras behave like members of the same stock spell family.
+
+For harmless marker/self-state auras, set these fields in both `control/runtime/spell_shell_bank.json` and `client_patches/wm_spell_shell_bank/manifest.json`:
+
+- `spell_family_name=0`
+- `spell_family_flags_1=0`
+- `spell_family_flags_2=0`
+- `spell_family_flags_3=0`
+- `damage_class=0`
+- `prevention_type=0`
+
+This is required for visible marker auras such as Energy Surge `946606`, Killing Intent `946620`, and Purged State `946622`. The 2026-05-02 Broug regression proved the failure mode: Energy Surge and Killing Intent were separate WM IDs, but both inherited Arcane Intellect's Mage family flags, so Cloud Step / Killing Intent could remove the potion aura through core aura stacking behavior.
+
+The canonical checklist is [Content Required Fields](CONTENT_REQUIRED_FIELDS.md), section `WM Aura Isolation Gate`.
+
 ### 2. Native behavior kinds
 
 The native side should own fixed behavior kinds, for example:

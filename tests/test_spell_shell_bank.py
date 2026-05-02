@@ -49,9 +49,20 @@ def test_bonebound_shell_definitions_are_present() -> None:
     broug_deflected_shell = bank.shell_by_key("broug_deflected_v1")
     broug_deflect_shell = bank.shell_by_key("broug_deflect_v1")
     broug_counter_stance_shell = bank.shell_by_key("broug_deflect_counter_stance_v1")
+    energy_surge_shell = bank.shell_by_key("energy_surge_potion_v1")
+    broug_cloud_step_shell = bank.shell_by_key("broug_cloud_step_v1")
+    broug_marked_meridian_shell = bank.shell_by_key("broug_marked_meridian_v1")
+    broug_killing_intent_shell = bank.shell_by_key("broug_killing_intent_v1")
+    broug_suppressed_shell = bank.shell_by_key("broug_suppressed_v1")
+    broug_qi_reversal_shell = bank.shell_by_key("broug_qi_reversal_v1")
+    broug_purged_state_shell = bank.shell_by_key("broug_purged_state_v1")
     broug_parry_shell = bank.shell_by_key("broug_universal_parry_v1")
     broug_marksman_shell = bank.shell_by_key("broug_skirmisher_shot_v1")
     broug_retaliation_shell = bank.shell_by_key("broug_auto_retaliation_v1")
+    broug_silent_meridian_shell = bank.shell_by_key("broug_silent_meridian_v1")
+    broug_domain_shell = bank.shell_by_key("broug_killing_intent_domain_v1")
+    broug_predator_shell = bank.shell_by_key("broug_predators_strike_v1")
+    broug_vitality_shell = bank.shell_by_key("broug_vitality_drain_v1")
     pet_active_shell = bank.shell_by_spell_id(945000)
 
     assert summon_shell is not None
@@ -149,13 +160,97 @@ def test_bonebound_shell_definitions_are_present() -> None:
     assert broug_counter_stance_shell.client_presentation["effect_apply_aura_name_1"] == 36
     assert broug_counter_stance_shell.client_presentation["effect_misc_value_1"] == 13
     assert broug_counter_stance_shell.client_presentation["stance_bar_order"] == 1
-    assert broug_counter_stance_shell.client_presentation["spell_icon_id"] == 132
-    assert broug_counter_stance_shell.client_presentation["active_icon_id"] == 132
+    assert broug_counter_stance_shell.client_presentation["spell_visual_id_2"] == 0
+    assert broug_counter_stance_shell.client_presentation["spell_icon_id"] == 563
+    assert broug_counter_stance_shell.client_presentation["active_icon_id"] == 563
     assert broug_counter_stance_shell.client_presentation["spell_family_name"] == 8
     assert broug_counter_stance_shell.client_presentation["damage_class"] == 0
     assert broug_counter_stance_shell.client_presentation["prevention_type"] == 0
     assert broug_counter_stance_shell.client_presentation["spellbook_ability_id"] == 1946605
     assert "Counterstrike Stance" in broug_counter_stance_shell.tooltip
+    assert energy_surge_shell is not None
+    assert energy_surge_shell.spell_id == 946606
+    assert energy_surge_shell.family_id == "self_aura"
+    assert energy_surge_shell.behavior_kind == "energy_surge_potion_v1"
+    assert energy_surge_shell.client_presentation is not None
+    assert energy_surge_shell.client_presentation["spell_icon_id"] == 1299
+    assert energy_surge_shell.client_presentation["spell_family_name"] == 0
+    assert energy_surge_shell.client_presentation["spell_family_flags_1"] == 0
+    assert energy_surge_shell.client_presentation["spell_family_flags_2"] == 0
+    assert energy_surge_shell.client_presentation["spell_family_flags_3"] == 0
+    assert energy_surge_shell.client_presentation["damage_class"] == 0
+    assert energy_surge_shell.client_presentation["prevention_type"] == 0
+    assert "10 additional energy" in energy_surge_shell.tooltip
+    assert broug_cloud_step_shell is not None
+    assert broug_cloud_step_shell.spell_id == 946202
+    assert broug_cloud_step_shell.family_id == "unit_target_effect"
+    assert broug_cloud_step_shell.behavior_kind == "broug_cloud_step_v1"
+    assert broug_cloud_step_shell.client_presentation is not None
+    assert broug_cloud_step_shell.client_presentation["power_type"] == 3
+    assert broug_cloud_step_shell.client_presentation["mana_cost"] == 20
+    assert broug_cloud_step_shell.client_presentation["recovery_time"] == 12000
+    assert broug_cloud_step_shell.client_presentation["category_recovery_time"] == 1000
+    assert broug_cloud_step_shell.client_presentation["start_recovery_time"] == 1000
+    assert broug_cloud_step_shell.client_presentation["effect_1"] == 0
+    assert broug_cloud_step_shell.client_presentation["spell_icon_id"] == 2363
+    assert broug_cloud_step_shell.client_presentation["spellbook_ability_id"] == 1946202
+    assert "Moves behind" in broug_cloud_step_shell.tooltip
+    assert broug_marked_meridian_shell is not None
+    assert broug_marked_meridian_shell.spell_id == 946203
+    assert broug_marked_meridian_shell.family_id == "unit_target_effect"
+    assert broug_marked_meridian_shell.behavior_kind == "broug_marked_meridian_v1"
+    assert broug_marked_meridian_shell.client_presentation is not None
+    assert broug_marked_meridian_shell.client_presentation["duration_index"] == 36
+    assert broug_marked_meridian_shell.client_presentation["stack_amount"] == 1
+    assert broug_marked_meridian_shell.client_presentation["effect_1"] == 6
+    assert broug_marked_meridian_shell.client_presentation["effect_apply_aura_name_1"] == 4
+    assert broug_marked_meridian_shell.client_presentation["spell_icon_id"] == 2112
+    assert "35% increased damage" in broug_marked_meridian_shell.tooltip
+    assert broug_killing_intent_shell is not None
+    assert broug_killing_intent_shell.spell_id == 946620
+    assert broug_killing_intent_shell.family_id == "self_aura"
+    assert broug_killing_intent_shell.behavior_kind == "broug_killing_intent_v1"
+    assert broug_killing_intent_shell.client_presentation is not None
+    assert broug_killing_intent_shell.client_presentation["duration_index"] == 36
+    assert broug_killing_intent_shell.client_presentation["effect_1"] == 6
+    assert broug_killing_intent_shell.client_presentation["effect_apply_aura_name_1"] == 4
+    assert broug_killing_intent_shell.client_presentation["spell_icon_id"] == 2112
+    assert broug_killing_intent_shell.client_presentation["spell_family_name"] == 0
+    assert broug_killing_intent_shell.client_presentation["spell_family_flags_1"] == 0
+    assert broug_killing_intent_shell.client_presentation["spell_family_flags_2"] == 0
+    assert broug_killing_intent_shell.client_presentation["spell_family_flags_3"] == 0
+    assert broug_killing_intent_shell.client_presentation["damage_class"] == 0
+    assert broug_killing_intent_shell.client_presentation["prevention_type"] == 0
+    assert broug_killing_intent_shell.label == "Killing Intent"
+    assert "10 sec killing window" in broug_killing_intent_shell.tooltip
+    assert broug_suppressed_shell is not None
+    assert broug_suppressed_shell.spell_id == 946204
+    assert broug_suppressed_shell.family_id == "unit_target_effect"
+    assert broug_suppressed_shell.behavior_kind == "broug_suppressed_v1"
+    assert broug_suppressed_shell.client_presentation is not None
+    assert broug_suppressed_shell.client_presentation["effect_1"] == 6
+    assert broug_suppressed_shell.client_presentation["spell_icon_id"] == 2112
+    assert broug_qi_reversal_shell is not None
+    assert broug_qi_reversal_shell.spell_id == 946621
+    assert broug_qi_reversal_shell.family_id == "self_aura"
+    assert broug_qi_reversal_shell.client_presentation is not None
+    assert broug_qi_reversal_shell.client_presentation["recovery_time"] == 45000
+    assert broug_qi_reversal_shell.client_presentation["effect_1"] == 0
+    assert broug_qi_reversal_shell.client_presentation["range_index"] == 1
+    assert broug_qi_reversal_shell.client_presentation["spell_icon_id"] == 1933
+    assert broug_qi_reversal_shell.client_presentation["spellbook_ability_id"] == 1946621
+    assert broug_purged_state_shell is not None
+    assert broug_purged_state_shell.spell_id == 946622
+    assert broug_purged_state_shell.family_id == "self_aura"
+    assert broug_purged_state_shell.client_presentation is not None
+    assert broug_purged_state_shell.client_presentation["stack_amount"] == 2
+    assert broug_purged_state_shell.client_presentation["spell_icon_id"] == 1933
+    assert broug_purged_state_shell.client_presentation["spell_family_name"] == 0
+    assert broug_purged_state_shell.client_presentation["spell_family_flags_1"] == 0
+    assert broug_purged_state_shell.client_presentation["spell_family_flags_2"] == 0
+    assert broug_purged_state_shell.client_presentation["spell_family_flags_3"] == 0
+    assert broug_purged_state_shell.client_presentation["damage_class"] == 0
+    assert broug_purged_state_shell.client_presentation["prevention_type"] == 0
     assert broug_parry_shell is not None
     assert broug_parry_shell.spell_id == 946800
     assert broug_parry_shell.family_id == "passive_aura"
@@ -196,6 +291,34 @@ def test_bonebound_shell_definitions_are_present() -> None:
     assert broug_retaliation_shell.client_presentation["spellbook_ability_id"] == 1946802
     assert broug_retaliation_shell.client_presentation["equipped_item_class"] == -1
     assert broug_retaliation_shell.client_presentation["effect_1"] == 0
+    assert broug_silent_meridian_shell is not None
+    assert broug_silent_meridian_shell.spell_id == 946803
+    assert broug_silent_meridian_shell.family_id == "passive_aura"
+    assert broug_silent_meridian_shell.behavior_kind == "broug_silent_meridian_v1"
+    assert broug_silent_meridian_shell.client_presentation is not None
+    assert broug_silent_meridian_shell.client_presentation["spellbook_ability_id"] == 1946803
+    assert broug_silent_meridian_shell.client_presentation["equipped_item_class"] == -1
+    assert broug_silent_meridian_shell.client_presentation["effect_1"] == 0
+    assert "Cloud Step" in broug_silent_meridian_shell.tooltip
+    assert "10 sec" in broug_silent_meridian_shell.tooltip
+    assert "6 sec" in broug_silent_meridian_shell.tooltip
+    assert broug_domain_shell is not None
+    assert broug_domain_shell.spell_id == 946804
+    assert broug_domain_shell.family_id == "passive_aura"
+    assert broug_domain_shell.client_presentation is not None
+    assert broug_domain_shell.client_presentation["spellbook_ability_id"] == 1946804
+    assert broug_domain_shell.client_presentation["effect_1"] == 0
+    assert "15 sec" in broug_domain_shell.tooltip
+    assert broug_predator_shell is not None
+    assert broug_predator_shell.spell_id == 946805
+    assert broug_predator_shell.family_id == "passive_aura"
+    assert broug_predator_shell.client_presentation is not None
+    assert broug_predator_shell.client_presentation["spellbook_ability_id"] == 1946805
+    assert broug_vitality_shell is not None
+    assert broug_vitality_shell.spell_id == 946806
+    assert broug_vitality_shell.family_id == "passive_aura"
+    assert broug_vitality_shell.client_presentation is not None
+    assert broug_vitality_shell.client_presentation["spellbook_ability_id"] == 1946806
     assert pet_active_shell is not None
     assert pet_active_shell.family_id == "pet_active_compat"
     assert pet_active_shell.spell_id == 945000
@@ -221,11 +344,16 @@ def test_patch_rows_expand_compatibility_and_generic_ranges_and_overlay_named_sh
     watcher_beacon_shell = next(row for row in rows if row.spell_id == 946602)
     broug_vulnerable_shell = next(row for row in rows if row.spell_id == 946200)
     broug_deflected_shell = next(row for row in rows if row.spell_id == 946201)
+    broug_cloud_step_shell = next(row for row in rows if row.spell_id == 946202)
+    broug_marked_meridian_shell = next(row for row in rows if row.spell_id == 946203)
     broug_deflect_shell = next(row for row in rows if row.spell_id == 946603)
     broug_counter_stance_shell = next(row for row in rows if row.spell_id == 946605)
+    energy_surge_shell = next(row for row in rows if row.spell_id == 946606)
+    broug_killing_intent_shell = next(row for row in rows if row.spell_id == 946620)
     passive_slot = next(row for row in rows if row.spell_id == 946800)
     broug_marksman_shell = next(row for row in rows if row.spell_id == 946098)
     broug_retaliation_shell = next(row for row in rows if row.spell_id == 946802)
+    broug_silent_meridian_shell = next(row for row in rows if row.spell_id == 946803)
     frontal_cone_slot = next(row for row in rows if row.spell_id == 946900)
 
     assert summon_shell.is_named_override is True
@@ -282,6 +410,23 @@ def test_patch_rows_expand_compatibility_and_generic_ranges_and_overlay_named_sh
     assert broug_deflected_shell.client_presentation["effect_1"] == 6
     assert broug_deflected_shell.client_presentation["effect_apply_aura_name_1"] == 4
     assert broug_deflected_shell.client_presentation["spell_icon_id"] == 558
+    assert broug_cloud_step_shell.is_named_override is True
+    assert broug_cloud_step_shell.shell_key == "broug_cloud_step_v1"
+    assert broug_cloud_step_shell.behavior_kind == "broug_cloud_step_v1"
+    assert broug_cloud_step_shell.seed_template == "wm_unit_target_effect"
+    assert broug_cloud_step_shell.client_presentation["mana_cost"] == 20
+    assert broug_cloud_step_shell.client_presentation["recovery_time"] == 12000
+    assert broug_cloud_step_shell.client_presentation["category_recovery_time"] == 1000
+    assert broug_cloud_step_shell.client_presentation["start_recovery_time"] == 1000
+    assert broug_cloud_step_shell.client_presentation["spellbook_ability_id"] == 1946202
+    assert broug_marked_meridian_shell.is_named_override is True
+    assert broug_marked_meridian_shell.shell_key == "broug_marked_meridian_v1"
+    assert broug_marked_meridian_shell.behavior_kind == "broug_marked_meridian_v1"
+    assert broug_marked_meridian_shell.seed_template == "wm_unit_target_effect"
+    assert broug_marked_meridian_shell.client_presentation["duration_index"] == 36
+    assert broug_marked_meridian_shell.client_presentation["stack_amount"] == 1
+    assert broug_marked_meridian_shell.client_presentation["effect_1"] == 6
+    assert broug_marked_meridian_shell.client_presentation["effect_apply_aura_name_1"] == 4
     assert broug_deflect_shell.is_named_override is True
     assert broug_deflect_shell.shell_key == "broug_deflect_v1"
     assert broug_deflect_shell.behavior_kind == "broug_deflect_v1"
@@ -302,9 +447,23 @@ def test_patch_rows_expand_compatibility_and_generic_ranges_and_overlay_named_sh
     assert broug_counter_stance_shell.client_presentation["effect_apply_aura_name_1"] == 36
     assert broug_counter_stance_shell.client_presentation["effect_misc_value_1"] == 13
     assert broug_counter_stance_shell.client_presentation["stance_bar_order"] == 1
-    assert broug_counter_stance_shell.client_presentation["spell_icon_id"] == 132
+    assert broug_counter_stance_shell.client_presentation["spell_visual_id_2"] == 0
+    assert broug_counter_stance_shell.client_presentation["spell_icon_id"] == 563
     assert broug_counter_stance_shell.client_presentation["duration_index"] == 21
     assert broug_counter_stance_shell.client_presentation["spell_family_name"] == 8
+    assert energy_surge_shell.is_named_override is True
+    assert energy_surge_shell.shell_key == "energy_surge_potion_v1"
+    assert energy_surge_shell.behavior_kind == "energy_surge_potion_v1"
+    assert energy_surge_shell.seed_template == "wm_self_aura"
+    assert energy_surge_shell.client_presentation["spell_icon_id"] == 1299
+    assert broug_killing_intent_shell.is_named_override is True
+    assert broug_killing_intent_shell.shell_key == "broug_killing_intent_v1"
+    assert broug_killing_intent_shell.behavior_kind == "broug_killing_intent_v1"
+    assert broug_killing_intent_shell.seed_template == "wm_self_aura"
+    assert broug_killing_intent_shell.client_presentation["duration_index"] == 36
+    assert broug_killing_intent_shell.client_presentation["effect_1"] == 6
+    assert broug_killing_intent_shell.client_presentation["effect_apply_aura_name_1"] == 4
+    assert broug_killing_intent_shell.client_presentation["spell_icon_id"] == 2112
     assert random_targets_slot.shell_key == "random_targets_0001"
     assert random_targets_slot.seed_template == "wm_random_targets"
     assert passive_slot.is_named_override is True
@@ -333,6 +492,13 @@ def test_patch_rows_expand_compatibility_and_generic_ranges_and_overlay_named_sh
     assert broug_retaliation_shell.client_presentation["spellbook_ability_id"] == 1946802
     assert broug_retaliation_shell.client_presentation["equipped_item_class"] == -1
     assert broug_retaliation_shell.client_presentation["effect_1"] == 0
+    assert broug_silent_meridian_shell.is_named_override is True
+    assert broug_silent_meridian_shell.shell_key == "broug_silent_meridian_v1"
+    assert broug_silent_meridian_shell.behavior_kind == "broug_silent_meridian_v1"
+    assert broug_silent_meridian_shell.seed_template == "wm_passive_aura"
+    assert broug_silent_meridian_shell.client_presentation["spellbook_ability_id"] == 1946803
+    assert broug_silent_meridian_shell.client_presentation["equipped_item_class"] == -1
+    assert broug_silent_meridian_shell.client_presentation["effect_1"] == 0
     assert frontal_cone_slot.shell_key == "frontal_cone_0001"
     assert frontal_cone_slot.seed_template == "wm_frontal_cone"
     assert pet_active_shell.is_named_override is True
@@ -349,4 +515,4 @@ def test_patch_plan_reports_range_driven_summary() -> None:
     assert plan["slots_per_family"] == 100
     assert plan["reserve_gap_slots"] == 0
     assert plan["total_rows"] == 1004
-    assert plan["named_override_count"] == 15
+    assert plan["named_override_count"] == 26

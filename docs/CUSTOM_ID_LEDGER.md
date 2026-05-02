@@ -47,13 +47,17 @@ Current pinned spell claims:
 - `946098`: `broug_skirmisher_shot_v1` / targeted active `Skirmisher's Mark` ranged/thrown attack - `WORKING` for Broug current scope
 - `946200`: `broug_vulnerable_v1` / `Vulnerable` Deflect target debuff, 60s stackable icon `558` - `WORKING` for Broug current scope
 - `946201`: `broug_deflected_v1` / `Deflected` Deflect visible stun/status stack, runtime duration icon `558` - `WORKING` for Broug current scope
+- `946202`: `broug_cloud_step_v1` / `Cloud Step` lightness-assassin movement shell - `PARTIAL`
+- `946203`: `broug_marked_meridian_v1` / `Marked Meridian` visible target followup mark - `PARTIAL`
 - `946603`: `broug_deflect_v1` / `Deflect` animation-timed active guard, aura-free, counter gated by `946605` - `WORKING` for Broug current scope
 - `946604`: `broug_skirmisher_mark_v2` / retired self-aura toggle `Skirmisher's Mark` - `BROKEN`, replaced by `spell:946098`
 - `946605`: `broug_deflect_counter_stance_v1` / `Counterstrike Stance` real stance aura gating Deflect auto-counter - `WORKING` for Broug current scope
 - `946606`: `energy_surge_potion_v1` / `Energy Surge` visible potion buff for +10 energy/sec - `PARTIAL`
+- `946620`: `broug_killing_intent_v1` / `Killing Intent` visible self followup marker. Uses `946620` because `946606` is claimed by Energy Surge Potion `910014` - `PARTIAL`
 - `946800`: `broug_universal_parry_v1` / `Impossible Guard` - `WORKING` for Broug current scope
 - `946801`: `broug_mobile_marksman_v1` / retired passive `Skirmisher's Mark` - `BROKEN`, replaced by `spell:946098`
 - `946802`: `broug_auto_retaliation_v1` / `Riposte Instinct` - `WORKING` for Broug current scope
+- `946803`: `broug_silent_meridian_v1` / `Silent Meridian Manual` passive reward - `PARTIAL`
 - `947000`: `defias_pursuit_instinct` bundled managed spell example - `PARTIAL`
 
 ## Current non-spell examples
@@ -65,6 +69,8 @@ Repo-backed current claims include:
 - quest `910024`: `Bounty: Nightbane Dark Runner - Lens` - `WORKING`
 - quest `910180`: `Broug: One Thousand Impossible Guards` linked progression step for `946603` - `WORKING` for Broug current scope
 - quest `910181`: `Broug: One Thousand Deflections` linked progression step for `946802` - `WORKING` for Broug current scope
+- quest `910182`: `Broug: Steps Without Dust` linked lightness step for `946202` - `PARTIAL`
+- quest `910183`: `Broug: No Footfall Twice` linked lightness step for `946803` - `PARTIAL`
 - quest `910152`: retired bad Shadowmoon Lens quest attempt - `BROKEN`, replaced by fresh quest `910171`
 - quest `910154`: retired bad Shadowmoon Lens v2 quest attempt - `BROKEN`, replaced by fresh quest `910171`
 - quest `910155`: retired Shadowmoon Lens v3 quest attempt - `BROKEN`, replaced by fresh quest `910171`
@@ -94,6 +100,7 @@ Repo-backed current claims include:
 - creature `920103`: Echo Restorer support-role template - `PARTIAL`
 - creature `920104`: hidden Broug parry quest credit marker - `WORKING` for Broug current scope
 - creature `920105`: hidden Broug Deflect quest credit marker - `WORKING` for Broug current scope
+- creature `920106`: hidden Broug Cloud Step empowered-hit quest credit marker - `PARTIAL`
 - DBC override rows `100055`, `100118`, `100172`, `100229`, `100413`, `100414`, `100433`, `100434`: combat proficiency support - `WORKING` for Jecia and Broug current scope; Plate row `100293` remains level-gated and `PARTIAL` until a level-40 proof
 
 Check the JSON ledger for the complete current list and source paths.

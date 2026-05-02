@@ -3,6 +3,7 @@ param(
     [string]$Configuration = "RelWithDebInfo",
     [int]$GracefulWaitSeconds = 20,
     [int]$ForceAfterSeconds = 5,
+    [string]$WmBridgePlayerGuidAllowList = "5406,5405",
     [string]$WmSpellsPlayerGuidAllowList = "5406,5405"
 )
 
@@ -86,6 +87,7 @@ foreach ($required in @($buildExe, $runExe, $bridgeConfig, $spellsConfig)) {
 }
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.Emit.Aura" -Value "1"
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.Emit.AuraSpellAllowList" -Value """946602,132,687,770"""
+Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.PlayerGuidAllowList" -Value """$WmBridgePlayerGuidAllowList"""
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.Enable" -Value "1"
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """$WmSpellsPlayerGuidAllowList"""
 Set-ConfigValue -Path $spellsConfig -Key "WmSpells.BoneboundServant.Enable" -Value "1"

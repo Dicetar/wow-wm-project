@@ -193,6 +193,8 @@ public:
         WmSpells::MaintainIntellectBlockPassive(player);
         WmSpells::MaintainCombatProficiencies(player);
         WmSpells::MaintainBrougGuard(player, 0);
+        WmSpells::MaintainBrougLightness(player, 0);
+        WmSpells::MaintainBrougEmptyCourt(player, 0);
         WmSpells::MaintainNightWatchersLens(player, 0);
         WmSpells::MaintainLanathelStance(player, 0);
     }
@@ -203,6 +205,8 @@ public:
             return;
 
         WmSpells::TickBrougGuard(player, diff);
+        WmSpells::TickBrougLightness(player, diff);
+        WmSpells::TickBrougEmptyCourt(player, diff);
 
         uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
         uint32& timer = gBoneboundMaintenanceTimers[ownerGuid];
@@ -217,6 +221,8 @@ public:
         WmSpells::MaintainIntellectBlockPassive(player);
         WmSpells::MaintainCombatProficiencies(player);
         WmSpells::MaintainBrougGuard(player, BONEBOUND_MAINTENANCE_INTERVAL_MS);
+        WmSpells::MaintainBrougLightness(player, BONEBOUND_MAINTENANCE_INTERVAL_MS);
+        WmSpells::MaintainBrougEmptyCourt(player, BONEBOUND_MAINTENANCE_INTERVAL_MS);
         WmSpells::MaintainNightWatchersLens(player, BONEBOUND_MAINTENANCE_INTERVAL_MS);
         WmSpells::MaintainLanathelStance(player, BONEBOUND_MAINTENANCE_INTERVAL_MS);
     }
@@ -231,6 +237,8 @@ public:
         WmSpells::ForgetBoneboundCompanions(player);
         WmSpells::ForgetIntellectBlockPassive(player);
         WmSpells::ForgetBrougGuard(player);
+        WmSpells::ForgetBrougLightness(player);
+        WmSpells::ForgetBrougEmptyCourt(player);
         WmSpells::ForgetNightWatchersLens(player);
         WmSpells::ForgetLanathelStance(player);
     }
@@ -280,8 +288,18 @@ public:
     {
         std::string reason;
         bool canComplete = WmSpells::CanCompleteBrougGuardQuest(player, questId, &reason);
+        if (canComplete)
+            canComplete = WmSpells::CanCompleteBrougLightnessQuest(player, questId, &reason);
+        if (canComplete)
+            canComplete = WmSpells::CanCompleteBrougEmptyCourtQuest(player, questId, &reason);
         if (!canComplete && player)
             ChatHandler(player->GetSession()).PSendSysMessage("WM Broug: quest completion blocked ({})", reason);
+        if (canComplete)
+        {
+            WmSpells::HandleBrougGuardQuestComplete(player, questId);
+            WmSpells::HandleBrougLightnessQuestComplete(player, questId);
+            WmSpells::HandleBrougEmptyCourtQuestComplete(player, questId);
+        }
         return canComplete;
     }
 
@@ -291,6 +309,14 @@ public:
             return;
 
         WmSpells::HandleBrougGuardQuestComplete(player, quest->GetQuestId());
+        WmSpells::HandleBrougLightnessQuestComplete(player, quest->GetQuestId());
+        WmSpells::HandleBrougEmptyCourtQuestComplete(player, quest->GetQuestId());
+    }
+
+    void OnPlayerCreatureKill(Player* killer, Creature* killed) override
+    {
+        WmSpells::HandleBrougEmptyCourtCreatureKill(killer, killed);
+        WmSpells::HandleBrougLightnessCreatureKill(killer, killed);
     }
 
 };

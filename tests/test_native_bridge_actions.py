@@ -497,7 +497,7 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("SET @wm_energy_surge_aura_spell_id := 946606", sql)
         self.assertIn("SET @wm_energy_surge_base_item_entry := 33448", sql)
         self.assertIn("Energy Surge Potion", sql)
-        self.assertIn("spellid_1 = 8096", sql)
+        self.assertIn("spellid_1 = @wm_energy_surge_aura_spell_id", sql)
         self.assertIn("spellcooldown_1 = 60000", sql)
         self.assertIn("ScriptName = 'wm_energy_surge_potion'", sql)
         self.assertIn("visible_aura:946606", sql)

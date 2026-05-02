@@ -14,6 +14,7 @@
 #include "GroupReference.h"
 #include "Item.h"
 #include "ItemTemplate.h"
+#include "Map.h"
 #include "MotionMaster.h"
 #include "ObjectAccessor.h"
 #include "PetDefines.h"
@@ -32,6 +33,7 @@
 #include <optional>
 #include <regex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace WmSpells
@@ -53,10 +55,28 @@ namespace
     constexpr uint32 BROUG_UNIVERSAL_PARRY_SHELL_ID = 946800;
     constexpr uint32 BROUG_RETIRED_MOBILE_MARKSMAN_SHELL_ID = 946801;
     constexpr uint32 BROUG_AUTO_RETALIATION_SHELL_ID = 946802;
+    constexpr uint32 BROUG_CLOUD_STEP_SHELL_ID = 946202;
+    constexpr uint32 BROUG_MARKED_MERIDIAN_SHELL_ID = 946203;
+    constexpr uint32 BROUG_SUPPRESSED_SHELL_ID = 946204;
+    constexpr uint32 BROUG_KILLING_INTENT_SHELL_ID = 946620;
+    constexpr uint32 BROUG_QI_REVERSAL_SHELL_ID = 946621;
+    constexpr uint32 BROUG_PURGED_STATE_SHELL_ID = 946622;
+    constexpr uint32 BROUG_SILENT_MERIDIAN_SHELL_ID = 946803;
+    constexpr uint32 BROUG_KILLING_INTENT_DOMAIN_SHELL_ID = 946804;
+    constexpr uint32 BROUG_PREDATORS_STRIKE_SHELL_ID = 946805;
+    constexpr uint32 BROUG_VITALITY_DRAIN_SHELL_ID = 946806;
     constexpr uint32 BROUG_PARRY_QUEST_ID = 910180;
     constexpr uint32 BROUG_DEFLECT_QUEST_ID = 910181;
+    constexpr uint32 BROUG_LIGHTNESS_STEPS_QUEST_ID = 910182;
+    constexpr uint32 BROUG_LIGHTNESS_NO_FOOTFALL_QUEST_ID = 910183;
+    constexpr uint32 BROUG_EMPTY_COURT_WEIGHT_QUEST_ID = 910184;
+    constexpr uint32 BROUG_EMPTY_COURT_STILLING_QUEST_ID = 910185;
+    constexpr uint32 BROUG_EMPTY_COURT_NINETY_EIGHT_QUEST_ID = 910186;
+    constexpr uint32 BROUG_EMPTY_COURT_ROOM_QUEST_ID = 910187;
+    constexpr uint32 BROUG_EMPTY_COURT_DOMAIN_UNSEALED_QUEST_ID = 910188;
     constexpr uint32 BROUG_PARRY_CREDIT_CREATURE_ENTRY = 920104;
     constexpr uint32 BROUG_DEFLECT_CREDIT_CREATURE_ENTRY = 920105;
+    constexpr uint32 BROUG_LIGHTNESS_CREDIT_CREATURE_ENTRY = 920106;
     constexpr uint32 SHIELD_SPELL_ID = 107;
     constexpr uint32 SHIELD_BLOCK_SPELL_ID = 9116;
     constexpr uint32 LEATHER_ARMOR_SPELL_ID = 9077;
@@ -81,6 +101,13 @@ namespace
     constexpr char BROUG_SKIRMISHER_SHOT_COUNTER_KEY[] = "skirmisher_shot_hit";
     constexpr char BROUG_DEFLECT_COUNTER_KEY[] = "deflect_success";
     constexpr char BROUG_AUTO_RETALIATION_COUNTER_KEY[] = "auto_retaliation";
+    constexpr char BROUG_CLOUD_STEP_STRIKE_COUNTER_KEY[] = "cloud_step_strike";
+    constexpr char BROUG_SILENT_MERIDIAN_COUNTER_KEY[] = "silent_meridian_kill";
+    constexpr char BROUG_DOMAIN_PULSE_COUNTER_KEY[] = "domain_pulse";
+    constexpr char BROUG_SUPPRESSED_DEATH_EXTEND_COUNTER_KEY[] = "suppressed_death_extend";
+    constexpr char BROUG_QI_REVERSAL_CLEANSE_COUNTER_KEY[] = "qi_reversal_cleanse";
+    constexpr char BROUG_PREDATOR_HEAL_COUNTER_KEY[] = "predator_heal";
+    constexpr char BROUG_VITALITY_KILL_COUNTER_KEY[] = "vitality_kill";
     // Rend is a client-known bleed debuff. WM owns the damage; this aura is the visible status/timer.
     constexpr uint32 BONEBOUND_BLEED_VISIBLE_AURA_SPELL_ID = 772;
     // Thorns is a client-known positive buff marker; WM strips its effects and only uses the stack count.
@@ -114,6 +141,8 @@ namespace
     std::unordered_map<uint32, LanathelStanceRuntimeState> gLanathelStanceByPlayer;
     std::optional<bool> gLanathelStanceStateTableAvailable;
     std::optional<bool> gBrougGuardCounterTableAvailable;
+    std::optional<bool> gBrougLightnessCounterTableAvailable;
+    std::optional<bool> gBrougEmptyCourtCounterTableAvailable;
 
     struct BrougGuardRuntimeState
     {
@@ -151,6 +180,40 @@ namespace
     std::unordered_set<uint32> gBrougCounterStanceToggleOffByPlayer;
     std::unordered_set<ObjectGuid> gBrougDeflectedStunUnits;
     std::unordered_map<ObjectGuid, BrougPendingForcedParry> gBrougPendingForcedParryByVictim;
+
+    struct BrougLightnessRuntimeState
+    {
+        bool hasCloudStep = false;
+        bool hasSilentMeridian = false;
+        WmSpells::BrougCloudStepConfig cloudStep;
+        WmSpells::BrougSilentMeridianConfig silentMeridian;
+        uint64 cloudStepCooldownUntilMs = 0;
+        ObjectGuid cloudStepKillTargetGuid = ObjectGuid::Empty;
+        uint64 cloudStepKillWindowUntilMs = 0;
+        ObjectGuid markedMeridianTargetGuid = ObjectGuid::Empty;
+        uint64 markedMeridianUntilMs = 0;
+    };
+
+    std::unordered_map<uint32, BrougLightnessRuntimeState> gBrougLightnessByPlayer;
+    std::unordered_map<ObjectGuid, uint64> gBrougLightnessPreserveVulnerableByVictim;
+
+    struct BrougEmptyCourtRuntimeState
+    {
+        bool hasDomain = false;
+        bool hasQiReversal = false;
+        bool hasPredatorsStrike = false;
+        bool hasVitalityDrain = false;
+        WmSpells::BrougKillingIntentDomainConfig domain;
+        WmSpells::BrougQiReversalConfig qiReversal;
+        WmSpells::BrougPredatorsStrikeConfig predatorsStrike;
+        WmSpells::BrougVitalityDrainConfig vitalityDrain;
+        uint32 domainPulseTimerMs = 0;
+        uint32 purgedCharges = 0;
+        uint64 purgedStateUntilMs = 0;
+        std::unordered_set<uint32> purgedProtectedDispelTypes;
+    };
+
+    std::unordered_map<uint32, BrougEmptyCourtRuntimeState> gBrougEmptyCourtByPlayer;
 
     struct NightWatchersLensMarkState
     {
@@ -636,6 +699,24 @@ namespace
             || behaviorKind == "broug_deflect_v1"
             || behaviorKind == "broug_deflect_counter_stance_v1"
             || behaviorKind == "broug_auto_retaliation_v1";
+    }
+
+    bool IsBrougLightnessBehaviorKind(std::string const& behaviorKind)
+    {
+        return behaviorKind == "broug_cloud_step_v1"
+            || behaviorKind == "broug_marked_meridian_v1"
+            || behaviorKind == "broug_killing_intent_v1"
+            || behaviorKind == "broug_silent_meridian_v1";
+    }
+
+    bool IsBrougEmptyCourtBehaviorKind(std::string const& behaviorKind)
+    {
+        return behaviorKind == "broug_killing_intent_domain_v1"
+            || behaviorKind == "broug_suppressed_v1"
+            || behaviorKind == "broug_qi_reversal_v1"
+            || behaviorKind == "broug_purged_state_v1"
+            || behaviorKind == "broug_predators_strike_v1"
+            || behaviorKind == "broug_vitality_drain_v1";
     }
 
     bool IsBoneboundEchoModeBehaviorKind(std::string const& behaviorKind)
@@ -1155,6 +1236,168 @@ namespace
             config.visualSpellId = *value;
         if (std::optional<std::string> value = ExtractJsonString(configJson, "counter_key"))
             config.counterKey = value->empty() ? BROUG_AUTO_RETALIATION_COUNTER_KEY : *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::BrougCloudStepConfig> BuildBrougCloudStepConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (record.behaviorKind != "broug_cloud_step_v1" || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BrougCloudStepConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "min_range_yards"))
+            config.minRangeYards = std::clamp(*value, 0.0f, 100.0f);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "max_range_yards"))
+            config.maxRangeYards = std::clamp(*value, 1.0f, 100.0f);
+        if (config.minRangeYards > config.maxRangeYards)
+            config.minRangeYards = 0.0f;
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "landing_distance_yards"))
+            config.landingDistanceYards = std::clamp(*value, 0.5f, 5.0f);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "cooldown_ms"))
+            config.cooldownMs = std::clamp<uint32>(*value, 0u, 120000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "energy_cost"))
+            config.energyCost = std::clamp<uint32>(*value, 0u, 100u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "killing_intent_spell_id"))
+            config.killingIntentSpellId = *value == 0 ? BROUG_KILLING_INTENT_SHELL_ID : *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "killing_intent_duration_ms"))
+            config.killingIntentDurationMs = std::clamp<uint32>(*value, 250u, 60000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "marked_meridian_spell_id"))
+            config.markedMeridianSpellId = *value == 0 ? BROUG_MARKED_MERIDIAN_SHELL_ID : *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "marked_meridian_duration_ms"))
+            config.markedMeridianDurationMs = std::clamp<uint32>(*value, 250u, 60000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "damage_bonus_pct"))
+            config.damageBonusPct = std::clamp<uint32>(*value, 0u, 500u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "departure_visual_spell_id"))
+            config.departureVisualSpellId = *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "arrival_visual_spell_id"))
+            config.arrivalVisualSpellId = *value;
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "counter_key"))
+            config.counterKey = value->empty() ? BROUG_CLOUD_STEP_STRIKE_COUNTER_KEY : *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "credit_creature_entry"))
+            config.creditCreatureEntry = *value == 0 ? BROUG_LIGHTNESS_CREDIT_CREATURE_ENTRY : *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::BrougSilentMeridianConfig> BuildBrougSilentMeridianConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (record.behaviorKind != "broug_silent_meridian_v1" || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BrougSilentMeridianConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "kill_window_ms"))
+            config.killWindowMs = std::clamp<uint32>(*value, 250u, 60000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "energy_restore"))
+            config.energyRestore = std::clamp<uint32>(*value, 0u, 100u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "cooldown_reduction_ms"))
+            config.cooldownReductionMs = std::clamp<uint32>(*value, 0u, 120000u);
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "counter_key"))
+            config.counterKey = value->empty() ? BROUG_SILENT_MERIDIAN_COUNTER_KEY : *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::BrougKillingIntentDomainConfig> BuildBrougKillingIntentDomainConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (record.behaviorKind != "broug_killing_intent_domain_v1" || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BrougKillingIntentDomainConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "killing_intent_spell_id"))
+            config.killingIntentSpellId = *value == 0 ? BROUG_KILLING_INTENT_SHELL_ID : *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "suppressed_spell_id"))
+            config.suppressedSpellId = *value == 0 ? BROUG_SUPPRESSED_SHELL_ID : *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "base_killing_intent_duration_ms"))
+            config.baseKillingIntentDurationMs = std::clamp<uint32>(*value, 1000u, 600000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "pulse_interval_ms"))
+            config.pulseIntervalMs = std::clamp<uint32>(*value, 250u, 60000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "suppressed_duration_ms"))
+            config.suppressedDurationMs = std::clamp<uint32>(*value, 1000u, 600000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "death_extension_ms"))
+            config.deathExtensionMs = std::clamp<uint32>(*value, 0u, 600000u);
+        if (std::optional<float> value = ExtractJsonFloat(configJson, "radius_yards"))
+            config.radiusYards = std::clamp(*value, 1.0f, 100.0f);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "suppressed_damage_pressure_pct"))
+            config.suppressedDamagePressurePct = std::clamp<uint32>(*value, 0u, 90u);
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "pulse_counter_key"))
+            config.pulseCounterKey = value->empty() ? BROUG_DOMAIN_PULSE_COUNTER_KEY : *value;
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "death_extend_counter_key"))
+            config.deathExtendCounterKey = value->empty() ? BROUG_SUPPRESSED_DEATH_EXTEND_COUNTER_KEY : *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::BrougQiReversalConfig> BuildBrougQiReversalConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (record.behaviorKind != "broug_qi_reversal_v1" || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BrougQiReversalConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "purged_state_spell_id"))
+            config.purgedStateSpellId = *value == 0 ? BROUG_PURGED_STATE_SHELL_ID : *value;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "max_magic"))
+            config.maxMagic = std::clamp<uint32>(*value, 0u, 10u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "max_poison"))
+            config.maxPoison = std::clamp<uint32>(*value, 0u, 10u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "max_disease"))
+            config.maxDisease = std::clamp<uint32>(*value, 0u, 10u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "purged_duration_ms"))
+            config.purgedDurationMs = std::clamp<uint32>(*value, 1000u, 600000u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "purged_charges"))
+            config.purgedCharges = std::clamp<uint32>(*value, 0u, 255u);
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "counter_key"))
+            config.counterKey = value->empty() ? BROUG_QI_REVERSAL_CLEANSE_COUNTER_KEY : *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::BrougPredatorsStrikeConfig> BuildBrougPredatorsStrikeConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (record.behaviorKind != "broug_predators_strike_v1" || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BrougPredatorsStrikeConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "heal_pct_of_damage"))
+            config.healPctOfDamage = std::clamp<uint32>(*value, 0u, 500u);
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "counter_key"))
+            config.counterKey = value->empty() ? BROUG_PREDATOR_HEAL_COUNTER_KEY : *value;
+
+        return config;
+    }
+
+    std::optional<WmSpells::BrougVitalityDrainConfig> BuildBrougVitalityDrainConfig(WmSpells::BehaviorRecord const& record)
+    {
+        if (record.behaviorKind != "broug_vitality_drain_v1" || record.status == "disabled")
+            return std::nullopt;
+
+        WmSpells::BrougVitalityDrainConfig config;
+        config.shellSpellId = record.shellSpellId;
+
+        std::string const& configJson = record.configJson;
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "kill_heal_pct_max_health"))
+            config.killHealPctMaxHealth = std::clamp<uint32>(*value, 0u, 100u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "silent_window_kill_heal_pct_max_health"))
+            config.silentWindowKillHealPctMaxHealth = std::clamp<uint32>(*value, 0u, 100u);
+        if (std::optional<uint32> value = ExtractJsonUInt(configJson, "silent_window_energy_bonus"))
+            config.silentWindowEnergyBonus = std::clamp<uint32>(*value, 0u, 100u);
+        if (std::optional<std::string> value = ExtractJsonString(configJson, "counter_key"))
+            config.counterKey = value->empty() ? BROUG_VITALITY_KILL_COUNTER_KEY : *value;
 
         return config;
     }
@@ -3842,6 +4085,225 @@ namespace
             increment);
     }
 
+    std::optional<BrougLightnessRuntimeState> LoadActiveBrougLightnessState(Player* player, BrougLightnessRuntimeState const* previousState)
+    {
+        if (!player || !WmSpells::IsPlayerAllowed(player))
+            return std::nullopt;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT b.ShellSpellID, b.BehaviorKind, b.ConfigJSON, b.Status "
+            "FROM wm_spell_grant g "
+            "JOIN wm_spell_behavior b ON b.ShellSpellID = g.ShellSpellID "
+            "WHERE g.PlayerGUID = {} "
+            "  AND g.RevokedAt IS NULL "
+            "  AND b.BehaviorKind IN ('broug_cloud_step_v1', 'broug_silent_meridian_v1') "
+            "  AND b.Status = 'active' "
+            "ORDER BY g.GrantID DESC",
+            playerGuid);
+
+        if (!result)
+            return std::nullopt;
+
+        BrougLightnessRuntimeState state;
+        if (previousState)
+        {
+            state.cloudStepCooldownUntilMs = previousState->cloudStepCooldownUntilMs;
+            state.cloudStepKillTargetGuid = previousState->cloudStepKillTargetGuid;
+            state.cloudStepKillWindowUntilMs = previousState->cloudStepKillWindowUntilMs;
+            state.markedMeridianTargetGuid = previousState->markedMeridianTargetGuid;
+            state.markedMeridianUntilMs = previousState->markedMeridianUntilMs;
+        }
+
+        do
+        {
+            Field* fields = result->Fetch();
+            WmSpells::BehaviorRecord record;
+            record.shellSpellId = fields[0].Get<uint32>();
+            record.behaviorKind = fields[1].Get<std::string>();
+            record.configJson = fields[2].Get<std::string>();
+            record.status = fields[3].Get<std::string>();
+
+            if (!state.hasCloudStep)
+            {
+                std::optional<WmSpells::BrougCloudStepConfig> cloudStepConfig = BuildBrougCloudStepConfig(record);
+                if (cloudStepConfig.has_value())
+                {
+                    state.cloudStep = *cloudStepConfig;
+                    state.hasCloudStep = true;
+                    continue;
+                }
+            }
+
+            if (!state.hasSilentMeridian)
+            {
+                std::optional<WmSpells::BrougSilentMeridianConfig> silentConfig = BuildBrougSilentMeridianConfig(record);
+                if (silentConfig.has_value())
+                {
+                    state.silentMeridian = *silentConfig;
+                    state.hasSilentMeridian = true;
+                    continue;
+                }
+            }
+        } while (result->NextRow());
+
+        if (!state.hasCloudStep && !state.hasSilentMeridian)
+            return std::nullopt;
+
+        return state;
+    }
+
+    bool BrougLightnessCounterTableExists()
+    {
+        if (gBrougLightnessCounterTableAvailable.has_value())
+            return *gBrougLightnessCounterTableAvailable;
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT 1 FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wm_broug_lightness_counter' LIMIT 1");
+        gBrougLightnessCounterTableAvailable = result ? true : false;
+        return result ? true : false;
+    }
+
+    void RecordBrougLightnessCounter(uint32 playerGuid, std::string const& counterKey, uint32 increment = 1)
+    {
+        if (playerGuid == 0 || counterKey.empty() || increment == 0 || !BrougLightnessCounterTableExists())
+            return;
+
+        WorldDatabase.Execute(
+            "INSERT INTO wm_broug_lightness_counter "
+            "(PlayerGUID, CounterKey, CounterValue, UpdatedAt) VALUES "
+            "({}, {}, {}, CURRENT_TIMESTAMP) "
+            "ON DUPLICATE KEY UPDATE "
+            "CounterValue = CounterValue + VALUES(CounterValue), UpdatedAt = CURRENT_TIMESTAMP",
+            playerGuid,
+            SqlString(counterKey),
+            increment);
+    }
+
+    std::optional<BrougEmptyCourtRuntimeState> LoadActiveBrougEmptyCourtState(Player* player, BrougEmptyCourtRuntimeState const* previousState)
+    {
+        if (!player || !WmSpells::IsPlayerAllowed(player))
+            return std::nullopt;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT b.ShellSpellID, b.BehaviorKind, b.ConfigJSON, b.Status "
+            "FROM wm_spell_grant g "
+            "JOIN wm_spell_behavior b ON b.ShellSpellID = g.ShellSpellID "
+            "WHERE g.PlayerGUID = {} "
+            "  AND g.RevokedAt IS NULL "
+            "  AND b.BehaviorKind IN ("
+            "'broug_killing_intent_domain_v1',"
+            "'broug_qi_reversal_v1',"
+            "'broug_predators_strike_v1',"
+            "'broug_vitality_drain_v1') "
+            "  AND b.Status = 'active' "
+            "ORDER BY g.GrantID DESC",
+            playerGuid);
+
+        if (!result)
+            return std::nullopt;
+
+        BrougEmptyCourtRuntimeState state;
+        if (previousState)
+        {
+            state.domainPulseTimerMs = previousState->domainPulseTimerMs;
+            state.purgedCharges = previousState->purgedCharges;
+            state.purgedStateUntilMs = previousState->purgedStateUntilMs;
+            state.purgedProtectedDispelTypes = previousState->purgedProtectedDispelTypes;
+        }
+
+        do
+        {
+            Field* fields = result->Fetch();
+            WmSpells::BehaviorRecord record;
+            record.shellSpellId = fields[0].Get<uint32>();
+            record.behaviorKind = fields[1].Get<std::string>();
+            record.configJson = fields[2].Get<std::string>();
+            record.status = fields[3].Get<std::string>();
+
+            if (!state.hasDomain)
+            {
+                std::optional<WmSpells::BrougKillingIntentDomainConfig> domainConfig = BuildBrougKillingIntentDomainConfig(record);
+                if (domainConfig.has_value())
+                {
+                    state.domain = *domainConfig;
+                    state.hasDomain = true;
+                    continue;
+                }
+            }
+
+            if (!state.hasQiReversal)
+            {
+                std::optional<WmSpells::BrougQiReversalConfig> qiConfig = BuildBrougQiReversalConfig(record);
+                if (qiConfig.has_value())
+                {
+                    state.qiReversal = *qiConfig;
+                    state.hasQiReversal = true;
+                    continue;
+                }
+            }
+
+            if (!state.hasPredatorsStrike)
+            {
+                std::optional<WmSpells::BrougPredatorsStrikeConfig> predatorConfig = BuildBrougPredatorsStrikeConfig(record);
+                if (predatorConfig.has_value())
+                {
+                    state.predatorsStrike = *predatorConfig;
+                    state.hasPredatorsStrike = true;
+                    continue;
+                }
+            }
+
+            if (!state.hasVitalityDrain)
+            {
+                std::optional<WmSpells::BrougVitalityDrainConfig> vitalityConfig = BuildBrougVitalityDrainConfig(record);
+                if (vitalityConfig.has_value())
+                {
+                    state.vitalityDrain = *vitalityConfig;
+                    state.hasVitalityDrain = true;
+                    continue;
+                }
+            }
+        } while (result->NextRow());
+
+        if (!state.hasDomain && !state.hasQiReversal && !state.hasPredatorsStrike && !state.hasVitalityDrain)
+            return std::nullopt;
+
+        return state;
+    }
+
+    bool BrougEmptyCourtCounterTableExists()
+    {
+        if (gBrougEmptyCourtCounterTableAvailable.has_value())
+            return *gBrougEmptyCourtCounterTableAvailable;
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT 1 FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wm_broug_empty_court_counter' LIMIT 1");
+        gBrougEmptyCourtCounterTableAvailable = result ? true : false;
+        return result ? true : false;
+    }
+
+    void RecordBrougEmptyCourtCounter(uint32 playerGuid, std::string const& counterKey, uint32 increment = 1)
+    {
+        if (playerGuid == 0 || counterKey.empty() || increment == 0 || !BrougEmptyCourtCounterTableExists())
+            return;
+
+        WorldDatabase.Execute(
+            "INSERT INTO wm_broug_empty_court_counter "
+            "(PlayerGUID, CounterKey, CounterValue, UpdatedAt) VALUES "
+            "({}, {}, {}, CURRENT_TIMESTAMP) "
+            "ON DUPLICATE KEY UPDATE "
+            "CounterValue = CounterValue + VALUES(CounterValue), UpdatedAt = CURRENT_TIMESTAMP",
+            playerGuid,
+            SqlString(counterKey),
+            increment);
+    }
+
     float ResolveBrougAttackPower(Player* player, bool ranged)
     {
         if (!player)
@@ -3923,6 +4385,10 @@ namespace
     void TryBrougAutoRetaliation(Player* player, Unit* target, BrougGuardRuntimeState& state);
     uint64 BrougNowMs();
     void ConsumeBrougVulnerableForDamage(Unit* attacker, Unit* victim, uint32& damage);
+    bool TryConsumeBrougMarkedMeridian(Player* player, Unit* target, uint32& damage);
+    bool HasActiveBrougEmptyCourtDomain(Player* player, uint32 playerGuid);
+    bool IsBrougSilentMeridianKillWindowActive(Player* player, Creature* killed, uint64 nowMs);
+    void ApplyBrougPredatorHeal(Player* player, uint32 playerGuid, uint32 damage);
     void ApplyBrougForcedStun(Player* player, Unit* target, uint32 stunMs, uint32 deflectedSpellId, uint32 deflectedStacks);
 
     bool IsBrougDeflectWindowActive(BrougGuardRuntimeState const& state, uint64 nowMs)
@@ -4405,6 +4871,7 @@ namespace
         if (!BuildBrougSkirmisherDamageInfo(player, target, config, damageInfo))
             return false;
 
+        TryConsumeBrougMarkedMeridian(player, target, damageInfo.damages[0].damage);
         PlayBrougSkirmisherFeedback(player, rangedItem, config.impactSoundId);
         player->SendAttackStateUpdate(&damageInfo);
         player->DealMeleeDamage(&damageInfo, true);
@@ -4485,6 +4952,268 @@ namespace
         if (aura)
             aura->ApplyForTargets();
         return aura;
+    }
+
+    Aura* ApplyBrougTimedVisibleAura(Player* player, Unit* target, uint32 spellId, uint32 durationMs)
+    {
+        if (!player || !target || spellId == 0 || durationMs == 0 || !target->IsAlive())
+            return nullptr;
+
+        Aura* aura = ApplyBrougVisibleAura(player, target, spellId);
+        if (!aura)
+            return nullptr;
+
+        aura->SetStackAmount(1);
+        int32 duration = static_cast<int32>(std::min<uint32>(durationMs, static_cast<uint32>(std::numeric_limits<int32>::max())));
+        aura->SetMaxDuration(duration);
+        aura->SetDuration(duration);
+        return aura;
+    }
+
+    bool IsBrougMarkedMeridianStateActive(BrougLightnessRuntimeState const& state, Unit const* victim, uint64 nowMs)
+    {
+        return state.hasCloudStep
+            && victim
+            && state.markedMeridianTargetGuid != ObjectGuid::Empty
+            && state.markedMeridianTargetGuid == victim->GetGUID()
+            && state.markedMeridianUntilMs >= nowMs;
+    }
+
+    void ClearBrougMarkedMeridianState(BrougLightnessRuntimeState& state)
+    {
+        state.markedMeridianTargetGuid = ObjectGuid::Empty;
+        state.markedMeridianUntilMs = 0;
+    }
+
+    void PlayBrougCloudStepVisual(Player* player, uint32 visualSpellId)
+    {
+        if (!player || visualSpellId == 0 || !player->IsInWorld())
+            return;
+
+        player->CastSpell(player, visualSpellId, true);
+    }
+
+    bool HasBrougLightnessMarkReady(Unit* attacker, Unit* victim)
+    {
+        Player* player = attacker ? attacker->ToPlayer() : nullptr;
+        if (!player || !victim || !WmSpells::IsPlayerAllowed(player))
+            return false;
+
+        uint64 nowMs = BrougNowMs();
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        if (auto stateIt = gBrougLightnessByPlayer.find(playerGuid); stateIt != gBrougLightnessByPlayer.end())
+        {
+            if (IsBrougMarkedMeridianStateActive(stateIt->second, victim, nowMs))
+                return true;
+            if (stateIt->second.markedMeridianUntilMs != 0 && stateIt->second.markedMeridianUntilMs < nowMs)
+                ClearBrougMarkedMeridianState(stateIt->second);
+        }
+
+        if (victim->HasAura(BROUG_MARKED_MERIDIAN_SHELL_ID))
+            return true;
+
+        auto preserveIt = gBrougLightnessPreserveVulnerableByVictim.find(victim->GetGUID());
+        if (preserveIt == gBrougLightnessPreserveVulnerableByVictim.end())
+            return false;
+
+        if (preserveIt->second < nowMs)
+        {
+            gBrougLightnessPreserveVulnerableByVictim.erase(preserveIt);
+            return false;
+        }
+
+        return true;
+    }
+
+    BrougEmptyCourtRuntimeState* EnsureBrougEmptyCourtState(Player* player, uint32 playerGuid)
+    {
+        if (!player || playerGuid == 0)
+            return nullptr;
+
+        auto stateIt = gBrougEmptyCourtByPlayer.find(playerGuid);
+        BrougEmptyCourtRuntimeState const* previousState = stateIt != gBrougEmptyCourtByPlayer.end() ? &stateIt->second : nullptr;
+        std::optional<BrougEmptyCourtRuntimeState> loaded = LoadActiveBrougEmptyCourtState(player, previousState);
+        if (!loaded.has_value())
+        {
+            gBrougEmptyCourtByPlayer.erase(playerGuid);
+            return nullptr;
+        }
+
+        gBrougEmptyCourtByPlayer[playerGuid] = *loaded;
+        return &gBrougEmptyCourtByPlayer[playerGuid];
+    }
+
+    bool HasActiveBrougEmptyCourtDomain(Player* player, uint32 playerGuid)
+    {
+        if (!player || playerGuid == 0)
+            return false;
+
+        auto stateIt = gBrougEmptyCourtByPlayer.find(playerGuid);
+        if (stateIt != gBrougEmptyCourtByPlayer.end() && stateIt->second.hasDomain)
+            return true;
+
+        BrougEmptyCourtRuntimeState* state = EnsureBrougEmptyCourtState(player, playerGuid);
+        return state && state->hasDomain;
+    }
+
+    uint32 ResolveBrougKillingIntentDurationMs(Player* player, uint32 playerGuid, uint32 fallbackDurationMs)
+    {
+        auto stateIt = gBrougEmptyCourtByPlayer.find(playerGuid);
+        BrougEmptyCourtRuntimeState* state = stateIt != gBrougEmptyCourtByPlayer.end()
+            ? &stateIt->second
+            : EnsureBrougEmptyCourtState(player, playerGuid);
+        if (!state || !state->hasDomain)
+            return fallbackDurationMs;
+
+        return std::max<uint32>(fallbackDurationMs, state->domain.baseKillingIntentDurationMs);
+    }
+
+    void ApplyBrougHeal(Player* player, uint32 amount)
+    {
+        if (!player || amount == 0 || !player->IsAlive() || player->IsFullHealth())
+            return;
+
+        uint32 missing = player->GetMaxHealth() > player->GetHealth() ? player->GetMaxHealth() - player->GetHealth() : 0;
+        if (missing == 0)
+            return;
+
+        uint32 heal = std::min<uint32>(amount, missing);
+        player->ModifyHealth(static_cast<int32>(std::min<uint32>(heal, static_cast<uint32>(std::numeric_limits<int32>::max()))));
+    }
+
+    void ApplyBrougPredatorHeal(Player* player, uint32 playerGuid, uint32 damage)
+    {
+        if (!player || playerGuid == 0 || damage == 0)
+            return;
+
+        auto stateIt = gBrougEmptyCourtByPlayer.find(playerGuid);
+        BrougEmptyCourtRuntimeState* state = stateIt != gBrougEmptyCourtByPlayer.end()
+            ? &stateIt->second
+            : EnsureBrougEmptyCourtState(player, playerGuid);
+        if (!state || !state->hasPredatorsStrike || state->predatorsStrike.healPctOfDamage == 0)
+            return;
+
+        uint64 heal = (static_cast<uint64>(damage) * static_cast<uint64>(state->predatorsStrike.healPctOfDamage)) / 100u;
+        uint32 cappedHeal = static_cast<uint32>(std::min<uint64>(heal, std::numeric_limits<uint32>::max()));
+        ApplyBrougHeal(player, cappedHeal);
+        RecordBrougEmptyCourtCounter(playerGuid, state->predatorsStrike.counterKey, 1);
+    }
+
+    bool TryConsumeBrougMarkedMeridian(Player* player, Unit* target, uint32& damage)
+    {
+        if (!player || !target || damage == 0 || !target->IsAlive() || !WmSpells::IsPlayerAllowed(player))
+            return false;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougLightnessByPlayer.find(playerGuid);
+        if (stateIt == gBrougLightnessByPlayer.end() || !stateIt->second.hasCloudStep)
+        {
+            std::optional<BrougLightnessRuntimeState> loaded = LoadActiveBrougLightnessState(player, nullptr);
+            if (loaded.has_value())
+            {
+                gBrougLightnessByPlayer[playerGuid] = *loaded;
+                stateIt = gBrougLightnessByPlayer.find(playerGuid);
+            }
+        }
+        if (stateIt == gBrougLightnessByPlayer.end() || !stateIt->second.hasCloudStep)
+            return false;
+
+        BrougLightnessRuntimeState& state = stateIt->second;
+        WmSpells::BrougCloudStepConfig const& config = state.cloudStep;
+        uint64 nowMs = BrougNowMs();
+        bool stateMarkActive = IsBrougMarkedMeridianStateActive(state, target, nowMs);
+        if (!stateMarkActive && state.markedMeridianUntilMs != 0 && state.markedMeridianUntilMs < nowMs)
+            ClearBrougMarkedMeridianState(state);
+
+        Aura* mark = target->GetAura(config.markedMeridianSpellId, player->GetGUID());
+        if (!mark && config.markedMeridianSpellId == BROUG_MARKED_MERIDIAN_SHELL_ID)
+            mark = target->GetAura(BROUG_MARKED_MERIDIAN_SHELL_ID, player->GetGUID());
+
+        if (!stateMarkActive && !mark)
+            return false;
+        if (state.markedMeridianTargetGuid != ObjectGuid::Empty && state.markedMeridianTargetGuid != target->GetGUID())
+            return false;
+        if (config.damageBonusPct > 0)
+        {
+            uint64 scaledDamage = static_cast<uint64>(damage)
+                + (static_cast<uint64>(damage) * static_cast<uint64>(config.damageBonusPct)) / 100u;
+            damage = static_cast<uint32>(std::min<uint64>(scaledDamage, std::numeric_limits<uint32>::max()));
+        }
+
+        gBrougLightnessPreserveVulnerableByVictim[target->GetGUID()] = nowMs + 1000u;
+        if (mark)
+            mark->Remove(AURA_REMOVE_BY_DEFAULT);
+        target->RemoveAurasDueToSpell(config.markedMeridianSpellId);
+        if (config.killingIntentSpellId != 0 && !HasActiveBrougEmptyCourtDomain(player, playerGuid))
+            player->RemoveAurasDueToSpell(config.killingIntentSpellId);
+        ClearBrougMarkedMeridianState(state);
+        RecordBrougLightnessCounter(playerGuid, config.counterKey, 1);
+        ApplyBrougPredatorHeal(player, playerGuid, damage);
+        CreditBrougQuestProgress(player, config.creditCreatureEntry);
+        ChatHandler(player->GetSession()).PSendSysMessage(
+            "WM Broug: Marked Meridian consumed (+{}%).",
+            config.damageBonusPct);
+        return true;
+    }
+
+    bool ResolveBrougCloudStepLanding(Player* player, Unit* target, WmSpells::BrougCloudStepConfig const& config, Position& landing)
+    {
+        if (!player || !target || !target->IsInWorld() || target->GetMapId() != player->GetMapId())
+            return false;
+
+        Map* map = player->GetMap();
+        if (!map)
+            return false;
+
+        float const targetOrientation = target->GetOrientation();
+        float const angles[] = {
+            targetOrientation + WM_PI,
+            targetOrientation + (WM_PI * 0.5f),
+            targetOrientation - (WM_PI * 0.5f),
+        };
+
+        for (float angle : angles)
+        {
+            float x = target->GetPositionX();
+            float y = target->GetPositionY();
+            float z = target->GetPositionZ();
+            target->GetClosePoint(
+                x,
+                y,
+                z,
+                player->GetCombatReach(),
+                std::max(0.5f, config.landingDistanceYards),
+                angle);
+            player->UpdateAllowedPositionZ(x, y, z);
+            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z))
+                continue;
+            if (!map->CanReachPositionAndGetValidCoords(player, x, y, z, true, true))
+                continue;
+
+            landing.Relocate(x, y, z, std::atan2(target->GetPositionY() - y, target->GetPositionX() - x));
+            return true;
+        }
+
+        return false;
+    }
+
+    Unit* SelectBrougCloudStepTarget(Player* player, WmSpells::BrougCloudStepConfig const& config, Unit* explicitTarget = nullptr)
+    {
+        if (!player)
+            return nullptr;
+
+        Unit* target = explicitTarget;
+        if (!target)
+            target = ObjectAccessor::GetUnit(*player, player->GetTarget());
+        if (!target || !target->IsAlive() || !player->IsValidAttackTarget(target))
+            target = player->GetVictim();
+        if (!target || !target->IsAlive() || !player->IsValidAttackTarget(target))
+            return nullptr;
+        if (!player->IsWithinLOSInMap(target))
+            return nullptr;
+        if (!player->IsWithinDistInMap(target, config.maxRangeYards))
+            return nullptr;
+        return target;
     }
 
     bool HasBrougDeflectedAura(Unit* target)
@@ -4595,9 +5324,12 @@ namespace
         return true;
     }
 
-    void ConsumeBrougVulnerableForDamage(Unit* /*attacker*/, Unit* victim, uint32& damage)
+    void ConsumeBrougVulnerableForDamage(Unit* attacker, Unit* victim, uint32& damage)
     {
         if (!victim || damage == 0)
+            return;
+
+        if (HasBrougLightnessMarkReady(attacker, victim))
             return;
 
         Aura* aura = victim->GetAura(BROUG_VULNERABLE_SHELL_ID);
@@ -5066,6 +5798,8 @@ namespace WmSpells
         return IsBoneboundBehaviorKind(behaviorKind)
             || IsIntellectBlockBehaviorKind(behaviorKind)
             || IsBrougGuardBehaviorKind(behaviorKind)
+            || IsBrougLightnessBehaviorKind(behaviorKind)
+            || IsBrougEmptyCourtBehaviorKind(behaviorKind)
             || IsBoneboundEchoModeBehaviorKind(behaviorKind)
             || IsBoneboundEchoStasisBehaviorKind(behaviorKind)
             || IsLanathelStanceBehaviorKind(behaviorKind);
@@ -5106,11 +5840,14 @@ namespace WmSpells
         if (!player)
             return SPELL_FAILED_CASTER_DEAD;
 
-        if (!IsPlayerAllowed(player) || !gConfig.boneboundServantEnabled)
+        if (!IsPlayerAllowed(player))
             return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
 
         std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(shellSpellId);
         if (!behaviorRecord.has_value())
+            return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+        if (IsBoneboundBehaviorKind(behaviorRecord->behaviorKind) && !gConfig.boneboundServantEnabled)
             return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
 
         if (IsBoneboundEchoStasisBehaviorKind(behaviorRecord->behaviorKind))
@@ -5206,7 +5943,49 @@ namespace WmSpells
             return SPELL_CAST_OK;
         }
 
+        if (behaviorRecord->behaviorKind == "broug_cloud_step_v1")
+        {
+            uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+            auto stateIt = gBrougLightnessByPlayer.find(playerGuid);
+            BrougLightnessRuntimeState const* previousState = stateIt != gBrougLightnessByPlayer.end() ? &stateIt->second : nullptr;
+            std::optional<BrougLightnessRuntimeState> loaded = LoadActiveBrougLightnessState(player, previousState);
+            if (!loaded.has_value() || !loaded->hasCloudStep)
+                return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+            gBrougLightnessByPlayer[playerGuid] = *loaded;
+            BrougLightnessRuntimeState const& state = gBrougLightnessByPlayer[playerGuid];
+            uint64 nowMs = BrougNowMs();
+            if (state.cloudStepCooldownUntilMs > nowMs)
+                return SPELL_FAILED_NOT_READY;
+            if (state.cloudStep.energyCost > 0 && player->GetPower(POWER_ENERGY) < state.cloudStep.energyCost)
+                return SPELL_FAILED_NO_POWER;
+            if (player->HasUnitState(UNIT_STATE_ROOT) || player->HasUnitState(UNIT_STATE_STUNNED) || player->HasUnitState(UNIT_STATE_CONTROLLED))
+                return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+
+            Unit* target = SelectBrougCloudStepTarget(player, state.cloudStep, explicitTarget);
+            if (!target)
+                return SPELL_FAILED_BAD_TARGETS;
+
+            Position landing;
+            return ResolveBrougCloudStepLanding(player, target, state.cloudStep, landing)
+                ? SPELL_CAST_OK
+                : SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+        }
+
+        if (behaviorRecord->behaviorKind == "broug_qi_reversal_v1")
+        {
+            uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+            BrougEmptyCourtRuntimeState* state = EnsureBrougEmptyCourtState(player, playerGuid);
+            return state && state->hasQiReversal ? SPELL_CAST_OK : SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+        }
+
         if (IsBrougGuardBehaviorKind(behaviorRecord->behaviorKind))
+            return SPELL_CAST_OK;
+
+        if (IsBrougLightnessBehaviorKind(behaviorRecord->behaviorKind))
+            return SPELL_CAST_OK;
+
+        if (IsBrougEmptyCourtBehaviorKind(behaviorRecord->behaviorKind))
             return SPELL_CAST_OK;
 
         std::optional<BoneboundBehaviorConfig> runtimeConfig = BuildBoneboundBehaviorConfig(*behaviorRecord, true);
@@ -5523,6 +6302,165 @@ namespace WmSpells
         return {true, "broug_deflect_window_open"};
     }
 
+    BehaviorExecutionResult ExecuteBrougCloudStep(Player* player, uint32 shellSpellId, Unit* explicitTarget)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougLightnessByPlayer.find(playerGuid);
+        BrougLightnessRuntimeState const* previousState = stateIt != gBrougLightnessByPlayer.end() ? &stateIt->second : nullptr;
+        std::optional<BrougLightnessRuntimeState> loaded = LoadActiveBrougLightnessState(player, previousState);
+        if (!loaded.has_value() || !loaded->hasCloudStep)
+            return {false, "broug_cloud_step_not_granted"};
+
+        gBrougLightnessByPlayer[playerGuid] = *loaded;
+        BrougLightnessRuntimeState& state = gBrougLightnessByPlayer[playerGuid];
+        if (state.cloudStep.shellSpellId != shellSpellId)
+            return {false, "broug_cloud_step_shell_mismatch"};
+
+        uint64 nowMs = BrougNowMs();
+        if (state.cloudStepCooldownUntilMs > nowMs)
+            return {false, "broug_cloud_step_not_ready"};
+        if (state.cloudStep.energyCost > 0 && player->GetPower(POWER_ENERGY) < state.cloudStep.energyCost)
+            return {false, "broug_cloud_step_no_power"};
+        if (player->HasUnitState(UNIT_STATE_ROOT) || player->HasUnitState(UNIT_STATE_STUNNED) || player->HasUnitState(UNIT_STATE_CONTROLLED))
+            return {false, "broug_cloud_step_caster_locked"};
+
+        Unit* target = SelectBrougCloudStepTarget(player, state.cloudStep, explicitTarget);
+        if (!target)
+            return {false, "broug_cloud_step_target_required"};
+
+        Position landing;
+        if (!ResolveBrougCloudStepLanding(player, target, state.cloudStep, landing))
+            return {false, "broug_cloud_step_no_landing"};
+
+        if (state.cloudStep.energyCost > 0)
+            player->ModifyPower(POWER_ENERGY, -static_cast<int32>(state.cloudStep.energyCost));
+        state.cloudStepCooldownUntilMs = nowMs + static_cast<uint64>(state.cloudStep.cooldownMs);
+        state.cloudStepKillTargetGuid = target->GetGUID();
+        state.cloudStepKillWindowUntilMs = nowMs + static_cast<uint64>(
+            state.hasSilentMeridian ? state.silentMeridian.killWindowMs : 5000u);
+        state.markedMeridianTargetGuid = target->GetGUID();
+        state.markedMeridianUntilMs = nowMs + static_cast<uint64>(state.cloudStep.markedMeridianDurationMs);
+        uint32 killingIntentDurationMs = ResolveBrougKillingIntentDurationMs(
+            player,
+            playerGuid,
+            state.cloudStep.killingIntentDurationMs);
+
+        PlayBrougCloudStepVisual(player, state.cloudStep.departureVisualSpellId);
+        player->NearTeleportTo(
+            landing.GetPositionX(),
+            landing.GetPositionY(),
+            landing.GetPositionZ(),
+            landing.GetOrientation());
+        player->SetInFront(target);
+        player->Attack(target, true);
+        PlayBrougCloudStepVisual(player, state.cloudStep.arrivalVisualSpellId);
+
+        ApplyBrougTimedVisibleAura(
+            player,
+            player,
+            state.cloudStep.killingIntentSpellId,
+            killingIntentDurationMs);
+        ApplyBrougTimedVisibleAura(
+            player,
+            target,
+            state.cloudStep.markedMeridianSpellId,
+            state.cloudStep.markedMeridianDurationMs);
+
+        return {true, "broug_cloud_step_cast"};
+    }
+
+    uint32 RemoveBrougQiReversalAurasByDispel(Player* player, uint32 dispelType, uint32 maxRemovals)
+    {
+        if (!player || dispelType == DISPEL_NONE || maxRemovals == 0)
+            return 0;
+
+        std::vector<Aura*> aurasToRemove;
+        for (auto const& applied : player->GetAppliedAuras())
+        {
+            AuraApplication* aurApp = applied.second;
+            Aura* aura = aurApp ? aurApp->GetBase() : nullptr;
+            SpellInfo const* spellInfo = aura ? aura->GetSpellInfo() : nullptr;
+            if (!aura || !spellInfo || spellInfo->IsPositive() || spellInfo->Dispel != dispelType)
+                continue;
+
+            aurasToRemove.push_back(aura);
+            if (aurasToRemove.size() >= maxRemovals)
+                break;
+        }
+
+        uint32 removed = 0;
+        for (Aura* aura : aurasToRemove)
+        {
+            if (!aura || aura->IsRemoved())
+                continue;
+            aura->Remove(AURA_REMOVE_BY_DEFAULT);
+            ++removed;
+        }
+        return removed;
+    }
+
+    void ApplyBrougPurgedState(Player* player, BrougEmptyCourtRuntimeState& state, std::unordered_set<uint32> protectedTypes)
+    {
+        if (!player || protectedTypes.empty() || state.qiReversal.purgedStateSpellId == 0 || state.qiReversal.purgedCharges == 0)
+            return;
+
+        uint64 nowMs = BrougNowMs();
+        state.purgedCharges = state.qiReversal.purgedCharges;
+        state.purgedProtectedDispelTypes = std::move(protectedTypes);
+        state.purgedStateUntilMs = nowMs + static_cast<uint64>(state.qiReversal.purgedDurationMs);
+
+        Aura* aura = ApplyBrougTimedVisibleAura(
+            player,
+            player,
+            state.qiReversal.purgedStateSpellId,
+            state.qiReversal.purgedDurationMs);
+        if (aura)
+            aura->SetStackAmount(static_cast<uint8>(std::min<uint32>(state.purgedCharges, 255u)));
+    }
+
+    BehaviorExecutionResult ExecuteBrougQiReversal(Player* player, uint32 shellSpellId)
+    {
+        if (!player)
+            return {false, "player_not_online"};
+        if (!IsPlayerAllowed(player))
+            return {false, "player_not_allowed"};
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        BrougEmptyCourtRuntimeState* state = EnsureBrougEmptyCourtState(player, playerGuid);
+        if (!state || !state->hasQiReversal)
+            return {false, "broug_qi_reversal_not_granted"};
+        if (state->qiReversal.shellSpellId != shellSpellId)
+            return {false, "broug_qi_reversal_shell_mismatch"};
+
+        uint32 removedMagic = RemoveBrougQiReversalAurasByDispel(player, DISPEL_MAGIC, state->qiReversal.maxMagic);
+        uint32 removedPoison = RemoveBrougQiReversalAurasByDispel(player, DISPEL_POISON, state->qiReversal.maxPoison);
+        uint32 removedDisease = RemoveBrougQiReversalAurasByDispel(player, DISPEL_DISEASE, state->qiReversal.maxDisease);
+        uint32 removedTotal = removedMagic + removedPoison + removedDisease;
+
+        std::unordered_set<uint32> protectedTypes;
+        if (removedMagic > 0)
+            protectedTypes.insert(DISPEL_MAGIC);
+        if (removedPoison > 0)
+            protectedTypes.insert(DISPEL_POISON);
+        if (removedDisease > 0)
+            protectedTypes.insert(DISPEL_DISEASE);
+
+        ApplyBrougPurgedState(player, *state, std::move(protectedTypes));
+        if (removedTotal > 0)
+            RecordBrougEmptyCourtCounter(playerGuid, state->qiReversal.counterKey, removedTotal);
+
+        ChatHandler(player->GetSession()).PSendSysMessage(
+            "WM Broug: Qi Reversal cleansed {} harmful aura{}.",
+            removedTotal,
+            removedTotal == 1 ? "" : "s");
+        return {true, removedTotal > 0 ? "broug_qi_reversal_cleansed" : "broug_qi_reversal_no_harmful_auras"};
+    }
+
     BehaviorExecutionResult ExecuteShellBehavior(Player* player, uint32 shellSpellId, bool persistPetFallback, Unit* explicitTarget)
     {
         std::optional<BehaviorRecord> behaviorRecord = LoadBehaviorRecord(shellSpellId);
@@ -5544,10 +6482,28 @@ namespace WmSpells
         if (behaviorRecord->behaviorKind == "broug_skirmisher_shot_v1")
             return ExecuteBrougSkirmisherMark(player, shellSpellId, explicitTarget);
 
+        if (behaviorRecord->behaviorKind == "broug_cloud_step_v1")
+            return ExecuteBrougCloudStep(player, shellSpellId, explicitTarget);
+
+        if (behaviorRecord->behaviorKind == "broug_qi_reversal_v1")
+            return ExecuteBrougQiReversal(player, shellSpellId);
+
         if (IsBrougGuardBehaviorKind(behaviorRecord->behaviorKind))
         {
             MaintainBrougGuard(player, 0);
             return {true, "broug_guard_passive_maintained"};
+        }
+
+        if (IsBrougLightnessBehaviorKind(behaviorRecord->behaviorKind))
+        {
+            MaintainBrougLightness(player, 0);
+            return {true, "broug_lightness_passive_maintained"};
+        }
+
+        if (IsBrougEmptyCourtBehaviorKind(behaviorRecord->behaviorKind))
+        {
+            MaintainBrougEmptyCourt(player, 0);
+            return {true, "broug_empty_court_passive_maintained"};
         }
 
         if (IsBoneboundEchoStasisBehaviorKind(behaviorRecord->behaviorKind))
@@ -6220,6 +7176,182 @@ namespace WmSpells
             state.skirmisherAttackTimerMs = 0;
     }
 
+    void TickBrougLightness(Player* player, uint32 /*diff*/)
+    {
+        if (!player)
+            return;
+
+        uint64 nowMs = BrougNowMs();
+        for (auto it = gBrougLightnessPreserveVulnerableByVictim.begin(); it != gBrougLightnessPreserveVulnerableByVictim.end();)
+        {
+            if (it->second < nowMs)
+                it = gBrougLightnessPreserveVulnerableByVictim.erase(it);
+            else
+                ++it;
+        }
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougLightnessByPlayer.find(playerGuid);
+        if (stateIt == gBrougLightnessByPlayer.end())
+            return;
+
+        if (!IsPlayerAllowed(player))
+        {
+            gBrougLightnessByPlayer.erase(stateIt);
+            return;
+        }
+
+        if (stateIt->second.cloudStepKillWindowUntilMs != 0 && stateIt->second.cloudStepKillWindowUntilMs < nowMs)
+        {
+            stateIt->second.cloudStepKillTargetGuid = ObjectGuid::Empty;
+            stateIt->second.cloudStepKillWindowUntilMs = 0;
+        }
+        if (stateIt->second.markedMeridianUntilMs != 0 && stateIt->second.markedMeridianUntilMs < nowMs)
+            ClearBrougMarkedMeridianState(stateIt->second);
+    }
+
+    void MaintainBrougLightness(Player* player, uint32 diff)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        if (!IsPlayerAllowed(player))
+        {
+            gBrougLightnessByPlayer.erase(playerGuid);
+            return;
+        }
+
+        BrougLightnessRuntimeState const* previousState = nullptr;
+        if (auto stateIt = gBrougLightnessByPlayer.find(playerGuid); stateIt != gBrougLightnessByPlayer.end())
+            previousState = &stateIt->second;
+
+        std::optional<BrougLightnessRuntimeState> loaded = LoadActiveBrougLightnessState(player, previousState);
+        if (!loaded.has_value())
+        {
+            gBrougLightnessByPlayer.erase(playerGuid);
+            return;
+        }
+
+        gBrougLightnessByPlayer[playerGuid] = *loaded;
+        TickBrougLightness(player, diff);
+    }
+
+    void ClearBrougPurgedState(Player* player, BrougEmptyCourtRuntimeState& state)
+    {
+        state.purgedCharges = 0;
+        state.purgedStateUntilMs = 0;
+        state.purgedProtectedDispelTypes.clear();
+        if (player && state.qiReversal.purgedStateSpellId != 0)
+            player->RemoveAurasDueToSpell(state.qiReversal.purgedStateSpellId);
+    }
+
+    bool ApplyBrougDomainPulse(Player* player, BrougEmptyCourtRuntimeState& state, uint32 playerGuid)
+    {
+        if (!player || !state.hasDomain || state.domain.suppressedSpellId == 0 || !player->IsAlive())
+            return false;
+
+        Aura* intent = player->GetAura(state.domain.killingIntentSpellId, player->GetGUID());
+        if (!intent || intent->GetDuration() == 0)
+            return false;
+
+        std::list<Unit*> nearby;
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(player, player, state.domain.radiusYards);
+        Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(player, nearby, check);
+        Cell::VisitObjects(player, searcher, state.domain.radiusYards);
+
+        uint32 applied = 0;
+        for (Unit* target : nearby)
+        {
+            if (!target || target == player || !target->IsAlive() || player->IsFriendlyTo(target))
+                continue;
+            if (!player->IsWithinLOSInMap(target))
+                continue;
+
+            if (ApplyBrougTimedVisibleAura(
+                    player,
+                    target,
+                    state.domain.suppressedSpellId,
+                    state.domain.suppressedDurationMs))
+                ++applied;
+        }
+
+        if (applied > 0)
+            RecordBrougEmptyCourtCounter(playerGuid, state.domain.pulseCounterKey, 1);
+        return applied > 0;
+    }
+
+    void TickBrougEmptyCourt(Player* player, uint32 diff)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougEmptyCourtByPlayer.find(playerGuid);
+        if (stateIt == gBrougEmptyCourtByPlayer.end())
+            return;
+
+        if (!IsPlayerAllowed(player) || !player->IsAlive())
+        {
+            ClearBrougPurgedState(player, stateIt->second);
+            gBrougEmptyCourtByPlayer.erase(stateIt);
+            return;
+        }
+
+        BrougEmptyCourtRuntimeState& state = stateIt->second;
+        uint64 nowMs = BrougNowMs();
+        if (state.purgedStateUntilMs != 0 && state.purgedStateUntilMs < nowMs)
+            ClearBrougPurgedState(player, state);
+        else if (state.purgedCharges > 0
+            && state.qiReversal.purgedStateSpellId != 0
+            && !player->HasAura(state.qiReversal.purgedStateSpellId))
+        {
+            ClearBrougPurgedState(player, state);
+        }
+
+        if (!state.hasDomain || !player->HasAura(state.domain.killingIntentSpellId))
+        {
+            state.domainPulseTimerMs = 0;
+            return;
+        }
+
+        if (state.domainPulseTimerMs > diff)
+        {
+            state.domainPulseTimerMs -= diff;
+            return;
+        }
+
+        ApplyBrougDomainPulse(player, state, playerGuid);
+        state.domainPulseTimerMs = state.domain.pulseIntervalMs;
+    }
+
+    void MaintainBrougEmptyCourt(Player* player, uint32 diff)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        if (!IsPlayerAllowed(player))
+        {
+            gBrougEmptyCourtByPlayer.erase(playerGuid);
+            return;
+        }
+
+        BrougEmptyCourtRuntimeState const* previousState = nullptr;
+        if (auto stateIt = gBrougEmptyCourtByPlayer.find(playerGuid); stateIt != gBrougEmptyCourtByPlayer.end())
+            previousState = &stateIt->second;
+
+        std::optional<BrougEmptyCourtRuntimeState> loaded = LoadActiveBrougEmptyCourtState(player, previousState);
+        if (!loaded.has_value())
+        {
+            gBrougEmptyCourtByPlayer.erase(playerGuid);
+            return;
+        }
+
+        gBrougEmptyCourtByPlayer[playerGuid] = *loaded;
+        TickBrougEmptyCourt(player, diff);
+    }
+
     void ForgetIntellectBlockPassive(Player* player)
     {
         if (!player)
@@ -6239,6 +7371,26 @@ namespace WmSpells
             ClearBrougDeflectWindow(player, stateIt->second);
         gBrougCounterStanceToggleOffByPlayer.erase(playerGuid);
         gBrougGuardByPlayer.erase(playerGuid);
+    }
+
+    void ForgetBrougLightness(Player* player)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        gBrougLightnessByPlayer.erase(playerGuid);
+    }
+
+    void ForgetBrougEmptyCourt(Player* player)
+    {
+        if (!player)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        if (auto stateIt = gBrougEmptyCourtByPlayer.find(playerGuid); stateIt != gBrougEmptyCourtByPlayer.end())
+            ClearBrougPurgedState(player, stateIt->second);
+        gBrougEmptyCourtByPlayer.erase(playerGuid);
     }
 
     bool CanCompleteBrougGuardQuest(Player* player, uint32 questId, std::string* reason)
@@ -6350,6 +7502,228 @@ namespace WmSpells
 
         player->SaveToDB(false, false);
         MaintainBrougGuard(player, 0);
+    }
+
+    bool CanCompleteBrougLightnessQuest(Player* player, uint32 questId, std::string* reason)
+    {
+        if (questId != BROUG_LIGHTNESS_STEPS_QUEST_ID && questId != BROUG_LIGHTNESS_NO_FOOTFALL_QUEST_ID)
+            return true;
+
+        if (!player)
+        {
+            if (reason)
+                *reason = "player_not_online";
+            return false;
+        }
+
+        if (!IsPlayerAllowed(player))
+        {
+            if (reason)
+                *reason = "player_not_allowed";
+            return false;
+        }
+
+        if (questId == BROUG_LIGHTNESS_STEPS_QUEST_ID)
+        {
+            if (reason)
+                *reason = "ok";
+            return true;
+        }
+
+        if (!BrougLightnessCounterTableExists())
+        {
+            if (reason)
+                *reason = "lightness_counter_table_missing";
+            return false;
+        }
+
+        QueryResult result = WorldDatabase.Query(
+            "SELECT CounterValue FROM wm_broug_lightness_counter "
+            "WHERE PlayerGUID = {} AND CounterKey = {} LIMIT 1",
+            static_cast<uint32>(player->GetGUID().GetCounter()),
+            SqlString(BROUG_CLOUD_STEP_STRIKE_COUNTER_KEY));
+        uint64 counterValue = result ? result->Fetch()[0].Get<uint64>() : 0;
+        if (counterValue < 20)
+        {
+            if (reason)
+                *reason = std::string("counter_below_required:") + BROUG_CLOUD_STEP_STRIKE_COUNTER_KEY + "=" + std::to_string(counterValue);
+            return false;
+        }
+
+        if (reason)
+            *reason = "ok";
+        return true;
+    }
+
+    void HandleBrougLightnessQuestComplete(Player* player, uint32 questId)
+    {
+        if (!player || (questId != BROUG_LIGHTNESS_STEPS_QUEST_ID && questId != BROUG_LIGHTNESS_NO_FOOTFALL_QUEST_ID))
+            return;
+
+        if (!IsPlayerAllowed(player))
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+
+        struct BrougLightnessRewardShell
+        {
+            uint32 shellSpellId;
+            char const* behaviorKind;
+            char const* capability;
+        };
+
+        std::vector<BrougLightnessRewardShell> rewards;
+        if (questId == BROUG_LIGHTNESS_STEPS_QUEST_ID)
+            rewards.push_back({BROUG_CLOUD_STEP_SHELL_ID, "broug_cloud_step_v1", "cloud_step"});
+        else
+            rewards.push_back({BROUG_SILENT_MERIDIAN_SHELL_ID, "broug_silent_meridian_v1", "silent_meridian"});
+
+        for (BrougLightnessRewardShell const& reward : rewards)
+        {
+            if (!player->HasSpell(reward.shellSpellId))
+                player->learnSpell(reward.shellSpellId, false);
+
+            std::string metadata = "{\"capability\":\"" + std::string(reward.capability)
+                + "\",\"behavior_kind\":\"" + reward.behaviorKind
+                + "\",\"source\":\"broug_lightness_assassin_v1\",\"status\":\"PARTIAL\"}";
+            WorldDatabase.Execute(
+                "UPDATE wm_spell_grant "
+                "SET GrantKind = 'broug_lightness_reward', SourceQuestID = {}, Author = 'mod-wm-spells', MetadataJSON = {} "
+                "WHERE PlayerGUID = {} AND ShellSpellID = {} AND RevokedAt IS NULL",
+                questId,
+                SqlString(metadata),
+                playerGuid,
+                reward.shellSpellId);
+            WorldDatabase.Execute(
+                "INSERT INTO wm_spell_grant "
+                "(PlayerGUID, ShellSpellID, GrantKind, SourceQuestID, Author, MetadataJSON) "
+                "SELECT {}, {}, 'broug_lightness_reward', {}, 'mod-wm-spells', {} "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM wm_spell_grant "
+                "WHERE PlayerGUID = {} AND ShellSpellID = {} AND RevokedAt IS NULL"
+                ")",
+                playerGuid,
+                reward.shellSpellId,
+                questId,
+                SqlString(metadata),
+                playerGuid,
+                reward.shellSpellId);
+        }
+
+        player->SaveToDB(false, false);
+        MaintainBrougLightness(player, 0);
+    }
+
+    bool CanCompleteBrougEmptyCourtQuest(Player* player, uint32 questId, std::string* reason)
+    {
+        if (questId < BROUG_EMPTY_COURT_WEIGHT_QUEST_ID || questId > BROUG_EMPTY_COURT_DOMAIN_UNSEALED_QUEST_ID)
+            return true;
+
+        if (!player)
+        {
+            if (reason)
+                *reason = "player_not_online";
+            return false;
+        }
+
+        if (!IsPlayerAllowed(player))
+        {
+            if (reason)
+                *reason = "player_not_allowed";
+            return false;
+        }
+
+        if (player->GetQuestStatus(BROUG_LIGHTNESS_NO_FOOTFALL_QUEST_ID) != QUEST_STATUS_REWARDED)
+        {
+            if (reason)
+                *reason = "lightness_foundation_quest_missing";
+            return false;
+        }
+
+        if (!player->HasSpell(BROUG_CLOUD_STEP_SHELL_ID) || !player->HasSpell(BROUG_SILENT_MERIDIAN_SHELL_ID))
+        {
+            if (reason)
+                *reason = "lightness_foundation_spells_missing";
+            return false;
+        }
+
+        if (reason)
+            *reason = "ok";
+        return true;
+    }
+
+    void HandleBrougEmptyCourtQuestComplete(Player* player, uint32 questId)
+    {
+        if (!player || questId < BROUG_EMPTY_COURT_WEIGHT_QUEST_ID || questId > BROUG_EMPTY_COURT_DOMAIN_UNSEALED_QUEST_ID)
+            return;
+
+        if (!IsPlayerAllowed(player))
+            return;
+
+        struct BrougEmptyCourtRewardShell
+        {
+            uint32 shellSpellId;
+            char const* behaviorKind;
+            char const* capability;
+        };
+
+        std::vector<BrougEmptyCourtRewardShell> rewards;
+        switch (questId)
+        {
+            case BROUG_EMPTY_COURT_STILLING_QUEST_ID:
+                rewards.push_back({BROUG_QI_REVERSAL_SHELL_ID, "broug_qi_reversal_v1", "qi_reversal"});
+                break;
+            case BROUG_EMPTY_COURT_NINETY_EIGHT_QUEST_ID:
+                rewards.push_back({BROUG_PREDATORS_STRIKE_SHELL_ID, "broug_predators_strike_v1", "predators_strike"});
+                break;
+            case BROUG_EMPTY_COURT_ROOM_QUEST_ID:
+                rewards.push_back({BROUG_KILLING_INTENT_DOMAIN_SHELL_ID, "broug_killing_intent_domain_v1", "killing_intent_domain"});
+                break;
+            case BROUG_EMPTY_COURT_DOMAIN_UNSEALED_QUEST_ID:
+                rewards.push_back({BROUG_VITALITY_DRAIN_SHELL_ID, "broug_vitality_drain_v1", "vitality_drain"});
+                break;
+            default:
+                break;
+        }
+
+        if (rewards.empty())
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        for (BrougEmptyCourtRewardShell const& reward : rewards)
+        {
+            if (!player->HasSpell(reward.shellSpellId))
+                player->learnSpell(reward.shellSpellId, false);
+
+            std::string metadata = "{\"capability\":\"" + std::string(reward.capability)
+                + "\",\"behavior_kind\":\"" + reward.behaviorKind
+                + "\",\"source\":\"broug_empty_court_v2\",\"status\":\"PARTIAL\"}";
+            WorldDatabase.Execute(
+                "UPDATE wm_spell_grant "
+                "SET GrantKind = 'broug_empty_court_reward', SourceQuestID = {}, Author = 'mod-wm-spells', MetadataJSON = {} "
+                "WHERE PlayerGUID = {} AND ShellSpellID = {} AND RevokedAt IS NULL",
+                questId,
+                SqlString(metadata),
+                playerGuid,
+                reward.shellSpellId);
+            WorldDatabase.Execute(
+                "INSERT INTO wm_spell_grant "
+                "(PlayerGUID, ShellSpellID, GrantKind, SourceQuestID, Author, MetadataJSON) "
+                "SELECT {}, {}, 'broug_empty_court_reward', {}, 'mod-wm-spells', {} "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM wm_spell_grant "
+                "WHERE PlayerGUID = {} AND ShellSpellID = {} AND RevokedAt IS NULL"
+                ")",
+                playerGuid,
+                reward.shellSpellId,
+                questId,
+                SqlString(metadata),
+                playerGuid,
+                reward.shellSpellId);
+        }
+
+        player->SaveToDB(false, false);
+        MaintainBrougEmptyCourt(player, 0);
     }
 
     void MaintainNightWatchersLens(Player* player, uint32 /*diff*/)
@@ -6475,6 +7849,196 @@ namespace WmSpells
         ApplyNightWatchersLensSpellFocus(attacker->ToPlayer(), victim, damage, spellInfo);
     }
 
+    void HandleBrougLightnessMeleeDamage(Unit* attacker, Unit* victim, uint32& damage)
+    {
+        if (!attacker || !victim || damage == 0)
+            return;
+
+        Player* player = attacker->ToPlayer();
+        if (!player)
+            return;
+
+        TryConsumeBrougMarkedMeridian(player, victim, damage);
+    }
+
+    void HandleBrougLightnessSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo)
+    {
+        if (!attacker || !victim || !spellInfo || damage <= 0 || spellInfo->Id != BROUG_CLOUD_STEP_SHELL_ID)
+            return;
+
+        Player* player = attacker->ToPlayer();
+        if (!player)
+            return;
+
+        uint32 unsignedDamage = static_cast<uint32>(damage);
+        if (TryConsumeBrougMarkedMeridian(player, victim, unsignedDamage))
+            damage = static_cast<int32>(std::min<uint32>(unsignedDamage, static_cast<uint32>(std::numeric_limits<int32>::max())));
+    }
+
+    void HandleBrougLightnessCreatureKill(Player* player, Creature* killed)
+    {
+        if (!player || !killed || !IsPlayerAllowed(player))
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougLightnessByPlayer.find(playerGuid);
+        if (stateIt == gBrougLightnessByPlayer.end() || !stateIt->second.hasSilentMeridian)
+            return;
+
+        BrougLightnessRuntimeState& state = stateIt->second;
+        uint64 nowMs = BrougNowMs();
+        if (state.cloudStepKillTargetGuid == ObjectGuid::Empty
+            || state.cloudStepKillTargetGuid != killed->GetGUID()
+            || state.cloudStepKillWindowUntilMs < nowMs)
+            return;
+
+        WmSpells::BrougSilentMeridianConfig const& config = state.silentMeridian;
+        if (config.energyRestore > 0)
+            player->ModifyPower(POWER_ENERGY, static_cast<int32>(config.energyRestore));
+        if (config.cooldownReductionMs > 0 && state.cloudStepCooldownUntilMs > nowMs)
+        {
+            uint64 remainingMs = state.cloudStepCooldownUntilMs - nowMs;
+            uint64 reductionMs = std::min<uint64>(remainingMs, config.cooldownReductionMs);
+            state.cloudStepCooldownUntilMs -= reductionMs;
+
+            uint32 clientDelayMs = player->GetSpellCooldownDelay(state.cloudStep.shellSpellId);
+            uint32 clientReductionMs = std::min<uint32>(
+                clientDelayMs,
+                static_cast<uint32>(std::min<uint64>(reductionMs, static_cast<uint64>(std::numeric_limits<uint32>::max()))));
+            if (clientReductionMs > 0)
+                player->ModifySpellCooldown(state.cloudStep.shellSpellId, -static_cast<int32>(clientReductionMs));
+        }
+        RecordBrougLightnessCounter(playerGuid, config.counterKey, 1);
+        state.cloudStepKillTargetGuid = ObjectGuid::Empty;
+        state.cloudStepKillWindowUntilMs = 0;
+    }
+
+    bool IsBrougSilentMeridianKillWindowActive(Player* player, Creature* killed, uint64 nowMs)
+    {
+        if (!player || !killed)
+            return false;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougLightnessByPlayer.find(playerGuid);
+        if (stateIt == gBrougLightnessByPlayer.end() || !stateIt->second.hasSilentMeridian)
+            return false;
+
+        BrougLightnessRuntimeState const& state = stateIt->second;
+        return state.cloudStepKillTargetGuid != ObjectGuid::Empty
+            && state.cloudStepKillTargetGuid == killed->GetGUID()
+            && state.cloudStepKillWindowUntilMs >= nowMs;
+    }
+
+    void ApplyBrougSuppressedIncomingPressure(Unit* attacker, Player* player, uint32 playerGuid, uint32& damage)
+    {
+        if (!attacker || !player || playerGuid == 0 || damage == 0)
+            return;
+
+        auto stateIt = gBrougEmptyCourtByPlayer.find(playerGuid);
+        BrougEmptyCourtRuntimeState* state = stateIt != gBrougEmptyCourtByPlayer.end()
+            ? &stateIt->second
+            : EnsureBrougEmptyCourtState(player, playerGuid);
+        if (!state || !state->hasDomain || state->domain.suppressedDamagePressurePct == 0)
+            return;
+
+        Aura* suppressed = attacker->GetAura(state->domain.suppressedSpellId, player->GetGUID());
+        if (!suppressed || suppressed->GetDuration() == 0)
+            return;
+
+        uint64 reduced = static_cast<uint64>(damage)
+            * static_cast<uint64>(std::min<uint32>(state->domain.suppressedDamagePressurePct, 90u))
+            / 100u;
+        damage -= static_cast<uint32>(std::min<uint64>(damage, reduced));
+    }
+
+    void HandleBrougEmptyCourtMeleeDamage(Unit* attacker, Unit* victim, uint32& damage)
+    {
+        Player* player = victim ? victim->ToPlayer() : nullptr;
+        if (!player || !IsPlayerAllowed(player))
+            return;
+
+        ApplyBrougSuppressedIncomingPressure(
+            attacker,
+            player,
+            static_cast<uint32>(player->GetGUID().GetCounter()),
+            damage);
+    }
+
+    void HandleBrougEmptyCourtSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* /*spellInfo*/)
+    {
+        if (damage <= 0)
+            return;
+
+        Player* player = victim ? victim->ToPlayer() : nullptr;
+        if (!player || !IsPlayerAllowed(player))
+            return;
+
+        uint32 unsignedDamage = static_cast<uint32>(damage);
+        ApplyBrougSuppressedIncomingPressure(
+            attacker,
+            player,
+            static_cast<uint32>(player->GetGUID().GetCounter()),
+            unsignedDamage);
+        damage = static_cast<int32>(std::min<uint32>(unsignedDamage, static_cast<uint32>(std::numeric_limits<int32>::max())));
+    }
+
+    void ExtendBrougKillingIntentFromSuppressedDeath(Player* player, Creature* killed, uint32 playerGuid, BrougEmptyCourtRuntimeState& state)
+    {
+        if (!player || !killed || !state.hasDomain || state.domain.deathExtensionMs == 0)
+            return;
+
+        Aura* suppressed = killed->GetAura(state.domain.suppressedSpellId, player->GetGUID());
+        if (!suppressed || suppressed->GetDuration() == 0)
+            return;
+
+        Aura* intent = player->GetAura(state.domain.killingIntentSpellId, player->GetGUID());
+        if (!intent || intent->GetDuration() == 0)
+            return;
+
+        int64 currentDuration = std::max<int32>(0, intent->GetDuration());
+        int64 extension = static_cast<int64>(state.domain.deathExtensionMs);
+        int32 nextDuration = static_cast<int32>(std::min<int64>(currentDuration + extension, std::numeric_limits<int32>::max()));
+        int32 nextMaxDuration = std::max<int32>(nextDuration, intent->GetMaxDuration());
+        intent->SetMaxDuration(nextMaxDuration);
+        intent->SetDuration(nextDuration);
+        RecordBrougEmptyCourtCounter(playerGuid, state.domain.deathExtendCounterKey, 1);
+    }
+
+    void HandleBrougEmptyCourtCreatureKill(Player* player, Creature* killed)
+    {
+        if (!player || !killed || !IsPlayerAllowed(player))
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougEmptyCourtByPlayer.find(playerGuid);
+        BrougEmptyCourtRuntimeState* state = stateIt != gBrougEmptyCourtByPlayer.end()
+            ? &stateIt->second
+            : EnsureBrougEmptyCourtState(player, playerGuid);
+        if (!state)
+            return;
+
+        ExtendBrougKillingIntentFromSuppressedDeath(player, killed, playerGuid, *state);
+
+        if (!state->hasVitalityDrain)
+            return;
+
+        uint64 nowMs = BrougNowMs();
+        bool inSilentWindow = IsBrougSilentMeridianKillWindowActive(player, killed, nowMs);
+        uint32 healPct = inSilentWindow
+            ? state->vitalityDrain.silentWindowKillHealPctMaxHealth
+            : state->vitalityDrain.killHealPctMaxHealth;
+        if (healPct > 0)
+        {
+            uint64 healAmount = static_cast<uint64>(player->GetMaxHealth()) * static_cast<uint64>(healPct) / 100u;
+            ApplyBrougHeal(
+                player,
+                static_cast<uint32>(std::min<uint64>(healAmount, std::numeric_limits<uint32>::max())));
+        }
+        if (inSilentWindow && state->vitalityDrain.silentWindowEnergyBonus > 0)
+            player->ModifyPower(POWER_ENERGY, static_cast<int32>(state->vitalityDrain.silentWindowEnergyBonus));
+        RecordBrougEmptyCourtCounter(playerGuid, state->vitalityDrain.counterKey, 1);
+    }
+
     void HandleBrougGuardMeleeDamage(Unit* attacker, Unit* victim, uint32& damage)
     {
         if (TryBrougDeflect(attacker, victim, damage))
@@ -6584,6 +8148,46 @@ namespace WmSpells
 
         CaptureBrougDeflectEvent(player, playerGuid, stateIt->second, caster);
         aura->Remove(AURA_REMOVE_BY_DEFAULT);
+    }
+
+    void HandleBrougEmptyCourtAuraApply(Unit* unit, Aura* aura)
+    {
+        if (!unit || !aura)
+            return;
+        if (aura->IsRemoved())
+            return;
+
+        Player* player = unit->ToPlayer();
+        if (!player || !IsPlayerAllowed(player))
+            return;
+
+        SpellInfo const* spellInfo = aura->GetSpellInfo();
+        if (!spellInfo || spellInfo->IsPositive() || spellInfo->Dispel == DISPEL_NONE)
+            return;
+
+        uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        auto stateIt = gBrougEmptyCourtByPlayer.find(playerGuid);
+        if (stateIt == gBrougEmptyCourtByPlayer.end())
+            return;
+
+        BrougEmptyCourtRuntimeState& state = stateIt->second;
+        if (state.purgedCharges == 0 || state.purgedStateUntilMs < BrougNowMs())
+            return;
+        if (state.purgedProtectedDispelTypes.find(spellInfo->Dispel) == state.purgedProtectedDispelTypes.end())
+            return;
+
+        aura->Remove(AURA_REMOVE_BY_DEFAULT);
+        --state.purgedCharges;
+        Aura* purged = state.qiReversal.purgedStateSpellId != 0
+            ? player->GetAura(state.qiReversal.purgedStateSpellId, player->GetGUID())
+            : nullptr;
+        if (state.purgedCharges == 0)
+        {
+            ClearBrougPurgedState(player, state);
+            return;
+        }
+        if (purged)
+            purged->SetStackAmount(static_cast<uint8>(std::min<uint32>(state.purgedCharges, 255u)));
     }
 
     void HandleBrougGuardAuraRemove(Unit* unit, AuraApplication* aurApp, AuraRemoveMode /*mode*/)

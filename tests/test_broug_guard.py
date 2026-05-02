@@ -44,11 +44,13 @@ class BrougGuardTests(unittest.TestCase):
         )
         start = repo_root.joinpath("scripts", "bridge_lab", "Start-BridgeLabAll.ps1").read_text(encoding="utf-8")
 
+        self.assertIn('[string]$WmBridgePlayerGuidAllowList = "5406,5405"', configure)
         self.assertIn('[string]$WmSpellsPlayerGuidAllowList = "5406,5405"', configure)
         self.assertIn('[string]$WmSpellsPlayerGuidAllowList = ""', start)
         self.assertIn("$effectiveWmSpellsAllowList = $WmSpellsPlayerGuidAllowList", start)
         self.assertIn('if ($PlayerGuid -ne 5405)', start)
         self.assertIn('$effectiveWmSpellsAllowList = "$effectiveWmSpellsAllowList,5405"', start)
+        self.assertIn('"-WmBridgePlayerGuidAllowList", $effectiveWmSpellsAllowList', start)
         self.assertIn('"-WmSpellsPlayerGuidAllowList", $effectiveWmSpellsAllowList', start)
 
     def test_character_grant_sql_targets_one_guid_and_shells(self) -> None:

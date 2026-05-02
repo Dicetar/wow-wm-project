@@ -4,6 +4,7 @@ param(
     [int]$WorldServerPort = 8095,
     [int]$SoapPort = 7879,
     [string]$DataDir = "D:\WOW\Azerothcore_WoTLK_Rebuild\run\data",
+    [string]$WmBridgePlayerGuidAllowList = "5406,5405",
     [string]$WmSpellsPlayerGuidAllowList = "5406,5405",
     [switch]$UpdatePlayerbotsDatabaseInfo
 )
@@ -161,7 +162,7 @@ if ($UpdatePlayerbotsDatabaseInfo.IsPresent -and (Test-Path $playerbotsConfig)) 
 }
 
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.Enable" -Value "1"
-Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.PlayerGuidAllowList" -Value """"""
+Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.PlayerGuidAllowList" -Value """$WmBridgePlayerGuidAllowList"""
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.DbControl.Enable" -Value "1"
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.ActionQueue.Enable" -Value "1"
 Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.Emit.Aura" -Value "1"

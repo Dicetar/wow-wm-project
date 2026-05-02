@@ -45,6 +45,8 @@ The repo uses a Diataxis-style split:
 - [Native Bridge Action Bus](native-bridge-action-bus.md)
 - [Spell Shell Bank V1](SPELL_SHELL_BANK_V1.md)
 - [Broug Guard Pipeline V1](BROUG_GUARD_PIPELINE_V1.md) - Broug-scoped parry-anything, moving-ranged, Deflect, and Riposte progression lane
+- [Broug Lightness Assassin V1](BROUG_LIGHTNESS_ASSASSIN_V1.md) - Broug's murim-style qinggong movement, marked-meridian followups, and Silent Meridian quest lane
+- [Broug Empty Court V2](BROUG_EMPTY_COURT_V2.md) - Broug's First Peak continuation: room pressure, Qi Reversal cleanse, Predator sustain, and Vitality Drain
 - [Working Strategies V1](WORKING_STRATEGIES_V1.md) - reusable quest, ability, item, scene, marker, and proof patterns that survived live feature work
 
 ## Postmortems / Retired Paths
@@ -60,6 +62,7 @@ The repo uses a Diataxis-style split:
 - [Personal Journey Spine V1](CHARACTER_EXCLUSIVITY_V1.md) - per-character arcs, unlocks, reward instances, steering notes, and prompt queue
 - [Arc + Reward Factory V1](ARC_REWARD_FACTORY_V1.md) - first product-facing personal arc publisher using fresh quest slots and visible managed rewards
 - [Content Release Pipeline V1](CONTENT_RELEASE_PIPELINE_V1.md) - strict base schemas and release gates for quests, abilities, items, scenes, spawns, and environment effects
+- [Content Required Fields](CONTENT_REQUIRED_FIELDS.md) - mandatory quest, item, ability, DBC, and WM aura-isolation fields before player-facing deploy
 - [Content Workbench V1](CONTENT_WORKBENCH_V1.md)
 - [Journal Layer V1 / V2](JOURNAL_LAYER_V1.md) - current subject-memory reader and inspect status
 - [Prompt Package V1](PROMPT_PACKAGE_V1.md) - historical prompt-package reference; check status header before trusting

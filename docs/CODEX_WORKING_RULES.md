@@ -70,6 +70,10 @@ Before changing native code for spells, creatures, pets, or runtime hooks, write
 
 If you cannot state those assumptions, do not implement yet.
 
+### 4. Check required content fields before deploy
+
+Before handing any player-facing quest, item, or ability to the user, apply [Content Required Fields](CONTENT_REQUIRED_FIELDS.md). Missing visible object models, missing creature model rows, vague quest objective text, inherited spell range, stale client/server DBC, or missing native allowlist scope are release blockers, not polish.
+
 ## Architecture protocol
 
 ### 0. Never reuse dirty visible IDs

@@ -808,7 +808,12 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         for script in (configure_script, deploy_script):
+            self.assertIn('[string]$WmBridgePlayerGuidAllowList = "5406,5405"', script)
             self.assertIn('[string]$WmSpellsPlayerGuidAllowList = "5406,5405"', script)
+            self.assertIn(
+                'Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.PlayerGuidAllowList" -Value """$WmBridgePlayerGuidAllowList"""',
+                script,
+            )
             self.assertIn(
                 'Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """$WmSpellsPlayerGuidAllowList"""',
                 script,

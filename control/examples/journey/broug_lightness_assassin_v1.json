@@ -1,0 +1,97 @@
+{
+  "schema_version": "wm.character_journey.seed.v1",
+  "player_guid": 5405,
+  "profile": {
+    "character_name": "Broug",
+    "wm_persona": "lightness_assassin_candidate",
+    "tone": "direct",
+    "preferred_themes": [
+      "murim lightness",
+      "rogue movement",
+      "assassin timing",
+      "visible shell powers"
+    ],
+    "avoided_themes": [
+      "more parry expansion",
+      "stock spell carriers",
+      "invisible-only passives"
+    ]
+  },
+  "arc_states": [
+    {
+      "arc_key": "broug_lightness_assassin_v1",
+      "stage_key": "footwork_trial",
+      "status": "active",
+      "branch_key": "lightness_assassin",
+      "summary": "Broug's completed guard kit becomes foundation. His next identity is a murim-style lightness assassin using qinggong movement, killing intent, afterimage timing, and thrown-blade followups."
+    }
+  ],
+  "unlocks": [
+    {
+      "unlock_kind": "shell_spell",
+      "unlock_id": 946202,
+      "source_arc_key": "broug_lightness_assassin_v1",
+      "source_quest_id": 910182,
+      "grant_method": "shell_grant",
+      "bot_eligible": false
+    },
+    {
+      "unlock_kind": "shell_spell",
+      "unlock_id": 946803,
+      "source_arc_key": "broug_lightness_assassin_v1",
+      "source_quest_id": 910183,
+      "grant_method": "shell_grant",
+      "bot_eligible": false
+    }
+  ],
+  "reward_instances": [
+    {
+      "reward_kind": "shell_spell",
+      "template_id": 946202,
+      "source_arc_key": "broug_lightness_assassin_v1",
+      "source_quest_id": 910182,
+      "is_equipped_gate": false
+    },
+    {
+      "reward_kind": "shell_spell",
+      "template_id": 946803,
+      "source_arc_key": "broug_lightness_assassin_v1",
+      "source_quest_id": 910183,
+      "is_equipped_gate": false
+    }
+  ],
+  "conversation_steering": [
+    {
+      "steering_key": "broug_lightness_over_guard",
+      "steering_kind": "operator_direction",
+      "body": "Treat Broug's old guard kit as completed foundation. Do not add new parry mechanics in the lightness V1 arc.",
+      "priority": 100,
+      "source": "operator",
+      "is_active": true,
+      "metadata": {
+        "arc_key": "broug_lightness_assassin_v1",
+        "stage_key": "footwork_trial"
+      }
+    },
+    {
+      "steering_key": "broug_vulnerable_later",
+      "steering_kind": "operator_direction",
+      "body": "Do not consume or modify Vulnerable stacks in Lightness V1. Save that interaction for a later explicit arc.",
+      "priority": 80,
+      "source": "operator",
+      "is_active": true,
+      "metadata": {
+        "reserved_followup": "vulnerable_stack_interaction"
+      }
+    }
+  ],
+  "prompt_queue": [
+    {
+      "prompt_kind": "broug_silent_proof",
+      "body": "After Broug completes 910183, prove Silent Meridian Manual in game: kill the Cloud Step target inside the 5s window and confirm +10 energy plus 3s Cloud Step cooldown reduction while Vulnerable stacks remain untouched."
+    }
+  ],
+  "metadata": {
+    "purpose": "Broug Lightness Assassin V1 journey identity record. It pivots from guard/parry foundation to qinggong assassin progression."
+  }
+}

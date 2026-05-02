@@ -109,7 +109,10 @@
       "behavior_kinds": [
         "generic_effect",
         "broug_vulnerable_v1",
-        "broug_deflected_v1"
+        "broug_deflected_v1",
+        "broug_cloud_step_v1",
+        "broug_marked_meridian_v1",
+        "broug_suppressed_v1"
       ]
     },
     {
@@ -175,6 +178,9 @@
         "watcher_marker_beacon_v1",
         "broug_deflect_v1",
         "broug_deflect_counter_stance_v1",
+        "broug_killing_intent_v1",
+        "broug_qi_reversal_v1",
+        "broug_purged_state_v1",
         "energy_surge_potion_v1"
       ]
     },
@@ -207,7 +213,11 @@
       "behavior_kinds": [
         "generic_passive_aura",
         "broug_universal_parry_v1",
-        "broug_auto_retaliation_v1"
+        "broug_auto_retaliation_v1",
+        "broug_silent_meridian_v1",
+        "broug_killing_intent_domain_v1",
+        "broug_predators_strike_v1",
+        "broug_vitality_drain_v1"
       ]
     },
     {
@@ -449,6 +459,116 @@
       ]
     },
     {
+      "shell_key": "broug_cloud_step_v1",
+      "spell_id": 946202,
+      "family_id": "unit_target_effect",
+      "label": "Cloud Step",
+      "behavior_kind": "broug_cloud_step_v1",
+      "targeting": "unit_enemy",
+      "required_level": 1,
+      "icon_hint": "Ability_Rogue_Shadowstep",
+      "tooltip": "Step through a hostile target's guard. Moves behind the target in a burst of smoke, marks it with Marked Meridian, and readies Killing Intent.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 3,
+        "mana_cost": 20,
+        "mana_cost_percentage": 0,
+        "recovery_time": 12000,
+        "category_recovery_time": 1000,
+        "start_recovery_category": 0,
+        "start_recovery_time": 1000,
+        "dispel_type": 0,
+        "duration_index": 0,
+        "effect_1": 0,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 0,
+        "effect_misc_value_1": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 2363,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946202
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Broug lightness-assassin active shell. Native runtime owns all movement, target validation, energy, cooldown, and mark application.",
+        "Requires hostile unit target, 0-25 yd, line of sight, and a valid landing point behind or beside the target."
+      ]
+    },
+    {
+      "shell_key": "broug_marked_meridian_v1",
+      "spell_id": 946203,
+      "family_id": "unit_target_effect",
+      "label": "Marked Meridian",
+      "behavior_kind": "broug_marked_meridian_v1",
+      "targeting": "unit_enemy",
+      "required_level": 1,
+      "icon_hint": "Ability_Rogue_FindWeakness",
+      "tooltip": "Broug has opened a meridian. His next direct melee or Skirmisher's Mark hit consumes this mark for 35% increased damage.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "dispel_type": 0,
+        "duration_index": 36,
+        "stack_amount": 1,
+        "effect_1": 6,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 4,
+        "effect_misc_value_1": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 2112
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Visible target state for Cloud Step followups. Native runtime owns the 6-second duration and one-hit consumption.",
+        "Vulnerable stacks are deliberately left untouched in V1."
+      ]
+    },
+    {
+      "shell_key": "broug_suppressed_v1",
+      "spell_id": 946204,
+      "family_id": "unit_target_effect",
+      "label": "Suppressed",
+      "behavior_kind": "broug_suppressed_v1",
+      "targeting": "unit_enemy",
+      "required_level": 1,
+      "icon_hint": "Ability_Warrior_WarCry",
+      "tooltip": "Killing Intent: Domain is bearing down on this target, weakening its pressure against Broug.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "dispel_type": 0,
+        "duration_index": 36,
+        "stack_amount": 1,
+        "effect_1": 6,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 4,
+        "effect_misc_value_1": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 2112
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Visible enemy state applied by Killing Intent: Domain pulses every 2 seconds in an 8 yd radius.",
+        "Native runtime owns the boss-safe damage pressure. This state does not fear, disorient, or touch Vulnerable stacks."
+      ]
+    },
+    {
       "shell_key": "broug_deflect_v1",
       "spell_id": 946603,
       "family_id": "self_aura",
@@ -504,7 +624,7 @@
       "behavior_kind": "broug_deflect_counter_stance_v1",
       "targeting": "self_cast",
       "required_level": 1,
-      "icon_hint": "Ability_Warrior_Revenge",
+      "icon_hint": "Ability_Warrior_Riposte",
       "tooltip": "Enter Counterstrike Stance. Deflect only performs its automatic counterattack while this stance is active.",
       "client_presentation": {
         "category": 47,
@@ -544,9 +664,9 @@
         "effect_misc_value_2": 0,
         "effect_misc_value_3": 0,
         "spell_visual_id_1": 0,
-        "spell_visual_id_2": 44,
-        "spell_icon_id": 132,
-        "active_icon_id": 132,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 563,
+        "active_icon_id": 563,
         "spell_priority": 50,
         "attributes": 688193552,
         "attributes_ex": 268436480,
@@ -602,12 +722,143 @@
         "effect_misc_value_1": 0,
         "spell_visual_id_1": 0,
         "spell_visual_id_2": 0,
-        "spell_icon_id": 1299
+        "spell_icon_id": 1299,
+        "spell_family_name": 0,
+        "spell_family_flags_1": 0,
+        "spell_family_flags_2": 0,
+        "spell_family_flags_3": 0,
+        "damage_class": 0,
+        "prevention_type": 0
       },
       "patch_state": "planned",
       "notes": [
         "Visible timed buff shell for Energy Surge Potion 910014.",
         "Native bridge runtime owns the extra energy ticks and gates them on this aura being present."
+      ]
+    },
+    {
+      "shell_key": "broug_killing_intent_v1",
+      "spell_id": 946620,
+      "family_id": "self_aura",
+      "label": "Killing Intent",
+      "behavior_kind": "broug_killing_intent_v1",
+      "targeting": "self_cast",
+      "required_level": 1,
+      "icon_hint": "Ability_Rogue_FindWeakness",
+      "tooltip": "Cloud Step has opened a 10 sec killing window. Strike a Marked Meridian target before the intent fades.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "dispel_type": 0,
+        "duration_index": 36,
+        "effect_1": 6,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_implicit_target_a_1": 1,
+        "effect_apply_aura_name_1": 4,
+        "effect_misc_value_1": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 2112,
+        "spell_family_name": 0,
+        "spell_family_flags_1": 0,
+        "spell_family_flags_2": 0,
+        "spell_family_flags_3": 0,
+        "damage_class": 0,
+        "prevention_type": 0
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Visible self marker for Cloud Step's 10-second followup window.",
+        "Uses 946620 to avoid the parallel Energy Surge Potion claim on item 910014 and self-aura shell 946606."
+      ]
+    },
+    {
+      "shell_key": "broug_qi_reversal_v1",
+      "spell_id": 946621,
+      "family_id": "self_aura",
+      "label": "Qi Reversal",
+      "behavior_kind": "broug_qi_reversal_v1",
+      "targeting": "self_cast",
+      "required_level": 1,
+      "icon_hint": "Spell_Shadow_NetherCloak",
+      "tooltip": "Reverse hostile qi through the meridians, cleansing Magic, Poison, and Disease effects and entering Purged State.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "recovery_time": 45000,
+        "category_recovery_time": 1000,
+        "start_recovery_category": 0,
+        "start_recovery_time": 1000,
+        "dispel_type": 0,
+        "duration_index": 0,
+        "effect_1": 0,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_implicit_target_a_1": 1,
+        "effect_apply_aura_name_1": 0,
+        "effect_misc_value_1": 0,
+        "range_index": 1,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 1933,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946621
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Active Broug Empty Court V2 reward from quest 910185. Native runtime owns the typed cleanse and anti-reapplication charges.",
+        "The visible aftermath is Purged State 946622; this button is the only V2 self-aura shell with dispatch script binding."
+      ]
+    },
+    {
+      "shell_key": "broug_purged_state_v1",
+      "spell_id": 946622,
+      "family_id": "self_aura",
+      "label": "Purged State",
+      "behavior_kind": "broug_purged_state_v1",
+      "targeting": "self_cast",
+      "required_level": 1,
+      "icon_hint": "Spell_Shadow_NetherCloak",
+      "tooltip": "Qi Reversal has cleansed Broug for 30 sec. The next two reapplications of the cleansed effect types are blocked.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "dispel_type": 0,
+        "duration_index": 36,
+        "stack_amount": 2,
+        "effect_1": 6,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_implicit_target_a_1": 1,
+        "effect_apply_aura_name_1": 4,
+        "effect_misc_value_1": 0,
+        "spell_visual_id_1": 0,
+        "spell_visual_id_2": 0,
+        "spell_icon_id": 1933,
+        "spell_family_name": 0,
+        "spell_family_flags_1": 0,
+        "spell_family_flags_2": 0,
+        "spell_family_flags_3": 0,
+        "damage_class": 0,
+        "prevention_type": 0
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Visible self state only. Native runtime tracks which dispel types were cleansed and decrements charges on blocked reapplications.",
+        "Purged State is support visibility and must not be granted as a learned spell."
       ]
     },
     {
@@ -721,6 +972,146 @@
       "notes": [
         "Quest reward shell for Broug's 1000-deflect step. Native runtime owns auto-retaliation damage and cooldown.",
         "Does not alter stock Revenge, Riposte, or combat outcome tables."
+      ]
+    },
+    {
+      "shell_key": "broug_silent_meridian_v1",
+      "spell_id": 946803,
+      "family_id": "passive_aura",
+      "label": "Silent Meridian Manual",
+      "behavior_kind": "broug_silent_meridian_v1",
+      "targeting": "passive",
+      "required_level": 1,
+      "icon_hint": "INV_Misc_Book_11",
+      "tooltip": "After Cloud Step, killing the target within 10 sec restores 10 energy and reduces Cloud Step's remaining cooldown by 6 sec.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "equipped_item_class": -1,
+        "equipped_item_subclass_mask": 0,
+        "equipped_item_inventory_type_mask": 0,
+        "effect_1": 0,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 0,
+        "effect_misc_value_1": 0,
+        "spell_icon_id": 167,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946803
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Broug lightness-assassin passive reward from quest 910183. Native runtime owns the kill-window energy restore and cooldown reduction.",
+        "Does not alter Vulnerable stacks or any existing guard/parry behavior."
+      ]
+    },
+    {
+      "shell_key": "broug_killing_intent_domain_v1",
+      "spell_id": 946804,
+      "family_id": "passive_aura",
+      "label": "Killing Intent: Domain",
+      "behavior_kind": "broug_killing_intent_domain_v1",
+      "targeting": "passive",
+      "required_level": 1,
+      "icon_hint": "Ability_Rogue_FindWeakness",
+      "tooltip": "Cloud Step's Killing Intent lasts at least 15 sec. While active, Domain pulses Suppressed onto nearby hostile enemies; deaths of Suppressed enemies extend it further.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "equipped_item_class": -1,
+        "equipped_item_subclass_mask": 0,
+        "equipped_item_inventory_type_mask": 0,
+        "effect_1": 0,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 0,
+        "effect_misc_value_1": 0,
+        "spell_icon_id": 2112,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946804
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Broug Empty Court V2 passive reward from quest 910187. Native runtime upgrades Killing Intent duration and owns Domain pulse timing.",
+        "Enemy deaths while Suppressed extend active Killing Intent without a player-facing hard cap; runtime state is pruned on logout, death, and aura loss."
+      ]
+    },
+    {
+      "shell_key": "broug_predators_strike_v1",
+      "spell_id": 946805,
+      "family_id": "passive_aura",
+      "label": "Predator's Strike",
+      "behavior_kind": "broug_predators_strike_v1",
+      "targeting": "passive",
+      "required_level": 1,
+      "icon_hint": "Ability_Rogue_FindWeakness",
+      "tooltip": "Consuming Marked Meridian with an eligible direct hit heals Broug for a portion of the damage dealt.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "equipped_item_class": -1,
+        "equipped_item_subclass_mask": 0,
+        "equipped_item_inventory_type_mask": 0,
+        "effect_1": 0,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 0,
+        "effect_misc_value_1": 0,
+        "spell_icon_id": 132,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946805
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Broug Empty Court V2 passive reward from quest 910186. Native runtime heals from actual post-bonus Marked Meridian consumption damage.",
+        "Does not alter Vulnerable stacks or add guard/parry behavior."
+      ]
+    },
+    {
+      "shell_key": "broug_vitality_drain_v1",
+      "spell_id": 946806,
+      "family_id": "passive_aura",
+      "label": "Vitality Drain",
+      "behavior_kind": "broug_vitality_drain_v1",
+      "targeting": "passive",
+      "required_level": 1,
+      "icon_hint": "Ability_Rogue_QuickRecovery",
+      "tooltip": "Broug heals on killing blows. Kills inside Silent Meridian's Cloud Step window heal more and restore extra energy.",
+      "client_presentation": {
+        "cast_time_index": 1,
+        "power_type": 0,
+        "mana_cost": 0,
+        "mana_cost_percentage": 0,
+        "equipped_item_class": -1,
+        "equipped_item_subclass_mask": 0,
+        "equipped_item_inventory_type_mask": 0,
+        "effect_1": 0,
+        "effect_2": 0,
+        "effect_3": 0,
+        "effect_die_sides_1": 0,
+        "effect_base_points_1": 0,
+        "effect_apply_aura_name_1": 0,
+        "effect_misc_value_1": 0,
+        "spell_icon_id": 167,
+        "spellbook_seed_spell_id": 1752,
+        "spellbook_ability_id": 1946806
+      },
+      "patch_state": "planned",
+      "notes": [
+        "Broug Empty Court V2 passive reward from quest 910188. Native runtime owns kill-sustain and Silent Meridian window bonus.",
+        "Runs before the existing Silent Meridian kill handler so the V2 bonus can observe the Cloud Step kill-window state."
       ]
     },
     {

@@ -83,7 +83,7 @@ SET
     delay = 1000,
     ammo_type = 0,
     RangedModRange = 0,
-    spellid_1 = 8096,
+    spellid_1 = @wm_energy_surge_aura_spell_id,
     spelltrigger_1 = 0,
     spellcharges_1 = -1,
     spellppmRate_1 = 0,

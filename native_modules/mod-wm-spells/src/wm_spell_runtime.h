@@ -15,6 +15,7 @@
 class SpellInfo;
 class Aura;
 class AuraApplication;
+class Creature;
 enum AuraRemoveMode : uint8;
 
 namespace WmSpells
@@ -251,6 +252,77 @@ namespace WmSpells
         std::string counterKey = "auto_retaliation";
     };
 
+    struct BrougCloudStepConfig
+    {
+        uint32 shellSpellId = 946202;
+        float minRangeYards = 0.0f;
+        float maxRangeYards = 25.0f;
+        float landingDistanceYards = 1.8f;
+        uint32 cooldownMs = 12000;
+        uint32 energyCost = 20;
+        uint32 killingIntentSpellId = 946620;
+        uint32 killingIntentDurationMs = 10000;
+        uint32 markedMeridianSpellId = 946203;
+        uint32 markedMeridianDurationMs = 12000;
+        uint32 damageBonusPct = 35;
+        uint32 departureVisualSpellId = 24222;
+        uint32 arrivalVisualSpellId = 24222;
+        std::string counterKey = "cloud_step_strike";
+        uint32 creditCreatureEntry = 920106;
+    };
+
+    struct BrougSilentMeridianConfig
+    {
+        uint32 shellSpellId = 946803;
+        uint32 killWindowMs = 10000;
+        uint32 energyRestore = 10;
+        uint32 cooldownReductionMs = 6000;
+        std::string counterKey = "silent_meridian_kill";
+    };
+
+    struct BrougKillingIntentDomainConfig
+    {
+        uint32 shellSpellId = 946804;
+        uint32 killingIntentSpellId = 946620;
+        uint32 suppressedSpellId = 946204;
+        uint32 baseKillingIntentDurationMs = 15000;
+        uint32 pulseIntervalMs = 2000;
+        uint32 suppressedDurationMs = 12000;
+        uint32 deathExtensionMs = 5000;
+        float radiusYards = 8.0f;
+        uint32 suppressedDamagePressurePct = 10;
+        std::string pulseCounterKey = "domain_pulse";
+        std::string deathExtendCounterKey = "suppressed_death_extend";
+    };
+
+    struct BrougQiReversalConfig
+    {
+        uint32 shellSpellId = 946621;
+        uint32 purgedStateSpellId = 946622;
+        uint32 maxMagic = 3;
+        uint32 maxPoison = 2;
+        uint32 maxDisease = 1;
+        uint32 purgedDurationMs = 30000;
+        uint32 purgedCharges = 2;
+        std::string counterKey = "qi_reversal_cleanse";
+    };
+
+    struct BrougPredatorsStrikeConfig
+    {
+        uint32 shellSpellId = 946805;
+        uint32 healPctOfDamage = 25;
+        std::string counterKey = "predator_heal";
+    };
+
+    struct BrougVitalityDrainConfig
+    {
+        uint32 shellSpellId = 946806;
+        uint32 killHealPctMaxHealth = 5;
+        uint32 silentWindowKillHealPctMaxHealth = 15;
+        uint32 silentWindowEnergyBonus = 10;
+        std::string counterKey = "vitality_kill";
+    };
+
     struct BoneboundEchoStasisConfig
     {
         uint32 shellSpellId = 946600;
@@ -293,6 +365,8 @@ namespace WmSpells
     BehaviorExecutionResult ExecuteLanathelStance(Player* player, uint32 shellSpellId);
     BehaviorExecutionResult ExecuteBrougSkirmisherMark(Player* player, uint32 shellSpellId, Unit* explicitTarget = nullptr);
     BehaviorExecutionResult ExecuteBrougDeflect(Player* player, uint32 shellSpellId);
+    BehaviorExecutionResult ExecuteBrougCloudStep(Player* player, uint32 shellSpellId, Unit* explicitTarget = nullptr);
+    BehaviorExecutionResult ExecuteBrougQiReversal(Player* player, uint32 shellSpellId);
     BehaviorExecutionResult ExecuteShellBehavior(Player* player, uint32 shellSpellId, bool persistPetFallback, Unit* explicitTarget = nullptr);
     BehaviorExecutionResult ExecuteBoneboundEchoMode(Player* player, std::string const& mode, std::optional<float> huntRadiusOverride = std::nullopt);
     BehaviorExecutionResult ExecuteBoneboundEchoSeekRange(Player* player, float huntRadius);
@@ -307,8 +381,14 @@ namespace WmSpells
     void MaintainCombatProficiencies(Player* player);
     void TickBrougGuard(Player* player, uint32 diff);
     void MaintainBrougGuard(Player* player, uint32 diff);
+    void TickBrougLightness(Player* player, uint32 diff);
+    void MaintainBrougLightness(Player* player, uint32 diff);
+    void TickBrougEmptyCourt(Player* player, uint32 diff);
+    void MaintainBrougEmptyCourt(Player* player, uint32 diff);
     void ForgetIntellectBlockPassive(Player* player);
     void ForgetBrougGuard(Player* player);
+    void ForgetBrougLightness(Player* player);
+    void ForgetBrougEmptyCourt(Player* player);
     void MaintainNightWatchersLens(Player* player, uint32 diff);
     void ForgetNightWatchersLens(Player* player);
     void MaintainLanathelStance(Player* player, uint32 diff);
@@ -319,7 +399,14 @@ namespace WmSpells
     void HandleBrougGuardMeleeDamage(Unit* attacker, Unit* victim, uint32& damage);
     void HandleBrougGuardSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo);
     void HandleBrougGuardPeriodicDamage(Unit* attacker, Unit* victim, uint32& damage, SpellInfo const* spellInfo);
+    void HandleBrougLightnessMeleeDamage(Unit* attacker, Unit* victim, uint32& damage);
+    void HandleBrougLightnessSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo);
+    void HandleBrougLightnessCreatureKill(Player* player, Creature* killed);
+    void HandleBrougEmptyCourtMeleeDamage(Unit* attacker, Unit* victim, uint32& damage);
+    void HandleBrougEmptyCourtSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo);
+    void HandleBrougEmptyCourtCreatureKill(Player* player, Creature* killed);
     void HandleBrougGuardAuraApply(Unit* unit, Aura* aura);
+    void HandleBrougEmptyCourtAuraApply(Unit* unit, Aura* aura);
     void HandleBrougGuardAuraRemove(Unit* unit, AuraApplication* aurApp, AuraRemoveMode mode);
     void HandleBrougGuardMeleeOutcome(
         Unit const* attacker,
@@ -332,6 +419,10 @@ namespace WmSpells
         int32& block_chance);
     bool CanCompleteBrougGuardQuest(Player* player, uint32 questId, std::string* reason = nullptr);
     void HandleBrougGuardQuestComplete(Player* player, uint32 questId);
+    bool CanCompleteBrougLightnessQuest(Player* player, uint32 questId, std::string* reason = nullptr);
+    void HandleBrougLightnessQuestComplete(Player* player, uint32 questId);
+    bool CanCompleteBrougEmptyCourtQuest(Player* player, uint32 questId, std::string* reason = nullptr);
+    void HandleBrougEmptyCourtQuestComplete(Player* player, uint32 questId);
     void HandleNightWatchersLensDefenseExposure(
         Unit const* attacker,
         Unit const* victim,

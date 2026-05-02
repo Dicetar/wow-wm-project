@@ -1,6 +1,7 @@
 #include "ScriptMgr.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
+#include "Chat.h"
 #include "wm_spell_runtime.h"
 
 class spell_wm_shell_dispatch : public SpellScript
@@ -31,7 +32,11 @@ class spell_wm_shell_dispatch : public SpellScript
         if (!player)
             return;
 
-        WmSpells::ExecuteShellBehavior(player, GetSpellInfo()->Id, true, GetExplTargetUnit());
+        WmSpells::BehaviorExecutionResult result = WmSpells::ExecuteShellBehavior(player, GetSpellInfo()->Id, true, GetExplTargetUnit());
+        if (!result.ok)
+            ChatHandler(player->GetSession()).PSendSysMessage("WM shell {} failed: {}", GetSpellInfo()->Id, result.message);
+        else if (GetSpellInfo()->Id == 946202)
+            ChatHandler(player->GetSession()).PSendSysMessage("WM Broug: Cloud Step fired.");
     }
 
     void Register() override

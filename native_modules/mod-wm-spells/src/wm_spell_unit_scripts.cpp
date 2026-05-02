@@ -25,12 +25,16 @@ public:
     {
         WmSpells::HandleNightWatchersLensWeaponDamage(attacker, target, damage);
         WmSpells::HandleBoneboundMeleeDamage(attacker, target, damage);
+        WmSpells::HandleBrougLightnessMeleeDamage(attacker, target, damage);
+        WmSpells::HandleBrougEmptyCourtMeleeDamage(attacker, target, damage);
         WmSpells::HandleBrougGuardMeleeDamage(attacker, target, damage);
     }
 
     void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo) override
     {
         WmSpells::HandleNightWatchersLensSpellDamage(attacker, target, damage, spellInfo);
+        WmSpells::HandleBrougLightnessSpellDamage(attacker, target, damage, spellInfo);
+        WmSpells::HandleBrougEmptyCourtSpellDamage(attacker, target, damage, spellInfo);
         WmSpells::HandleBrougGuardSpellDamage(attacker, target, damage, spellInfo);
     }
 
@@ -42,6 +46,7 @@ public:
     void OnAuraApply(Unit* unit, Aura* aura) override
     {
         WmSpells::HandleBrougGuardAuraApply(unit, aura);
+        WmSpells::HandleBrougEmptyCourtAuraApply(unit, aura);
     }
 
     void OnAuraRemove(Unit* unit, AuraApplication* aurApp, AuraRemoveMode mode) override

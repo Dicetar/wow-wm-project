@@ -98,15 +98,18 @@ def _write_test_spell_icon_dbc(path: Path) -> None:
     path.write_bytes(header + records + string_block)
 
 
-def _write_test_skill_line_ability_dbc(path: Path) -> None:
-    fields = [0] * 14
-    fields[0] = 6394
-    fields[1] = 354
-    fields[2] = 697
-    fields[4] = 256
-    fields[7] = 1
-    records = struct.pack("<" + "I" * 14, *fields)
-    header = struct.pack("<4s4I", b"WDBC", 1, 14, 56, 1)
+def _write_test_skill_line_ability_dbc(path: Path, spell_ids: list[int] | None = None) -> None:
+    rows = []
+    for index, spell_id in enumerate(spell_ids or [697]):
+        fields = [0] * 14
+        fields[0] = 6394 + index
+        fields[1] = 354
+        fields[2] = int(spell_id)
+        fields[4] = 256
+        fields[7] = 1
+        rows.append(fields)
+    records = b"".join(struct.pack("<" + "I" * 14, *fields) for fields in rows)
+    header = struct.pack("<4s4I", b"WDBC", len(rows), 14, 56, 1)
     path.write_bytes(header + records + b"\x00")
 
 
@@ -280,8 +283,169 @@ def test_materialize_client_spell_dbc_applies_energy_surge_potion_aura(tmp_path:
     assert fields[SPELL_VISUAL_ID_1_FIELD] == 0
     assert fields[SPELL_VISUAL_ID_2_FIELD] == 0
     assert fields[SPELL_ICON_ID_FIELD] == 1299
+    assert fields[SPELL_FAMILY_NAME_FIELD] == 0
+    assert fields[SPELL_FAMILY_FLAGS_1_FIELD] == 0
+    assert fields[SPELL_FAMILY_FLAGS_2_FIELD] == 0
+    assert fields[SPELL_FAMILY_FLAGS_3_FIELD] == 0
+    assert fields[DAMAGE_CLASS_FIELD] == 0
+    assert fields[PREVENTION_TYPE_FIELD] == 0
     assert _string_at(string_block, fields[SPELL_NAME_START_FIELD]) == "Energy Surge"
     assert "10 additional energy" in _string_at(string_block, fields[SPELL_DESCRIPTION_START_FIELD])
+
+
+def test_materialize_client_spell_dbc_applies_broug_cloud_step_cost_cooldown_and_text(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.dbc"
+    out_path = tmp_path / "out.dbc"
+    _write_test_spell_dbc(source_path, list(CLIENT_SEED_TEMPLATE_SOURCE_SPELL_IDS.values()))
+
+    result = materialize_client_spell_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        spell_ids=[946202],
+    )
+
+    assert result.appended_count == 1
+    assert result.selected_spell_ids == [946202]
+    assert result.presentation_applied_spell_ids == [946202]
+    fields, string_block = _record_fields(out_path, 946202)
+    assert fields[CASTING_TIME_INDEX_FIELD] == 1
+    assert fields[POWER_TYPE_FIELD] == 3
+    assert fields[MANA_COST_FIELD] == 20
+    assert fields[MANA_COST_PERCENTAGE_FIELD] == 0
+    assert fields[RECOVERY_TIME_FIELD] == 12000
+    assert fields[CATEGORY_RECOVERY_TIME_FIELD] == 1000
+    assert fields[START_RECOVERY_CATEGORY_FIELD] == 0
+    assert fields[START_RECOVERY_TIME_FIELD] == 1000
+    assert fields[DISPEL_TYPE_FIELD] == 0
+    assert fields[DURATION_INDEX_FIELD] == 0
+    assert fields[EFFECT_1_FIELD] == 0
+    assert fields[EFFECT_DIE_SIDES_1_FIELD] == 0
+    assert fields[EFFECT_BASE_POINTS_1_FIELD] == 0
+    assert fields[EFFECT_APPLY_AURA_NAME_1_FIELD] == 0
+    assert fields[EFFECT_MISC_VALUE_1_FIELD] == 0
+    assert fields[SPELL_VISUAL_ID_1_FIELD] == 0
+    assert fields[SPELL_VISUAL_ID_2_FIELD] == 0
+    assert fields[SPELL_ICON_ID_FIELD] == 2363
+    assert _string_at(string_block, fields[SPELL_NAME_START_FIELD]) == "Cloud Step"
+    assert "Moves behind the target" in _string_at(string_block, fields[SPELL_DESCRIPTION_START_FIELD])
+
+
+def test_materialize_client_spell_dbc_applies_broug_lightness_visible_auras(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.dbc"
+    out_path = tmp_path / "out.dbc"
+    _write_test_spell_dbc(source_path, list(CLIENT_SEED_TEMPLATE_SOURCE_SPELL_IDS.values()))
+
+    result = materialize_client_spell_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        spell_ids=[946203, 946620],
+    )
+
+    assert result.appended_count == 2
+    assert result.selected_spell_ids == [946203, 946620]
+    marked_fields, marked_string_block = _record_fields(out_path, 946203)
+    intent_fields, intent_string_block = _record_fields(out_path, 946620)
+    for fields in (marked_fields, intent_fields):
+        assert fields[CASTING_TIME_INDEX_FIELD] == 1
+        assert fields[POWER_TYPE_FIELD] == 0
+        assert fields[MANA_COST_FIELD] == 0
+        assert fields[MANA_COST_PERCENTAGE_FIELD] == 0
+        assert fields[DISPEL_TYPE_FIELD] == 0
+        assert fields[DURATION_INDEX_FIELD] == 36
+        assert fields[EFFECT_1_FIELD] == 6
+        assert fields[EFFECT_BASE_POINTS_1_FIELD] == 0
+        assert fields[EFFECT_APPLY_AURA_NAME_1_FIELD] == 4
+        assert fields[EFFECT_MISC_VALUE_1_FIELD] == 0
+        assert fields[SPELL_VISUAL_ID_1_FIELD] == 0
+        assert fields[SPELL_VISUAL_ID_2_FIELD] == 0
+    assert marked_fields[STACK_AMOUNT_FIELD] == 1
+    assert marked_fields[SPELL_ICON_ID_FIELD] == 2112
+    assert intent_fields[SPELL_ICON_ID_FIELD] == 2112
+    assert intent_fields[SPELL_FAMILY_NAME_FIELD] == 0
+    assert intent_fields[SPELL_FAMILY_FLAGS_1_FIELD] == 0
+    assert intent_fields[SPELL_FAMILY_FLAGS_2_FIELD] == 0
+    assert intent_fields[SPELL_FAMILY_FLAGS_3_FIELD] == 0
+    assert intent_fields[DAMAGE_CLASS_FIELD] == 0
+    assert intent_fields[PREVENTION_TYPE_FIELD] == 0
+    assert _string_at(marked_string_block, marked_fields[SPELL_NAME_START_FIELD]) == "Marked Meridian"
+    assert _string_at(intent_string_block, intent_fields[SPELL_NAME_START_FIELD]) == "Killing Intent"
+    assert "35% increased damage" in _string_at(marked_string_block, marked_fields[SPELL_DESCRIPTION_START_FIELD])
+    assert "10 sec killing window" in _string_at(intent_string_block, intent_fields[SPELL_DESCRIPTION_START_FIELD])
+
+
+def test_materialize_client_spell_dbc_applies_empty_court_status_and_cleanse_shells(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.dbc"
+    out_path = tmp_path / "out.dbc"
+    _write_test_spell_dbc(source_path, list(CLIENT_SEED_TEMPLATE_SOURCE_SPELL_IDS.values()))
+
+    result = materialize_client_spell_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        spell_ids=[946204, 946621, 946622],
+    )
+
+    assert result.appended_count == 3
+    assert result.selected_spell_ids == [946204, 946621, 946622]
+    suppressed_fields, suppressed_string_block = _record_fields(out_path, 946204)
+    reversal_fields, reversal_string_block = _record_fields(out_path, 946621)
+    purged_fields, purged_string_block = _record_fields(out_path, 946622)
+    assert suppressed_fields[EFFECT_1_FIELD] == 6
+    assert suppressed_fields[EFFECT_APPLY_AURA_NAME_1_FIELD] == 4
+    assert suppressed_fields[DURATION_INDEX_FIELD] == 36
+    assert suppressed_fields[STACK_AMOUNT_FIELD] == 1
+    assert suppressed_fields[SPELL_ICON_ID_FIELD] == 2112
+    assert reversal_fields[RECOVERY_TIME_FIELD] == 45000
+    assert reversal_fields[CATEGORY_RECOVERY_TIME_FIELD] == 1000
+    assert reversal_fields[START_RECOVERY_TIME_FIELD] == 1000
+    assert reversal_fields[EFFECT_1_FIELD] == 0
+    assert reversal_fields[RANGE_INDEX_FIELD] == 1
+    assert reversal_fields[SPELL_ICON_ID_FIELD] == 1933
+    assert purged_fields[EFFECT_1_FIELD] == 6
+    assert purged_fields[EFFECT_APPLY_AURA_NAME_1_FIELD] == 4
+    assert purged_fields[STACK_AMOUNT_FIELD] == 2
+    assert purged_fields[SPELL_ICON_ID_FIELD] == 1933
+    assert purged_fields[SPELL_FAMILY_NAME_FIELD] == 0
+    assert purged_fields[SPELL_FAMILY_FLAGS_1_FIELD] == 0
+    assert purged_fields[SPELL_FAMILY_FLAGS_2_FIELD] == 0
+    assert purged_fields[SPELL_FAMILY_FLAGS_3_FIELD] == 0
+    assert purged_fields[DAMAGE_CLASS_FIELD] == 0
+    assert purged_fields[PREVENTION_TYPE_FIELD] == 0
+    assert _string_at(suppressed_string_block, suppressed_fields[SPELL_NAME_START_FIELD]) == "Suppressed"
+    assert _string_at(reversal_string_block, reversal_fields[SPELL_NAME_START_FIELD]) == "Qi Reversal"
+    assert _string_at(purged_string_block, purged_fields[SPELL_NAME_START_FIELD]) == "Purged State"
+
+
+def test_materialize_client_spell_dbc_applies_empty_court_passives(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.dbc"
+    out_path = tmp_path / "out.dbc"
+    _write_test_spell_dbc(source_path, list(CLIENT_SEED_TEMPLATE_SOURCE_SPELL_IDS.values()))
+
+    result = materialize_client_spell_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        spell_ids=[946804, 946805, 946806],
+    )
+
+    assert result.appended_count == 3
+    assert result.selected_spell_ids == [946804, 946805, 946806]
+    domain_fields, domain_string_block = _record_fields(out_path, 946804)
+    predator_fields, predator_string_block = _record_fields(out_path, 946805)
+    vitality_fields, vitality_string_block = _record_fields(out_path, 946806)
+    for fields in (domain_fields, predator_fields, vitality_fields):
+        assert fields[EQUIPPED_ITEM_CLASS_FIELD] == 0xFFFFFFFF
+        assert fields[EFFECT_1_FIELD] == 0
+        assert fields[EFFECT_APPLY_AURA_NAME_1_FIELD] == 0
+        assert fields[SPELL_PRIORITY_FIELD] == 0
+    assert domain_fields[SPELL_ICON_ID_FIELD] == 2112
+    assert predator_fields[SPELL_ICON_ID_FIELD] == 132
+    assert vitality_fields[SPELL_ICON_ID_FIELD] == 167
+    assert _string_at(domain_string_block, domain_fields[SPELL_NAME_START_FIELD]) == "Killing Intent: Domain"
+    assert _string_at(predator_string_block, predator_fields[SPELL_NAME_START_FIELD]) == "Predator's Strike"
+    assert _string_at(vitality_string_block, vitality_fields[SPELL_NAME_START_FIELD]) == "Vitality Drain"
 
 
 def test_materialize_client_spell_dbc_applies_echo_mind_blast_range(tmp_path: Path) -> None:
@@ -371,8 +535,9 @@ def test_materialize_client_spell_dbc_applies_broug_counterstrike_stance(tmp_pat
     assert fields[EFFECT_APPLY_AURA_NAME_1_FIELD] == 36
     assert fields[EFFECT_MISC_VALUE_1_FIELD] == 13
     assert fields[STANCE_BAR_ORDER_FIELD] == 1
-    assert fields[SPELL_ICON_ID_FIELD] == 132
-    assert fields[ACTIVE_ICON_ID_FIELD] == 132
+    assert fields[SPELL_VISUAL_ID_2_FIELD] == 0
+    assert fields[SPELL_ICON_ID_FIELD] == 563
+    assert fields[ACTIVE_ICON_ID_FIELD] == 563
     assert fields[SPELL_PRIORITY_FIELD] == 50
     assert fields[SPELL_FAMILY_NAME_FIELD] == 8
     assert fields[SPELL_FAMILY_FLAGS_1_FIELD] == 0
@@ -429,14 +594,15 @@ def test_materialize_client_spell_dbc_clears_broug_passive_block_requirements(tm
         source_dbc=source_path,
         out=out_path,
         include="named",
-        spell_ids=[946800, 946802],
+        spell_ids=[946800, 946802, 946803],
     )
 
-    assert result.appended_count == 2
-    assert result.selected_spell_ids == [946800, 946802]
+    assert result.appended_count == 3
+    assert result.selected_spell_ids == [946800, 946802, 946803]
     parry_fields, parry_string_block = _record_fields(out_path, 946800)
     retaliation_fields, _ = _record_fields(out_path, 946802)
-    for fields in (parry_fields, retaliation_fields):
+    silent_fields, silent_string_block = _record_fields(out_path, 946803)
+    for fields in (parry_fields, retaliation_fields, silent_fields):
         assert fields[EQUIPPED_ITEM_CLASS_FIELD] == 0xFFFFFFFF
         assert fields[EQUIPPED_ITEM_SUBCLASS_MASK_FIELD] == 0
         assert fields[EQUIPPED_ITEM_INVENTORY_TYPE_MASK_FIELD] == 0
@@ -450,6 +616,12 @@ def test_materialize_client_spell_dbc_clears_broug_passive_block_requirements(tm
     assert "Strength" in parry_tooltip
     assert "Expertise" in parry_tooltip
     assert "weapon mastery" in parry_tooltip
+    assert silent_fields[SPELL_ICON_ID_FIELD] == 167
+    assert _string_at(silent_string_block, silent_fields[SPELL_NAME_START_FIELD]) == "Silent Meridian Manual"
+    silent_tooltip = _string_at(silent_string_block, silent_fields[SPELL_TOOLTIP_START_FIELD])
+    assert "Cloud Step" in silent_tooltip
+    assert "10 sec" in silent_tooltip
+    assert "6 sec" in silent_tooltip
 
 
 def test_materialize_client_spell_dbc_builds_active_skirmisher_mark(tmp_path: Path) -> None:
@@ -578,6 +750,78 @@ def test_materialize_client_skill_line_ability_adds_lanathel_spellbook_mapping(t
     assert polearm_row[4] == 8
     assert polearm_row[7] == 1
     assert polearm_row[9] == 2
+
+
+def test_materialize_client_skill_line_ability_adds_broug_lightness_spellbook_mappings(tmp_path: Path) -> None:
+    source_path = tmp_path / "SkillLineAbility.dbc"
+    out_path = tmp_path / "out.dbc"
+    _write_test_skill_line_ability_dbc(source_path, [697, 1752])
+
+    result = materialize_client_skill_line_ability_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        spell_ids=[946202, 946803],
+    )
+
+    assert result.selected_spell_ids == [946202, 946803]
+    assert result.appended_count == 2
+    assert result.combat_proficiency_appended_count == 5
+    raw = out_path.read_bytes()
+    _, record_count, field_count, record_size, _ = struct.unpack("<4s4I", raw[:20])
+    assert record_count == 9
+    records = raw[20 : 20 + record_count * record_size]
+    rows = [
+        list(struct.unpack("<" + "I" * field_count, records[offset : offset + record_size]))
+        for offset in range(0, len(records), record_size)
+    ]
+    cloud_step_row = next(entry for entry in rows if entry[2] == 946202)
+    manual_row = next(entry for entry in rows if entry[2] == 946803)
+    assert cloud_step_row[0] == 1946202
+    assert cloud_step_row[1] == 354
+    assert cloud_step_row[4] == 256
+    assert cloud_step_row[7] == 1
+    assert manual_row[0] == 1946803
+    assert manual_row[1] == 354
+    assert manual_row[4] == 256
+    assert manual_row[7] == 1
+
+
+def test_materialize_client_skill_line_ability_adds_broug_empty_court_spellbook_mappings(tmp_path: Path) -> None:
+    source_path = tmp_path / "SkillLineAbility.dbc"
+    out_path = tmp_path / "out.dbc"
+    _write_test_skill_line_ability_dbc(source_path, [697, 1752])
+
+    result = materialize_client_skill_line_ability_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        spell_ids=[946621, 946804, 946805, 946806],
+    )
+
+    assert result.selected_spell_ids == [946621, 946804, 946805, 946806]
+    assert result.appended_count == 4
+    assert result.combat_proficiency_appended_count == 5
+    raw = out_path.read_bytes()
+    _, record_count, field_count, record_size, _ = struct.unpack("<4s4I", raw[:20])
+    assert record_count == 11
+    records = raw[20 : 20 + record_count * record_size]
+    rows = [
+        list(struct.unpack("<" + "I" * field_count, records[offset : offset + record_size]))
+        for offset in range(0, len(records), record_size)
+    ]
+    expected_ability_ids = {
+        946621: 1946621,
+        946804: 1946804,
+        946805: 1946805,
+        946806: 1946806,
+    }
+    for spell_id, ability_id in expected_ability_ids.items():
+        row = next(entry for entry in rows if entry[2] == spell_id)
+        assert row[0] == ability_id
+        assert row[1] == 354
+        assert row[4] == 256
+        assert row[7] == 1
 
 
 def test_materialize_client_skill_race_class_info_adds_rogue_combat_proficiency_rows(tmp_path: Path) -> None:

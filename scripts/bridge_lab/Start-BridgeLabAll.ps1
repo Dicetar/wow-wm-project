@@ -263,6 +263,7 @@ if ($ConfigureRuntime.IsPresent -and -not $SkipConfigure.IsPresent) {
         "-WorldServerPort", ([string]$WorldServerPort),
         "-SoapPort", ([string]$SoapPort),
         "-DataDir", $DataDir,
+        "-WmBridgePlayerGuidAllowList", $effectiveWmSpellsAllowList,
         "-WmSpellsPlayerGuidAllowList", $effectiveWmSpellsAllowList,
         "-UpdatePlayerbotsDatabaseInfo"
     )
