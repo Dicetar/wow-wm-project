@@ -1,3 +1,8 @@
+Status: WORKING
+Last verified: 2026-05-12
+Verified by: Codex
+Doc type: howto
+
 # Development Workflow
 
 This note defines the **default engineering workflow** for working on the WM repo.
@@ -73,6 +78,8 @@ Do **not** assume defaults are correct for your current machine.
 If you need a long-running detached WM watcher with log files and PID tracking:
 
 - prefer the repo-owned bridge-lab watch scripts
+- use `start-bridge-lab-all.bat` for normal BridgeLab startup with watcher
+- use `start-bridge-lab-watch.bat`, `status-bridge-lab-watch.bat`, and `stop-bridge-lab-watch.bat` for watcher-only operations
 - if you must launch a watcher yourself, copy the `System.Diagnostics.ProcessStartInfo` pattern from `scripts/bridge_lab/Start-BridgeLabNativeWatch.ps1`
 - for long-running watchers launched through Codex shell commands, use `UseShellExecute = $true`; otherwise the child watcher can remain attached to the shell command lifetime and block the UI
 - do **not** use PowerShell `Start-Process` for this case on this host; it can fail on duplicate `Path` / `PATH` environment keys and leave behind false-positive start metadata
@@ -340,3 +347,13 @@ For the current repo state, the safest order is:
 8. push / PR
 
 That order is the default unless a very specific task justifies deviating from it.
+
+## 13. Agent skills
+
+Repo-local skills live under `.agents/skills/`:
+
+- `$wm-workflow` for general repo work and cleanup
+- `$wm-live-bridge-lab` for watcher, BridgeLab, live proof, and summon/pet lab work
+- `$wm-content-release` for quests, items, spells, arcs, scenes, and LLM proposal contracts
+
+Keep each skill compact: `SKILL.md` with `name` and `description` frontmatter plus procedural Markdown, and optional `agents/openai.yaml` for UI metadata.

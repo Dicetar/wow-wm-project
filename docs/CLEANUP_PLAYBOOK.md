@@ -1,6 +1,13 @@
+Status: WORKING
+Last verified: 2026-05-12
+Verified by: Codex
+Doc type: howto
+
 # Cleanup Playbook
 
 Use this note when WM-generated quest IDs need to be restored or wiped clean.
+
+For repo filesystem cleanup, remove only identified scratch outputs and keep them ignored. Current disposable scratch roots are `.wm-tmp/` and `.wm-ingame-tests/`.
 
 ## Three different operations
 

@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-05-02
+Last verified: 2026-05-03
 Verified by: Codex
 Doc type: reference
 
@@ -157,6 +157,13 @@ Before handing content to the player, run focused static checks for:
 - WM marker auras do not inherit stock spell-family flags unless the stacking rule is intentional and tested.
 - client and server DBC payloads contain the same presentation fields.
 - native allowlists include the test player for scoped bridge/spell behavior.
+
+Repo-owned helper gates:
+
+- `python -m wm.content.preflight --arc <arc_key> --summary` for arc-specific registry, quest, SQL, custom actor, GO, shell-bank, and forbidden-ID checks.
+- `python -m wm.spells.shell_audit --spell-id <shell_id> --summary` for shell-bank presentation checks; add `--client-dbc` and `--server-dbc` when DBC artifacts exist.
+- `python -m wm.bridge_lab.release_gate --arc <arc_key> --summary` before BridgeLab mutation, and only use `--apply` after the printed plan is correct.
+- `python -m wm.live.proof_packet --arc <arc_key> --summary` before asking the player to test, so the proof steps are concrete.
 
 Then run live proof:
 

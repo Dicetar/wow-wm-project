@@ -6,23 +6,21 @@ World Master for AzerothCore 3.3.5a: an external-first content and reaction plat
 
 - stores WM-owned journal, event, cooldown, rollback, and reserved-slot data
 - generates and publishes managed quests, items, and spells
-- runs a deterministic event spine with inspect, preview, run, and watch flows
+- runs a deterministic event spine with inspect, preview, run, and watcher flows
 - grants reusable reactive bounty quests through SOAP
-- ingests live kill events through the proven hidden addon-log bridge (`addon_log`)
-- includes a native AzerothCore sensor bridge rollout path (`native_bridge`)
+- ingests live events through the repo-owned native AzerothCore bridge (`native_bridge`)
+- keeps the old addon/combat-log adapters only as fallback/debug history
 - includes a native WM action queue contract for scoped, policy-gated server actions
 - includes a WM spell shell bank contract plus native spell behavior runtime (`mod-wm-spells`)
 - exposes a repo-owned control contract registry for manual and future LLM-driven actions
 - keeps a latest-source AzerothCore baseline available for native WM module work
 
 Current primary live source:
-- `addon_log` through `WMBridge` -> AzerothCore addon logging -> `WMOps.log`
-
-Native rollout source:
 - `native_bridge` through repo-owned `mod-wm-bridge` -> `wm_bridge_event`
 - native actions through `wm_bridge_action_request`, disabled by default and scoped through `wm_bridge_player_scope`
 
 Fallback/debug source:
+- `addon_log` through historical `WMBridge` -> AzerothCore addon logging -> `WMOps.log`
 - `combat_log` through `WoWCombatLog.txt`
 
 ## Quick start
@@ -88,7 +86,7 @@ Install a reusable kill-burst bounty:
 python -m wm.reactive.install_bounty --player-guid 5406 --subject-entry 6 --quest-id 910000 --turn-in-npc-entry 197 --kill-threshold 4 --window-seconds 120 --post-reward-cooldown-seconds 60 --mode apply --summary
 ```
 
-Run the watcher against the hidden addon bridge:
+Run the watcher against the historical addon bridge only for fallback/debug work:
 
 ```powershell
 python -m wm.events.watch --adapter addon_log --mode apply --player-guid 5406 --confirm-live-apply --summary --print-idle
@@ -96,7 +94,21 @@ python -m wm.events.watch --adapter addon_log --mode apply --player-guid 5406 --
 
 ### Native bridge rollout
 
-The native module is intentionally inert by default. Enable observation for one player by editing `WmBridge.PlayerGuidAllowList` and reloading config:
+BridgeLab normally starts the scoped native watcher through the one-shot launcher:
+
+```powershell
+.\start-bridge-lab-all.bat
+```
+
+Watcher-only helpers are available when the lab is already running:
+
+```powershell
+.\start-bridge-lab-watch.bat -PlayerGuid 5406 -Mode apply -ArmFromEnd -MarkExistingEvaluatedOnArm
+.\status-bridge-lab-watch.bat
+.\stop-bridge-lab-watch.bat
+```
+
+The native module is intentionally scoped. Enable observation for one player by editing `WmBridge.PlayerGuidAllowList` and reloading config:
 
 ```powershell
 python -m wm.sources.native_bridge.configure --player-guid 5406 --reload-via-soap --summary
@@ -191,9 +203,10 @@ For day-to-day lab runtime use, the repo also includes:
 
 ```powershell
 .\start-bridge-lab-server.bat
+.\start-bridge-lab-all.bat
 ```
 
-This starts lab MySQL, syncs the auth realmlist to the lab world port, and gives you a menu with a graceful-first worldserver restart path.
+`start-bridge-lab-server.bat` starts lab MySQL, syncs the auth realmlist to the lab world port, and gives you a menu with a graceful-first worldserver restart path. `start-bridge-lab-all.bat` is the normal operator entrypoint when you also want auth/world plus the scoped watcher.
 
 After the first full lab build, use the incremental path for normal native module edits:
 

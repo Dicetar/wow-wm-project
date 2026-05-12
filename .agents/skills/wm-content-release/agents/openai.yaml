@@ -1,0 +1,4 @@
+interface:
+  display_name: "WM Content Release"
+  short_description: "WM content and LLM release gates"
+  default_prompt: "Use $wm-content-release for WM quests, items, spells, arcs, scenes, or LLM proposal work."

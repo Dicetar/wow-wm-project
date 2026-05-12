@@ -14,6 +14,8 @@ venv/
 .pytest-tmp/
 .wm-bootstrap/
 .wm-tools/
+.wm-ingame-tests/
+.wm-tmp/
 artifacts/
 data/repack/
 data/test_tmp/

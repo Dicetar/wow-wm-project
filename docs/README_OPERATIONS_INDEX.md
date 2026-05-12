@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-04-28
+Last verified: 2026-05-12
 Verified by: Codex
 Doc type: reference
 
@@ -13,6 +13,12 @@ If you are a new engineer or LLM, read these first:
 2. [WM Platform Handoff](WM_PLATFORM_HANDOFF.md)
 3. [Codex Working Rules](CODEX_WORKING_RULES.md)
 4. [Roadmap](ROADMAP.md)
+
+Repo-local skills live under `../.agents/skills/` and are selected by task:
+
+- `$wm-workflow` - repo cleanup, tests, docs, and general workflow
+- `$wm-live-bridge-lab` - BridgeLab watcher, live proof, player scope, and lab cleanup
+- `$wm-content-release` - quests, items, spells, arcs, scenes, and LLM proposal contracts
 
 The repo uses a Diataxis-style split:
 
@@ -63,6 +69,7 @@ The repo uses a Diataxis-style split:
 - [Arc + Reward Factory V1](ARC_REWARD_FACTORY_V1.md) - first product-facing personal arc publisher using fresh quest slots and visible managed rewards
 - [Content Release Pipeline V1](CONTENT_RELEASE_PIPELINE_V1.md) - strict base schemas and release gates for quests, abilities, items, scenes, spawns, and environment effects
 - [Content Required Fields](CONTENT_REQUIRED_FIELDS.md) - mandatory quest, item, ability, DBC, and WM aura-isolation fields before player-facing deploy
+- [WM Arc Tooling V1](WM_ARC_TOOLING_V1.md) - Broug-driven preflight, shell audit, BridgeLab release-gate, live-proof, and arc-scaffold CLIs
 - [Content Workbench V1](CONTENT_WORKBENCH_V1.md)
 - [Journal Layer V1 / V2](JOURNAL_LAYER_V1.md) - current subject-memory reader and inspect status
 - [Prompt Package V1](PROMPT_PACKAGE_V1.md) - historical prompt-package reference; check status header before trusting

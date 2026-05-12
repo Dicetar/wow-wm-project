@@ -1,0 +1,4 @@
+interface:
+  display_name: "WM Workflow"
+  short_description: "WM repo workflow guardrails"
+  default_prompt: "Use $wm-workflow before changing the WM repo."

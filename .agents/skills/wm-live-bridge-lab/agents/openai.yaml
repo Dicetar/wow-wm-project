@@ -1,0 +1,4 @@
+interface:
+  display_name: "WM BridgeLab"
+  short_description: "BridgeLab watcher and live proof"
+  default_prompt: "Use $wm-live-bridge-lab for BridgeLab watcher or live proof work."
