@@ -1,0 +1,263 @@
+Status: PARTIAL
+Last verified: 2026-05-13
+Verified by: Codex
+Doc type: status
+
+# Live Proof Backlog
+
+Repo/build/API proof and gameplay proof are separate. A lane can be repo `WORKING` while gameplay remains `PARTIAL`.
+
+This sprint does not require in-game proof. It defines the proof packets that must be run later before the project claims player-facing `WORKING` status.
+
+## 1. Panel-Driven Content Dry-Run And Packet Flow
+
+Status: `PARTIAL`
+
+Prerequisite state:
+
+- Panel starts with `python -m wm.panel --host 127.0.0.1 --port 8765`.
+- LM Studio is optional for this proof; a human form payload is enough.
+- `.wm-bootstrap/state/control-panel/settings.json` is preserved.
+
+Command sequence:
+
+```powershell
+python -m wm.panel --host 127.0.0.1 --port 8765
+```
+
+Use the panel API or GUI to:
+
+```text
+validate managed item or repeatable bounty payload
+run content.release.plan dry-run
+run content.release.packet dry-run
+write or inspect packet artifacts
+do not apply
+```
+
+In-client observation needed:
+
+- None for this gate.
+
+Audit/event/DB evidence required:
+
+- Panel job reaches `AWAITING_CONFIRM` or `DRY_RUN_PASSED`.
+- Packet output exists under panel job state or the requested artifact directory.
+- No direct LLM apply path is used.
+
+Rollback/cleanup command:
+
+```powershell
+python scripts/cleanup_workspace.py
+```
+
+Use `--apply` only after reviewing the dry-run target list.
+
+## 2. Auto-Bounty Loop
+
+Status: `PARTIAL`
+
+Prerequisite state:
+
+- BridgeLab is running.
+- Validation player is online and scoped.
+- Old bounty rules for the player are intentionally cleared or an explicit template is installed.
+
+Command sequence:
+
+```powershell
+start-bridge-lab-all.bat
+python -m wm.reactive.auto_bounty --player-guid 5406 --deactivate-existing-bounty-rules --summary
+scripts/bridge_lab/Start-BridgeLabAutoBounty.ps1
+```
+
+In-client observation needed:
+
+- Kill the same eligible creature entry enough times to trigger the configured bounty lane.
+- Accept or receive the generated bounty.
+- Complete, turn in, observe reward, wait cooldown, and prove regrant or suppression behavior.
+
+Audit/event/DB evidence required:
+
+- Native bridge kill events.
+- WM dynamic rule/proposal records.
+- Native `quest_add` request reaches `done`.
+- `wm.control.audit` shows the grant path.
+- Quest active/complete/rewarded state is visible through GM status, DB rows, or native quest events.
+
+Rollback/cleanup command:
+
+```powershell
+python -m wm.reactive.auto_bounty --player-guid 5406 --deactivate-existing-bounty-rules --summary
+```
+
+## 3. Generic Release Packets
+
+Status: `PARTIAL`
+
+Prerequisite state:
+
+- Release spec validates with `wm.content.release`.
+- Fresh visible IDs are reserved where the schema requires them.
+
+Command sequence:
+
+```powershell
+python -m wm.content.release <spec.json> --plan --summary
+python -m wm.content.release <spec.json> --packet --summary
+python -m wm.content.release <spec.json> --write-packet-dir <packet-dir> --summary
+```
+
+In-client observation needed:
+
+- Lane-specific. Quest packets need quest log/reward-panel proof. Item packets need tooltip/equip/use proof. Spell packets need client/server DBC and spellbook/action proof. Scene packets need visible action proof.
+
+Audit/event/DB evidence required:
+
+- Packet manifest and proof checklist.
+- Generated artifacts are reviewed.
+- Apply uses an owned publisher/control/workbench/journey/rollback CLI, not the release validator directly.
+
+Rollback/cleanup command:
+
+```text
+Use the rollback command printed in the packet proof checklist.
+```
+
+## 4. Spell Lifecycle
+
+Status: `PARTIAL`
+
+Prerequisite state:
+
+- Client patch is installed.
+- Server `Spell.dbc` is staged.
+- Worldserver restarted after DBC/native changes.
+- Player has no stale carrier grants.
+
+Command sequence:
+
+```powershell
+python -m wm.spells.publish <spell-spec.json> --mode dry-run --summary
+python -m wm.spells.live_publish <spell-spec.json> --mode dry-run --summary
+python -m wm.spells.rollback --spell-id <spell-id> --mode dry-run --summary
+```
+
+In-client observation needed:
+
+- Spellbook visibility when expected.
+- Tooltip/icon/cast UX.
+- Action bar and relog persistence if the spell is player-facing.
+- Native behavior and visible state match the contract.
+
+Audit/event/DB evidence required:
+
+- `wm_spell_shell`, `wm_spell_behavior`, and `wm_spell_grant` rows as applicable.
+- `character_spell` row appears or is absent according to the grant contract.
+- Native debug/audit events show behavior execution.
+
+Rollback/cleanup command:
+
+```powershell
+python -m wm.spells.rollback --spell-id <spell-id> --mode apply --summary
+```
+
+## 5. Bonebound And Broug Remaining Checks
+
+Status: `PARTIAL`
+
+Prerequisite state:
+
+- Lab pet/summon state is cleaned before tests.
+- Broug/Jecia player scopes and allowlists are current.
+- Client is restarted after patch changes.
+
+Command sequence:
+
+```powershell
+start-bridge-lab-all.bat
+python -m wm.spells.shell_audit --spell-id <spell-id> --summary
+python -m wm.live.proof_packet --arc <arc-key> --summary
+```
+
+In-client observation needed:
+
+- Bonebound: stock Voidwalker `697` stays stock, Alpha shell summons Alpha, echo restore survives mount/dismount, Demonology assumptions are checked explicitly.
+- Broug: Silent Meridian kill-window refund, Empty Court quest chain, Qi Reversal cleanse/anti-reapply, Domain pulses, Predator heal, Vitality kill sustain, and no guard/Vulnerable regression.
+
+Audit/event/DB evidence required:
+
+- Relevant `wm_broug_*` counters.
+- Native bridge pings/actions.
+- Spell grant rows and quest completion rows.
+
+Rollback/cleanup command:
+
+```text
+Use the lane-specific rollback, ungrant, or lab cleanup command printed by the proof packet.
+```
+
+## 6. AoE Loot
+
+Status: `PARTIAL`
+
+Prerequisite state:
+
+- BridgeLab module is built and enabled.
+- Worldserver is running the build that includes `mod-aoe-loot`.
+
+Command sequence:
+
+```powershell
+start-bridge-lab-all.bat
+```
+
+In-client observation needed:
+
+- `.aoeloot on/off` works if the module exposes the command.
+- Nearby corpse loot merges at the configured range.
+- Normal loot remains unaffected when disabled.
+
+Audit/event/DB evidence required:
+
+- Module config is loaded.
+- `module_string` contains `mod-aoe-loot` rows.
+- Native ping proves the expected worldserver is running.
+
+Rollback/cleanup command:
+
+```text
+Disable the module config or revert the BridgeLab module link, then rebuild/restart BridgeLab.
+```
+
+## 7. Solo Dungeon Tuning
+
+Status: `PARTIAL`
+
+Prerequisite state:
+
+- BridgeLab runtime config contains the solo dungeon AutoBalance/SoloLFG/DynamicLootRates values.
+- A solo test character can enter the selected dungeon.
+
+Command sequence:
+
+```powershell
+start-bridge-lab-all.bat
+```
+
+In-client observation needed:
+
+- Solo dungeon enemy health, damage, XP, and loot feel match the intended tuning.
+- No broad outdoor/world tuning regression appears.
+
+Audit/event/DB evidence required:
+
+- Active config values recorded.
+- Worldserver pid/build noted.
+- Loot/XP observations captured.
+
+Rollback/cleanup command:
+
+```text
+Restore previous BridgeLab runtime config and restart worldserver.
+```

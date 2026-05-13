@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-05-12
+Last verified: 2026-05-13
 Verified by: Codex
 Doc type: reference
 
@@ -20,6 +20,10 @@ Repo-local skills live under `../.agents/skills/` and are selected by task:
 - `$wm-live-bridge-lab` - BridgeLab watcher, live proof, player scope, and lab cleanup
 - `$wm-content-release` - quests, items, spells, arcs, scenes, and LLM proposal contracts
 
+The [WM Agent Skills Lifecycle](AGENT_SKILLS_LIFECYCLE.md) adapts the public Agent Skills define/plan/build/verify/review/ship pattern to WM's repo-local skills and release gates. Validate the local skill set with `python scripts/validate_agent_skills.py`.
+
+The [WM Control Panel + LM Studio V1](CONTROL_PANEL_LM_STUDIO_V1.md) doc is the current status page for the local operator console, schema workbench, and draft-only LM Studio lane.
+
 The repo uses a Diataxis-style split:
 
 - **handoff / status**: what is true now
@@ -34,6 +38,8 @@ The repo uses a Diataxis-style split:
 - [Next Chat Handoff](NEXT_CHAT_HANDOFF.md) - compact continuation brief for a fresh chat
 - [Work Summary](WORK_SUMMARY.md) - compact summary of what the repo has built
 - [Summon and Spell Platform Status](SUMMON_SPELL_PLATFORM_STATUS.md) - current summon/spell truth source
+- [WM Control Panel + LM Studio V1](CONTROL_PANEL_LM_STUDIO_V1.md) - local control panel, schema workbench, LM Studio draft lifecycle, and known gaps
+- [Live Proof Backlog](LIVE_PROOF_BACKLOG.md) - deferred gameplay proof packets that separate repo/API `WORKING` from gameplay `PARTIAL`
 - [Roadmap](ROADMAP.md) - canonical intended product direction: per-character arcs, exclusive rewards, wild powers, companion behavior, live scenes, conversation steering, and locked-contract LLM use. Current-state docs remain the truth for what is proven now
 
 ## How-To / Operations
@@ -65,6 +71,8 @@ The repo uses a Diataxis-style split:
 
 - [Custom ID Ledger](CUSTOM_ID_LEDGER.md)
 - [Working Strategies V1](WORKING_STRATEGIES_V1.md)
+- [WM Agent Skills Lifecycle](AGENT_SKILLS_LIFECYCLE.md) - WM adapter for Agent Skills lifecycle, router, verification, and anti-rationalization checks
+- [WM Control Panel + LM Studio V1](CONTROL_PANEL_LM_STUDIO_V1.md) - current panel API, schema catalog, and LLM draft contract
 - [Personal Journey Spine V1](CHARACTER_EXCLUSIVITY_V1.md) - per-character arcs, unlocks, reward instances, steering notes, and prompt queue
 - [Arc + Reward Factory V1](ARC_REWARD_FACTORY_V1.md) - first product-facing personal arc publisher using fresh quest slots and visible managed rewards
 - [Content Release Pipeline V1](CONTENT_RELEASE_PIPELINE_V1.md) - strict base schemas and release gates for quests, abilities, items, scenes, spawns, and environment effects

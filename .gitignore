@@ -16,6 +16,8 @@ venv/
 .wm-tools/
 .wm-ingame-tests/
 .wm-tmp/
+.wm-pytest-tmp/
+.wm-test-tmp/
 artifacts/
 data/repack/
 data/test_tmp/

@@ -107,6 +107,7 @@ _TOP_LEVEL_KEYS_BY_SCHEMA = {
         "item_entry",
         "slot_policy",
         "base_item_entry",
+        "item_shape",
         "visibility",
         "effects",
         "reward_integration",
@@ -223,6 +224,17 @@ _ITEM_REWARD_INTEGRATION_KEYS = {
     "notes",
 }
 _ITEM_RUNTIME_KEYS = {"native_behavior_required", "python_decision_required", "audit_required", "rollback_required", "notes"}
+_ITEM_SHAPE_KEYS = {
+    "item_class",
+    "inventory_type",
+    "armor_subclass",
+    "weapon_subclass",
+    "quality",
+    "binding",
+    "required_level",
+    "stackable",
+    "notes",
+}
 
 _CHAIN_FIELDS = {"PrevQuestID", "NextQuestID", "RewardNextQuest", "ExclusiveGroup", "BreadcrumbForQuestId"}
 _EDGE_KINDS = {"turn_in_unlocks", "reward_next_quest", "prev_next_link", "breadcrumb", "branch_unlocks"}
@@ -272,6 +284,75 @@ _ITEM_HIDDEN_EFFECT_KINDS = {
     "stat_bonus",
     "random_enchant_consumable",
 }
+_ITEM_CLASSES = {
+    "armor",
+    "weapon",
+    "container",
+    "consumable",
+    "reagent",
+    "projectile",
+    "trade_goods",
+    "generic",
+    "recipe",
+    "quiver",
+    "quest",
+    "key",
+    "miscellaneous",
+    "glyph",
+}
+_ITEM_INVENTORY_TYPES = {
+    "non_equippable",
+    "head",
+    "neck",
+    "shoulders",
+    "shirt",
+    "chest",
+    "waist",
+    "legs",
+    "feet",
+    "wrists",
+    "hands",
+    "finger",
+    "trinket",
+    "weapon",
+    "shield",
+    "ranged",
+    "cloak",
+    "two_hand_weapon",
+    "bag",
+    "tabard",
+    "robe",
+    "main_hand",
+    "off_hand",
+    "holdable",
+    "ammo",
+    "thrown",
+    "ranged_right",
+    "quiver",
+    "relic",
+}
+_ITEM_ARMOR_SUBCLASSES = {"misc", "cloth", "leather", "mail", "plate", "buckler", "shield", "libram", "idol", "totem", "sigil"}
+_ITEM_WEAPON_SUBCLASSES = {
+    "axe",
+    "two_hand_axe",
+    "bow",
+    "gun",
+    "mace",
+    "two_hand_mace",
+    "polearm",
+    "sword",
+    "two_hand_sword",
+    "staff",
+    "fist_weapon",
+    "miscellaneous",
+    "dagger",
+    "thrown",
+    "crossbow",
+    "wand",
+    "fishing_pole",
+}
+_ITEM_QUALITIES = {"poor", "common", "uncommon", "rare", "epic", "legendary", "artifact", "heirloom"}
+_ITEM_BINDINGS = {"none", "on_pickup", "on_equip", "on_use", "quest_item"}
 _ABILITY_TYPE_FAMILIES = {
     "targeted_effect_with_projectile": {"unit_target_projectile"},
     "targeted_effect_instant": {"unit_target_effect"},
@@ -855,6 +936,7 @@ def _managed_item_power_contract(raw: dict[str, Any]) -> dict[str, Any]:
         "item_key": str(raw["item_key"]),
         "item_entry": int(raw["item_entry"]),
         "slot_policy": str(raw["slot_policy"]),
+        "item_shape": dict(raw.get("item_shape") or {}),
         "visibility": dict(raw.get("visibility") or {}),
         "effect_keys": [str(effect.get("effect_key")) for effect in raw.get("effects") or [] if isinstance(effect, dict)],
         "hidden_effect_keys": [
@@ -1509,11 +1591,13 @@ def _validate_item_managed_power(raw: dict[str, Any], *, issues: list[ReleaseIss
     visibility = _dict_or_issue(raw.get("visibility"), "visibility", issues=issues)
     reward_integration = _dict_or_issue(raw.get("reward_integration"), "reward_integration", issues=issues)
     runtime = _dict_or_issue(raw.get("runtime"), "runtime", issues=issues)
+    item_shape = _dict_or_issue(raw.get("item_shape"), "item_shape", issues=issues, required=False)
     effects = _list_or_issue(raw.get("effects"), "effects", issues=issues)
 
     _validate_object_keys(visibility, allowed=_ITEM_VISIBILITY_KEYS, path="visibility", issues=issues)
     _validate_object_keys(reward_integration, allowed=_ITEM_REWARD_INTEGRATION_KEYS, path="reward_integration", issues=issues)
     _validate_object_keys(runtime, allowed=_ITEM_RUNTIME_KEYS, path="runtime", issues=issues)
+    _validate_item_shape(item_shape, issues=issues)
 
     if visibility.get("player_visible_state_required") is not True:
         issues.append(
@@ -1604,6 +1688,21 @@ def _validate_item_managed_power(raw: dict[str, Any], *, issues: list[ReleaseIss
             _require_positive_int(effect, "spell_id", path=f"{path}.spell_id", issues=issues)
         if "shell_spell_id" in effect:
             _require_positive_int(effect, "shell_spell_id", path=f"{path}.shell_spell_id", issues=issues)
+
+
+def _validate_item_shape(item_shape: dict[str, Any], *, issues: list[ReleaseIssue]) -> None:
+    if not item_shape:
+        return
+    _validate_object_keys(item_shape, allowed=_ITEM_SHAPE_KEYS, path="item_shape", issues=issues)
+    _validate_choice(item_shape, "item_class", allowed=_ITEM_CLASSES, path="item_shape.item_class", issues=issues)
+    _validate_choice(item_shape, "inventory_type", allowed=_ITEM_INVENTORY_TYPES, path="item_shape.inventory_type", issues=issues)
+    _validate_choice(item_shape, "armor_subclass", allowed=_ITEM_ARMOR_SUBCLASSES, path="item_shape.armor_subclass", issues=issues)
+    _validate_choice(item_shape, "weapon_subclass", allowed=_ITEM_WEAPON_SUBCLASSES, path="item_shape.weapon_subclass", issues=issues)
+    _validate_choice(item_shape, "quality", allowed=_ITEM_QUALITIES, path="item_shape.quality", issues=issues)
+    _validate_choice(item_shape, "binding", allowed=_ITEM_BINDINGS, path="item_shape.binding", issues=issues)
+    for key in ("required_level", "stackable"):
+        if key in item_shape and item_shape.get(key) not in (None, ""):
+            _require_positive_int(item_shape, key, path=f"item_shape.{key}", issues=issues)
 
 
 def _validate_scene_native_sequence(raw: dict[str, Any], *, issues: list[ReleaseIssue]) -> None:
@@ -1861,6 +1960,14 @@ def _collect_unknown_key_issues(value: dict[str, Any], *, allowed: set[str], pat
 def _validate_object_keys(value: dict[str, Any], *, allowed: set[str], path: str, issues: list[ReleaseIssue]) -> None:
     if value:
         _collect_unknown_key_issues(value, allowed=allowed, path=path, issues=issues)
+
+
+def _validate_choice(value: dict[str, Any], key: str, *, allowed: set[str], path: str, issues: list[ReleaseIssue]) -> None:
+    if key not in value or value.get(key) in (None, ""):
+        return
+    choice = str(value.get(key))
+    if choice not in allowed:
+        issues.append(ReleaseIssue(path=path, message=f"Field must be one of: {', '.join(sorted(allowed))}."))
 
 
 def _validate_runtime_sync(value: Any, *, issues: list[ReleaseIssue]) -> None:

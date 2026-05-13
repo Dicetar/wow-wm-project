@@ -1,0 +1,672 @@
+[
+  {
+    "id": "control.proposal.v1",
+    "label": "Control Proposal",
+    "description": "A strict WM ControlProposal routed through the existing control coordinator.",
+    "lane": "proposal",
+    "mutating": true,
+    "dry_run_required": true,
+    "validator": "wm.control.proposal",
+    "schema": {},
+    "ui": {
+      "order": ["source_event", "player", "selected_recipe", "action", "rationale", "risk", "author", "metadata"],
+      "icon": "proposal"
+    }
+  },
+  {
+    "id": "wm.quest.release.repeatable_bounty.v1",
+    "label": "Repeatable Bounty",
+    "description": "A repeatable kill bounty released through WM content gates.",
+    "lane": "quest",
+    "mutating": true,
+    "dry_run_required": true,
+    "validator": "wm.content.release",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "quest_kind", "player_guid", "slot_policy", "repeatable", "quest", "objective", "reward"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "wm.quest.release.repeatable_bounty.v1", "default": "wm.quest.release.repeatable_bounty.v1" },
+        "quest_kind": { "type": "string", "const": "repeatable_bounty", "default": "repeatable_bounty" },
+        "player_guid": { "type": "integer", "default": 5406 },
+        "slot_policy": {
+          "type": "string",
+          "enum": ["fresh_reserved_or_existing_active_repeatable", "fresh_reserved_required"],
+          "default": "fresh_reserved_or_existing_active_repeatable"
+        },
+        "repeatable": { "type": "boolean", "const": true, "default": true },
+        "quest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["quest_level", "min_level", "grant_mode", "template_defaults"],
+          "properties": {
+            "quest_id": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "quest_level": { "type": "integer", "default": 70, "minimum": 1 },
+            "min_level": { "type": "integer", "default": 68, "minimum": 1 },
+            "questgiver_entry": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "questgiver_name": { "type": ["string", "null"], "default": null },
+            "title": { "type": ["string", "null"], "default": null },
+            "quest_description": { "type": ["string", "null"], "ui:widget": "textarea", "default": null },
+            "objective_text": { "type": ["string", "null"], "default": null },
+            "offer_reward_text": { "type": ["string", "null"], "ui:widget": "textarea", "default": null },
+            "request_items_text": { "type": ["string", "null"], "ui:widget": "textarea", "default": null },
+            "grant_mode": { "type": "string", "enum": ["npc_start", "direct_grant", "manual_operator"], "ui:enumNames": ["NPC start", "Direct grant", "Manual operator"], "default": "npc_start" },
+            "start_npc_entry": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "end_npc_entry": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "template_defaults": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["SpecialFlags"],
+              "properties": {
+                "SpecialFlags": { "type": "integer", "const": 1, "default": 1 },
+                "PrevQuestID": { "type": ["integer", "null"], "default": null },
+                "NextQuestID": { "type": ["integer", "null"], "default": null },
+                "RewardNextQuest": { "type": ["integer", "null"], "default": null },
+                "ExclusiveGroup": { "type": ["integer", "null"], "default": null },
+                "BreadcrumbForQuestId": { "type": ["integer", "null"], "default": null }
+              },
+              "default": { "SpecialFlags": 1 }
+            }
+          }
+        },
+        "objective": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "target_entry", "kill_count"],
+          "properties": {
+            "kind": { "type": "string", "const": "kill", "default": "kill" },
+            "target_entry": { "type": "integer", "minimum": 1, "maximum": 999999 },
+            "target_name": { "type": ["string", "null"], "default": null },
+            "kill_count": { "type": "integer", "default": 6 }
+          }
+        },
+        "reward": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["none", "money", "item", "spell"], "ui:enumNames": ["No reward", "Money", "Item", "Spell"], "default": "item" },
+            "money_copper": { "type": ["integer", "null"], "default": null },
+            "item_entry": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "item_name": { "type": ["string", "null"], "default": null },
+            "item_count": { "type": ["integer", "null"], "default": 1 },
+            "spell_id": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "spell_display_id": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "fresh_visible_reward_ids_required": { "type": "boolean", "default": true }
+          }
+        },
+        "runtime_sync": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["auto", "manual", "none"], "ui:enumNames": ["Automatic", "Manual", "None"], "default": "auto" },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          },
+          "default": { "mode": "auto" }
+        },
+        "notes": { "type": ["array", "string", "null"], "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "ui": {
+      "order": ["schema_version", "quest_kind", "player_guid", "slot_policy", "repeatable", "quest", "objective", "reward", "runtime_sync", "notes"],
+      "icon": "quest"
+    }
+  },
+  {
+    "id": "wm.quest.release.one_shot.v1",
+    "label": "One-Shot Quest",
+    "description": "A standalone quest that is not repeatable and does not declare chain links.",
+    "lane": "quest",
+    "mutating": true,
+    "dry_run_required": true,
+    "validator": "wm.content.release",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "quest_kind", "player_guid", "slot_policy", "repeatable", "quest", "objective", "reward"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "wm.quest.release.one_shot.v1", "default": "wm.quest.release.one_shot.v1" },
+        "quest_kind": { "type": "string", "const": "one_shot", "default": "one_shot" },
+        "player_guid": { "type": "integer", "default": 5406 },
+        "slot_policy": { "type": "string", "const": "fresh_reserved_required", "default": "fresh_reserved_required" },
+        "repeatable": { "type": "boolean", "const": false, "default": false },
+        "quest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["quest_level", "min_level", "grant_mode", "template_defaults"],
+          "properties": {
+            "quest_id": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "quest_level": { "type": "integer", "default": 70, "minimum": 1 },
+            "min_level": { "type": "integer", "default": 68, "minimum": 1 },
+            "questgiver_entry": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "questgiver_name": { "type": ["string", "null"], "default": null },
+            "title": { "type": ["string", "null"], "default": null },
+            "quest_description": { "type": ["string", "null"], "ui:widget": "textarea", "default": null },
+            "objective_text": { "type": ["string", "null"], "default": null },
+            "offer_reward_text": { "type": ["string", "null"], "ui:widget": "textarea", "default": null },
+            "request_items_text": { "type": ["string", "null"], "ui:widget": "textarea", "default": null },
+            "grant_mode": { "type": "string", "enum": ["npc_start", "direct_grant", "manual_operator"], "ui:enumNames": ["NPC start", "Direct grant", "Manual operator"], "default": "npc_start" },
+            "start_npc_entry": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "end_npc_entry": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "template_defaults": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["SpecialFlags"],
+              "properties": {
+                "SpecialFlags": { "type": "integer", "const": 0, "default": 0 },
+                "PrevQuestID": { "type": ["integer", "null"], "default": null },
+                "NextQuestID": { "type": ["integer", "null"], "default": null },
+                "RewardNextQuest": { "type": ["integer", "null"], "default": null },
+                "ExclusiveGroup": { "type": ["integer", "null"], "default": null },
+                "BreadcrumbForQuestId": { "type": ["integer", "null"], "default": null }
+              },
+              "default": { "SpecialFlags": 0 }
+            }
+          }
+        },
+        "objective": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["talk", "kill", "collect"], "ui:enumNames": ["Talk", "Kill", "Collect"], "default": "talk" },
+            "target_entry": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "target_name": { "type": ["string", "null"], "default": null },
+            "kill_count": { "type": ["integer", "null"], "default": null },
+            "npc_entry": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "npc_name": { "type": ["string", "null"], "default": null },
+            "item_entry": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "item_name": { "type": ["string", "null"], "default": null },
+            "count": { "type": ["integer", "null"], "default": 1 }
+          }
+        },
+        "reward": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["none", "money", "item", "spell"], "ui:enumNames": ["No reward", "Money", "Item", "Spell"], "default": "none" },
+            "money_copper": { "type": ["integer", "null"], "default": null },
+            "item_entry": { "type": ["integer", "null"], "default": null },
+            "item_name": { "type": ["string", "null"], "default": null },
+            "item_count": { "type": ["integer", "null"], "default": 1 },
+            "spell_id": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "spell_display_id": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+            "fresh_visible_reward_ids_required": { "type": "boolean", "default": true }
+          }
+        },
+        "links": { "type": "array", "items": { "type": "object" }, "default": [] },
+        "runtime_sync": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["auto", "manual", "none"], "ui:enumNames": ["Automatic", "Manual", "None"], "default": "auto" },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          },
+          "default": { "mode": "auto" }
+        },
+        "notes": { "type": ["array", "string", "null"], "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "ui": {
+      "order": ["schema_version", "quest_kind", "player_guid", "slot_policy", "repeatable", "quest", "objective", "reward", "links", "runtime_sync", "notes"],
+      "icon": "quest"
+    }
+  },
+  {
+    "id": "wm.quest.release.story_arc.v1",
+    "label": "Story Arc",
+    "description": "A linked set of one-shot quest nodes plus journey metadata.",
+    "lane": "quest",
+    "mutating": true,
+    "dry_run_required": true,
+    "validator": "wm.content.release",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "quest_kind", "player_guid", "arc_key", "nodes", "edges"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "wm.quest.release.story_arc.v1", "default": "wm.quest.release.story_arc.v1" },
+        "quest_kind": { "type": "string", "const": "story_arc", "default": "story_arc" },
+        "player_guid": { "type": "integer", "default": 5406 },
+        "arc_key": { "type": "string", "minLength": 1 },
+        "nodes": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["node_key", "quest_schema", "fresh_reserved_required"],
+            "properties": {
+              "node_key": { "type": "string" },
+              "quest_id": { "type": ["integer", "null"], "default": null },
+              "quest_schema": { "type": "string", "default": "wm.quest.release.one_shot.v1" },
+              "fresh_reserved_required": { "type": "boolean", "default": true },
+              "title": { "type": ["string", "null"], "default": null }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to", "kind"],
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "kind": { "type": "string", "enum": ["turn_in_unlocks", "reward_next_quest", "prev_next_link", "breadcrumb", "branch_unlocks"], "ui:enumNames": ["Turn-in unlocks", "Reward next quest", "Prev/next link", "Breadcrumb", "Branch unlocks"] }
+            }
+          }
+        },
+        "fork_groups": { "type": "array", "items": { "type": "object" }, "default": [] },
+        "journey_updates": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "stage_key": { "type": ["string", "null"], "default": null },
+            "branch_key": { "type": ["string", "null"], "default": null },
+            "conversation_steering": { "type": "array", "items": { "type": "object" }, "default": [] },
+            "prompt_queue": { "type": "array", "items": { "type": "object" }, "default": [] },
+            "reward_instance": { "type": "object", "additionalProperties": true, "default": {} }
+          },
+          "default": {}
+        },
+        "runtime_sync": { "type": "object", "additionalProperties": true, "default": { "mode": "manual" } },
+        "notes": { "type": ["array", "string", "null"], "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "ui": {
+      "order": ["schema_version", "quest_kind", "player_guid", "arc_key", "nodes", "edges", "fork_groups", "journey_updates", "runtime_sync", "notes"],
+      "icon": "arc"
+    }
+  },
+  {
+    "id": "wm.item.release.managed_power.v1",
+    "label": "Managed Item Power",
+    "description": "A WM-owned item slot with visible state and native/audit runtime contract.",
+    "lane": "item",
+    "mutating": true,
+    "dry_run_required": true,
+    "validator": "wm.content.release",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "content_kind", "player_guid", "item_key", "item_entry", "slot_policy", "visibility", "reward_integration", "runtime", "effects"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "wm.item.release.managed_power.v1", "default": "wm.item.release.managed_power.v1" },
+        "content_kind": { "type": "string", "const": "item", "default": "item" },
+        "player_guid": { "type": "integer", "default": 5406 },
+        "item_key": { "type": "string", "minLength": 1 },
+        "item_entry": { "type": "integer", "minimum": 1, "maximum": 999999 },
+        "slot_policy": {
+          "type": "string",
+          "enum": ["fresh_item_slot_required", "existing_proven_item_slot_extension"],
+          "ui:enumNames": ["Fresh item slot required", "Extend existing proven item"],
+          "default": "fresh_item_slot_required"
+        },
+        "base_item_entry": {
+          "type": ["integer", "null"],
+          "default": 2994,
+          "minimum": 1,
+          "maximum": 999999,
+          "ui:suggestions": [2994, 2586, 6948],
+          "ui:suggestionLabels": ["2994 - known wearable seed", "2586 - known-good item seed", "6948 - utility seed"]
+        },
+        "item_shape": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "item_class": {
+              "type": "string",
+              "enum": ["armor", "weapon", "container", "consumable", "reagent", "projectile", "trade_goods", "generic", "recipe", "quiver", "quest", "key", "miscellaneous", "glyph"],
+              "ui:enumNames": ["Armor", "Weapon", "Container", "Consumable", "Reagent", "Projectile", "Trade goods", "Generic", "Recipe", "Quiver", "Quest", "Key", "Miscellaneous", "Glyph"],
+              "default": "armor"
+            },
+            "inventory_type": {
+              "type": "string",
+              "enum": ["non_equippable", "head", "neck", "shoulders", "shirt", "chest", "waist", "legs", "feet", "wrists", "hands", "finger", "trinket", "weapon", "shield", "ranged", "cloak", "two_hand_weapon", "bag", "tabard", "robe", "main_hand", "off_hand", "holdable", "ammo", "thrown", "ranged_right", "quiver", "relic"],
+              "ui:enumNames": ["Non-equippable", "Head", "Neck", "Shoulders", "Shirt", "Chest", "Waist", "Legs", "Feet / boots", "Wrists", "Hands", "Finger", "Trinket", "Weapon", "Shield", "Ranged", "Cloak", "Two-hand weapon", "Bag", "Tabard", "Robe", "Main hand", "Off hand", "Holdable", "Ammo", "Thrown", "Ranged right", "Quiver", "Relic"],
+              "default": "feet"
+            },
+            "armor_subclass": {
+              "type": ["string", "null"],
+              "enum": [null, "misc", "cloth", "leather", "mail", "plate", "buckler", "shield", "libram", "idol", "totem", "sigil"],
+              "ui:enumNames": ["None", "Misc armor", "Cloth", "Leather", "Mail", "Plate", "Buckler", "Shield", "Libram", "Idol", "Totem", "Sigil"],
+              "default": "cloth"
+            },
+            "weapon_subclass": {
+              "type": ["string", "null"],
+              "enum": [null, "axe", "two_hand_axe", "bow", "gun", "mace", "two_hand_mace", "polearm", "sword", "two_hand_sword", "staff", "fist_weapon", "miscellaneous", "dagger", "thrown", "crossbow", "wand", "fishing_pole"],
+              "ui:enumNames": ["None", "Axe", "Two-hand axe", "Bow", "Gun", "Mace", "Two-hand mace", "Polearm", "Sword", "Two-hand sword", "Staff", "Fist weapon", "Misc weapon", "Dagger", "Thrown", "Crossbow", "Wand", "Fishing pole"],
+              "default": null
+            },
+            "quality": {
+              "type": "string",
+              "enum": ["poor", "common", "uncommon", "rare", "epic", "legendary", "artifact", "heirloom"],
+              "ui:enumNames": ["Poor", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Artifact", "Heirloom"],
+              "default": "uncommon"
+            },
+            "binding": {
+              "type": "string",
+              "enum": ["none", "on_pickup", "on_equip", "on_use", "quest_item"],
+              "ui:enumNames": ["None", "Bind on pickup", "Bind on equip", "Bind on use", "Quest item"],
+              "default": "on_equip"
+            },
+            "required_level": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 80 },
+            "stackable": { "type": ["integer", "null"], "default": 1, "minimum": 1 },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          },
+          "default": {
+            "item_class": "armor",
+            "inventory_type": "feet",
+            "armor_subclass": "cloth",
+            "weapon_subclass": null,
+            "quality": "uncommon",
+            "binding": "on_equip",
+            "stackable": 1
+          }
+        },
+        "visibility": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["player_visible_state_required", "tooltip_required"],
+          "properties": {
+            "player_visible_state_required": { "type": "boolean", "default": true },
+            "tooltip_required": { "type": "boolean", "default": true },
+            "wearer_aura_spell_id": {
+              "type": ["integer", "null"],
+              "default": 132,
+              "minimum": 1,
+              "maximum": 999999,
+              "ui:suggestions": [132, 770],
+              "ui:suggestionLabels": ["132 - visible wearer aura seed", "770 - visible target marker seed"]
+            },
+            "target_aura_spell_id": {
+              "type": ["integer", "null"],
+              "default": null,
+              "minimum": 1,
+              "maximum": 999999,
+              "ui:suggestions": [770, 132],
+              "ui:suggestionLabels": ["770 - visible target marker seed", "132 - visible aura seed"]
+            },
+            "client_cache_risk": {
+              "type": ["string", "null"],
+              "enum": ["fresh item slot required before live release", "existing item cache risk requires explicit proof", "low risk operator-proven"],
+              "ui:enumNames": ["Fresh slot required", "Existing cache risk", "Low risk proven"],
+              "default": "fresh item slot required before live release"
+            },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          }
+        },
+        "reward_integration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fresh_quest_required_when_reward_changes"],
+          "properties": {
+            "quest_reward_allowed": { "type": "boolean", "default": true },
+            "fresh_quest_required_when_reward_changes": { "type": "boolean", "default": true },
+            "direct_grant_allowed": { "type": "boolean", "default": false },
+            "cleanup_supported": { "type": "boolean", "default": true },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          }
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["native_behavior_required", "audit_required", "rollback_required"],
+          "properties": {
+            "native_behavior_required": { "type": "boolean", "default": true },
+            "python_decision_required": { "type": "boolean", "default": false },
+            "audit_required": { "type": "boolean", "default": true },
+            "rollback_required": { "type": "boolean", "default": true },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          }
+        },
+        "effects": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["effect_key", "kind"],
+            "properties": {
+              "effect_key": { "type": "string" },
+              "kind": {
+                "type": "string",
+                "enum": ["wearer_aura", "target_mark_proc", "direct_spell_damage_bonus", "companion_target_preference", "proc_multiplier", "stat_bonus", "on_use_scene", "random_enchant_consumable"],
+                "ui:enumNames": ["Wearer aura", "Target mark proc", "Direct spell damage bonus", "Companion target preference", "Proc multiplier", "Stat bonus", "On-use scene", "Random enchant consumable"]
+              },
+              "trigger": {
+                "type": ["string", "null"],
+                "enum": [null, "equipped", "on_use", "on_hit", "on_spell_hit", "on_kill", "on_proc", "on_loot", "manual_operator"],
+                "ui:enumNames": ["None", "Equipped", "On use", "On hit", "On spell hit", "On kill", "On proc", "On loot", "Manual operator"],
+                "default": "equipped"
+              },
+              "target": {
+                "type": ["string", "null"],
+                "enum": [null, "self", "wearer", "target", "victim", "attacker", "companion", "area", "item_owner"],
+                "ui:enumNames": ["None", "Self", "Wearer", "Target", "Victim", "Attacker", "Companion", "Area", "Item owner"],
+                "default": "self"
+              },
+              "visible_state": { "type": ["string", "null"], "default": null },
+              "native_hook": { "type": "boolean", "default": false },
+              "amount_pct": { "type": ["number", "null"], "default": null, "minimum": 1 },
+              "chance_pct": { "type": ["number", "null"], "default": null, "minimum": 1 },
+              "duration_ms": { "type": ["integer", "null"], "default": null, "minimum": 1 },
+              "spell_id": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+              "shell_spell_id": { "type": ["integer", "null"], "default": null, "minimum": 1, "maximum": 999999 },
+              "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+            }
+          },
+          "default": [
+            {
+              "effect_key": "wearer_marker",
+              "kind": "wearer_aura",
+              "trigger": "equipped",
+              "target": "self",
+              "spell_id": 132,
+              "native_hook": false
+            }
+          ]
+        },
+        "notes": { "type": ["array", "string", "null"], "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "ui": {
+      "order": ["schema_version", "content_kind", "player_guid", "item_key", "item_entry", "slot_policy", "base_item_entry", "item_shape", "visibility", "reward_integration", "runtime", "effects", "notes"],
+      "icon": "item"
+    }
+  },
+  {
+    "id": "wm.ability.release.shell_power.v1",
+    "label": "Shell Power",
+    "description": "A visible shell-backed WM ability contract.",
+    "lane": "ability",
+    "mutating": true,
+    "dry_run_required": true,
+    "validator": "wm.content.release",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "content_kind", "player_guid", "ability_key", "ability_type", "shell_family", "slot_policy", "behavior_kind", "client_truth", "runtime"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "wm.ability.release.shell_power.v1", "default": "wm.ability.release.shell_power.v1" },
+        "content_kind": { "type": "string", "const": "ability", "default": "ability" },
+        "player_guid": { "type": "integer", "default": 5406 },
+        "ability_key": { "type": "string", "minLength": 1 },
+        "ability_type": {
+          "type": "string",
+          "enum": ["targeted_effect_with_projectile", "targeted_effect_instant", "friendly_target_effect", "aoe_targeted_ground", "aoe_centered_on_target", "aoe_centered_on_caster", "self_aura", "stance_toggle", "passive", "random_targets", "frontal_cone", "summon_pet", "pet_active", "chain_jump", "channeled_target", "movement_charge"],
+          "ui:enumNames": ["Targeted projectile", "Targeted instant", "Friendly target", "Ground AOE", "Target-centered AOE", "Caster-centered AOE", "Self aura", "Stance toggle", "Passive", "Random targets", "Frontal cone", "Summon pet", "Pet active", "Chain jump", "Channeled target", "Movement charge"],
+          "default": "targeted_effect_with_projectile"
+        },
+        "shell_family": {
+          "type": "string",
+          "enum": ["unit_target_projectile", "unit_target_effect", "unit_target_friendly", "ground_target_aoe", "target_centered_aoe", "caster_centered_aoe", "self_aura", "passive_aura", "random_targets", "frontal_cone", "summon_pet_compat", "pet_active_compat"],
+          "ui:enumNames": ["Unit target projectile", "Unit target instant", "Friendly unit target", "Ground target AOE", "Target-centered AOE", "Caster-centered AOE", "Self aura", "Passive aura", "Random targets", "Frontal cone", "Summon pet compatible", "Pet active compatible"],
+          "default": "unit_target_projectile"
+        },
+        "shell_spell_id": {
+          "type": ["integer", "null"],
+          "default": null,
+          "minimum": 1,
+          "maximum": 999999,
+          "ui:suggestions": [44614, 133, 116, 172, 100],
+          "ui:suggestionLabels": ["44614 - projectile-style seed", "133 - instant damage seed", "116 - slow/projectile seed", "172 - periodic effect seed", "100 - movement/charge seed"]
+        },
+        "slot_policy": {
+          "type": "string",
+          "enum": ["fresh_shell_slot_required", "existing_named_shell", "named_shell_override"],
+          "ui:enumNames": ["Fresh shell slot required", "Use existing named shell", "Override named shell"],
+          "default": "fresh_shell_slot_required"
+        },
+        "behavior_kind": {
+          "type": "string",
+          "enum": ["generic_effect", "projectile_effect", "instant_effect", "friendly_effect", "ground_aoe", "target_aoe", "caster_aoe", "self_aura", "passive_aura", "summon_pet", "pet_active", "variant_behavior", "native_behavior"],
+          "ui:enumNames": ["Generic effect", "Projectile effect", "Instant effect", "Friendly effect", "Ground AOE", "Target AOE", "Caster AOE", "Self aura", "Passive aura", "Summon pet", "Pet active", "Variant behavior", "Native behavior"],
+          "default": "generic_effect"
+        },
+        "behavior_variant": { "type": ["boolean", "null"], "default": null },
+        "client_truth": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["client_patch_required", "server_dbc_required", "spellbook_button_required"],
+          "properties": {
+            "client_patch_required": { "type": "boolean", "default": true },
+            "server_dbc_required": { "type": "boolean", "default": true },
+            "spellbook_button_required": { "type": "boolean", "default": true },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          }
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["native_behavior_required", "audit_required"],
+          "properties": {
+            "native_behavior_required": { "type": "boolean", "default": true },
+            "python_decision_required": { "type": "boolean", "default": true },
+            "audit_required": { "type": "boolean", "default": true },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          }
+        },
+        "seed": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "stock_seed_spell_id": {
+              "type": ["integer", "null"],
+              "default": null,
+              "minimum": 1,
+              "maximum": 999999,
+              "ui:suggestions": [133, 116, 44614, 172, 100, 770, 132],
+              "ui:suggestionLabels": ["133 - fireball-style instant", "116 - frostbolt-style projectile", "44614 - projectile seed", "172 - periodic effect seed", "100 - charge seed", "770 - target marker seed", "132 - aura seed"]
+            },
+            "seed_template": {
+              "type": ["string", "null"],
+              "enum": [null, "wm_unit_target_projectile", "wm_unit_target_effect", "wm_friendly_target_effect", "wm_ground_target_aoe", "wm_target_centered_aoe", "wm_caster_centered_aoe", "wm_self_aura", "wm_passive_aura", "wm_random_targets", "wm_frontal_cone", "wm_summon_pet", "wm_pet_active"],
+              "ui:enumNames": ["None", "Unit target projectile", "Unit target instant", "Friendly target", "Ground target AOE", "Target-centered AOE", "Caster-centered AOE", "Self aura", "Passive aura", "Random targets", "Frontal cone", "Summon pet", "Pet active"],
+              "default": null
+            },
+            "seed_only": { "type": "boolean", "default": true },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          },
+          "default": {}
+        },
+        "notes": { "type": ["array", "string", "null"], "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "ui": {
+      "order": ["schema_version", "content_kind", "player_guid", "ability_key", "ability_type", "shell_family", "shell_spell_id", "slot_policy", "behavior_kind", "behavior_variant", "client_truth", "runtime", "seed", "notes"],
+      "icon": "spell"
+    }
+  },
+  {
+    "id": "wm.scene.release.native_sequence.v1",
+    "label": "Native Scene Sequence",
+    "description": "A player-scoped scene compiled into typed native action sequence artifacts.",
+    "lane": "scene",
+    "mutating": true,
+    "dry_run_required": true,
+    "validator": "wm.content.release",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "content_kind", "player_guid", "scene_key", "scene_type", "slot_policy", "trigger", "runtime", "steps"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "wm.scene.release.native_sequence.v1", "default": "wm.scene.release.native_sequence.v1" },
+        "content_kind": { "type": "string", "const": "scene", "default": "scene" },
+        "player_guid": { "type": "integer", "default": 5406 },
+        "scene_key": { "type": "string", "minLength": 1 },
+        "scene_type": { "type": "string", "enum": ["area_pressure", "creature_marker", "companion_intervention", "environment_effect", "arc_beat"], "ui:enumNames": ["Area pressure", "Creature marker", "Companion intervention", "Environment effect", "Arc beat"], "default": "creature_marker" },
+        "slot_policy": { "type": "string", "enum": ["no_visible_id_required", "fresh_visible_ids_if_templates"], "ui:enumNames": ["No visible ID required", "Fresh visible IDs if templates"], "default": "no_visible_id_required" },
+        "trigger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "source_event_required"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["manual_operator", "area_pressure", "kill_reaction", "talk_reaction", "quest_reaction", "arc_beat"], "ui:enumNames": ["Manual operator", "Area pressure", "Kill reaction", "Talk reaction", "Quest reaction", "Arc beat"], "default": "manual_operator" },
+            "source_event_required": { "type": "boolean", "default": false },
+            "max_event_age_seconds": { "type": ["integer", "null"], "default": null },
+            "map_id": { "type": ["integer", "null"], "default": null },
+            "zone_id": { "type": ["integer", "null"], "default": null },
+            "subject_entry": { "type": ["integer", "null"], "default": null },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          }
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["native_actions_required", "audit_required", "player_scope_required"],
+          "properties": {
+            "native_actions_required": { "type": "boolean", "default": true },
+            "audit_required": { "type": "boolean", "default": true },
+            "player_scope_required": { "type": "boolean", "default": true },
+            "control_scene_required": { "type": "boolean", "default": true },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["step_key", "native_action_kind", "payload", "risk_level", "idempotency_suffix", "requires_live_proof"],
+            "properties": {
+              "step_key": { "type": "string" },
+              "native_action_kind": {
+                "type": "string",
+                "enum": ["world_announce_to_player", "player_apply_aura", "player_remove_aura", "player_cast_spell", "player_restore_health_power", "player_set_display_id", "creature_spawn", "creature_despawn", "creature_say", "creature_emote", "creature_cast_spell", "creature_set_display_id", "creature_set_scale"],
+                "ui:enumNames": ["Announce to player", "Apply aura to player", "Remove player aura", "Player casts spell", "Restore player health/power", "Set player display ID", "Spawn creature", "Despawn creature", "Creature says text", "Creature emote", "Creature casts spell", "Set creature display ID", "Set creature scale"]
+              },
+              "payload": { "type": "object", "additionalProperties": true, "default": {} },
+              "risk_level": { "type": "string", "enum": ["low", "medium", "high"], "ui:enumNames": ["Low", "Medium", "High"], "default": "low" },
+              "delay_seconds": { "type": ["number", "null"], "default": null },
+              "idempotency_suffix": { "type": "string" },
+              "expected_effect": { "type": ["string", "null"], "ui:widget": "textarea", "default": null },
+              "requires_live_proof": { "type": "boolean", "default": true }
+            }
+          }
+        },
+        "cleanup": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required": { "type": "boolean", "default": false },
+            "expires_seconds": { "type": ["integer", "null"], "default": null },
+            "steps": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "default": [] },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          },
+          "default": {}
+        },
+        "notes": { "type": ["array", "string", "null"], "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "ui": {
+      "order": ["schema_version", "content_kind", "player_guid", "scene_key", "scene_type", "slot_policy", "trigger", "runtime", "steps", "cleanup", "notes"],
+      "icon": "scene"
+    }
+  }
+]

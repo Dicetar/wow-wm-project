@@ -1,0 +1,296 @@
+:root {
+  --bg: #f5f7f8;
+  --surface: #ffffff;
+  --surface-2: #eef3f4;
+  --text: #1c2427;
+  --muted: #637174;
+  --line: #d7e0e2;
+  --accent: #0f766e;
+  --accent-2: #b45309;
+  --danger: #b42318;
+  --shadow: 0 1px 2px rgba(14, 32, 37, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: 22px;
+}
+
+h2 {
+  font-size: 16px;
+  margin-bottom: 14px;
+}
+
+h3 {
+  font-size: 14px;
+  margin: 16px 0 8px;
+}
+
+.status-line,
+.muted {
+  color: var(--muted);
+}
+
+.tabs,
+.subtabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.subtabs {
+  padding: 10px 0 0;
+  border-bottom: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  padding: 7px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button.active,
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+main {
+  padding: 18px 24px 80px;
+}
+
+.tab-panel,
+.editor-tab {
+  display: none;
+}
+
+.tab-panel.active,
+.editor-tab.active {
+  display: block;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.command-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.button-row,
+.inline-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: #fff;
+  padding: 8px 9px;
+  min-height: 36px;
+}
+
+input[type="checkbox"] {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+label.checkbox-label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  min-height: 36px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+label.checkbox-label input[type="checkbox"] {
+  margin: 0;
+}
+
+input[readonly],
+select:disabled,
+input:disabled {
+  background: #f7fafb;
+  color: var(--muted);
+}
+
+textarea {
+  resize: vertical;
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+legend {
+  color: var(--accent);
+  padding: 0 6px;
+}
+
+.array-row {
+  border-left: 3px solid var(--surface-2);
+  padding-left: 10px;
+  margin: 8px 0 12px;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: minmax(130px, auto) 1fr;
+  gap: 8px 14px;
+  margin: 0;
+}
+
+.kv dt {
+  color: var(--muted);
+}
+
+.kv dd {
+  margin: 0;
+}
+
+.output {
+  min-height: 80px;
+  max-height: 520px;
+  overflow: auto;
+  background: #111b1d;
+  color: #d9f2ed;
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+}
+
+.list button {
+  text-align: left;
+}
+
+footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding: 8px 24px;
+}
+
+footer .output {
+  min-height: 36px;
+  max-height: 120px;
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .grid.two,
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

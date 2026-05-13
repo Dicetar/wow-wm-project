@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WM Control Panel</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>WM Control Panel</h1>
+        <div id="statusLine" class="status-line">Loading...</div>
+      </div>
+      <button id="refreshAll" class="primary">Refresh</button>
+    </header>
+
+    <nav class="tabs" aria-label="Panel sections">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="watcher">Watcher</button>
+      <button class="tab" data-tab="llm">LLM</button>
+      <button class="tab" data-tab="content">Content Workbench</button>
+      <button class="tab" data-tab="proposals">Proposal Inbox</button>
+      <button class="tab" data-tab="release">Release Gates</button>
+      <button class="tab" data-tab="maintenance">Rollback</button>
+    </nav>
+
+    <main>
+      <section id="overview" class="tab-panel active">
+        <div class="grid two">
+          <section class="panel">
+            <h2>Status</h2>
+            <dl id="overviewStatus" class="kv"></dl>
+          </section>
+          <section class="panel">
+            <h2>Latest Job</h2>
+            <pre id="latestJob" class="output"></pre>
+          </section>
+        </div>
+      </section>
+
+      <section id="watcher" class="tab-panel">
+        <section class="panel">
+          <h2>Watcher / BridgeLab</h2>
+          <div id="watcherCommands" class="command-grid"></div>
+        </section>
+        <section class="panel">
+          <h2>Native Queue</h2>
+          <div class="inline-fields">
+            <label>Player GUID <input id="watcherPlayerGuid" type="number" value="5406"></label>
+            <label>Limit <input id="watcherLimit" type="number" value="20"></label>
+          </div>
+          <div id="nativeCommands" class="command-grid"></div>
+        </section>
+      </section>
+
+      <section id="llm" class="tab-panel">
+        <div class="grid two">
+          <section class="panel">
+            <h2>LM Studio</h2>
+            <div class="form-grid">
+              <label>Base URL <input id="llmBaseUrl" value="http://localhost:1234/v1"></label>
+              <label>Model <select id="llmModel"></select></label>
+              <label>Temperature <input id="llmTemperature" type="number" step="0.1" value="0.2"></label>
+              <label>Max Tokens <input id="llmMaxTokens" type="number" value="2048"></label>
+              <label>Timeout Seconds <input id="llmTimeout" type="number" value="60"></label>
+              <label>Schema Mode
+                <select id="llmSchemaMode">
+                  <option value="json_schema">json_schema</option>
+                  <option value="json_object">json_object</option>
+                  <option value="prompt_only">prompt_only</option>
+                </select>
+              </label>
+              <label>API Key <input id="llmApiKey" type="password" autocomplete="off"></label>
+            </div>
+            <div class="button-row">
+              <button id="saveLlmSettings">Save Settings</button>
+              <button id="fetchModels">Fetch Models</button>
+            </div>
+          </section>
+          <section class="panel">
+            <h2>Generate Draft</h2>
+            <label>Schema <select id="llmSchema"></select></label>
+            <label>Context Pack Path <input id="llmContextPath" placeholder=".wm-bootstrap/state/.../context-pack.json"></label>
+            <label>Candidate Pack Path <input id="llmCandidatePath"></label>
+            <label>Instruction <textarea id="llmInstruction" rows="9"></textarea></label>
+            <button id="generateDraft" class="primary">Generate JSON Draft</button>
+          </section>
+        </div>
+        <section class="panel">
+          <h2>LLM Result</h2>
+          <pre id="llmResult" class="output"></pre>
+        </section>
+      </section>
+
+      <section id="content" class="tab-panel">
+        <section class="panel">
+          <h2>Schema Editor</h2>
+          <div class="inline-fields">
+            <label>Schema <select id="contentSchema"></select></label>
+            <button id="resetSchemaForm">Reset</button>
+            <button id="validateSchemaPayload">Validate</button>
+            <button id="planSchemaPayload">Plan</button>
+            <button id="packetSchemaPayload">Packet</button>
+          </div>
+          <div class="subtabs">
+            <button class="subtab active" data-editor-tab="form">Form</button>
+            <button class="subtab" data-editor-tab="raw">Raw JSON</button>
+            <button class="subtab" data-editor-tab="validation">Validation Result</button>
+          </div>
+          <div id="editorForm" class="editor-tab active"></div>
+          <div id="editorRaw" class="editor-tab">
+            <textarea id="rawJson" rows="24"></textarea>
+          </div>
+          <div id="editorValidation" class="editor-tab">
+            <pre id="validationResult" class="output"></pre>
+          </div>
+        </section>
+      </section>
+
+      <section id="proposals" class="tab-panel">
+        <div class="grid two">
+          <section class="panel">
+            <h2>Inbox</h2>
+            <div id="draftList" class="list"></div>
+          </section>
+          <section class="panel">
+            <h2>Draft Detail</h2>
+            <div class="button-row">
+              <button id="adoptDraft">Adopt as Reviewed</button>
+              <button id="rejectDraft">Reject</button>
+              <button id="dryRunDraft">Dry-run</button>
+            </div>
+            <pre id="draftDetail" class="output"></pre>
+          </section>
+        </div>
+      </section>
+
+      <section id="release" class="tab-panel">
+        <section class="panel">
+          <h2>Release Gates</h2>
+          <div class="button-row">
+            <button data-release-command="content.release.validate">Validate</button>
+            <button data-release-command="content.release.plan">Plan</button>
+            <button data-release-command="content.release.packet">Packet</button>
+            <button data-release-command="content.release.write_packet">Write Packet</button>
+          </div>
+          <pre id="releaseOutput" class="output"></pre>
+        </section>
+        <section class="panel">
+          <h2>Confirm Apply</h2>
+          <label>Job ID <input id="confirmJobId"></label>
+          <label>Confirmation <input id="confirmText"></label>
+          <button id="confirmApply" class="danger">Confirm Apply</button>
+        </section>
+      </section>
+
+      <section id="maintenance" class="tab-panel">
+        <section class="panel">
+          <h2>Rollback / Maintenance</h2>
+          <div class="inline-fields">
+            <label>Item Entry <input id="rollbackItemEntry" type="number"></label>
+            <label>Quest ID <input id="purgeQuestId" type="number"></label>
+          </div>
+          <div id="maintenanceCommands" class="command-grid"></div>
+        </section>
+      </section>
+    </main>
+
+    <footer>
+      <pre id="jobOutput" class="output"></pre>
+    </footer>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

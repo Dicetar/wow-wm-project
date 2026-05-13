@@ -19,6 +19,16 @@ The goal is not to make the agent generic or polite. The goal is to keep the WM 
 
 ## Research protocol
 
+### 0. Use the repo skill lifecycle
+
+Use [WM Agent Skills Lifecycle](AGENT_SKILLS_LIFECYCLE.md) as the adapter for Agent Skills-style work:
+
+```text
+define -> plan -> build -> verify -> review -> ship
+```
+
+Select the narrowest repo-local skill for the task, then keep the WM gates stronger than generic agent-skill advice. Validate skill metadata with `python scripts/validate_agent_skills.py` after skill edits.
+
 ### 1. Read the real code before proposing architecture
 
 Before proposing a new subsystem, inspect the existing ones first:
@@ -247,6 +257,16 @@ If the foundation is not stable, do not pile tuning work on top of it.
 ### 3. Dirty labs are not neutral
 
 If the lab might be polluted by stale rows, config drift, or local overrides, treat it as dirty and reset it before trusting any result.
+
+## Git ACL recovery
+
+On this Windows host, stale orphan SID ACL entries can prevent Git from creating `.git/index.lock` and produce `Permission denied` during `git add` or `git commit`. Use the repo repair script instead of manually editing ACLs:
+
+```powershell
+scripts/Repair-GitAcl.ps1
+```
+
+The script stops active `git*` helpers, removes orphan SID entries from the workspace root and `.git` root, refreshes `.git` root inheritance, grants the current user full control on `.git`, disables repo `core.fsmonitor`, and verifies `git status` plus `git add --refresh`.
 
 ## Windows detached process rule
 

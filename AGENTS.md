@@ -14,6 +14,8 @@ Use current-state docs and postmortems over roadmap/design notes when they confl
 
 ## Project Skills
 
+Use [WM Agent Skills Lifecycle](docs/AGENT_SKILLS_LIFECYCLE.md) as the lifecycle adapter for define/plan/build/verify/review/ship work. It adapts the public Agent Skills pattern to WM's stricter release gates.
+
 Use these repo-local skills when the task matches:
 
 - `$wm-workflow` from `.agents/skills/wm-workflow/SKILL.md` for repo cleanup, docs, tests, workflow, handoff, and general code changes.
@@ -21,6 +23,12 @@ Use these repo-local skills when the task matches:
 - `$wm-content-release` from `.agents/skills/wm-content-release/SKILL.md` for quests, items, spells, shell abilities, arcs, scenes, context packs, candidate packs, and LLM proposal surfaces.
 
 Skill requirements: each skill must have a `SKILL.md` with YAML frontmatter containing only `name` and `description`, then concise Markdown instructions. Optional `agents/openai.yaml` may hold UI metadata. Do not add README/changelog-style clutter inside skills.
+
+Validate repo-local skills with:
+
+```powershell
+python scripts/validate_agent_skills.py
+```
 
 ## Non-Negotiables
 
