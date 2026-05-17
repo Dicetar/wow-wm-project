@@ -126,19 +126,37 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="wm living.rumor", description="Rumor Bulletin scaffold (dry-run only).")
     p.add_argument("--player-guid", type=int, required=True)
     p.add_argument("--player-name", required=True)
-    p.add_argument("--subject-name", required=True)
-    p.add_argument("--deed-count", type=int, required=True)
+    p.add_argument("--subject-name", default=None)
+    p.add_argument("--subject-entry", type=int, default=None)
+    p.add_argument("--deed-count", type=int, default=None)
     p.add_argument("--zone-name", default=None)
+    p.add_argument("--from-journal", action="store_true", help="read deed_count/subject from the live journal")
     p.add_argument("--json", action="store_true")
     args = p.parse_args(argv)
 
-    trigger = RumorTrigger(
-        player_guid=args.player_guid,
-        player_name=args.player_name,
-        subject_name=args.subject_name,
-        deed_count=args.deed_count,
-        zone_name=args.zone_name,
-    )
+    if args.from_journal:
+        if args.subject_entry is None:
+            p.error("--subject-entry is required with --from-journal")
+        from wm.living.journal_trigger import build_journal_reader, build_rumor_trigger_from_journal
+
+        trigger = build_rumor_trigger_from_journal(
+            reader=build_journal_reader(),
+            player_guid=args.player_guid,
+            player_name=args.player_name,
+            subject_entry=args.subject_entry,
+            subject_name=args.subject_name,
+            zone_name=args.zone_name,
+        )
+    else:
+        if args.deed_count is None or args.subject_name is None:
+            p.error("--deed-count and --subject-name are required unless --from-journal is set")
+        trigger = RumorTrigger(
+            player_guid=args.player_guid,
+            player_name=args.player_name,
+            subject_name=args.subject_name,
+            deed_count=args.deed_count,
+            zone_name=args.zone_name,
+        )
     decision = evaluate_rumor(trigger)
     if args.json:
         print(json.dumps(decision.to_dict(), indent=2))

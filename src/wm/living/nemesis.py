@@ -209,27 +209,42 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="wm living.nemesis", description="Nemesis decision/plan scaffold (dry-run only).")
     p.add_argument("--player-guid", type=int, required=True)
     p.add_argument("--subject-entry", type=int, required=True)
-    p.add_argument("--subject-name", required=True)
-    p.add_argument("--kill-count", type=int, required=True)
+    p.add_argument("--subject-name", default=None)
+    p.add_argument("--kill-count", type=int, default=None)
     p.add_argument("--zone-id", type=int, default=None)
     p.add_argument("--player-name", default=None)
     p.add_argument("--turn-in-npc-entry", type=int, default=None)
     p.add_argument("--kill-threshold", type=int, default=None)
+    p.add_argument("--from-journal", action="store_true", help="read kill_count/subject from the live journal")
     p.add_argument("--json", action="store_true")
     args = p.parse_args(argv)
 
     config = NemesisConfig()
     if args.kill_threshold is not None:
         config.kill_threshold = args.kill_threshold
-    trigger = NemesisTrigger(
-        player_guid=args.player_guid,
-        subject_entry=args.subject_entry,
-        subject_name=args.subject_name,
-        kill_count=args.kill_count,
-        zone_id=args.zone_id,
-        player_name=args.player_name,
-        turn_in_npc_entry=args.turn_in_npc_entry,
-    )
+    if args.from_journal:
+        from wm.living.journal_trigger import build_journal_reader, build_nemesis_trigger_from_journal
+
+        trigger = build_nemesis_trigger_from_journal(
+            reader=build_journal_reader(),
+            player_guid=args.player_guid,
+            subject_entry=args.subject_entry,
+            player_name=args.player_name,
+            subject_name=args.subject_name,
+            turn_in_npc_entry=args.turn_in_npc_entry,
+        )
+    else:
+        if args.kill_count is None or args.subject_name is None:
+            p.error("--kill-count and --subject-name are required unless --from-journal is set")
+        trigger = NemesisTrigger(
+            player_guid=args.player_guid,
+            subject_entry=args.subject_entry,
+            subject_name=args.subject_name,
+            kill_count=args.kill_count,
+            zone_id=args.zone_id,
+            player_name=args.player_name,
+            turn_in_npc_entry=args.turn_in_npc_entry,
+        )
     decision = evaluate_nemesis(trigger, config)
 
     if args.json:
