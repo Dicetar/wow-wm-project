@@ -8,6 +8,8 @@ import sys
 # out of date degrades discovery, never execution.
 CATALOG: dict[str, list[tuple[str, str]]] = {
     "diagnostics": [
+        ("panel", "Read-only operator dashboard: health + contracts + IDs + next actions"),
+        ("status", "Render/validate machine-checkable feature status"),
         ("doctor", "Report WM live readiness (DB/SOAP/bridge/policy) in one command"),
         ("sources.native_bridge.contracts_cli", "Audit native action payload-contract coverage"),
     ],

@@ -1,0 +1,141 @@
+{
+  "schema_version": "wm.feature_status.v1",
+  "description": "Machine-checkable per-feature status. Replaces status-in-prose as the source of truth; handoff docs should link here. status: WORKING|PARTIAL|BROKEN|UNKNOWN. repo_status = code/tests; gameplay_status = proven in-client.",
+  "entries": [
+    {
+      "feature_key": "platform.control_coordinator",
+      "layer": "platform",
+      "repo_status": "WORKING",
+      "gameplay_status": "WORKING",
+      "scope": "Idempotency/validation/policy/apply gates; LLM apply hard-blocked.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_control_coordinator.py"
+    },
+    {
+      "feature_key": "platform.wm_doctor",
+      "layer": "platform",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "One-command readiness: DB/SOAP/bridge/policy/registry.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_doctor.py"
+    },
+    {
+      "feature_key": "platform.wm_panel",
+      "layer": "platform",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "Read-only operator dashboard composing health/contracts/IDs.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_panel.py"
+    },
+    {
+      "feature_key": "platform.native_payload_contracts",
+      "layer": "platform",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "Enforced pre-flight payload validation; 57/99 kinds contracted.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_native_payload_contract.py"
+    },
+    {
+      "feature_key": "platform.llm_smoke",
+      "layer": "platform",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "Read-only local-LLM connectivity; never wired to apply.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_llm_client.py"
+    },
+    {
+      "feature_key": "perception.bounty_full_loop",
+      "layer": "perception",
+      "repo_status": "WORKING",
+      "gameplay_status": "PARTIAL",
+      "scope": "grant->complete->reward->suppress->cooldown->regrant never closed on one clean window.",
+      "last_verified": "2026-05-03",
+      "evidence_ref": "docs/FULL_LOOP_PROOF_RUNBOOK.md"
+    },
+    {
+      "feature_key": "content.arc_reward_factory",
+      "layer": "content",
+      "repo_status": "WORKING",
+      "gameplay_status": "PARTIAL",
+      "scope": "Compiler path unproven in-client; ADR-0004 gate open.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "docs/adr/0004-compiler-output-is-the-shipped-quest-artifact.md"
+    },
+    {
+      "feature_key": "content.personal_journey_spine",
+      "layer": "content",
+      "repo_status": "WORKING",
+      "gameplay_status": "WORKING",
+      "scope": "Character state + JourneyEligibilitySnapshot; lab-proven.",
+      "last_verified": "2026-05-03",
+      "evidence_ref": "tests/test_character_journey.py"
+    },
+    {
+      "feature_key": "living.nemesis",
+      "layer": "living",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "Dry-run scaffold; 5/6 native verbs lab-gated (Batch 1).",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_living_nemesis.py"
+    },
+    {
+      "feature_key": "living.rumor",
+      "layer": "living",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "live_ready scaffold (announce-only); needs live proof.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_living_rumor.py"
+    },
+    {
+      "feature_key": "living.legend",
+      "layer": "living",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "Dry-run scaffold; title/mail Batch-2 lab-gated.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_living_legend.py"
+    },
+    {
+      "feature_key": "living.patron",
+      "layer": "living",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "Dry-run scaffold; wm_counter_set Batch-3 lab-gated.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_living_patron.py"
+    },
+    {
+      "feature_key": "living.oath",
+      "layer": "living",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "Dry-run scaffold; wm_counter_*/quest_fail Batch-3 lab-gated.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_living_oath.py"
+    },
+    {
+      "feature_key": "living.journal_trigger",
+      "layer": "living",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "Reads real journal counters into triggers; reader injectable.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_living_journal_trigger.py"
+    },
+    {
+      "feature_key": "release.ci",
+      "layer": "release",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "GitHub Actions runs the DB-free unit suite on push.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": ".github/workflows/ci.yml"
+    }
+  ]
+}
