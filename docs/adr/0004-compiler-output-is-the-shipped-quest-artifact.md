@@ -91,5 +91,8 @@ cause, per the existing three-failure rule.
        default-column map; rerun; cap fresh-ID burn per cycle.
 3. [ ] On success, relabel Arc + Reward Factory V1 gameplay `WORKING` and update the
        three docs above to cite this ADR.
-4. [ ] Add a repo test asserting the factory plan for a sample scenario contains the
+4. [x] Add a repo test asserting the factory plan for a sample scenario contains the
        columns the proof identified as reward-panel-critical.
+       Done: `tests/test_arc_compiler_contract.py` locks ID/LogTitle/ObjectiveText1/
+       RewardItem1/RewardAmount1/RewardMoney=0/choice-routing/repeatable-flag/
+       fresh-id-delete. Widen this test as the live proof surfaces more columns.
