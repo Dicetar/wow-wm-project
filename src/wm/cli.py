@@ -11,6 +11,9 @@ CATALOG: dict[str, list[tuple[str, str]]] = {
         ("doctor", "Report WM live readiness (DB/SOAP/bridge/policy) in one command"),
         ("sources.native_bridge.contracts_cli", "Audit native action payload-contract coverage"),
     ],
+    "living": [
+        ("living.nemesis", "Nemesis decision/plan scaffold (dry-run, contract-validated)"),
+    ],
     "control": [
         ("control.inspect", "Inspect what an event can trigger"),
         ("control.new", "Build a manual control proposal"),
