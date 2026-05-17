@@ -33,6 +33,10 @@ python -m venv .venv
 pip install -e .
 ```
 
+After `pip install -e .`, a unified `wm` command is available. `wm <area>.<command> [args]`
+is equivalent to `python -m wm.<area>.<command> [args]`. Run `wm --list` for the catalog.
+Examples below use the `python -m` form; both work.
+
 ### 2. Copy and edit `.env`
 
 ```powershell
@@ -259,7 +263,8 @@ If you use Questie-335 while testing WM custom quests like `910000`, copy `wow_a
 - [Content Workbench V1](docs/CONTENT_WORKBENCH_V1.md)
 - [On-The-Fly Spells V1](docs/ON_THE_FLY_SPELLS_V1.md)
 - [Portable Rebuild Notes](docs/repack-rebuild.md)
-- [Roadmap](docs/ROADMAP.md)
+- [Program Roadmap](ROADMAP.md) (what WM should become; complements the execution roadmap below)
+- [Roadmap](docs/ROADMAP.md) (current native/control execution path)
 - archived bootstrap-era docs remain under `docs/archive/`
 
 ## Known limitations

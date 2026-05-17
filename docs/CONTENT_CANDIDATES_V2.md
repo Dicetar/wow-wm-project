@@ -7,6 +7,8 @@ Doc type: design
 
 This note is historical candidate-layer planning. Current candidate work should follow [ROADMAP.md](ROADMAP.md), [Context Pack V1](CONTEXT_PACK_V1.md), and current-state handoffs; do not treat the next-target section here as the active roadmap.
 
+> The V2/V3 demo and provider modules (`wm.candidates.demo_v2`, `wm.candidates.providers_v2`, and the V3 equivalents) were removed as redundant copy-chain scaffolding. Use the V1 baseline (`wm.candidates.demo`) or the canonical V4 path (`wm.candidates.demo_ranked_v4`, `wm.candidates.providers_v4`); the supported production lane is `wm.candidates.release_pack`.
+
 ## What changed from V1
 
 V1 proved that the project could extract candidate lists from your export files.
