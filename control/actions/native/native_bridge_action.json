@@ -61,6 +61,20 @@
       "optional": ["max_enchants", "guarantee_first", "preserve_existing_chance_pct", "minimum_tier", "forced_tier", "bonus_tier", "bonus_tier_chance_pct", "selected_enchant_slot_index", "enchant_chance_1", "enchant_chance_2", "enchant_chance_3"],
       "notes": "Applies random-enchant table effects to one existing scoped-player weapon/armor item. selector=random_equipped picks one eligible equipped item. Existing enchant slots have a default 15% preserve chance instead of being overwritten. Tiers are clamped to 1-5; selected_enchant_slot_index rerolls exactly one slot."
     },
+    "player_learn_spell": {
+      "required": ["spell_id"],
+      "optional": ["target_player_guid"],
+      "notes": "Teaches spell_id to the scoped online player (implemented)."
+    },
+    "player_unlearn_spell": {
+      "required": ["spell_id"],
+      "optional": ["target_player_guid"],
+      "notes": "Removes learned spell_id from the scoped online player (implemented)."
+    },
+    "world_announce_to_player": {
+      "required_any": ["message", "text"],
+      "notes": "Sends a server announcement to the scoped player (implemented). Accepts message or text."
+    },
     "quest_add": {
       "required": ["quest_id"],
       "optional": ["target_player_guid"],
@@ -115,6 +129,171 @@
       "required": ["scale"],
       "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
       "notes": "Sets object scale for only a scoped WM-owned live creature. Native clamps scale to 0.10-5.00."
+    },
+    "creature_set_name": {
+      "required": ["name"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Sets the runtime name of a scoped WM-owned creature (Nemesis naming). Not implemented until lab-hardened."
+    },
+    "creature_set_subname": {
+      "required": ["subname"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Sets the runtime subname/title of a scoped WM-owned creature. Not implemented until lab-hardened."
+    },
+    "creature_set_faction": {
+      "required": ["faction_id"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Sets faction template of a scoped WM-owned creature (hostile Nemesis). Not implemented until lab-hardened."
+    },
+    "creature_set_npc_flags": {
+      "required": ["npc_flags"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Sets NPCFLAG bitmask on a scoped WM-owned creature (questgiver/vendor). Not implemented until lab-hardened."
+    },
+    "creature_set_health_pct": {
+      "required": ["health_percent"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Sets current health as a 1-100 percent of max on a scoped WM-owned creature. Not implemented until lab-hardened."
+    },
+    "creature_move_to": {
+      "required": ["x", "y", "z"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "optional": ["o", "run"],
+      "notes": "Point-moves a scoped WM-owned creature. run defaults true. Not implemented until lab-hardened."
+    },
+    "creature_follow_player": {
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "optional": ["follow_distance", "follow_angle"],
+      "notes": "Makes a scoped WM-owned creature follow the scoped player. Not implemented until lab-hardened."
+    },
+    "creature_stop_movement": {
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Stops movement on a scoped WM-owned creature. Not implemented until lab-hardened."
+    },
+    "creature_set_react_state": {
+      "required": ["react_state"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Sets AI react state (passive/defensive/aggressive) on a scoped WM-owned creature. Not implemented until lab-hardened."
+    },
+    "creature_attack_player": {
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Makes a scoped WM-owned creature attack the scoped player (Nemesis ambush). High risk; not implemented until lab-hardened."
+    },
+    "creature_attack_target": {
+      "required": ["target_kind"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "optional": ["target_object_id"],
+      "notes": "Makes a scoped WM-owned creature attack a scoped target. High risk; not implemented until lab-hardened."
+    },
+    "creature_yell": {
+      "required": ["text"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Zone yell from a scoped WM-owned creature. Not implemented until lab-hardened."
+    },
+    "creature_whisper_player": {
+      "required": ["text"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Whisper from a scoped WM-owned creature to the scoped player. Not implemented until lab-hardened."
+    },
+    "gameobject_spawn": {
+      "required": ["gameobject_entry"],
+      "optional": ["arc_key", "duration_ms", "distance", "angle_offset"],
+      "notes": "Spawns a temporary WM-owned gameobject near the scoped player, recorded in wm_bridge_world_object. Not implemented until lab-hardened."
+    },
+    "gameobject_despawn": {
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Despawns only a gameobject row owned by the scoped player. Not implemented until lab-hardened."
+    },
+    "gameobject_set_state": {
+      "required": ["state"],
+      "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],
+      "notes": "Sets GO state on a scoped WM-owned gameobject. Not implemented until lab-hardened."
+    },
+    "companion_spawn": {
+      "required": ["creature_entry"],
+      "optional": ["companion_key", "follow_distance", "follow_angle", "duration_ms", "arc_key"],
+      "notes": "Spawns a scoped WM companion for the player. Not implemented until lab-hardened."
+    },
+    "companion_despawn": {
+      "required_any": ["companion_key", "object_id", "live_guid_low", "arc_key"],
+      "notes": "Despawns a scoped WM companion owned by the player. Not implemented until lab-hardened."
+    },
+    "companion_follow": {
+      "required_any": ["companion_key", "object_id", "live_guid_low"],
+      "optional": ["follow_distance", "follow_angle"],
+      "notes": "Makes a scoped WM companion follow the player. Not implemented until lab-hardened."
+    },
+    "companion_say": {
+      "required": ["text"],
+      "required_any": ["companion_key", "object_id", "live_guid_low"],
+      "notes": "Makes a scoped WM companion say text. Not implemented until lab-hardened."
+    },
+    "companion_emote": {
+      "required_any": ["companion_key", "object_id", "live_guid_low"],
+      "optional": ["emote_id", "text"],
+      "notes": "Runs an emote and/or text on a scoped WM companion. Not implemented until lab-hardened."
+    },
+    "player_add_title": {
+      "required": ["title_id"],
+      "notes": "Grants a CharTitles title to the scoped player (Local Legend). Not implemented until lab-hardened."
+    },
+    "player_remove_title": {
+      "required": ["title_id"],
+      "notes": "Removes a CharTitles title from the scoped player. Not implemented until lab-hardened."
+    },
+    "player_teleport": {
+      "required": ["map_id", "x", "y", "z"],
+      "optional": ["o"],
+      "notes": "Teleports the scoped player. High risk; not implemented until lab-hardened."
+    },
+    "player_play_sound": {
+      "required": ["sound_id"],
+      "notes": "Plays a SoundEntries id for the scoped player (scene punctuation). Not implemented until lab-hardened."
+    },
+    "player_send_mail": {
+      "required": ["subject", "body"],
+      "optional": ["money_copper", "sender_entry"],
+      "notes": "Sends WM mail to the scoped player (rumor letter without item). Not implemented until lab-hardened."
+    },
+    "player_send_mail_with_items": {
+      "required": ["subject", "body", "items"],
+      "optional": ["money_copper", "sender_entry"],
+      "notes": "Sends WM mail with attached WM-managed items. items is a list of {item_id,count}. Not implemented until lab-hardened."
+    },
+    "wm_counter_set": {
+      "required": ["counter_key", "value"],
+      "notes": "Sets a hidden WM progress counter for the scoped player (Oath/Nemesis state). Not implemented until lab-hardened."
+    },
+    "wm_counter_increment": {
+      "required": ["counter_key"],
+      "optional": ["delta"],
+      "notes": "Increments a hidden WM progress counter (delta defaults 1). Not implemented until lab-hardened."
+    },
+    "wm_counter_clear": {
+      "required": ["counter_key"],
+      "notes": "Clears a hidden WM progress counter for the scoped player. Not implemented until lab-hardened."
+    },
+    "quest_complete_objective": {
+      "required": ["quest_id"],
+      "required_any": ["objective_index", "creature_entry", "item_id"],
+      "notes": "Satisfies one objective of a scoped player's WM quest. Not implemented until lab-hardened."
+    },
+    "quest_complete": {
+      "required": ["quest_id"],
+      "notes": "Force-completes a scoped player's WM quest (all objectives). Not implemented until lab-hardened."
+    },
+    "quest_fail": {
+      "required": ["quest_id"],
+      "notes": "Fails a scoped player's WM quest (Oath breach). Not implemented until lab-hardened."
+    },
+    "zone_set_weather": {
+      "required": ["weather_type"],
+      "optional": ["intensity", "zone_id", "duration_seconds"],
+      "notes": "Sets a scoped zone weather override (scene mood). Blocked until a native weather executor exists; not implemented until lab-hardened."
+    },
+    "zone_clear_weather_override": {
+      "optional": ["zone_id"],
+      "notes": "Clears a WM zone weather override. Not implemented until lab-hardened."
     }
   },
   "guardrails": [

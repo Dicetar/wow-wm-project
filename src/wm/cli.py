@@ -9,6 +9,7 @@ import sys
 CATALOG: dict[str, list[tuple[str, str]]] = {
     "diagnostics": [
         ("doctor", "Report WM live readiness (DB/SOAP/bridge/policy) in one command"),
+        ("sources.native_bridge.contracts_cli", "Audit native action payload-contract coverage"),
     ],
     "control": [
         ("control.inspect", "Inspect what an event can trigger"),

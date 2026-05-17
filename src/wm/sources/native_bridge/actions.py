@@ -11,6 +11,7 @@ from wm.events.store import _sql_int_or_null
 from wm.events.store import _sql_string
 from wm.events.store import _sql_string_or_null
 from wm.sources.native_bridge.action_kinds import NATIVE_ACTION_KIND_BY_ID
+from wm.sources.native_bridge.payload_contract import validate_native_action_payload
 
 
 TERMINAL_ACTION_STATUSES = {"done", "failed", "rejected", "expired"}
@@ -80,6 +81,9 @@ class NativeBridgeActionClient:
     ) -> NativeBridgeActionRequest:
         if action_kind not in NATIVE_ACTION_KIND_BY_ID:
             raise ValueError(f"Unknown native bridge action kind: {action_kind}")
+        contract_issues = validate_native_action_payload(action_kind=action_kind, payload=payload)
+        if contract_issues:
+            raise ValueError("Native action payload contract violation: " + "; ".join(contract_issues))
         payload_json = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True)
         expires_sql = "NULL" if expires_seconds is None else f"DATE_ADD(NOW(), INTERVAL {int(expires_seconds)} SECOND)"
         purge_after_sql = "NULL" if purge_after_seconds is None else f"DATE_ADD(NOW(), INTERVAL {int(purge_after_seconds)} SECOND)"
