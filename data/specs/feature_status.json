@@ -129,6 +129,15 @@
       "evidence_ref": "tests/test_living_journal_trigger.py"
     },
     {
+      "feature_key": "perception.journal_projector",
+      "layer": "perception",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "Journal V2 write side: wm_event_log -> subject/zone counters; idempotent, dry-runnable, auto-materializes subjects. Needs live DB proof.",
+      "last_verified": "2026-05-17",
+      "evidence_ref": "tests/test_journal_projector.py"
+    },
+    {
       "feature_key": "release.ci",
       "layer": "release",
       "repo_status": "WORKING",

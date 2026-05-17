@@ -86,6 +86,7 @@ CATALOG: dict[str, list[tuple[str, str]]] = {
     ],
     "journal": [
         ("journal.inspect", "Inspect journal rows for a player/subject"),
+        ("journal.project", "Project wm_event_log into journal counters (dry-run/apply)"),
     ],
     "candidates": [
         ("candidates.release_pack", "Build a release-candidate pack (supported lane)"),
