@@ -37,6 +37,10 @@ After `pip install -e .`, a unified `wm` command is available. `wm <area>.<comma
 is equivalent to `python -m wm.<area>.<command> [args]`. Run `wm --list` for the catalog.
 Examples below use the `python -m` form; both work.
 
+Run `wm doctor` (or `python -m wm.doctor --summary`) at any point to check live
+readiness in one view: mysql binary, world/char DB, WM bootstrap tables, SOAP,
+native bridge scope, and control registry. Exit code is non-zero if any check FAILs.
+
 ### 2. Copy and edit `.env`
 
 ```powershell

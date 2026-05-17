@@ -22,7 +22,9 @@ Player is `5406` / Jecia. BridgeLab MySQL is `127.0.0.1:33307`. Substitute as ne
 ## 0. Clean-window preconditions
 
 All must be true before starting. If any fails, fix it first — a dirty lab invalidates
-every result below.
+every result below. Run `wm doctor --summary` first: it automates the mysql/world-db/
+char-db/WM-bootstrap-table/native-bridge-scope/control-registry checks below and exits
+non-zero if any FAIL. Treat its `FAIL` lines as hard blockers.
 
 ```powershell
 git status --short --branch

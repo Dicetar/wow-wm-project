@@ -299,7 +299,10 @@ The project already has a lot of moving parts. Before adding more ambition, the 
   - SOAP readiness
   - native bridge readiness
   - policy gate readiness
-- add a “system health” command that prints one summary view
+- add a “system health” command that prints one summary view — DONE: `wm doctor`
+  (`src/wm/doctor.py`) reports mysql/world-db/char-db/WM-bootstrap-tables/SOAP/
+  native-bridge-scope/control-registry readiness with WORKING/UNKNOWN/FAIL and a
+  non-zero exit on any FAIL
 - make test categories explicit:
   - unit
   - DB-integration

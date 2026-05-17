@@ -7,6 +7,9 @@ import sys
 # dispatch works for any importable `wm.*` module, so the catalog drifting
 # out of date degrades discovery, never execution.
 CATALOG: dict[str, list[tuple[str, str]]] = {
+    "diagnostics": [
+        ("doctor", "Report WM live readiness (DB/SOAP/bridge/policy) in one command"),
+    ],
     "control": [
         ("control.inspect", "Inspect what an event can trigger"),
         ("control.new", "Build a manual control proposal"),
