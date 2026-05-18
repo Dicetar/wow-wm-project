@@ -803,6 +803,44 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if (result.preflight.get("ok", False) and result.validation.get("ok", False)) else 2
 
 
+def publish_quest(plan: "Any", db_client: "Any",
+                  mode: "str") -> "Any":
+    """Simplified publish_quest for QuestPublishPlan objects (Phase 4 API)."""
+    from wm.quests.publish.plan import PublishResult
+    if mode == "dry_run":
+        return PublishResult(mode="dry_run", quest_id=plan.quest_id, executed=False)
+
+    snapshot_taken = False
+    try:
+        existing = db_client.query(
+            f"SELECT * FROM quest_template WHERE ID = {plan.quest_id}")
+        plan.rollback_snapshot["quest_template"] = existing
+        snapshot_taken = True
+        for sql in plan.apply_commands:
+            db_client.execute(sql)
+        verify_ok = all(db_client.query(q) for q in plan.verify_queries)
+        return PublishResult(mode="apply", quest_id=plan.quest_id,
+                             executed=True, verify_passed=verify_ok,
+                             snapshot_taken=snapshot_taken)
+    except Exception as exc:
+        return PublishResult(mode="apply", quest_id=plan.quest_id,
+                             executed=True, error=str(exc),
+                             snapshot_taken=snapshot_taken)
+
+
+def rollback_quest(plan: "Any", db_client: "Any") -> None:
+    """Restore pre-publish state from snapshot captured during apply."""
+    existing = plan.rollback_snapshot.get("quest_template", [])
+    db_client.execute(f"DELETE FROM quest_template WHERE ID = {plan.quest_id}")
+    db_client.execute(f"DELETE FROM quest_template_addon WHERE ID = {plan.quest_id}")
+    if existing:
+        for row in existing:
+            cols = ", ".join(row.keys())
+            vals = ", ".join(f"'{v}'" if isinstance(v, str) else str(v or 0)
+                             for v in row.values())
+            db_client.execute(f"INSERT INTO quest_template ({cols}) VALUES ({vals})")
+
+
 __all__ = [
     "PublishIssue",
     "QuestPreflightReport",
@@ -810,4 +848,6 @@ __all__ = [
     "QuestPublisher",
     "load_bounty_quest_draft",
     "main",
+    "publish_quest",
+    "rollback_quest",
 ]

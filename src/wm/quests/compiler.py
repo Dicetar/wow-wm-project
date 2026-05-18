@@ -286,3 +286,98 @@ def _first_available_column(candidates: tuple[str, ...], available_columns: set[
         if column in available_columns:
             return column
     return None
+
+
+@dataclass
+class QuestPublishPlan:
+    quest_id: int
+    quest_template_row: dict
+    quest_template_addon_row: dict
+    rollback_snapshot: dict
+    dry_run_commands: list[str]
+    apply_commands: list[str]
+    verify_queries: list[str]
+    affected_tables: list[str]
+
+
+class QuestCompiler:
+    """Generates clean quest_template rows from a draft dict. No clone source."""
+
+    def compile(self, draft: dict, schema: "Any") -> QuestPublishPlan:
+        from wm.quests.schema import QuestTemplateSchema
+        quest_id = draft["quest_id"]
+        row = self._build_quest_template_row(draft)
+
+        if isinstance(schema, QuestTemplateSchema):
+            errors = schema.validate_draft(row)
+            if errors:
+                raise ValueError(f"Draft validation failed: {errors}")
+        addon_row = self._build_quest_template_addon_row(draft)
+
+        insert_sql = self._to_insert_sql("quest_template", row)
+        addon_sql = self._to_insert_sql("quest_template_addon", addon_row)
+
+        return QuestPublishPlan(
+            quest_id=quest_id,
+            quest_template_row=row,
+            quest_template_addon_row=addon_row,
+            rollback_snapshot={},
+            dry_run_commands=[insert_sql, addon_sql],
+            apply_commands=[insert_sql, addon_sql],
+            verify_queries=[
+                f"SELECT ID FROM quest_template WHERE ID = {quest_id}",
+            ],
+            affected_tables=["quest_template", "quest_template_addon"],
+        )
+
+    def _build_quest_template_row(self, draft: dict) -> dict:
+        return {
+            "ID": draft["quest_id"],
+            "QuestType": 2,
+            "QuestLevel": draft.get("level", 1),
+            "MinLevel": draft.get("min_level", 1),
+            "QuestSortID": draft.get("sort_id", 1),
+            "QuestInfoID": 0,
+            "SuggestedGroupNum": 0,
+            "RequiredFactionId1": 0, "RequiredFactionValue1": 0,
+            "RewardNextQuest": draft.get("reward_next_quest") or 0,
+            "RewardXPDifficulty": draft.get("xp_difficulty", 1),
+            "RewardMoney": draft.get("reward_money", 0),
+            "RewardBonusMoney": 0,
+            "RewardDisplaySpell": 0, "RewardSpell": 0,
+            "RewardHonor": 0, "RewardKillHonor": 0,
+            "StartItem": 0,
+            "RequiredPlayerKills": 0,
+            "RewardItem1": draft.get("reward_item_entry") or 0,
+            "RewardAmount1": draft.get("reward_item_count") or 0,
+            "RewardItem2": 0, "RewardAmount2": 0,
+            "RewardItem3": 0, "RewardAmount3": 0,
+            "RewardItem4": 0, "RewardAmount4": 0,
+            "LogTitle": draft.get("title", ""),
+            "LogDescription": draft.get("log_description") or "",
+            "QuestDescription": draft.get("description") or "",
+            "AreaDescription": draft.get("area_description") or "",
+            "QuestCompletionLog": draft.get("completion_log") or "",
+        }
+
+    def _build_quest_template_addon_row(self, draft: dict) -> dict:
+        return {
+            "ID": draft["quest_id"],
+            "MaxLevel": 0, "AllowableClasses": 0,
+            "SourceSpellID": 0, "PrevQuestID": 0,
+            "NextQuestID": draft.get("reward_next_quest") or 0,
+            "ExclusiveGroup": 0, "RewardMailTemplateID": 0,
+            "RewardMailDelay": 0, "RequiredSkillID": 0,
+            "RequiredSkillPoints": 0, "RequiredMinRepFaction": 0,
+            "RequiredMaxRepFaction": 0, "RequiredMinRepValue": 0,
+            "RequiredMaxRepValue": 0, "ProvidedItemCount": 0,
+            "SpecialFlags": 0,
+        }
+
+    def _to_insert_sql(self, table: str, row: dict) -> str:
+        cols = ", ".join(row.keys())
+        vals = ", ".join(
+            f"'{v}'" if isinstance(v, str) else str(v)
+            for v in row.values()
+        )
+        return f"INSERT INTO {table} ({cols}) VALUES ({vals});"
