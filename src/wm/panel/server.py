@@ -76,6 +76,14 @@ class PanelApp:
                 return 200, build_wild_feature_catalog()
             except Exception as exc:
                 return 200, {"ok": False, "error": str(exc)}
+        if path == "/api/health":
+            return 200, {"ok": True, "status": "healthy", "panel": "WM Local Control Panel"}
+        if path == "/api/feature_status":
+            return 200, self._feature_status()
+        if path == "/api/living_readiness":
+            return 200, self._living_readiness()
+        if path == "/api/proposals":
+            return 200, {"proposals": self.state.list_drafts(limit=100)}
         return 404, {"ok": False, "error": "Not found."}
 
     def post(self, raw_path: str, body: dict[str, Any]) -> tuple[int, Any]:
@@ -107,6 +115,8 @@ class PanelApp:
         if path.startswith("/api/drafts/") and path.endswith("/adopt"):
             draft_id = unquote(path.removeprefix("/api/drafts/").removesuffix("/adopt"))
             return self._adopt_draft(draft_id=draft_id, body=body)
+        if path == "/api/llm/adopt":
+            return 200, self._log_llm_adoption(body)
         return 404, {"ok": False, "error": "Not found."}
 
     def _generate_llm_draft(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -211,6 +221,51 @@ class PanelApp:
         }
         self.state.save_draft(adopted)
         return 200, adopted
+
+    def _feature_status(self) -> dict[str, Any]:
+        try:
+            from wm.living.catalog import build_wild_feature_catalog, validate_wild_catalog
+            cat = build_wild_feature_catalog()
+            issues = validate_wild_catalog()
+            return {
+                "ok": not issues,
+                "live_ready_count": cat["live_ready_count"],
+                "total_count": cat["count"],
+                "issues": issues,
+                "entries": [
+                    {"key": e["key"], "live_ready": e["live_ready"], "batch": e["batch"]}
+                    for e in cat["entries"]
+                ],
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def _living_readiness(self) -> dict[str, Any]:
+        try:
+            from wm.living.catalog import dry_run_all
+            result = dry_run_all()
+            return {
+                "ok": result["ok"],
+                "dry_run_results": result["results"],
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def _log_llm_adoption(self, body: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from wm.llm.provenance import ProvenanceLogger
+            logger = ProvenanceLogger(db_client=None)
+            proposal_id = logger.log(
+                schema_version=str(body.get("schema_version") or ""),
+                instruction=str(body.get("instruction") or ""),
+                raw_response=str(body.get("raw_response") or ""),
+                parsed_json=body.get("parsed_json"),
+                model_id=body.get("model_id"),
+                operator=body.get("operator"),
+            )
+            return {"ok": True, "proposal_id": proposal_id, "note": "no-db: provenance not persisted"}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     def _status(self) -> dict[str, Any]:
         return {
