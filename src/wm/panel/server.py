@@ -70,6 +70,12 @@ class PanelApp:
                 return 200, {"ok": True, "models": LmStudioClient(settings).list_models()}
             except Exception as exc:
                 return 200, {"ok": False, "models": [], "error": str(exc)}
+        if path == "/api/living":
+            try:
+                from wm.living.catalog import build_wild_feature_catalog
+                return 200, build_wild_feature_catalog()
+            except Exception as exc:
+                return 200, {"ok": False, "error": str(exc)}
         return 404, {"ok": False, "error": "Not found."}
 
     def post(self, raw_path: str, body: dict[str, Any]) -> tuple[int, Any]:
