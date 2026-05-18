@@ -14,6 +14,7 @@ CATALOG: dict[str, list[tuple[str, str]]] = {
         ("sources.native_bridge.contracts_cli", "Audit native action payload-contract coverage"),
     ],
     "living": [
+        ("living.catalog", "Wild Feature Catalog: list/--validate/--dry-run-all"),
         ("living.nemesis", "Nemesis decision/plan scaffold (dry-run, contract-validated)"),
         ("living.rumor", "Rumor Bulletin scaffold (live-ready: announce only)"),
         ("living.legend", "Local Legend scaffold (title/letter, Batch-2 gated)"),

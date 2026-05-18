@@ -120,6 +120,15 @@
       "evidence_ref": "tests/test_living_oath.py"
     },
     {
+      "feature_key": "living.wild_catalog",
+      "layer": "living",
+      "repo_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "scope": "ADR-0005 first-class wild-feature registry; collective dry-run + CI validate; single-sources the GUI.",
+      "last_verified": "2026-05-18",
+      "evidence_ref": "tests/test_living_catalog.py"
+    },
+    {
       "feature_key": "living.journal_trigger",
       "layer": "living",
       "repo_status": "WORKING",

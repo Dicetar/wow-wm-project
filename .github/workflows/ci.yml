@@ -24,3 +24,7 @@ jobs:
         run: python -m wm.status --validate
       - name: Native contract coverage
         run: python -m wm.sources.native_bridge.contracts_cli
+      - name: Wild feature catalog valid
+        run: python -m wm.living.catalog --validate
+      - name: Wild features dry-run clean
+        run: python -m wm.living.catalog --dry-run-all
