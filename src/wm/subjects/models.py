@@ -7,6 +7,22 @@ from wm.refs import CreatureRef
 
 
 @dataclass(slots=True)
+class AreaContext:
+    zone_id: int
+    zone_name: str
+    area_id: int | None
+    area_name: str | None
+
+
+@dataclass(slots=True)
+class SubjectCluster:
+    exact_entry: int
+    archetype_key: str | None        # "wolf", "guard", "vendor"
+    family_cluster: str | None       # "wolves_elwynn", "kobolds_westfall"
+    local_pop_key: str | None        # "gnolls_near_goldshire"
+
+
+@dataclass(slots=True)
 class SubjectCard:
     canonical_id: str
     kind: str
@@ -26,6 +42,15 @@ class SubjectCard:
     source_ref: CreatureRef | None = None
     source: str = "unknown"
     evidence: dict[str, Any] = field(default_factory=dict)
+    # Phase 1 enrichment fields — populated by subject enrichment loader
+    creature_family: str | None = None       # decoded from family_id via decoders
+    npc_role_tags: list[str] = field(default_factory=list)  # decoded npcflag bits
+    faction_name: str | None = None
+    faction_alignment: str = "unknown"
+    area_context: AreaContext | None = None
+    settlement_role: str | None = None       # "quest_hub","inn","city","outpost","dungeon","wild"
+    wm_notes: list[str] = field(default_factory=list)  # operator annotations
+    cluster: SubjectCluster | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
