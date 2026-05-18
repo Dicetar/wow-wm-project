@@ -160,5 +160,54 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if decision.eligible else 1
 
 
+PATRON_STAGES = ("none", "acknowledged", "favored", "chosen")
+
+
+class PatronManager:
+    """Reads/writes patron favor state from wm_patron table."""
+
+    def __init__(self, db_client: Any = None):
+        self._db = db_client
+
+    def get_favor(self, player_guid: int, patron_key: str = "wm_patron") -> int:
+        if self._db is None:
+            return 0
+        rows = self._db.query(
+            "SELECT favor FROM wm_patron WHERE player_guid = %s AND patron_key = %s",
+            (player_guid, patron_key),
+        )
+        return int(rows[0]["favor"]) if rows else 0
+
+    def set_favor(self, player_guid: int, favor: int,
+                  tier_name: str | None = None,
+                  patron_key: str = "wm_patron") -> None:
+        if self._db is None:
+            return
+        self._db.execute(
+            """
+            INSERT INTO wm_patron (player_guid, patron_key, favor, tier_name)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE favor = VALUES(favor), tier_name = VALUES(tier_name),
+                updated_at = NOW()
+            """,
+            (player_guid, patron_key, favor, tier_name),
+        )
+
+    def apply_completion(self, player_guid: int, player_name: str,
+                         completed_wm_count: int,
+                         config: PatronConfig | None = None) -> PatronDecision:
+        config = config or PatronConfig()
+        trigger = PatronTrigger(
+            player_guid=player_guid,
+            player_name=player_name,
+            completed_wm_count=completed_wm_count,
+        )
+        decision = evaluate_patron(trigger, config)
+        if decision.eligible and decision.plan:
+            self.set_favor(player_guid, decision.plan.favor,
+                           decision.plan.tier_name, config.patron_key)
+        return decision
+
+
 if __name__ == "__main__":
     sys.exit(main())

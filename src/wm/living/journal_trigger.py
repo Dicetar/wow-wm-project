@@ -77,6 +77,74 @@ def build_rumor_trigger_from_journal(
     )
 
 
+def load_subject_journal_counts_v2(
+    *,
+    db_client: Any,
+    player_guid: int,
+    subject_entry: int,
+) -> tuple[int, int, int]:
+    """Return (kills, skins, deed_total) from wm_journal_counter rows.
+
+    deed_total is kills + skins + talk + feed events combined.
+    Degrades to (0, 0, 0) when db_client is None or rows are absent.
+    """
+    if db_client is None:
+        return 0, 0, 0
+    rows = db_client.query(
+        "SELECT counter_key, count FROM wm_journal_counter "
+        "WHERE player_guid = %s AND subject_entry = %s",
+        (player_guid, subject_entry),
+    )
+    counts: dict[str, int] = {r["counter_key"]: int(r.get("count", 0)) for r in rows}
+    kills = counts.get("kills", 0)
+    skins = counts.get("skins", 0)
+    deed_total = sum(counts.values())
+    return kills, skins, deed_total
+
+
+def build_nemesis_trigger_from_journal_v2(
+    *,
+    db_client: Any,
+    player_guid: int,
+    subject_entry: int,
+    player_name: str | None = None,
+    subject_name: str | None = None,
+    turn_in_npc_entry: int | None = None,
+) -> NemesisTrigger:
+    kills, _, _ = load_subject_journal_counts_v2(
+        db_client=db_client, player_guid=player_guid, subject_entry=subject_entry
+    )
+    return NemesisTrigger(
+        player_guid=player_guid,
+        subject_entry=subject_entry,
+        subject_name=subject_name or f"creature:{subject_entry}",
+        kill_count=kills,
+        player_name=player_name,
+        turn_in_npc_entry=turn_in_npc_entry,
+    )
+
+
+def build_rumor_trigger_from_journal_v2(
+    *,
+    db_client: Any,
+    player_guid: int,
+    player_name: str,
+    subject_entry: int,
+    subject_name: str | None = None,
+    zone_name: str | None = None,
+) -> RumorTrigger:
+    _, _, deed_total = load_subject_journal_counts_v2(
+        db_client=db_client, player_guid=player_guid, subject_entry=subject_entry
+    )
+    return RumorTrigger(
+        player_guid=player_guid,
+        player_name=player_name,
+        subject_name=subject_name or f"creature:{subject_entry}",
+        deed_count=deed_total,
+        zone_name=zone_name,
+    )
+
+
 def build_journal_reader() -> Any:
     """Construct the live SubjectJournalReader from env settings (runtime path)."""
     from wm.config import Settings

@@ -272,5 +272,58 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if decision.eligible else 1
 
 
+class NemesisManager:
+    """Reads/writes nemesis state from wm_nemesis table."""
+
+    def __init__(self, db_client: Any = None):
+        self._db = db_client
+
+    def is_awakened(self, player_guid: int, subject_entry: int) -> bool:
+        if self._db is None:
+            return False
+        rows = self._db.query(
+            "SELECT status FROM wm_nemesis "
+            "WHERE player_guid = %s AND subject_entry = %s AND status = 'awakened'",
+            (player_guid, subject_entry),
+        )
+        return bool(rows)
+
+    def record_awakening(self, player_guid: int, subject_entry: int,
+                         nemesis_name: str, arc_key: str) -> None:
+        if self._db is None:
+            return
+        self._db.execute(
+            """
+            INSERT INTO wm_nemesis (player_guid, subject_entry, nemesis_name, arc_key, status)
+            VALUES (%s, %s, %s, %s, 'awakened')
+            ON DUPLICATE KEY UPDATE nemesis_name = VALUES(nemesis_name),
+                arc_key = VALUES(arc_key), status = 'awakened', resolved_at = NULL
+            """,
+            (player_guid, subject_entry, nemesis_name, arc_key),
+        )
+
+    def record_slain(self, player_guid: int, subject_entry: int) -> None:
+        if self._db is None:
+            return
+        self._db.execute(
+            "UPDATE wm_nemesis SET status = 'slain', resolved_at = NOW() "
+            "WHERE player_guid = %s AND subject_entry = %s",
+            (player_guid, subject_entry),
+        )
+
+    def evaluate_and_record(
+        self,
+        trigger: NemesisTrigger,
+        config: NemesisConfig | None = None,
+    ) -> NemesisDecision:
+        decision = evaluate_nemesis(trigger, config)
+        if decision.eligible and decision.plan:
+            self.record_awakening(
+                trigger.player_guid, trigger.subject_entry,
+                decision.plan.nemesis_name, decision.plan.arc_key,
+            )
+        return decision
+
+
 if __name__ == "__main__":
     sys.exit(main())
