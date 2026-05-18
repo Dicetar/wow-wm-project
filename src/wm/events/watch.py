@@ -4,6 +4,38 @@ import argparse
 import sys
 import time
 
+COUNTER_KEY_FOR_EVENT: dict[str, str] = {
+    "kill": "kills",
+    "skinning": "skins",
+    "quest_granted": "quests_started",
+    "quest_completed": "quests_completed",
+    "quest_rewarded": "quests_rewarded",
+    "talk": "conversation_events",
+    "feed": "feeds",
+    "train": "training_interactions",
+}
+
+JOURNALABLE_EVENTS = set(COUNTER_KEY_FOR_EVENT.keys())
+
+
+def apply_journal_write(event: object, journal_writer: object) -> None:
+    """Call journal_writer.increment_counter for journalable event types."""
+    event_type = getattr(event, "event_type", None)
+    if event_type not in JOURNALABLE_EVENTS:
+        return
+    player_guid = getattr(event, "player_guid", None)
+    if not player_guid:
+        return
+    target_entry = getattr(event, "target_entry", None)
+    if not target_entry:
+        return
+    counter_key = COUNTER_KEY_FOR_EVENT[event_type]
+    journal_writer.increment_counter(  # type: ignore[union-attr]
+        player_guid=player_guid,
+        subject_entry=target_entry,
+        counter_key=counter_key,
+    )
+
 from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient
 from wm.events.adapters import ADAPTER_CHOICES
