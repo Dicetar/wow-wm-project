@@ -81,3 +81,41 @@ def format_summary_markdown(summary: JournalSummary) -> str:
         lines.append(summary.description)
     lines.extend(summary.history_lines)
     return "\n".join(lines)
+
+
+def summarize_journal_counters(subject_name: str, counters: list[dict]) -> str:
+    """Produce a prompt-ready prose summary from V2 journal counter rows."""
+    if not counters:
+        return f"{subject_name} — no notable interactions recorded."
+
+    from datetime import datetime
+    parts = [f"{subject_name}"]
+    for row in counters:
+        key = row.get("counter_key", "")
+        count = row.get("count", 0)
+        last_at = row.get("last_at")
+        if count == 0:
+            continue
+        label = {
+            "kills": "kill",
+            "skins": "skin",
+            "quests_started": "quest started",
+            "quests_rewarded": "quest completed",
+            "conversation_events": "conversation",
+        }.get(key, key)
+        last_str = ""
+        if last_at:
+            try:
+                last_dt = datetime.fromisoformat(str(last_at))
+                delta = datetime.utcnow() - last_dt
+                if delta.days == 0:
+                    last_str = " (today)"
+                elif delta.days == 1:
+                    last_str = " (yesterday)"
+                else:
+                    last_str = f" ({delta.days} days ago)"
+            except Exception:
+                pass
+        parts.append(f"{count} {label}{'s' if count != 1 else ''}{last_str}")
+
+    return " — ".join(parts) + "."

@@ -101,6 +101,20 @@ def build_materialize_subject_sql(*, subject_type: str, subject_entry: int) -> s
     )
 
 
+def project_event(event: dict, writer: object) -> None:
+    """Project a single event dict into journal counters via writer (Phase 2 API)."""
+    from wm.events.watch import COUNTER_KEY_FOR_EVENT, JOURNALABLE_EVENTS
+    event_type = event.get("event_type", "")
+    if event_type not in JOURNALABLE_EVENTS:
+        return
+    player_guid = event.get("player_guid")
+    target_entry = event.get("target_entry")
+    if not player_guid or not target_entry:
+        return
+    counter_key = COUNTER_KEY_FOR_EVENT[event_type]
+    writer.increment_counter(player_guid, target_entry, counter_key)  # type: ignore[union-attr]
+
+
 class JournalProjector:
     def __init__(self, *, client: Any, settings: Any) -> None:
         self.client = client
