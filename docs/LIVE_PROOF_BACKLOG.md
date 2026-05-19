@@ -338,3 +338,17 @@ as the gate) rather than six per-domain cycles — the user
 deprioritized strict per-domain cadence; all plan deliverables
 (queue <400 ln, handlers in domain files, byte-identical behavior,
 tree parity) are met and proven.
+
+#### 0D deep-proof addendum (2026-05-19, Jecia 5406 online)
+
+Closes the "seam-only" gap in the 0D matrix. With Jecia in-world,
+real SUCCESSFUL mutations driven through the post-0D split + include-trim
+binary (pid 22412):
+- `player_add_money {amount:1234}` -> done; `characters.money` delta
+  exactly +1234 (33672334 -> 33673568).
+- `player_add_item {item_id:2589,count:3}` -> done; linen cloth 0 -> 3
+  in character_inventory/item_instance.
+Both via wm_bridge_player_actions.cpp / wm_bridge_inventory_actions.cpp
++ WmBridge::detail, exercising the rich ActionResultJson field path
+(item_id/count/copper/player_guid). Proof script:
+scripts/phase0/deepproof_0d.sh.
