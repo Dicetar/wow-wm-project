@@ -1,5 +1,6 @@
 #include "wm_bridge_common.h"
 
+#include "wm_bridge_json.h"
 #include "Config.h"
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
@@ -94,49 +95,10 @@ namespace
         return std::to_string(*value);
     }
 
-    std::string EscapeForJson(std::string const& value)
-    {
-        std::ostringstream out;
-        for (unsigned char ch : value)
-        {
-            switch (ch)
-            {
-                case '\\':
-                    out << "\\\\";
-                    break;
-                case '"':
-                    out << "\\\"";
-                    break;
-                case '\b':
-                    out << "\\b";
-                    break;
-                case '\f':
-                    out << "\\f";
-                    break;
-                case '\n':
-                    out << "\\n";
-                    break;
-                case '\r':
-                    out << "\\r";
-                    break;
-                case '\t':
-                    out << "\\t";
-                    break;
-                default:
-                    if (ch < 0x20)
-                    {
-                        out << ' ';
-                    }
-                    else
-                    {
-                        out << static_cast<char>(ch);
-                    }
-                    break;
-            }
-        }
-
-        return out.str();
-    }
+    // Phase 0B: local EscapeForJson removed — now the single canonical
+    // WmBridge::EscapeForJson (wm_bridge_json.h). This file's logic was
+    // already the correct one, so behavior here is unchanged.
+    using WmBridge::EscapeForJson;
 }
 
 namespace WmBridge

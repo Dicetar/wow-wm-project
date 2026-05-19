@@ -14,7 +14,7 @@ $out    = "$test\out"
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
 $inc  = "/I`"$test\shims`" /I`"$src`" /I`"$test`""
-$srcs = "`"$src\wm_effect_registry.cpp`" `"$test\test_wm_effect_registry.cpp`" `"$test\test_main.cpp`""
+$srcs = "`"$src\wm_effect_registry.cpp`" `"$src\wm_bridge_json.cpp`" `"$test\test_wm_effect_registry.cpp`" `"$test\test_wm_json.cpp`" `"$test\test_main.cpp`""
 $cl   = "cl /nologo /std:c++17 /EHsc /W3 $inc $srcs /Fe`"$out\wm_unit_tests.exe`" /Fo`"$out\\`""
 
 cmd /c "`"$vcvars`" >nul 2>&1 && $cl"

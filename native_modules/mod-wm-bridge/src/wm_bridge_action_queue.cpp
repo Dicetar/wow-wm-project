@@ -21,6 +21,7 @@
 #include "Unit.h"
 #include "WorldSession.h"
 #include "wm_bridge_common.h"
+#include "wm_bridge_json.h"
 #include "wm_bridge_random_enchant.h"
 #include "wm_effect_registry.h"
 
@@ -40,42 +41,16 @@ namespace
 {
     uint32 gActionPollTimer = 0;
 
+    // Phase 0B: the local (buggy, signed-char, no \b/\f) EscapeForJson was
+    // deleted. All call sites below now use the canonical WmBridge one
+    // (wm_bridge_json.h) — correct UTF-8 + \b/\f handling. Documented
+    // behavior change: result JSON no longer corrupts non-ASCII text.
+    using WmBridge::EscapeForJson;
+
     std::string EscapeForSql(std::string value)
     {
         WorldDatabase.EscapeString(value);
         return value;
-    }
-
-    std::string EscapeForJson(std::string const& value)
-    {
-        std::string escaped;
-        escaped.reserve(value.size());
-        for (char ch : value)
-        {
-            switch (ch)
-            {
-                case '\\':
-                    escaped += "\\\\";
-                    break;
-                case '"':
-                    escaped += "\\\"";
-                    break;
-                case '\n':
-                    escaped += "\\n";
-                    break;
-                case '\r':
-                    escaped += "\\r";
-                    break;
-                case '\t':
-                    escaped += "\\t";
-                    break;
-                default:
-                    escaped += ch < 0x20 ? ' ' : ch;
-                    break;
-            }
-        }
-
-        return escaped;
     }
 
     std::string SqlString(std::string const& value)

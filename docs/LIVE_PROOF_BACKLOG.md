@@ -261,3 +261,29 @@ Rollback/cleanup command:
 ```text
 Restore previous BridgeLab runtime config and restart worldserver.
 ```
+
+## Phase 0 — Native Consolidation Refactor Proofs
+
+### 0B. Unified JSON Layer — IN-ENGINE PROOF: `WORKING`
+
+Verified: 2026-05-19 (Claude). BridgeLab worldserver pid 36488,
+MySQL 8.4.7 :33307, modules relinked with `wm_bridge_json`.
+
+Method: enqueued two `wm_bridge_action_request` rows for player 5406.
+
+- `debug_ping` → ResultJSON
+  `{"ok":true,"action_kind":"debug_ping","message":"pong"}`
+  (baseline result shape unchanged).
+- `debug_echo` payload `{"note":"café-Ωμ-ÆØ"}` → ResultJSON
+  `{"ok":true,"action_kind":"debug_echo","payload_json":"{\"note\":\"café-Ωμ-ÆØ\"}"}`.
+  HEX of payload bytes: `...636166 C3A9 2D CEA9 CEBC 2D C386 C398 ...`
+  — every multi-byte UTF-8 sequence (é Ω μ Æ Ø) intact.
+
+Pre-refactor, `action_queue.cpp` `EscapeForJson` iterated signed
+`char`; every byte >=0x80 hit `ch < 0x20` and became `0x20` (space),
+corrupting all non-ASCII in result JSON. The unified canonical escaper
+(common.cpp-derived, unsigned-char) preserves them. Documented bugfix
+confirmed in the live engine; normal result JSON otherwise identical.
+
+Standalone harness: 20/20 (`build_standalone.ps1`). Real-engine
+`modules` build: 0 errors.

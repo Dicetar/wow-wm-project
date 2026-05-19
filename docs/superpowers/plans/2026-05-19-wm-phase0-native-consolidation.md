@@ -169,15 +169,25 @@ correctness bug. Collapse to one.
       These assertions encode **current** behavior, divergences included.
 - [ ] **Step 2:** Build + run. Expected: green (documents status quo).
 
+> **Correction (2026-05-19, found during 0B.1):** the divergence was
+> mis-stated. Exact diff after reading both `EscapeForJson`:
+> (1) `common.cpp` escapes `\b`/`\f`; `action_queue.cpp` maps them to a
+> space. (2) `common.cpp` iterates `unsigned char`; `action_queue.cpp`
+> iterates signed `char`, so every byte ≥0x80 hits `ch < 0x20` and is
+> replaced by a space — **action_queue corrupts all UTF-8 / accented
+> text** (player names, item names). The correct implementation is
+> `common.cpp`'s. Canonical = `common.cpp` logic. The flagged bugfix is:
+> action_queue call sites stop corrupting non-ASCII and properly escape
+> `\b`/`\f`.
+
 ### Task 0B.2: Extract the canonical builder
 
 - [ ] **Step 1:** `wm_bridge_json.h/.cpp` — one `JsonWriter` (begin/end/
-      append string/number/float/bool/raw) + one `EscapeForJson`. Choose
-      the **stricter** escaping (the action_queue variant escapes control
-      chars; common.cpp must adopt it — this is the one allowed behavior
-      *fix*, explicitly: a bug fix, call it out in the commit).
+      append string/number/float/bool/raw) + one `EscapeForJson` using
+      **`common.cpp`'s logic** (unsigned-char iteration; `\b \f \n \r \t
+      \\ "` escaped; other `<0x20` → space; bytes ≥0x80 passthrough).
 - [ ] **Step 2:** Update `test_wm_json.cpp` expectations for the unified
-      (stricter) escaping. Build + run green.
+      (correct) escaping. Build + run green.
 - [ ] **Step 3:** Rewrite `common.cpp` JSON funcs as thin forwarders to
       `JsonWriter` (keep the `WmBridge::JsonBegin` etc. signatures —
       callers unchanged). Build.
