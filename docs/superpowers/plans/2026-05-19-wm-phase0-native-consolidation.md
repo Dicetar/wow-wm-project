@@ -55,9 +55,12 @@ the test harness and the proven refactor playbook from 0B–0D.
 | 0D | A — action_queue monolith | 27 | move into existing stub files | ✅ DONE (commits 1b54bdf + bundled 0D.2–0D.4) |
 | 0E | D — spell_runtime monolith | 7 | hardest; harness + playbook ready | ⏳ NOT STARTED |
 
-> **Session checkpoint 2026-05-19:** 0A/0B/0C complete, each
-> standalone-tested + real-engine-built + in-engine live-proven +
-> committed. Resume note for 0D/0E below ("Resume State").
+> **Session checkpoint 2026-05-19:** 0A/0B/0C **and 0D** complete, each
+> real-engine-built + in-engine live-proven + committed. 0D: commits
+> `1b54bdf` (0D.1 shared infra) + `f24ee0f` (0D.2–0D.4 bundled domain
+> decomposition). `wm_bridge_action_queue.cpp` 2587→190 ln. Only **0E**
+> (spell_runtime) remains — a fresh focused session, with the 0E.2
+> user-decision STOP gate intact. Resume note for 0E below.
 
 ---
 
