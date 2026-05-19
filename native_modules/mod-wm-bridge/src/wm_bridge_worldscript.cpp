@@ -1,6 +1,7 @@
 #include "ScriptMgr.h"
 #include "wm_bridge_action_queue.h"
 #include "wm_bridge_common.h"
+#include "wm_effect_registry.h"
 
 class wm_bridge_worldscript : public WorldScript
 {
@@ -18,6 +19,7 @@ public:
     {
         WmBridge::RefreshRuntimeControls(diff);
         WmBridge::PollActionQueue(diff);
+        WmBridge::WMEffectRegistry::Instance().ExpireOverdue();
     }
 };
 

@@ -6,6 +6,7 @@
 #include "Unit.h"
 #include "UnitScript.h"
 #include "wm_bridge_common.h"
+#include "wm_effect_registry.h"
 
 namespace
 {
@@ -148,6 +149,11 @@ public:
         {
             return;
         }
+
+        SpellInfo const* spellInfo = aura->GetSpellInfo();
+        uint32 spellId = spellInfo ? spellInfo->Id : aura->GetId();
+        WmBridge::WMEffectRegistry::Instance().Unregister(
+            player->GetGUID().GetCounter(), /*targetIsPlayer=*/true, spellId);
 
         EmitPlayerAura(player, aura, "removed", mode);
     }

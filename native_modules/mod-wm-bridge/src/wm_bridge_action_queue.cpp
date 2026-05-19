@@ -22,6 +22,7 @@
 #include "WorldSession.h"
 #include "wm_bridge_common.h"
 #include "wm_bridge_random_enchant.h"
+#include "wm_effect_registry.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1051,6 +1052,15 @@ namespace
         {
             CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "aura_not_applied", {}, {{"spell_id", spellId}, {"player_guid", playerGuid}}), "aura_not_applied");
             return true;
+        }
+
+        {
+            std::string effectKind = ExtractJsonStringField(payloadJson, "effect_kind");
+            uint32 durationSec = 0;
+            TryExtractJsonUInt32Field(payloadJson, "duration_sec", durationSec);
+            WmBridge::WMEffectRegistry::Instance().Register(
+                playerGuid, playerGuid, /*targetIsPlayer=*/true,
+                spellId, effectKind, "{}", durationSec);
         }
 
         CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "aura_applied", {}, {{"spell_id", spellId}, {"player_guid", playerGuid}}));
