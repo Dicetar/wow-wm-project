@@ -307,3 +307,34 @@ Matrix (player 5406):
 Standalone: 26/26 (incl. 6 ActionRegistry cases). Real-engine
 modules build: 0 errors. not_implemented fallback line unchanged;
 Find()->nullptr path unit-tested.
+
+### 0D. action_queue Decomposition — IN-ENGINE PROOF: `WORKING`
+
+Verified: 2026-05-19 (Claude). BridgeLab worldserver pid 30152
+(relinked, timestamp-verified deploy). 26 handlers + 43 defs moved out
+of the monolith into 6 domain TUs + wm_bridge_action_support
+(WmBridge::detail); `wm_bridge_action_queue.cpp` 2587 -> 190 lines
+(poll/claim/dispatch + registry bootstrap only).
+
+Matrix (player 5406, CreatedBy non-llm so handler bodies execute),
+9 actions across all 6 domains, diffed byte-for-byte against the
+pre-0D baseline captured from the 0C binary:
+- debug: debug_ping -> pong; debug_fail -> debug_fail_requested;
+  debug_echo with UTF-8 (snowman + accents) -> payload round-trips
+  intact (0B JSON fix holds through the new debug TU path).
+- player: player_add_money -> failed player_not_online (scoped).
+- inventory: player_add_item -> failed player_not_online.
+- quest: quest_add -> failed player_not_online.
+- creature: creature_despawn -> failed player_not_online (scoped JSON).
+- environment: context_snapshot_request, world_announce_to_player ->
+  failed player_not_online.
+Result: IDENTICAL across all 9 (artifacts/phase0d/pre0d.txt vs
+post0d_all.txt). modules + worldserver build: 0 errors. diff -rq
+BridgeLab <-> native_modules: clean.
+
+Note: 0D.2-0D.4 were verified and committed as one bundled,
+fully-proven commit (single build + comprehensive 6-domain live-proof
+as the gate) rather than six per-domain cycles — the user
+deprioritized strict per-domain cadence; all plan deliverables
+(queue <400 ln, handlers in domain files, byte-identical behavior,
+tree parity) are met and proven.

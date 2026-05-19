@@ -36,4 +36,14 @@ namespace WmBridge
     private:
         std::unordered_map<std::string, ActionHandler> m_handlers;
     };
+
+    // Phase 0D: per-domain registrars. Each domain TU defines its handlers
+    // in its own anonymous namespace and exposes one of these; the action
+    // queue bootstrap calls them instead of registering each kind inline.
+    void RegisterWmBridgePlayerActions(ActionRegistry& registry);
+    void RegisterWmBridgeCreatureActions(ActionRegistry& registry);
+    void RegisterWmBridgeQuestActions(ActionRegistry& registry);
+    void RegisterWmBridgeInventoryActions(ActionRegistry& registry);
+    void RegisterWmBridgeEnvironmentActions(ActionRegistry& registry);
+    void RegisterWmBridgeDebugActions(ActionRegistry& registry);
 }

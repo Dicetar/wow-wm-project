@@ -218,6 +218,25 @@ If a feature needs a visible spellbook entry, hotbar button, or owned tooltip, t
 2. [ADR 0002](adr/0002-extend-existing-action-bus.md)
 3. [Roadmap](ROADMAP.md)
 
+**Phase 0D file map (mod-wm-bridge/src).** The action queue was
+decomposed; `wm_bridge_action_queue.cpp` is now only poll/claim/dispatch
++ the registry bootstrap (190 ln). Handlers live in domain TUs, each
+exposing one `RegisterWmBridge<Domain>Actions(ActionRegistry&)` called
+from the bootstrap:
+
+- `wm_bridge_action_support.{h,cpp}` — shared infra in `WmBridge::detail`
+  (SQL, JSON extract/build, result-JSON, scoping, policy).
+- `wm_bridge_action_registry.{h,cpp}` — `ActionRegistry` + registrar decls.
+- `wm_bridge_player_actions.cpp` — aura/cast/spell/money/reputation/restore.
+- `wm_bridge_creature_actions.cpp` — owned-creature lifecycle + say/emote.
+- `wm_bridge_quest_actions.cpp` — quest add/remove + quest event emitters.
+- `wm_bridge_inventory_actions.cpp` — add/remove item, random enchant.
+- `wm_bridge_environment_actions.cpp` — context snapshot, announce, display id.
+- `wm_bridge_debug_actions.cpp` — debug_ping/echo/fail.
+
+Adding an action = new handler in the right domain TU + one
+`registry.Register(...)` line in that file's registrar. No monolith edit.
+
 ### If you are working on repo process or agent behavior
 
 1. [../AGENTS.md](../AGENTS.md)

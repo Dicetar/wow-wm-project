@@ -52,7 +52,7 @@ the test harness and the proven refactor playbook from 0B–0D.
 | 0A | E — native tests | 18 | enables all the rest | ✅ DONE (commit 615333b, 1f6ea19) |
 | 0B | B — JSON dup | 32 | smallest surface, char-tests | ✅ DONE (commit 1c2ba9c) |
 | 0C | C — string dispatch | 24 | table behind same entry point | ✅ DONE (commit 66605bb) |
-| 0D | A — action_queue monolith | 27 | move into existing stub files | ⏳ NOT STARTED |
+| 0D | A — action_queue monolith | 27 | move into existing stub files | ✅ DONE (commits 1b54bdf + bundled 0D.2–0D.4) |
 | 0E | D — spell_runtime monolith | 7 | hardest; harness + playbook ready | ⏳ NOT STARTED |
 
 > **Session checkpoint 2026-05-19:** 0A/0B/0C complete, each
