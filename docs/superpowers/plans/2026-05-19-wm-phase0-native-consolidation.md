@@ -57,30 +57,51 @@ the test harness and the proven refactor playbook from 0B–0D.
 
 ---
 
-## Sub-Phase 0A — Native GoogleTest Target
+## Sub-Phase 0A — Native Test Harness
+
+> **Decision (2026-05-19, user gate):** BridgeLab is `BUILD_TESTING=OFF`;
+> AzerothCore's GoogleTest is FetchContent-downloaded only when testing is
+> configured on, and the core `unit_tests` target links the full `game`
+> library + `modules` (heavy reconfigure). Phase 0's characterization
+> scope (effect registry, JSON, dispatch) is **engine-independent by
+> design**. Chosen approach: **(a) standalone zero-dependency micro-harness
+> now** — a ~60-line `wm_test.h` exposing gtest-compatible `TEST` /
+> `EXPECT_EQ` / `EXPECT_TRUE` / `EXPECT_FALSE` macros, compiled into a
+> tiny `wm_unit_tests.exe` with only the engine-independent WM TUs, no
+> network, no reconfigure, sub-second build — **and (b) a tracked
+> follow-up** (`Task 0A.3`) to port these cases onto the core
+> `unit_tests` GoogleTest target during the first phase that needs
+> engine-coupled (`Player*`/`Unit*`) tests (vision Phase 2). The macros
+> mirror the gtest API, so (b) is a mechanical include-swap.
 
 **Files:**
-- Create: `native_modules/mod-wm-bridge/test/CMakeLists.txt`
+- Create: `native_modules/mod-wm-bridge/test/wm_test.h` (micro-harness)
+- Create: `native_modules/mod-wm-bridge/test/test_main.cpp` (runner)
 - Create: `native_modules/mod-wm-bridge/test/test_wm_effect_registry.cpp`
 - Create: `native_modules/mod-wm-bridge/test/test_wm_json.cpp` (stub now,
   filled in 0B)
-- Mirror into BridgeLab; register the target in the BridgeLab solution.
-- Reference: `D:/WOW/WM_BridgeLab/src/azerothcore/src/test/CMakeLists.txt`
-  (existing GoogleTest pattern — `common`, `mocks`, `server` dirs).
+- Create: `native_modules/mod-wm-bridge/test/build_standalone.ps1`
+  (MSVC cl.exe direct compile — no CMake reconfigure)
+- Mirror all into BridgeLab.
+- Reference: `src/azerothcore/src/test/CMakeLists.txt` (the core pattern
+  Task 0A.3 will later target via `ACORE_MODULE_TEST_SOURCES`).
 
-### Task 0A.1: Wire a wm_unit_tests target
+### Task 0A.1: Standalone micro-harness + smoke test
 
-- [ ] **Step 1: Read the existing test harness pattern**
+- [x] **Step 1: Confirm the core harness reality** (done — BUILD_TESTING
+      OFF, gtest is FetchContent, core target links full game lib).
 
-Read `src/azerothcore/src/test/CMakeLists.txt` and one existing
-`test_*.cpp` to copy the GoogleTest link/registration convention.
+- [ ] **Step 2: Write `wm_test.h`** — gtest-compatible macros: `TEST(s,n)`
+      registering into a static vector; `EXPECT_EQ/NE/TRUE/FALSE` recording
+      failures with file:line; no exceptions, no deps. `test_main.cpp`
+      runs all, prints `[PASS]/[FAIL]`, returns failure count.
 
-- [ ] **Step 2: Write a failing smoke test**
+- [ ] **Step 3: Write the failing smoke test**
 
 `test/test_wm_effect_registry.cpp`:
 
 ```cpp
-#include <gtest/gtest.h>
+#include "wm_test.h"
 #include "wm_effect_registry.h"
 using WmBridge::WMEffectRegistry;
 
@@ -90,23 +111,39 @@ TEST(WMEffectRegistry, IsActiveFalseWhenUnregistered) {
 }
 ```
 
-- [ ] **Step 3: Add `test/CMakeLists.txt`** producing a `wm_unit_tests`
-      executable linking GoogleTest + the bridge sources under test
-      (effect registry needs no game engine — pure std).
+- [ ] **Step 4: `build_standalone.ps1`** — invoke `cl.exe` directly:
+      compile `wm_effect_registry.cpp` + test TUs + `test_main.cpp`,
+      `/std:c++17 /EHsc`, link to `wm_unit_tests.exe`. No CMake.
 
-- [ ] **Step 4: Register target in BridgeLab build**, configure, build.
-      Run: `wm_unit_tests`. Expected: 1 test, PASS.
+- [ ] **Step 5: Build + run.** Expected: 1 test, `[PASS]`, exit 0.
 
-- [ ] **Step 5: Commit** — `test(Core/Bridge): native GoogleTest target`
+- [ ] **Step 6: Commit** — `test(Core/Bridge): standalone native test harness`
 
 ### Task 0A.2: Characterize WMEffectRegistry fully
 
 - [ ] Port the 24 `ActiveEffectTracker` contract cases that are
       engine-independent (register/unregister/is-active/expire/permanent
-      vs timed/player-vs-creature key isolation) into GoogleTest.
+      vs timed/player-vs-creature key isolation) into the micro-harness.
 - [ ] Build + run. Expected: all green. This is the regression net for
       any future registry change.
 - [ ] **Commit** — `test(Core/Bridge): WMEffectRegistry characterization`
+
+### Task 0A.3: (TRACKED FOLLOW-UP, not Phase 0) Port to core gtest
+
+> Deferred to the first phase that needs engine-coupled tests
+> (vision Phase 2 — character lifecycle touches `Player*` login/logout).
+> Not executed during Phase 0.
+
+- [ ] Reconfigure BridgeLab with `-DBUILD_TESTING=ON` (regenerates
+      solution; module sources auto-collected via `CollectSourceFiles`).
+- [ ] Add `native_modules/mod-wm-bridge/test/CMakeLists.txt` registering
+      test sources into `ACORE_MODULE_TEST_SOURCES` global property
+      (the sanctioned core pattern from `src/test/CMakeLists.txt`).
+- [ ] Swap `#include "wm_test.h"` → `#include <gtest/gtest.h>` in the
+      test TUs (macro API is gtest-compatible — mechanical).
+- [ ] Build core `unit_tests`, run via `ctest`. Expected: WM cases green
+      alongside core tests. Retire the standalone harness or keep as the
+      fast inner-loop (decide then).
 
 ---
 
