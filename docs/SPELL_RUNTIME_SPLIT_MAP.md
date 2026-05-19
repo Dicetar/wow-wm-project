@@ -105,3 +105,45 @@ minimal change to the plan that the dependency data supports.
 
 Generated 2026-05-19 by the 0E.2 mapper
 (`artifacts/phase0d/spellmap.py` + precise enclosing-fn verification).
+
+## 0E.4 feasibility finding (2026-05-19) — dispatcher↔family coupling
+
+Validated the spell-side extractor on Lanathel (13 anon + 3 public
+split correctly), then reverted: the Core dispatcher region
+(ExecuteShellBehavior, CheckShellCast, IsSupportedBehaviorKind,
+ShouldAllowShellDefaultEffect, PollDebugRequests, LoadConfig, …) calls
+**28 family-internal anon helpers** spanning every family:
+
+  Is{Bonebound,BoneboundEchoMode,BoneboundEchoStasis,Broug{Guard,
+  Lightness,EmptyCourt}, IntellectBlock, LanathelStance}BehaviorKind,
+  Build{Bonebound,BoneboundEchoStasis,Lanathel}Config,
+  LoadActive{Bonebound,BrougGuard,BrougLightness}…State,
+  EnsureBrougEmptyCourtState, ResolveBrougCloudStepLanding,
+  SelectBrougCloudStepTarget, SelectBrougSkirmisherTarget,
+  CountActiveBoneboundAlphaEchoes, IsBoneboundPet, GetCorpseTarget,
+  IsBrougDeflectCounterStanceActive, IsBrougRangedWeapon, BrougNowMs,
+  JsonResult, ParseUIntSet, CompleteDebugRequest,
+  HasStoredBoneboundEchoStasis  (28 total).
+
+These have internal linkage; moving a family's helpers to its own TU
+breaks the dispatcher's link to them. Unlike 0D (clean registry seam),
+the spell dispatcher reaches into family *internals* (config builders,
+state loaders, target selectors), not just public behavior entry
+points. A pure verbatim family split is therefore NOT achievable
+without one of:
+
+- **A (coarse, safe, behaviour-preserving):** keep the dispatcher +
+  the 28-helper transitive closure in runtime.cpp; move only the
+  leaf families/functions the dispatcher does not reach. runtime.cpp
+  stays larger than the <800 ln target; smaller but real win.
+- **B (clean, but a public-API change):** invert the dependency —
+  give each family a public WmSpells:: entry the dispatcher calls
+  (promote Is*BehaviorKind / config-build / behavior dispatch into
+  the wm_spell_runtime.h seam). Enables the full split but is no
+  longer a behaviour-preserving *move* (new public surface, larger
+  risk; needs per-family spell live-proof).
+- **C (defer):** bank 0E.1/0E.2/0E.3 (SHARED extracted, characterised,
+  mapped); leave family bodies in runtime.cpp.
+
+This is a genuine architecture decision (like the 0E.2 boundary gate)
+and needs a human call before 0E.4 proceeds.
