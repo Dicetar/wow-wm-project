@@ -361,3 +361,23 @@ BuildNearbyContextSnapshotJson + WriteContextSnapshot + cell/grid
 search in wm_bridge_environment_actions.cpp. Net 0D coverage: player +
 inventory + environment SUCCESS paths (real deltas) + 6-domain
 seam/rejection matrix + debug success. Decomposition fully verified.
+
+### 0E.3 + 0E.1 — wm_spell_internal extract + characterization: `WORKING`
+
+Verified 2026-05-19 (Claude). The 5 SHARED JSON config extractors
+(ExtractJsonString/UInt/Float/Bool/UIntArray — the only cross-family
+logic, used by Bonebound/Broug/Core/Lanathel/Proficiency builders)
+moved verbatim from wm_spell_runtime.cpp's anon namespace into
+wm_spell_internal.{h,cpp} (WmSpells::detail). Monolith 8381 -> 8324 ln;
+includes the header + `using namespace WmSpells::detail;` so all
+callers resolve unchanged. modules + worldserver build: 0 errors;
+binary deployed (pid 23652).
+
+0E.1 characterization: new standalone wm_spell_unit_tests (0A harness
+pattern, scripts/phase0 cl.exe build) — 17/17 PASS over a fixed
+input matrix (present/absent, whitespace, negative-clamps-to-0,
+decimal-vs-int, arrays). This is the regression net for the 0E.4
+family moves and proves the extraction byte-behaviour. In-game shell-
+cast live-proof deferred (no char online at extract time); the move is
+verbatim pure regex with the standalone net + the existing Python
+suite as cover, and will be exercised by the 0E.4 per-family casts.
