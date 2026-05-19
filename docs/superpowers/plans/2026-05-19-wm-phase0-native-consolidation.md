@@ -301,11 +301,13 @@ own TU.
 - `wm_spell_bonebound.cpp` → Bonebound + Alpha/Priest Echo + companions
   (largest family: bleed/cleave/echo state, ~12 maps)
 - `wm_spell_proficiency.cpp` → IntellectBlock + CombatProficiencies
-- `wm_spell_broug_guard.cpp`
-- `wm_spell_broug_lightness.cpp`
-- `wm_spell_broug_empty_court.cpp`
-- `wm_spell_broug_abilities.cpp` → Skirmisher/Deflect/CloudStep/QiReversal
-  /SilentMeridian/KillingIntentDomain/Predator/Vitality/UniversalParry
+- `wm_spell_broug.cpp` → **entire Broug subsystem** — Guard + Lightness
+  + EmptyCourt + all Broug abilities (Skirmisher/Deflect/CloudStep/
+  QiReversal/SilentMeridian/KillingIntentDomain/Predator/Vitality/
+  UniversalParry/CounterStance) + its 7 shared per-player/parry/stun
+  maps. **Revised 2026-05-19 from the plan's original 4-way Broug split
+  after the 0E.2 STOP gate proved those maps are shared across all four
+  (see `docs/SPELL_RUNTIME_SPLIT_MAP.md`); user approved the collapse.**
 - `wm_spell_night_watchers_lens.cpp`
 - `wm_spell_lanathel_stance.cpp`
 
@@ -315,12 +317,13 @@ own TU.
       (Bonebound stat math), JSON status builders, counter-key derivation.
       These are the regression net. Build the `wm_spell_unit_tests`
       target (same pattern as 0A). Green = status quo captured.
-- [ ] **0E.2 Build the dependency map.** For each of the 27 `g*ByPlayer`
-      maps and each anon helper, grep which public functions touch it.
-      Produce `docs/SPELL_RUNTIME_SPLIT_MAP.md`: map → owning family, or
-      SHARED (→ `wm_spell_internal`). **Stop and review with user if any
-      map is touched by ≥2 families** (cross-family coupling changes the
-      split boundary).
+- [x] **0E.2 Build the dependency map.** ✅ DONE (commit `0550f66`).
+      `docs/SPELL_RUNTIME_SPLIT_MAP.md` produced; 28 containers mapped.
+      STOP gate **triggered and resolved**: the 7 Broug maps are shared
+      across Guard/Lightness/EmptyCourt/abilities → user approved
+      collapsing those four into one `wm_spell_broug.cpp`. Bonebound,
+      Proficiency, NightWatchersLens, Lanathel confirmed cleanly
+      single-family.
 - [ ] **0E.3 Extract `wm_spell_internal.{h,cpp}`** — only the SHARED set
       from 0E.2. Monolith includes it, still compiles & links. Build +
       0E.1 tests green + live-proof: cast one shell spell, summon
