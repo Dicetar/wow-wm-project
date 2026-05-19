@@ -1,0 +1,12 @@
+# Enforce LF for source/text we author so Windows checkouts stop
+# round-tripping CRLF and producing "LF will be replaced by CRLF"
+# churn on every commit (native_modules was stored CRLF; tooling and
+# new TUs are LF). Targeted patterns only — no repo-wide reformat.
+*.cpp   text eol=lf
+*.h     text eol=lf
+*.hpp   text eol=lf
+*.cc    text eol=lf
+*.py    text eol=lf
+*.sh    text eol=lf
+*.md    text eol=lf
+*.sql   text eol=lf
