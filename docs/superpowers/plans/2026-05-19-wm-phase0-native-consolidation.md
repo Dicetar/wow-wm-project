@@ -445,30 +445,69 @@ Target: `wm_bridge_action_queue.cpp` < ~400 lines. Wire any new
 loader-registered scripts into `mod_wm_bridge_loader.cpp` only if a
 domain needs a ScriptObject (most don't — they're plain functions).
 
-**0E — HIGHEST RISK, has a user-decision gate:**
+**0E — HIGHEST RISK. 0E.2 DONE; STOP gate resolved. 0E.1/0E.3/0E.4 remain.**
 `native_modules\mod-wm-spells\src\wm_spell_runtime.cpp` = 8,381 lines:
 forward `namespace WmSpells` (39–42), one giant anon namespace
-(44–5740) holding ~27 `g*ByPlayer` mutable state maps + all private
+(44–5740) holding 28 `g*` mutable state containers + all private
 helpers, then public `namespace WmSpells` defs (5742–8381). Header
-`wm_spell_runtime.h` is the clean seam (callers
-`wm_spell_*_scripts.cpp` only see it). Families: Bonebound/Alpha/Priest
-Echo, IntellectBlock/Proficiency, BrougGuard, BrougLightness,
-BrougEmptyCourt, Broug abilities (Skirmisher/Deflect/CloudStep/
-QiReversal/SilentMeridian/KillingIntentDomain/Predator/Vitality/
-UniversalParry), NightWatchersLens, LanathelStance.
-**Task 0E.2 STOP GATE:** build `docs\SPELL_RUNTIME_SPLIT_MAP.md`
-mapping every `g*ByPlayer` map + anon helper to its owning family or
-SHARED. If ANY state map is read/written by ≥2 families, STOP and ask
-the user — that cross-coupling changes the split boundary. Do not
-proceed past 0E.2 without that map reviewed. Then extract
-`wm_spell_internal.{h,cpp}` (SHARED only), move families
-smallest-first one-commit-each, characterize pure logic first
-(0E.1, same standalone harness), re-prove the spell live-proof
-backlog items (Broug Empty Court V2, Lightness Assassin V1, Echo
-Restorer DPS) per family. Target runtime.cpp < ~800 lines.
+`wm_spell_runtime.h` is the clean seam (440 ln, callers
+`wm_spell_*_scripts.cpp` only see it — unchanged).
+
+**0E.2 — DONE (commit `0550f66`, `docs/SPELL_RUNTIME_SPLIT_MAP.md`).**
+All 28 containers mapped via precise enclosing-fn attribution. STOP
+gate fired: the 7 Broug maps (`gBrougGuardByPlayer`,
+`gBrougLightnessByPlayer`, `gBrougEmptyCourtByPlayer`,
+`gBrougCounterStanceToggleOffByPlayer`, `gBrougDeflectedStunUnits`,
+`gBrougPendingForcedParryByVictim`,
+`gBrougLightnessPreserveVulnerableByVictim`) are shared across
+Guard/Lightness/EmptyCourt/abilities. **User decision (2026-05-19):
+collapse the four planned Broug TUs into ONE `wm_spell_broug.cpp`.**
+Bonebound/AlphaEcho/PriestEcho, Proficiency, NightWatchersLens,
+Lanathel verified cleanly single-family.
+
+**Revised 0E target file set** (replaces the original 4-way Broug split):
+`wm_spell_runtime.cpp` (dispatcher/config) · `wm_spell_internal.{h,cpp}`
+(SHARED generic helpers: ResolvePercentOfMaxHealth, ClampSpellBasePoint,
+counter/JSON/math) · `wm_spell_bonebound.cpp` · `wm_spell_proficiency.cpp`
+· **`wm_spell_broug.cpp` (entire Broug subsystem + its 7 maps)** ·
+`wm_spell_night_watchers_lens.cpp` · `wm_spell_lanathel_stance.cpp`.
+
+**Remaining 0E work:**
+- **0E.1** (NOT STARTED) — characterize engine-independent pure logic
+  (Bonebound scale/health/damage stat math, config parse, counter-key
+  derivation, JSON status builders) on the 0A standalone harness. Note:
+  most runtime fns take `Player*`; the pure seams are the stat formulas
+  / config — locate or lightly factor them. This is belt-and-suspenders;
+  the dominant net for verbatim family moves is build + spell live-proof
+  + the existing 817-test Python suite + live backlog.
+- **0E.3** — extract `wm_spell_internal.{h,cpp}` (SHARED only), monolith
+  includes it, builds/links, live-proof one shell spell + Bonebound.
+- **0E.4** — move families smallest-first, one commit each: Lanathel →
+  NightWatchersLens → Proficiency → **Broug (whole subsystem, one TU)**
+  → Bonebound. Re-prove the spell live-proof backlog per family (Broug
+  Empty Court V2, Lightness Assassin V1, Echo Restorer DPS). Use the
+  same string/comment-aware extractor (`scripts/phase0/extract.py`,
+  proven in 0D) — but spell families are interleaved with shared state,
+  so verify the build catches mis-moves (it did in 0D). Target
+  runtime.cpp < ~800 lines.
+
+**Phase 0D fully complete + cleanups done.** Commits: `1b54bdf`
+(0D.1), `f24ee0f` (0D.2–0D.4), `9cd99fc` (include trim), `7bf15da`
+(.gitattributes + `scripts/phase0/` tooling). action_queue.cpp 190 ln.
+Reusable tooling now tracked at `scripts/phase0/` (extract.py,
+spellmap.py, capture.sh). Live-proof tag baseline: capture.sh writes
+`artifacts/phase0d/<tag>.txt`; pre-0D baseline is `pre0d.txt`.
 
 **Stack state at checkpoint:** BridgeLab MySQL + authserver +
-worldserver (0C binary, pid was 4388) running in visible windows under
-user control. Pre-existing orthogonal issue flagged as spawned task:
-corrupt InnoDB index `idx_owner_bot_event` on
-`acore_playerbots.playerbots_random_bots` (DB-only repair, not code).
+worldserver (**post-include-trim 0D binary, pid 22412**) running in
+visible windows under user control. Launch via
+`scripts\bridge_lab\Deploy-BridgeLabWorldServer.ps1` (stop→copy→restart,
+correct CWD) after a relink; full stack via
+`start-bridge-lab-all.bat`. Live-proof: `bash scripts/phase0/capture.sh
+<tag>` → diff `artifacts/phase0d/<tag>.txt` vs `pre0d.txt` (no player
+online ⇒ deterministic player_not_online rows; that is the intended
+behavior-preservation baseline for the bridge side — spell live-proof
+in 0E needs a cast path / logged-in char instead). Pre-existing
+orthogonal issue still open: corrupt InnoDB index
+`idx_owner_bot_event` on `acore_playerbots.playerbots_random_bots`
+(DB-only repair, not code).
