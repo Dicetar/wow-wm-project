@@ -352,3 +352,12 @@ Both via wm_bridge_player_actions.cpp / wm_bridge_inventory_actions.cpp
 + WmBridge::detail, exercising the rich ActionResultJson field path
 (item_id/count/copper/player_guid). Proof script:
 scripts/phase0/deepproof_0d.sh.
+
+Environment TU success path (same session): context_snapshot_request
+{context_kind:nearby,radius:25} -> done "context_snapshot_written";
+wm_bridge_context_snapshot row written (schema wm.bridge_context_
+snapshot.v1, player_name Jecia, live zone 41) — proves
+BuildNearbyContextSnapshotJson + WriteContextSnapshot + cell/grid
+search in wm_bridge_environment_actions.cpp. Net 0D coverage: player +
+inventory + environment SUCCESS paths (real deltas) + 6-domain
+seam/rejection matrix + debug success. Decomposition fully verified.
