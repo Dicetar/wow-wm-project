@@ -1,53 +1,18 @@
 #include "wm_bridge_action_queue.h"
 
-#include "Configuration/Config.h"
 #include "DatabaseEnv.h"
-#include "Cell.h"
-#include "CellImpl.h"
-#include "Creature.h"
-#include "DBCStores.h"
-#include "GameObject.h"
-#include "GridNotifiers.h"
-#include "Item.h"
-#include "ItemTemplate.h"
-#include "ObjectAccessor.h"
-#include "ObjectMgr.h"
-#include "Player.h"
 #include "QueryResult.h"
-#include "Random.h"
-#include "ReputationMgr.h"
-#include "SpellMgr.h"
-#include "TemporarySummon.h"
-#include "Unit.h"
-#include "WorldSession.h"
 #include "wm_bridge_action_registry.h"
 #include "wm_bridge_action_support.h"
 #include "wm_bridge_common.h"
-#include "wm_bridge_json.h"
-#include "wm_bridge_random_enchant.h"
-#include "wm_effect_registry.h"
 
 #include <algorithm>
-#include <cctype>
-#include <exception>
-#include <iomanip>
-#include <initializer_list>
-#include <limits>
-#include <list>
-#include <sstream>
 #include <string>
-#include <utility>
-#include <vector>
 
 namespace
 {
     uint32 gActionPollTimer = 0;
 
-    // Phase 0B: the local (buggy, signed-char, no \b/\f) EscapeForJson was
-    // deleted. All call sites below now use the canonical WmBridge one
-    // (wm_bridge_json.h) — correct UTF-8 + \b/\f handling. Documented
-    // behavior change: result JSON no longer corrupts non-ASCII text.
-    using WmBridge::EscapeForJson;
     using namespace WmBridge::detail;
 
     WmBridge::ActionRegistry const& GetActionRegistry()
