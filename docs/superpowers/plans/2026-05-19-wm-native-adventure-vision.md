@@ -35,8 +35,16 @@ pytest; MySQL (acore_world / acore_characters / wm audit DB).
 
 ## Phase Map & Dependency Order
 
+> **Phase 0 (refactor) runs first.** See
+> `2026-05-19-wm-phase0-native-consolidation.md` — a behavior-preserving
+> consolidation (unify JSON, table-driven dispatch, decompose both C++
+> monoliths, native GoogleTest target). Phases 1–5 below assume the
+> post-Phase-0 structure: handlers are domain files + a registry line,
+> not branches in a monolith, and a native test harness exists to inherit.
+
 | Phase | Track | Unblocks | Status |
 |-------|-------|----------|--------|
+| 0 | Native Layer Consolidation (refactor) | clean base for all phases | planned |
 | 1 | Native Bookkeeping Migration | everything (real-time state) | reference impl landed (effect registry) |
 | 2 | Active Character Lifecycle | the entry point — "watched" character | not started |
 | 3 | Ability Taxonomy & Schema | differentiated abilities | not started |
