@@ -47,13 +47,17 @@ the dispatch seam (0C) which makes the handler move (0D) mechanical. Then
 the spell-runtime split (0E), the largest surface, last — it benefits from
 the test harness and the proven refactor playbook from 0B–0D.
 
-| Sub | Debt item | Priority | Risk control |
-|-----|-----------|----------|--------------|
-| 0A | E — native tests | 18 | enables all the rest |
-| 0B | B — JSON dup | 32 | smallest surface, char-tests |
-| 0C | C — string dispatch | 24 | table behind same entry point |
-| 0D | A — action_queue monolith | 27 | move into existing stub files |
-| 0E | D — spell_runtime monolith | 7 | hardest; harness + playbook ready |
+| Sub | Debt item | Priority | Risk control | Status |
+|-----|-----------|----------|--------------|--------|
+| 0A | E — native tests | 18 | enables all the rest | ✅ DONE (commit 615333b, 1f6ea19) |
+| 0B | B — JSON dup | 32 | smallest surface, char-tests | ✅ DONE (commit 1c2ba9c) |
+| 0C | C — string dispatch | 24 | table behind same entry point | ✅ DONE (commit 66605bb) |
+| 0D | A — action_queue monolith | 27 | move into existing stub files | ⏳ NOT STARTED |
+| 0E | D — spell_runtime monolith | 7 | hardest; harness + playbook ready | ⏳ NOT STARTED |
+
+> **Session checkpoint 2026-05-19:** 0A/0B/0C complete, each
+> standalone-tested + real-engine-built + in-engine live-proven +
+> committed. Resume note for 0D/0E below ("Resume State").
 
 ---
 
@@ -365,3 +369,100 @@ test harness it inherits for free.
   so the existing 817-test Python suite + live backlog are the outer net.
 - ADR-0002/0007 honored: no new runner; the registry is passive lookup
   behind the existing single dispatch entry point.
+
+---
+
+## Resume State (for the next session — 0D & 0E)
+
+**Branch:** `main`. All Phase 0 commits are on main, pushed status: local.
+Last commit `66605bb` (0C). Working tree clean except untracked
+pre-existing files.
+
+**Canonical source = `D:\WOW\wm-project\native_modules\mod-wm-bridge\`.**
+BridgeLab build tree `D:\WOW\WM_BridgeLab\src\modules\mod-wm-bridge\`
+is kept byte-synced; `src\azerothcore\modules` is a symlink to
+`src\modules`. After every native edit: edit in BridgeLab, build,
+prove, then `cp` changed files into `native_modules\`, `diff -rq`
+clean, commit.
+
+**Build/test loop (no full reconfigure needed):**
+- Standalone native tests: run
+  `D:\WOW\WM_BridgeLab\src\modules\mod-wm-bridge\test\build_standalone.ps1`
+  (cl.exe, gtest-compatible micro-harness `wm_test.h`, ~26 cases).
+  Add new engine-independent TUs/tests to its `$srcs` line.
+- Real engine: MSBuild
+  `D:\WOW\WM_BridgeLab\build\modules\modules.vcxproj`
+  `/p:Configuration=RelWithDebInfo /p:Platform=x64 /t:Build /m:4`.
+  New .cpp/.h must be added to that vcxproj **and** `.vcxproj.filters`
+  (CollectSourceFiles is NOT used by the generated solution — manual).
+- Relink worldserver: MSBuild
+  `build\src\server\apps\worldserver.vcxproj` same flags.
+- Deploy + restart (visible window, correct CWD): stop worldserver,
+  `Copy-Item build\bin\RelWithDebInfo\worldserver.exe run\bin\` (exe is
+  locked while running — stop first), then
+  `scripts\bridge_lab\Restart-BridgeLabWorldServer.ps1`.
+
+**Stack launch (visible terminals, user-controlled):** the user runs
+`D:\WOW\wm-project\start-bridge-lab-all.bat` (PS `Start-BridgeLabAll.ps1`).
+Critical: worldserver MUST run with CWD = `run\` (not `run\bin\`) or
+`GetConfigPath()+"modules/"` fails to load module configs
+(`Config.cpp:766`). The bat/helpers do this correctly. MySQL is
+portable `deps\mysql\bin\mysqld.exe` on port 33307 (user acore/acore).
+Do NOT hard-`taskkill` mysqld (data-dir risk) — use clean shutdown.
+
+**Live-proof pattern:** insert rows into `acore_world`.`wm_bridge_action_request`
+(unique IdempotencyKey, PlayerGUID 5406, Status 'pending'); native poll
+(1s) processes; read `ResultJSON`. `debug_ping`/`debug_echo` need no
+player online; `debug_echo` echoes payload through `EscapeForJson` (UTF-8
+round-trip = JSON-fix regression check). Use
+`--default-character-set=utf8mb4`.
+
+**0D — now LOW RISK (0C made it mechanical):**
+All 26 handlers are uniform `bool ExecuteX(uint64,uint32,std::string
+const&,std::string const&)` in `wm_bridge_action_queue.cpp`'s anon
+namespace, registered in `GetActionRegistry()` (lambda-initialized
+static). Plan: per domain, move its handlers + their private helpers
+into the pre-existing empty stub file
+(`wm_bridge_player_actions.cpp`, `_creature_actions.cpp`,
+`_quest_actions.cpp`, `_inventory_actions.cpp`,
+`_environment_actions.cpp`, `_debug_actions.cpp`; gossip stays empty
+until vision P4). Shared infra (CompleteAction, ResolveScopedOnlinePlayer,
+ResolvePowerType, OwnedCreatureRef, ActionPolicyAllows, JSON field
+helpers, ExtractJson*) → new `wm_bridge_action_support.{h,cpp}`.
+Registration: because handlers are anon-namespace (internal linkage),
+each domain file exposes a `void RegisterWmBridge<Domain>Actions(
+WmBridge::ActionRegistry&)` called from a bootstrap in
+`wm_bridge_action_queue.cpp` (which keeps poll/claim/dispatch +
+`GetActionRegistry`). Build each domain move, standalone+modules build,
+relink, live-proof one action of that domain, commit per domain.
+Target: `wm_bridge_action_queue.cpp` < ~400 lines. Wire any new
+loader-registered scripts into `mod_wm_bridge_loader.cpp` only if a
+domain needs a ScriptObject (most don't — they're plain functions).
+
+**0E — HIGHEST RISK, has a user-decision gate:**
+`native_modules\mod-wm-spells\src\wm_spell_runtime.cpp` = 8,381 lines:
+forward `namespace WmSpells` (39–42), one giant anon namespace
+(44–5740) holding ~27 `g*ByPlayer` mutable state maps + all private
+helpers, then public `namespace WmSpells` defs (5742–8381). Header
+`wm_spell_runtime.h` is the clean seam (callers
+`wm_spell_*_scripts.cpp` only see it). Families: Bonebound/Alpha/Priest
+Echo, IntellectBlock/Proficiency, BrougGuard, BrougLightness,
+BrougEmptyCourt, Broug abilities (Skirmisher/Deflect/CloudStep/
+QiReversal/SilentMeridian/KillingIntentDomain/Predator/Vitality/
+UniversalParry), NightWatchersLens, LanathelStance.
+**Task 0E.2 STOP GATE:** build `docs\SPELL_RUNTIME_SPLIT_MAP.md`
+mapping every `g*ByPlayer` map + anon helper to its owning family or
+SHARED. If ANY state map is read/written by ≥2 families, STOP and ask
+the user — that cross-coupling changes the split boundary. Do not
+proceed past 0E.2 without that map reviewed. Then extract
+`wm_spell_internal.{h,cpp}` (SHARED only), move families
+smallest-first one-commit-each, characterize pure logic first
+(0E.1, same standalone harness), re-prove the spell live-proof
+backlog items (Broug Empty Court V2, Lightness Assassin V1, Echo
+Restorer DPS) per family. Target runtime.cpp < ~800 lines.
+
+**Stack state at checkpoint:** BridgeLab MySQL + authserver +
+worldserver (0C binary, pid was 4388) running in visible windows under
+user control. Pre-existing orthogonal issue flagged as spawned task:
+corrupt InnoDB index `idx_owner_bot_event` on
+`acore_playerbots.playerbots_random_bots` (DB-only repair, not code).
