@@ -287,3 +287,23 @@ confirmed in the live engine; normal result JSON otherwise identical.
 
 Standalone harness: 20/20 (`build_standalone.ps1`). Real-engine
 `modules` build: 0 errors.
+
+### 0C. Table-Driven Action Dispatch — IN-ENGINE PROOF: `WORKING`
+
+Verified: 2026-05-19 (Claude). BridgeLab worldserver pid 4388
+(relinked, timestamp-verified deploy). 309-line if-chain replaced by
+O(1) ActionRegistry; 8 inline bodies extracted to uniform handlers.
+
+Matrix (player 5406):
+- `debug_ping` -> `{"ok":true,"action_kind":"debug_ping","message":"pong"}`
+  (extracted handler, registry-dispatched; byte-identical).
+- `debug_echo` `{"u":"café-Ωμ"}` -> payload_json round-trips intact
+  (extraction + JSON fix both hold through new path).
+- `totally_unknown_kind` -> rejected `missing_action_policy` — policy
+  pre-check still gates before dispatch (ordering preserved).
+- `player_apply_aura` (Jecia offline) -> failed `player_not_online`
+  (delegated handler dispatches identically to pre-refactor).
+
+Standalone: 26/26 (incl. 6 ActionRegistry cases). Real-engine
+modules build: 0 errors. not_implemented fallback line unchanged;
+Find()->nullptr path unit-tested.

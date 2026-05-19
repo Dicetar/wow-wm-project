@@ -20,6 +20,7 @@
 #include "TemporarySummon.h"
 #include "Unit.h"
 #include "WorldSession.h"
+#include "wm_bridge_action_registry.h"
 #include "wm_bridge_common.h"
 #include "wm_bridge_json.h"
 #include "wm_bridge_random_enchant.h"
@@ -2243,6 +2244,226 @@ namespace
         return true;
     }
 
+    // Phase 0C: previously-inline dispatch bodies extracted into the same
+    // uniform handler signature as the existing Execute* functions so the
+    // dispatch can become table-driven. Bodies are verbatim moves
+    // (return; -> return true;), behavior-preserving.
+
+    bool ExecuteDebugPing(uint64 requestId, uint32 /*playerGuid*/, std::string const& actionKind, std::string const& /*payloadJson*/)
+    {
+        CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "pong"));
+        return true;
+    }
+
+    bool ExecuteDebugEcho(uint64 requestId, uint32 /*playerGuid*/, std::string const& actionKind, std::string const& payloadJson)
+    {
+        std::string result = "{\"ok\":true,\"action_kind\":\"debug_echo\",\"payload_json\":\"" + EscapeForJson(payloadJson) + "\"}";
+        CompleteAction(requestId, "done", actionKind, result);
+        return true;
+    }
+
+    bool ExecuteDebugFail(uint64 requestId, uint32 /*playerGuid*/, std::string const& actionKind, std::string const& /*payloadJson*/)
+    {
+        CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "debug_fail_requested"), "debug_fail_requested");
+        return true;
+    }
+
+    bool ExecuteContextSnapshotRequest(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        std::string errorText;
+        if (!WriteContextSnapshot(requestId, playerGuid, payloadJson, errorText))
+        {
+            CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, errorText), errorText);
+            return true;
+        }
+
+        CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "context_snapshot_written"));
+        return true;
+    }
+
+    bool ExecuteWorldAnnounceToPlayer(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
+        if (!player || !player->GetSession())
+        {
+            CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
+            return true;
+        }
+
+        std::string message = ExtractJsonStringField(payloadJson, "message");
+        if (message.empty())
+        {
+            message = ExtractJsonStringField(payloadJson, "text");
+        }
+        if (message.empty())
+        {
+            CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_message"), "missing_message");
+            return true;
+        }
+
+        player->GetSession()->SendAreaTriggerMessage(message);
+        CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "message_sent"));
+        return true;
+    }
+
+    bool ExecuteQuestAdd(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
+        if (!player)
+        {
+            CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
+            return true;
+        }
+
+        uint32 questId = 0;
+        if (!TryExtractJsonUInt32Field(payloadJson, "quest_id", questId) &&
+            !TryExtractJsonUInt32Field(payloadJson, "questId", questId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_quest_id"), "missing_quest_id");
+            return true;
+        }
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "invalid_quest"), "invalid_quest");
+            return true;
+        }
+
+        ItemTemplateContainer const* itemTemplates = sObjectMgr->GetItemTemplateStore();
+        bool startsFromItem = std::any_of(
+            itemTemplates->begin(),
+            itemTemplates->end(),
+            [questId](ItemTemplateContainer::value_type const& entry)
+            {
+                return entry.second.StartQuest == questId;
+            }
+        );
+
+        if (startsFromItem)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "quest_starts_from_item"), "quest_starts_from_item");
+            return true;
+        }
+
+        // Mirror GM .quest add semantics for WM grants instead of player quest-offer eligibility.
+        if (player->IsActiveQuest(questId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "quest_already_active"), "quest_already_active");
+            return true;
+        }
+
+        if (!player->CanAddQuest(quest, false))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "cannot_add_quest"), "cannot_add_quest");
+            return true;
+        }
+
+        player->AddQuestAndCheckCompletion(quest, nullptr);
+        EmitQuestGrantedEvent(player, quest);
+        CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "quest_added"));
+        return true;
+    }
+
+    bool ExecutePlayerLearnSpell(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
+        if (!player)
+        {
+            CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
+            return true;
+        }
+
+        uint32 spellId = 0;
+        if (!TryExtractJsonUInt32Field(payloadJson, "spell_id", spellId) &&
+            !TryExtractJsonUInt32Field(payloadJson, "spellId", spellId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_spell_id"), "missing_spell_id");
+            return true;
+        }
+
+        if (!sSpellMgr->GetSpellInfo(spellId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "invalid_spell"), "invalid_spell");
+            return true;
+        }
+
+        if (player->HasSpell(spellId))
+        {
+            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "already_known"));
+            return true;
+        }
+
+        player->learnSpell(spellId, false, false);
+        CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "spell_learned"));
+        return true;
+    }
+
+    bool ExecutePlayerUnlearnSpell(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
+        if (!player)
+        {
+            CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
+            return true;
+        }
+
+        uint32 spellId = 0;
+        if (!TryExtractJsonUInt32Field(payloadJson, "spell_id", spellId) &&
+            !TryExtractJsonUInt32Field(payloadJson, "spellId", spellId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_spell_id"), "missing_spell_id");
+            return true;
+        }
+
+        if (!player->HasSpell(spellId))
+        {
+            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "already_absent"));
+            return true;
+        }
+
+        player->removeSpell(spellId, SPEC_MASK_ALL, false);
+        CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "spell_unlearned"));
+        return true;
+    }
+
+    WmBridge::ActionRegistry const& GetActionRegistry()
+    {
+        static WmBridge::ActionRegistry registry = []
+        {
+            WmBridge::ActionRegistry r;
+            r.Register("debug_ping", &ExecuteDebugPing);
+            r.Register("debug_echo", &ExecuteDebugEcho);
+            r.Register("debug_fail", &ExecuteDebugFail);
+            r.Register("context_snapshot_request", &ExecuteContextSnapshotRequest);
+            r.Register("world_announce_to_player", &ExecuteWorldAnnounceToPlayer);
+            r.Register("quest_add", &ExecuteQuestAdd);
+            r.Register("quest_remove", &ExecuteQuestRemove);
+            r.Register("player_apply_aura", &ExecutePlayerApplyAura);
+            r.Register("player_cast_spell", &ExecutePlayerCastSpell);
+            r.Register("player_set_display_id", &ExecutePlayerSetDisplayId);
+            r.Register("player_remove_aura", &ExecutePlayerRemoveAura);
+            r.Register("player_restore_health_power", &ExecutePlayerRestoreHealthPower);
+            r.Register("player_add_item", &ExecutePlayerAddItem);
+            r.Register("player_remove_item", &ExecutePlayerRemoveItem);
+            r.Register("player_random_enchant_item", &ExecutePlayerRandomEnchantItem);
+            r.Register("player_add_money", &ExecutePlayerAddMoney);
+            r.Register("player_add_reputation", &ExecutePlayerAddReputation);
+            r.Register("creature_spawn", &ExecuteCreatureSpawn);
+            r.Register("creature_despawn", &ExecuteCreatureDespawn);
+            r.Register("creature_say", &ExecuteCreatureSay);
+            r.Register("creature_emote", &ExecuteCreatureEmote);
+            r.Register("creature_cast_spell", &ExecuteCreatureCastSpell);
+            r.Register("creature_set_display_id", &ExecuteCreatureSetDisplayId);
+            r.Register("creature_set_scale", &ExecuteCreatureSetScale);
+            r.Register("player_learn_spell", &ExecutePlayerLearnSpell);
+            r.Register("player_unlearn_spell", &ExecutePlayerUnlearnSpell);
+            return r;
+        }();
+
+        return registry;
+    }
+
     void ExecuteClaimedAction(
         uint64 requestId,
         uint32 playerGuid,
@@ -2264,289 +2485,12 @@ namespace
             return;
         }
 
-        if (actionKind == "debug_ping")
+        // Phase 0C: table-driven dispatch. Pre-checks above are unchanged;
+        // the not-implemented fallback below is the same. Only the
+        // selection mechanism changed (26-branch if-chain -> O(1) lookup).
+        if (WmBridge::ActionHandler handler = GetActionRegistry().Find(actionKind))
         {
-            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "pong"));
-            return;
-        }
-
-        if (actionKind == "debug_echo")
-        {
-            std::string result = "{\"ok\":true,\"action_kind\":\"debug_echo\",\"payload_json\":\"" + EscapeForJson(payloadJson) + "\"}";
-            CompleteAction(requestId, "done", actionKind, result);
-            return;
-        }
-
-        if (actionKind == "debug_fail")
-        {
-            CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "debug_fail_requested"), "debug_fail_requested");
-            return;
-        }
-
-        if (actionKind == "context_snapshot_request")
-        {
-            std::string errorText;
-            if (!WriteContextSnapshot(requestId, playerGuid, payloadJson, errorText))
-            {
-                CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, errorText), errorText);
-                return;
-            }
-
-            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "context_snapshot_written"));
-            return;
-        }
-
-        if (actionKind == "world_announce_to_player")
-        {
-            Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
-            if (!player || !player->GetSession())
-            {
-                CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
-                return;
-            }
-
-            std::string message = ExtractJsonStringField(payloadJson, "message");
-            if (message.empty())
-            {
-                message = ExtractJsonStringField(payloadJson, "text");
-            }
-            if (message.empty())
-            {
-                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_message"), "missing_message");
-                return;
-            }
-
-            player->GetSession()->SendAreaTriggerMessage(message);
-            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "message_sent"));
-            return;
-        }
-
-        if (actionKind == "quest_add")
-        {
-            Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
-            if (!player)
-            {
-                CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
-                return;
-            }
-
-            uint32 questId = 0;
-            if (!TryExtractJsonUInt32Field(payloadJson, "quest_id", questId) &&
-                !TryExtractJsonUInt32Field(payloadJson, "questId", questId))
-            {
-                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_quest_id"), "missing_quest_id");
-                return;
-            }
-
-            Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-            if (!quest)
-            {
-                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "invalid_quest"), "invalid_quest");
-                return;
-            }
-
-            ItemTemplateContainer const* itemTemplates = sObjectMgr->GetItemTemplateStore();
-            bool startsFromItem = std::any_of(
-                itemTemplates->begin(),
-                itemTemplates->end(),
-                [questId](ItemTemplateContainer::value_type const& entry)
-                {
-                    return entry.second.StartQuest == questId;
-                }
-            );
-
-            if (startsFromItem)
-            {
-                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "quest_starts_from_item"), "quest_starts_from_item");
-                return;
-            }
-
-            // Mirror GM .quest add semantics for WM grants instead of player quest-offer eligibility.
-            if (player->IsActiveQuest(questId))
-            {
-                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "quest_already_active"), "quest_already_active");
-                return;
-            }
-
-            if (!player->CanAddQuest(quest, false))
-            {
-                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "cannot_add_quest"), "cannot_add_quest");
-                return;
-            }
-
-            player->AddQuestAndCheckCompletion(quest, nullptr);
-            EmitQuestGrantedEvent(player, quest);
-            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "quest_added"));
-            return;
-        }
-
-        if (actionKind == "quest_remove")
-        {
-            ExecuteQuestRemove(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_apply_aura")
-        {
-            ExecutePlayerApplyAura(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_cast_spell")
-        {
-            ExecutePlayerCastSpell(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_set_display_id")
-        {
-            ExecutePlayerSetDisplayId(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_remove_aura")
-        {
-            ExecutePlayerRemoveAura(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_restore_health_power")
-        {
-            ExecutePlayerRestoreHealthPower(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_add_item")
-        {
-            ExecutePlayerAddItem(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_remove_item")
-        {
-            ExecutePlayerRemoveItem(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_random_enchant_item")
-        {
-            ExecutePlayerRandomEnchantItem(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_add_money")
-        {
-            ExecutePlayerAddMoney(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_add_reputation")
-        {
-            ExecutePlayerAddReputation(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "creature_spawn")
-        {
-            ExecuteCreatureSpawn(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "creature_despawn")
-        {
-            ExecuteCreatureDespawn(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "creature_say")
-        {
-            ExecuteCreatureSay(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "creature_emote")
-        {
-            ExecuteCreatureEmote(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "creature_cast_spell")
-        {
-            ExecuteCreatureCastSpell(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "creature_set_display_id")
-        {
-            ExecuteCreatureSetDisplayId(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "creature_set_scale")
-        {
-            ExecuteCreatureSetScale(requestId, playerGuid, actionKind, payloadJson);
-            return;
-        }
-
-        if (actionKind == "player_learn_spell")
-        {
-            Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
-            if (!player)
-            {
-                CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
-                return;
-            }
-
-            uint32 spellId = 0;
-            if (!TryExtractJsonUInt32Field(payloadJson, "spell_id", spellId) &&
-                !TryExtractJsonUInt32Field(payloadJson, "spellId", spellId))
-            {
-                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_spell_id"), "missing_spell_id");
-                return;
-            }
-
-            if (!sSpellMgr->GetSpellInfo(spellId))
-            {
-                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "invalid_spell"), "invalid_spell");
-                return;
-            }
-
-            if (player->HasSpell(spellId))
-            {
-                CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "already_known"));
-                return;
-            }
-
-            player->learnSpell(spellId, false, false);
-            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "spell_learned"));
-            return;
-        }
-
-        if (actionKind == "player_unlearn_spell")
-        {
-            Player* player = ObjectAccessor::FindPlayerByLowGUID(playerGuid);
-            if (!player)
-            {
-                CompleteAction(requestId, "failed", actionKind, ResultJson("failed", actionKind, "player_not_online"), "player_not_online");
-                return;
-            }
-
-            uint32 spellId = 0;
-            if (!TryExtractJsonUInt32Field(payloadJson, "spell_id", spellId) &&
-                !TryExtractJsonUInt32Field(payloadJson, "spellId", spellId))
-            {
-                CompleteAction(requestId, "rejected", actionKind, ResultJson("rejected", actionKind, "missing_spell_id"), "missing_spell_id");
-                return;
-            }
-
-            if (!player->HasSpell(spellId))
-            {
-                CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "already_absent"));
-                return;
-            }
-
-            player->removeSpell(spellId, SPEC_MASK_ALL, false);
-            CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "spell_unlearned"));
+            handler(requestId, playerGuid, actionKind, payloadJson);
             return;
         }
 
