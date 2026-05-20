@@ -11,7 +11,7 @@ from wm.llm.proposal_adapter import Proposal, ProposalKind
 class _RecordingClient:
     """Captures every SQL statement that would have been executed."""
     def __init__(self): self.executed: list[str] = []
-    def execute(self, *, host, port, user, password, database, sql):  # mirrors mysql_cli
+    def query(self, *, host, port, user, password, database, sql):  # mirrors mysql_cli
         self.executed.append(sql)
         return []
 

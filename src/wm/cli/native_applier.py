@@ -65,8 +65,8 @@ class NativeApplier:
             f"{_sql_str(action_kind)},{_sql_str(json.dumps(payload, separators=(',', ':')))},"
             f"'pending',{_sql_str(self.created_by)},{_sql_str(self.risk_level)})"
         )
-        self.client.execute(host=self.host, port=self.port, user=self.user,
-                            password=self.password, database=self.database, sql=sql)
+        self.client.query(host=self.host, port=self.port, user=self.user,
+                          password=self.password, database=self.database, sql=sql)
 
 
 def apply_quest_grant_proposal(p: Proposal, *, applier: NativeApplier) -> dict[str, Any]:

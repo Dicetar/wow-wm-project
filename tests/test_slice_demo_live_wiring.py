@@ -8,7 +8,7 @@ from wm.cli.native_applier import NativeApplier
 
 class _RecordingClient:
     def __init__(self): self.executed: list[str] = []
-    def execute(self, **kw): self.executed.append(kw["sql"]); return []
+    def query(self, **kw): self.executed.append(kw["sql"]); return []
 
 
 def _live_runtime():
