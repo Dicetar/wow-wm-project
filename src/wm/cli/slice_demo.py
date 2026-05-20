@@ -128,3 +128,108 @@ class ScriptedOperator:
         pending = self.gate.pending()
         if not pending: return
         self.gate.approve(pending[0].id)
+
+
+# ---------------------------------------------------------------------
+# `python -m wm.cli.slice_demo` entrypoint — live BridgeLab loop + REPL.
+# ---------------------------------------------------------------------
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(prog="wm.cli.slice_demo",
+                                     description="WM vertical slice runtime (live BridgeLab loop).")
+    parser.add_argument("--character", type=int, required=True, help="Active character GUID.")
+    parser.add_argument("--starter-item", type=int, required=True, help="Onboarding starter-item entry.")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=33307)
+    parser.add_argument("--user", default="acore")
+    parser.add_argument("--password", default="acore")
+    parser.add_argument("--database", default="acore_world")
+    parser.add_argument("--in-process", action="store_true",
+                        help="Skip live DB wiring; run the in-process demo only (smoke test).")
+    args = parser.parse_args(argv)
+
+    rt = SliceRuntime.bootstrap(character_guid=args.character,
+                                 starter_item_entry=args.starter_item)
+
+    if not args.in_process:
+        from wm.cli.slice_demo_live import wrap_with_live_compilers
+        from wm.cli.native_applier import NativeApplier
+        from wm.cli.bridge_event_pump import BridgeEventPump, make_mysql_fetch
+        from wm.db.mysql_cli import MysqlCliClient
+
+        client = MysqlCliClient()
+        applier = NativeApplier(client=client, host=args.host, port=args.port,
+                                user=args.user, password=args.password, database=args.database)
+        wrap_with_live_compilers(rt, applier=applier)
+        fetch = make_mysql_fetch(client=client, host=args.host, port=args.port,
+                                  user=args.user, password=args.password,
+                                  database=args.database, character_guid=args.character)
+        pump = BridgeEventPump(runtime=rt, fetch=fetch)
+        print(f"[wm] live mode: char={args.character} starter_item={args.starter_item}; "
+              "poll wm_bridge_event each Enter.")
+    else:
+        pump = None
+        print(f"[wm] in-process smoke mode: char={args.character} starter_item={args.starter_item}; "
+              "use 'use <id>' / 'qc <beat>' / 'kill <family> <zone>' to feed synthetic events.")
+
+    print("commands: <Enter> poll · a <id> approve · r <id> [reason] reject · "
+          "i issues · p pending · l log · q quit")
+
+    while True:
+        # show state
+        pend = rt.gate.pending()
+        if pend:
+            print("\n--- pending ---")
+            for pp in pend:
+                p = pp.proposal
+                summary = (p.narrative_summary[:80] + "…") if len(p.narrative_summary) > 80 else p.narrative_summary
+                print(f"  #{pp.id} {p.kind.value:7s} char={p.character_guid} {summary or '(no summary)'}")
+        try:
+            cmd = input("[wm]> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nbye.")
+            return 0
+
+        if not cmd:
+            if pump is not None:
+                n = pump.poll_once()
+                if n: print(f"[wm] polled {n} event(s); watermark={pump.last_seen_event_id}")
+            continue
+        parts = cmd.split(maxsplit=2)
+        verb = parts[0]
+        if verb == "q":
+            return 0
+        if verb == "a" and len(parts) >= 2:
+            res = rt.gate.approve(int(parts[1]))
+            print(f"  approve → ok={res.ok} {res.error or ''}")
+            continue
+        if verb == "r" and len(parts) >= 2:
+            reason = parts[2] if len(parts) > 2 else "operator-rejected"
+            rt.gate.reject(int(parts[1]), reason=reason)
+            print(f"  reject  → {reason}")
+            continue
+        if verb == "i":
+            issues = rt.issues.list_open()
+            print(f"  issues: {len(issues)}")
+            for it in issues:
+                print(f"    #{it.id} {it.kind} {it.reason}")
+            continue
+        if verb == "p":
+            print(f"  pending: {len(pend)}")
+            continue
+        if verb == "l":
+            print(f"  applied_log: {len(rt.applied_log)}")
+            for entry in rt.applied_log[-10:]:
+                print(f"    {entry.get('kind')} {entry.get('applier') or entry.get('steps') or entry.get('narrative','')[:60]}")
+            continue
+        # in-process synthetic feeders (smoke mode aids)
+        if verb == "use" and len(parts) >= 2:
+            rt.feed_use_item(item_entry=int(parts[1])); continue
+        if verb == "qc" and len(parts) >= 2:
+            rt.feed_quest_completed(beat_ref=parts[1], character_level=int(parts[2]) if len(parts) > 2 else 1); continue
+        if verb == "kill" and len(parts) >= 3:
+            fam, zone = parts[1], parts[2]
+            import time
+            rt.feed_kill(creature_family=fam, zone=zone, ts=int(time.time())); continue
+        print(f"  unknown command: {cmd!r}")
