@@ -1,0 +1,16 @@
+{
+  "kind": "quest",
+  "payload": {
+    "quest_release": {
+      "title": "Wolves at the Vineyard",
+      "objective": "Cull 6 Young Wolves near the Northshire Vineyard.",
+      "description": "Marshal McBride asks you to thin the wolves before they reach the abbey.",
+      "giver_creature_entry": 197,
+      "objective_kind": "kill_creature",
+      "objective_target_entry": 299,
+      "objective_count": 6,
+      "rewards": {"xp": 120}
+    }
+  },
+  "narrative_summary": "A cautious Northshire shake-out: McBride sends you to thin the wolves; the regard takes note of your efficiency."
+}
