@@ -1,0 +1,41 @@
+{
+  "$id": "wm.reactive_template.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WM Reactive Template v1",
+  "type": "object",
+  "required": ["schema", "id", "narrative_hook", "trigger", "recipe", "guards"],
+  "properties": {
+    "schema": {"const": "wm.reactive_template.v1"},
+    "id": {"type": "string"},
+    "narrative_hook": {"type": "string"},
+    "trigger": {
+      "type": "object",
+      "required": ["event", "params", "scope", "cooldown_min", "dedupe_key"],
+      "properties": {
+        "event": {"type": "string"},
+        "params": {"type": "object"},
+        "scope": {"const": "active_character"},
+        "cooldown_min": {"type": "integer", "minimum": 0},
+        "dedupe_key": {"type": "string"}
+      }
+    },
+    "recipe": {
+      "type": "object",
+      "required": ["kind", "compiler", "slots"],
+      "properties": {
+        "kind": {"enum": ["quest", "scene", "ability"]},
+        "compiler": {"type": "string"},
+        "slots": {"type": "object"}
+      }
+    },
+    "guards": {
+      "type": "object",
+      "required": ["feasibility_tier", "max_concurrent", "idempotency_key_template"],
+      "properties": {
+        "feasibility_tier": {"enum": ["T1", "T2", "T3"]},
+        "max_concurrent": {"type": "integer", "minimum": 1},
+        "idempotency_key_template": {"type": "string"}
+      }
+    }
+  }
+}
