@@ -1,0 +1,27 @@
+{
+  "$id": "wm.ability.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WM Ability v1",
+  "type": "object",
+  "required": ["schema","id","name","version","client_tier","type","target","effect","shell_binding","grant_policy"],
+  "properties": {
+    "schema": {"const": "wm.ability.v1"},
+    "id": {"type": "string"},
+    "name": {"type": "string"},
+    "version": {"type": "integer", "minimum": 1},
+    "client_tier": {"enum": ["T1","T2","T3"]},
+    "feasibility_notes": {"type": "string"},
+    "type": {"enum": ["passive","active","stance"]},
+    "target": {"enum": ["self","self_aoe","single_friend","single_enemy"]},
+    "effect": {
+      "oneOf": [
+        {"type":"object","required":["kind","stat","amount","duration"],"properties":{"kind":{"const":"stat_aura"}}},
+        {"type":"object","required":["kind","school","base","scaling","period_ms"],"properties":{"kind":{"const":"periodic_damage"}}},
+        {"type":"object","required":["kind","chance_pct","effect_ref"],"properties":{"kind":{"const":"on_hit_proc"}}},
+        {"type":"object","required":["kind","actor_ref","lifetime_ms","behavior"],"properties":{"kind":{"const":"spawn_actor"}}}
+      ]
+    },
+    "shell_binding": {"type":"object","required":["shell_bank_ref","visible_aura_spell_id"]},
+    "grant_policy": {"type":"object","required":["scope","persistence","revoke_path"]}
+  }
+}
