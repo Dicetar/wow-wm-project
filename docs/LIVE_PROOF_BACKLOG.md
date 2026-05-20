@@ -381,3 +381,17 @@ family moves and proves the extraction byte-behaviour. In-game shell-
 cast live-proof deferred (no char online at extract time); the move is
 verbatim pure regex with the standalone net + the existing Python
 suite as cover, and will be exercised by the 0E.4 per-family casts.
+
+### WM Vertical Slice — IN-ENGINE PROOF: `PARTIAL` (awaiting live run)
+
+Planned 2026-05-20 (Claude). Slice runtime, 3 new schemas, demo content,
+2 ability specs, 10 reactive templates, all landed in commits per the
+[2026-05-20-wm-vertical-slice plan](superpowers/plans/2026-05-20-wm-vertical-slice.md);
+41/41 unit + integration tests green
+(`pytest tests/test_{story_module_schema,reactive_template_schema,ability_schema,demo_data_loads,ability_grant_compiler,proposal_adapter,approval_gate,arc_runner,watcher,onboarding_starter_item,slice_demo}.py`).
+Awaiting live BridgeLab run per
+[WM_VERTICAL_SLICE_RUNBOOK.md](WM_VERTICAL_SLICE_RUNBOOK.md): one new
+character → b00 PINNED auto-apply → b01 OPEN approve → grant 1 →
+zone_kill_bounty Watcher fire + approve → b02 OPEN approve → b03 PINNED
+auto-apply → grant 2. Evidence: action-request rows + visible buffs +
+in-client quest log.
