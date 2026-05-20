@@ -1,0 +1,8 @@
+{
+  "schema": "wm.ability.v1", "id": "echo_lash_v1", "name": "Echo Lash",
+  "version": 1, "client_tier": "T2", "feasibility_notes": "shell-bank active single-target shadow DoT",
+  "type": "active", "target": "single_enemy",
+  "effect": {"kind": "periodic_damage", "school": "shadow", "base": 12, "scaling": 0.0, "period_ms": 2000},
+  "shell_binding": {"shell_bank_ref": "shell_demo_active_1", "visible_aura_spell_id": 946701},
+  "grant_policy": {"scope": "active_character", "persistence": "persistent", "revoke_path": "managed.rollback.echo_lash_v1"}
+}

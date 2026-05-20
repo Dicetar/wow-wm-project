@@ -1,0 +1,20 @@
+{
+  "schema": "wm.reactive_template.v1",
+  "id": "outbreak_warden",
+  "narrative_hook": "An outbreak of <creature_family> in <zone> calls for a warden — the WM nominates you.",
+  "trigger": {
+    "event": "kill",
+    "params": {"creature_family": "<slot>", "zone": "<slot>", "count": {"min": 15, "window_min": 20}},
+    "scope": "active_character",
+    "cooldown_min": 60,
+    "dedupe_key": "outbreak_warden:{zone}:{creature_family}"
+  },
+  "recipe": {
+    "kind": "quest",
+    "compiler": "wm.content.release/repeatable_bounty",
+    "slots": {"creature_family": "trigger.creature_family", "zone": "trigger.zone",
+              "title": "<llm-filled>", "description": "<llm-filled>", "reward_theme": "<llm-filled>"}
+  },
+  "guards": {"feasibility_tier": "T1", "max_concurrent": 1,
+             "idempotency_key_template": "watch:outbreak_warden:{character_guid}:{zone}:{creature_family}"}
+}

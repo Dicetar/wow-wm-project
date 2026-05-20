@@ -1,0 +1,20 @@
+{
+  "schema": "wm.reactive_template.v1",
+  "id": "idle_ambush",
+  "narrative_hook": "You've been still too long. Something steps from the trees in <zone>.",
+  "trigger": {
+    "event": "idle",
+    "params": {"zone": "<slot>", "count": {"min": 1, "window_min": 5}},
+    "scope": "active_character",
+    "cooldown_min": 90,
+    "dedupe_key": "idle_ambush:{zone}"
+  },
+  "recipe": {
+    "kind": "scene",
+    "compiler": "wm.content.release/scene",
+    "slots": {"zone": "trigger.zone", "ambusher_kind": "<llm-filled>",
+              "title": "<llm-filled>", "description": "<llm-filled>"}
+  },
+  "guards": {"feasibility_tier": "T1", "max_concurrent": 1,
+             "idempotency_key_template": "watch:idle_ambush:{character_guid}:{zone}"}
+}

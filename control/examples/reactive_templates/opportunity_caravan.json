@@ -1,0 +1,19 @@
+{
+  "schema": "wm.reactive_template.v1",
+  "id": "opportunity_caravan",
+  "narrative_hook": "A caravan from <zone> draws the WM's eye — an opportunity for the active character.",
+  "trigger": {
+    "event": "zone_change",
+    "params": {"zone": "<slot>", "count": {"min": 1, "window_min": 5}},
+    "scope": "active_character",
+    "cooldown_min": 240,
+    "dedupe_key": "opportunity_caravan:{zone}"
+  },
+  "recipe": {
+    "kind": "scene",
+    "compiler": "wm.content.release/scene",
+    "slots": {"zone": "trigger.zone", "title": "<llm-filled>", "description": "<llm-filled>"}
+  },
+  "guards": {"feasibility_tier": "T1", "max_concurrent": 1,
+             "idempotency_key_template": "watch:opportunity_caravan:{character_guid}:{zone}"}
+}

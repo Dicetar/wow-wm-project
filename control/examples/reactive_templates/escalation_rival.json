@@ -1,0 +1,20 @@
+{
+  "schema": "wm.reactive_template.v1",
+  "id": "escalation_rival",
+  "narrative_hook": "You've cleared too many of <creature_entry>'s kin. Its champion is coming.",
+  "trigger": {
+    "event": "kill",
+    "params": {"creature_entry": "<slot>", "count": {"min": 12, "window_min": 30}},
+    "scope": "active_character",
+    "cooldown_min": 240,
+    "dedupe_key": "escalation_rival:{creature_entry}"
+  },
+  "recipe": {
+    "kind": "quest",
+    "compiler": "wm.content.release/repeatable_bounty",
+    "slots": {"creature_entry": "trigger.creature_entry",
+              "title": "<llm-filled>", "description": "<llm-filled>", "reward_theme": "<llm-filled>"}
+  },
+  "guards": {"feasibility_tier": "T1", "max_concurrent": 1,
+             "idempotency_key_template": "watch:escalation_rival:{character_guid}:{creature_entry}"}
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "wm.ability.v1", "id": "shadow_pulse_aura_v1", "name": "Shadow Pulse",
+  "version": 1, "client_tier": "T2", "feasibility_notes": "shell-bank passive visible aura",
+  "type": "passive", "target": "self",
+  "effect": {"kind": "stat_aura", "stat": "spell_power_shadow", "amount": 24, "duration": "persistent"},
+  "shell_binding": {"shell_bank_ref": "shell_demo_passive_1", "visible_aura_spell_id": 946700},
+  "grant_policy": {"scope": "active_character", "persistence": "persistent", "revoke_path": "managed.rollback.shadow_pulse_aura_v1"}
+}

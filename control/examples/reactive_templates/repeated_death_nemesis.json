@@ -1,0 +1,20 @@
+{
+  "schema": "wm.reactive_template.v1",
+  "id": "repeated_death_nemesis",
+  "narrative_hook": "<creature> has bested you repeatedly. The WM marks it as your nemesis.",
+  "trigger": {
+    "event": "death",
+    "params": {"killer_creature_entry": "<slot>", "count": {"min": 3, "window_min": 30}},
+    "scope": "active_character",
+    "cooldown_min": 120,
+    "dedupe_key": "repeated_death_nemesis:{killer_creature_entry}"
+  },
+  "recipe": {
+    "kind": "quest",
+    "compiler": "wm.content.release/repeatable_bounty",
+    "slots": {"killer_creature_entry": "trigger.killer_creature_entry",
+              "title": "<llm-filled>", "description": "<llm-filled>", "reward_theme": "<llm-filled>"}
+  },
+  "guards": {"feasibility_tier": "T1", "max_concurrent": 1,
+             "idempotency_key_template": "watch:repeated_death_nemesis:{character_guid}:{killer_creature_entry}"}
+}

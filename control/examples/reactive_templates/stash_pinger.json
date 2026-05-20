@@ -1,0 +1,19 @@
+{
+  "schema": "wm.reactive_template.v1",
+  "id": "stash_pinger",
+  "narrative_hook": "You've returned to <zone>; a stash you missed before still hides nearby.",
+  "trigger": {
+    "event": "zone_change",
+    "params": {"zone": "<slot>", "count": {"min": 1, "window_min": 60}},
+    "scope": "active_character",
+    "cooldown_min": 180,
+    "dedupe_key": "stash_pinger:{zone}"
+  },
+  "recipe": {
+    "kind": "scene",
+    "compiler": "wm.content.release/scene",
+    "slots": {"zone": "trigger.zone", "title": "<llm-filled>", "description": "<llm-filled>"}
+  },
+  "guards": {"feasibility_tier": "T1", "max_concurrent": 1,
+             "idempotency_key_template": "watch:stash_pinger:{character_guid}:{zone}"}
+}

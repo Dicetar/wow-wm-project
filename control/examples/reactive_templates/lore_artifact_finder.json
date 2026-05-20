@@ -1,0 +1,20 @@
+{
+  "schema": "wm.reactive_template.v1",
+  "id": "lore_artifact_finder",
+  "narrative_hook": "You handled <item_entry>; the WM has more to say about its origin.",
+  "trigger": {
+    "event": "use_item",
+    "params": {"item_entry": "<slot>", "count": {"min": 1, "window_min": 1}},
+    "scope": "active_character",
+    "cooldown_min": 240,
+    "dedupe_key": "lore_artifact_finder:{item_entry}"
+  },
+  "recipe": {
+    "kind": "quest",
+    "compiler": "wm.content.release/story_arc",
+    "slots": {"item_entry": "trigger.item_entry",
+              "title": "<llm-filled>", "description": "<llm-filled>", "reward_theme": "<llm-filled>"}
+  },
+  "guards": {"feasibility_tier": "T1", "max_concurrent": 1,
+             "idempotency_key_template": "watch:lore_artifact_finder:{character_guid}:{item_entry}"}
+}

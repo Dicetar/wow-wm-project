@@ -1,0 +1,88 @@
+{
+  "schema": "wm.story_module.v1",
+  "module_id": "demo_one_v1",
+  "character_guid": 5407,
+  "character_name": "Demo One",
+  "premise": "A newcomer arrives in Northshire and draws the WM's regard through an old token.",
+  "tone": "somber-curious",
+  "constraints": {
+    "zone_whitelist": [12],
+    "level_band": [1, 5],
+    "id_ranges": {"quest": [910500, 910549], "creature": [920500, 920549], "item": [910500, 910549]},
+    "ability_themes": ["shadow_warden"]
+  },
+  "beats": [
+    {
+      "id": "b00_onboarding", "kind": "PINNED",
+      "entry_condition": {"event": "wm.attention.granted"},
+      "payload": {
+        "quest_release": {
+          "title": "An Unfamiliar Weight",
+          "objective": "Speak with Marshal McBride in Northshire Abbey.",
+          "description": "The token in your pack hums faintly. Marshal McBride may know its meaning.",
+          "giver_creature_entry": 197,
+          "objective_kind": "talk_to_npc",
+          "objective_target_entry": 197,
+          "rewards": {"xp": 80}
+        }
+      },
+      "outcome": {"next_beat_ref": "b01_zone_intro", "grant_points": []}
+    },
+    {
+      "id": "b01_zone_intro", "kind": "OPEN",
+      "entry_condition": {"event": "quest.completed", "ref": "b00_onboarding"},
+      "intent": "A short Northshire quest from McBride that frames the token as a watcher's mark. One objective, ideally clearing a nearby threat (kobolds or wolves). Tone: cautious, curious.",
+      "constraints": {
+        "giver_pool": [197],
+        "location_pool": [12],
+        "ability_theme_hint": "shadow_warden",
+        "max_objectives": 1
+      },
+      "outcome": {
+        "next_beat_ref": "b02_complication",
+        "grant_points": [
+          {"grant_kind": "ability", "ability_ref": "shadow_pulse_aura_v1",
+           "when": {"event": "quest.completed", "ref": "b01_zone_intro"},
+           "appropriateness": {"all_of": [{"character_level_at_least": 1}]}}
+        ]
+      }
+    },
+    {
+      "id": "b02_complication", "kind": "OPEN",
+      "entry_condition": {"event": "quest.completed", "ref": "b01_zone_intro"},
+      "intent": "A complication: something the player did in b01 attracted notice. One objective in Northshire investigating a darker presence. Tone: ominous, personal.",
+      "constraints": {
+        "giver_pool": [197],
+        "location_pool": [12],
+        "ability_theme_hint": "shadow_warden",
+        "max_objectives": 1
+      },
+      "outcome": {"next_beat_ref": "b03_finale", "grant_points": []}
+    },
+    {
+      "id": "b03_finale", "kind": "PINNED",
+      "entry_condition": {"event": "quest.completed", "ref": "b02_complication"},
+      "payload": {
+        "quest_release": {
+          "title": "The Watcher's Lash",
+          "objective": "Defeat the Shadow Echo at the Northshire vineyard.",
+          "description": "The watcher's regard has drawn out its echo. End it, and the regard becomes yours to use.",
+          "giver_creature_entry": 197,
+          "objective_kind": "kill_creature",
+          "objective_target_entry": 920500,
+          "objective_count": 1,
+          "rewards": {"xp": 240}
+        }
+      },
+      "outcome": {
+        "next_beat_ref": null,
+        "grant_points": [
+          {"grant_kind": "ability", "ability_ref": "echo_lash_v1",
+           "when": {"event": "quest.completed", "ref": "b03_finale"},
+           "appropriateness": {"all_of": [{"character_level_at_least": 2}]}}
+        ]
+      }
+    }
+  ],
+  "journal_template": "Demo One's regard-arc, beat-by-beat."
+}

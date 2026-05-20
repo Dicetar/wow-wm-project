@@ -1,0 +1,19 @@
+{
+  "schema": "wm.reactive_template.v1",
+  "id": "escort_runner",
+  "narrative_hook": "You finished an escort in <zone>; another traveler now needs your aid.",
+  "trigger": {
+    "event": "quest.completed",
+    "params": {"quest_entry_family": "<slot>", "count": {"min": 1, "window_min": 1}},
+    "scope": "active_character",
+    "cooldown_min": 120,
+    "dedupe_key": "escort_runner:{quest_entry_family}"
+  },
+  "recipe": {
+    "kind": "scene",
+    "compiler": "wm.content.release/scene",
+    "slots": {"escort_kind": "<llm-filled>", "title": "<llm-filled>", "description": "<llm-filled>"}
+  },
+  "guards": {"feasibility_tier": "T1", "max_concurrent": 1,
+             "idempotency_key_template": "watch:escort_runner:{character_guid}:{quest_entry_family}"}
+}
