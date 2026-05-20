@@ -2,13 +2,13 @@
   "kind": "quest",
   "payload": {
     "quest_release": {
-      "title": "Wolves at the Vineyard",
-      "objective": "Cull 6 Young Wolves near the Northshire Vineyard.",
-      "description": "Marshal McBride asks you to thin the wolves before they reach the abbey.",
+      "title": "Echo Ridge Investigation",
+      "grant_quest_id": 15,
+      "objective": "Investigate the disturbance at Echo Ridge.",
+      "description": "Marshal McBride asks you to scout Echo Ridge for trouble — the regard takes note of your efficiency.",
       "giver_creature_entry": 197,
-      "objective_kind": "kill_creature",
-      "objective_target_entry": 299,
-      "objective_count": 6,
+      "objective_kind": "talk_to_npc",
+      "objective_target_entry": 197,
       "rewards": {"xp": 120}
     }
   },

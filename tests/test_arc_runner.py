@@ -40,7 +40,7 @@ def test_quest_complete_b00_opens_b01_proposal_at_gate():
     r.on_event(RunnerEvent(kind="quest.completed", character_guid=5407, params={"beat_ref":"b00_onboarding"}))
     pending = gate.pending()
     assert len(pending) == 1
-    assert pending[0].proposal.payload["quest_release"]["title"] == "Wolves at the Vineyard"
+    assert pending[0].proposal.payload["quest_release"]["title"] == "Echo Ridge Investigation"
 
 def test_grant_point_fires_after_open_beat_quest_complete():
     fixture = _load("tests/fixtures/llm/quest_proposal_basic.json")
