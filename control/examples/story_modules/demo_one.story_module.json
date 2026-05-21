@@ -19,11 +19,12 @@
         "quest_release": {
           "title": "An Unfamiliar Weight",
           "grant_quest_id": 910500,
-          "objective": "Speak with Marshal McBride in Northshire Abbey.",
-          "description": "The token in your pack hums faintly. Marshal McBride may know its meaning.",
+          "objective": "Cull 4 Kobold Vermin the token's pull has unsettled.",
+          "description": "The token in your pack hums faintly. McBride says the kobolds have grown bold; thin them, and the watcher will take your measure.",
           "giver_creature_entry": 197,
-          "objective_kind": "talk_to_npc",
-          "objective_target_entry": 197,
+          "objective_kind": "kill_creature",
+          "objective_target_entry": 6,
+          "objective_count": 4,
           "rewards": {"xp": 80}
         }
       },
@@ -67,11 +68,11 @@
         "quest_release": {
           "title": "The Watcher's Lash",
           "grant_quest_id": 910501,
-          "objective": "Defeat the wolves troubling Northshire.",
-          "description": "The watcher's regard has drawn out the wolves. End them, and the regard becomes yours to use.",
+          "objective": "Put down the 8 Stonetusk Boars the regard has stirred.",
+          "description": "The token no longer hums — it pulls, toward the boars the regard has drawn out. End them, and the regard becomes yours to wield.",
           "giver_creature_entry": 197,
           "objective_kind": "kill_creature",
-          "objective_target_entry": 299,
+          "objective_target_entry": 113,
           "objective_count": 8,
           "rewards": {"xp": 240}
         }

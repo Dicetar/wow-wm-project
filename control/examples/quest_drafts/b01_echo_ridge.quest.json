@@ -1,0 +1,25 @@
+{
+  "quest_id": 910502,
+  "quest_level": 3,
+  "min_level": 1,
+  "questgiver_entry": 197,
+  "questgiver_name": "Marshal McBride",
+  "title": "Echo Ridge Investigation",
+  "quest_description": "Word reached McBride of wolves massing along Echo Ridge — more than the season should bring, and bolder. The regard suspects they are circling the same pull you now carry. Go to the ridge and thin the pack; let the watcher see how you handle a hunt that hunts back.",
+  "objective_text": "Slay Young Wolves at Echo Ridge.",
+  "offer_reward_text": "The ridge is quieter. Whatever drew the pack has noticed you in turn.",
+  "request_items_text": "The wolves still circle. Return when the ridge is thinned.",
+  "objective": {
+    "target_entry": 299,
+    "target_name": "Young Wolf",
+    "kill_count": 6
+  },
+  "reward": {
+    "money_copper": 400,
+    "reward_xp_difficulty": 3
+  },
+  "start_npc_entry": null,
+  "end_npc_entry": 197,
+  "grant_mode": "direct_quest_add",
+  "tags": ["wm-slice", "demo_one_v1", "b01_zone_intro"]
+}

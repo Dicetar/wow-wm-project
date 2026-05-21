@@ -1,0 +1,25 @@
+{
+  "quest_id": 910501,
+  "quest_level": 5,
+  "min_level": 1,
+  "questgiver_entry": 197,
+  "questgiver_name": "Marshal McBride",
+  "title": "The Watcher's Lash",
+  "quest_description": "The token no longer hums — it pulls, hard, toward the boars rooting the eastern treeline. The regard has drawn them out as surely as it drew you, and it means for you to end them. Do this, McBride says quietly, and the watcher's regard becomes a thing you can wield rather than merely carry.",
+  "objective_text": "Put down the Stonetusk Boars the regard has stirred.",
+  "offer_reward_text": "The pull goes still. For the first time the token feels like yours — and the lash with it.",
+  "request_items_text": "The boars still root the treeline. The regard is not yet satisfied.",
+  "objective": {
+    "target_entry": 113,
+    "target_name": "Stonetusk Boar",
+    "kill_count": 8
+  },
+  "reward": {
+    "money_copper": 800,
+    "reward_xp_difficulty": 4
+  },
+  "start_npc_entry": null,
+  "end_npc_entry": 197,
+  "grant_mode": "direct_quest_add",
+  "tags": ["wm-slice", "demo_one_v1", "b03_finale"]
+}

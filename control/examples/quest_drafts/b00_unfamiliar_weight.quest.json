@@ -1,0 +1,25 @@
+{
+  "quest_id": 910500,
+  "quest_level": 2,
+  "min_level": 1,
+  "questgiver_entry": 197,
+  "questgiver_name": "Marshal McBride",
+  "title": "An Unfamiliar Weight",
+  "quest_description": "The token in your pack has not stopped humming since the regard settled on you. Marshal McBride says the kobolds skulking the Northshire valley have grown bolder of late, drawn — he suspects — to whatever the token answers. Thin them, and the watcher will see what you are made of.",
+  "objective_text": "Cull Kobold Vermin in the Northshire valley.",
+  "offer_reward_text": "The humming quiets, just a little. The regard has taken its measure of you.",
+  "request_items_text": "The token still hums. There is more to be done.",
+  "objective": {
+    "target_entry": 6,
+    "target_name": "Kobold Vermin",
+    "kill_count": 4
+  },
+  "reward": {
+    "money_copper": 250,
+    "reward_xp_difficulty": 2
+  },
+  "start_npc_entry": null,
+  "end_npc_entry": 197,
+  "grant_mode": "direct_quest_add",
+  "tags": ["wm-slice", "demo_one_v1", "b00_onboarding"]
+}
