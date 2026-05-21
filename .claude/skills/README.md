@@ -26,6 +26,28 @@ hacks. Each skill is self-contained; this index is just a map.
 | `wm-rollback` | undo a managed quest/item/spell publish | `wm.{quests,items,spells}.rollback` / `Rollback-BridgeLabManagedSpell.ps1` |
 | `wm-purge-quest-range` | bulk-remove a managed quest ID band | `wm.quests.purge_range` |
 
+## WM-action batch
+
+| Skill | Operation | Wraps |
+|---|---|---|
+| `wm-mark-for-attention` | activate a character for the WM (marker aura 946500) | `player_apply_aura` bus action |
+| `wm-grant-character-state` | money / reputation / health / auras | implemented `player_*` bus actions |
+
+## Implemented vs registered native actions (important)
+
+Many `player_*`/`creature_*` action kinds are **registered but NOT implemented** —
+the bridge will not execute them, and a bus row just sits `pending`. Only actions
+flagged `implemented=True` in `src/wm/sources/native_bridge/action_kinds.py` work
+today. Verified-implemented player actions include: `player_apply_aura`,
+`player_remove_aura`, `player_cast_spell`, `player_learn_spell`,
+`player_unlearn_spell`, `player_set_display_id`, `player_add_money`,
+`player_add_reputation`, `player_restore_health_power`, `player_add_item`,
+`player_remove_item`, `player_random_enchant_item`. **NOT** implemented (do not
+rely on): `player_add_xp`, `player_teleport`, `player_add_title`,
+`player_add_achievement_credit`, `player_send_mail[_with_items]`,
+`player_equip_item`, `player_create_bound_item`, phase/speed/resurrect/summon, etc.
+Always check the flag before assuming an action works.
+
 ## Principles baked into these skills
 
 - **Prefer the canonical `scripts/bridge_lab/*.ps1` wrappers** when one exists —

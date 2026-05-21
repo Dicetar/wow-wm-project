@@ -40,12 +40,13 @@ VALUES ('slice.item_grant:humming_token:910500:5408', 5408, 'player_add_item',
         '{"item_id":910500,"count":1}', 'pending', 'wm-slice', 'low');
 ```
 
-## Mail variant (offline-safe)
-The `player_send_mail_with_items` action kind exists (registered in
-`src/wm/sources/native_bridge/action_kinds.py`, risk `medium`) for delivery that
-survives an offline or full-bag player. **The exact payload is interpreted by the
-native C++ bridge — confirm its keys there before using it; don't assume the
-shape.** (I have not verified this one end-to-end.)
+## Mail variant — NOT available yet
+`player_send_mail_with_items` is **registered but NOT implemented** in the native
+bridge (`action_kinds.py` has no `implemented=True`). A bus row for it will sit
+unprocessed — do **not** use it as an offline-delivery path today. Wiring it is a
+native-bridge task. For now, grant to an online player via `player_add_item`
+(above). (`player_equip_item` and `player_create_bound_item` are likewise not
+implemented yet.)
 
 ## Verify
 ```sql
@@ -56,6 +57,6 @@ WHERE IdempotencyKey = 'slice.item_grant:humming_token:910500:5408';
 ## Gotchas
 - Row stuck `pending` / guid mismatch → GUID not on `WmBridge.PlayerGuidAllowList`
   (add + restart worldserver).
-- `player_not_online` → log in and re-enqueue, or use the mail variant.
+- `player_not_online` → log in and re-enqueue (no working offline/mail fallback yet).
 - Duplicate idempotency key → pick a fresh one.
 - Item entry unknown to the server → reload (wm-create-item step 4 analog) first.
