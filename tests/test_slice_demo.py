@@ -1,5 +1,15 @@
 from wm.cli.slice_demo import SliceRuntime, ScriptedOperator
 
+
+def test_feed_attention_activates_b00_like_the_aura_sentinel():
+    # The aura sentinel (BridgeEventPump) calls feed_attention when the
+    # marker aura is observed — same effect the obsolete item-use path had.
+    rt = SliceRuntime.bootstrap(character_guid=5408, starter_item_entry=0)
+    assert rt.runner.current_beat_id == "b00_onboarding"
+    rt.feed_attention(character_guid=5408)
+    assert rt.runner.current_beat_id == "b01_zone_intro"
+
+
 def test_happy_path_demo():
     rt = SliceRuntime.bootstrap(character_guid=5407, starter_item_entry=910500)
     op = ScriptedOperator(rt.gate)

@@ -104,6 +104,16 @@ class SliceRuntime:
 
     # --- event feeders (test API + bridge bridge for the runbook) -------
 
+    def feed_attention(self, *, character_guid: int | None = None) -> None:
+        """Activate the character for the WM — the aura sentinel's entry point.
+
+        Mirrors what the (now obsolete) starter-item onboarding path did, but
+        is driven by the marker-aura `applied` event observed on the spine.
+        """
+        guid = character_guid if character_guid is not None else self.runner.module.character_guid
+        self.runner.on_event(RunnerEvent(
+            kind="wm.attention.granted", character_guid=guid, params={}))
+
     def feed_use_item(self, *, item_entry: int) -> None:
         self.onboarding.on_event(OnboardingEvent(
             kind="use_item", character_guid=self.runner.module.character_guid,

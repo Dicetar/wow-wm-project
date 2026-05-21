@@ -29,11 +29,17 @@ class BridgeEventRow:
     subject_entry: int | None = None
 
 
+# Marker spell whose `applied` aura event activates a character for the WM
+# (see slice handoff "Mistakes": the aura, not item-use, is the signal).
+MARKER_SPELL_ID = 946500
+
+
 class _RuntimeProtocol(Protocol):
     runner: Any  # has .module.character_guid
     def feed_use_item(self, *, item_entry: int) -> None: ...
     def feed_quest_completed(self, *, beat_ref: str, character_level: int = 1) -> None: ...
     def feed_kill(self, *, creature_family: str, zone: str, ts: int) -> None: ...
+    def feed_attention(self, *, character_guid: int) -> None: ...
 
 
 FetchFn = Callable[[int], list[BridgeEventRow]]
@@ -43,10 +49,13 @@ class BridgeEventPump:
     """Polls wm_bridge_event for the active character, dispatches to runtime."""
 
     def __init__(self, *, runtime: _RuntimeProtocol, fetch: FetchFn,
-                 last_seen_event_id: int = 0) -> None:
+                 last_seen_event_id: int = 0,
+                 marker_spell_id: int = MARKER_SPELL_ID) -> None:
         self.runtime = runtime
         self._fetch = fetch
         self.last_seen_event_id = last_seen_event_id
+        self._marker_spell_id = marker_spell_id
+        self._attention_fired: set[int] = set()  # one-shot guard per character
 
     def poll_once(self) -> int:
         rows = self._fetch(self.last_seen_event_id)
@@ -65,7 +74,13 @@ class BridgeEventPump:
 
         et = row.event_type
         try:
-            if et == "item_use":
+            if et == "applied" and row.event_family == "aura":
+                spell_id = int(row.payload.get("spell_id", 0) or 0)
+                guid = row.player_guid if row.player_guid is not None else active
+                if spell_id == self._marker_spell_id and guid not in self._attention_fired:
+                    self._attention_fired.add(guid)
+                    self.runtime.feed_attention(character_guid=guid)
+            elif et == "item_use":
                 item_entry = int(row.payload.get("item_entry", row.object_entry or 0))
                 if item_entry:
                     self.runtime.feed_use_item(item_entry=item_entry)
@@ -119,7 +134,7 @@ def make_mysql_fetch(*, client, host: str, port: int, user: str, password: str,
             "PayloadJSON,ObjectEntry,SubjectEntry FROM wm_bridge_event "
             f"WHERE BridgeEventID > {int(after_id)} "
             f"AND PlayerGUID = {int(character_guid)} "
-            "AND EventFamily = 'observed' "
+            "AND EventFamily IN ('observed','aura') "
             "ORDER BY BridgeEventID ASC LIMIT 100"
         )
         rows = client.query(host=host, port=port, user=user, password=password,
