@@ -17,6 +17,15 @@ hacks. Each skill is self-contained; this index is just a map.
 | `wm-create-spell-shell` | make a server-known spell shell | `Stage-BridgeLabServerSpellDbc.ps1` (`wm.spells.server_dbc`) |
 | `wm-build-client-patch` | client MPQ for spell icon/name/tooltip | `wm.spells.client_patch build` |
 
+## Plumbing / safety batch
+
+| Skill | Operation | Wraps |
+|---|---|---|
+| `wm-reload-worldserver` | hot-reload vs restart per data type | `SoapRuntimeClient` / `Restart-BridgeLabWorldServer.ps1` |
+| `wm-reserve-slot` | reserve/stage/release a managed ID slot | `ReservedSlotDbAllocator` (Python API, no CLI) |
+| `wm-rollback` | undo a managed quest/item/spell publish | `wm.{quests,items,spells}.rollback` / `Rollback-BridgeLabManagedSpell.ps1` |
+| `wm-purge-quest-range` | bulk-remove a managed quest ID band | `wm.quests.purge_range` |
+
 ## Principles baked into these skills
 
 - **Prefer the canonical `scripts/bridge_lab/*.ps1` wrappers** when one exists —
@@ -37,6 +46,7 @@ hacks. Each skill is self-contained; this index is just a map.
   `docs/adr/0003-client-shell-bank-for-visible-wm-spells.md`.
 
 ## Not yet built (from the approved catalog)
-Live-slice (LLM-propose LIVE, run-watcher, auto-bounty), plumbing (reserve/stage
-slot, reload, rollback, purge-range), and other domains (creature/NPC,
-gameobject, scene, journal, character-state grants, mark-for-attention).
+Live-slice (LLM-propose LIVE, run-watcher, auto-bounty — likely need code wiring,
+not just doc-wrapping), and other domains (creature/NPC spawn+control,
+gameobject, scene, journal, character-state grants like money/xp/title/teleport,
+mark-for-attention).
