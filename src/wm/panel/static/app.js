@@ -102,6 +102,9 @@ function bindActions() {
   document.querySelectorAll("[data-release-command]").forEach((button) => {
     button.addEventListener("click", () => runPayloadCommand(button.dataset.releaseCommand, "releaseOutput"));
   });
+  $("sliceBootstrap").addEventListener("click", sliceBootstrap);
+  $("slicePoll").addEventListener("click", slicePoll);
+  $("sliceRefresh").addEventListener("click", refreshSlice);
 }
 
 function renderStatus(status) {
@@ -530,6 +533,130 @@ function valueFromOption(encoded, schema) {
   if (type === "number") return Number.parseFloat(encoded);
   if (type === "boolean") return encoded === "__WM_TRUE__";
   return encoded;
+}
+
+// --- Slice approval gate -------------------------------------------------
+
+async function sliceBootstrap() {
+  const raw = $("sliceCharacterGuid").value;
+  const body = raw === "" ? {} : { character_guid: Number(raw) };
+  try {
+    const result = await api("/api/slice/bootstrap", { method: "POST", body: JSON.stringify(body) });
+    state.sliceReady = result.ok === true;
+    if (result.character_guid != null) $("sliceCharacterGuid").value = result.character_guid;
+    await refreshSlice();
+  } catch (error) {
+    renderSliceError(error.message);
+  }
+}
+
+async function slicePoll() {
+  try {
+    const result = await api("/api/slice/poll", { method: "POST", body: "{}" });
+    await refreshSlice();
+    setOutput("sliceLog", `polled: ${result.events_seen} event(s); watermark=${result.last_seen_event_id ?? "?"}`);
+  } catch (error) {
+    renderSliceError(error.message);
+  }
+}
+
+async function refreshSlice() {
+  try {
+    const [status, pending, issues, log] = await Promise.all([
+      api("/api/slice/status"),
+      api("/api/slice/pending"),
+      api("/api/slice/issues"),
+      api("/api/slice/log")
+    ]);
+    renderSliceStatus(status);
+    renderSlicePending(pending.pending || []);
+    renderSliceIssues(issues.issues || []);
+    setOutput("sliceLog", (log.log || []).slice(-20));
+  } catch (error) {
+    renderSliceError(error.message);
+  }
+}
+
+function renderSliceStatus(status) {
+  const rows = {
+    "Character GUID": status.character_guid,
+    "Current Beat": status.current_beat ?? "(none)",
+    "Pending": status.pending_count,
+    "Issues": status.issues_count,
+    "Applied Log": status.applied_log_size
+  };
+  $("sliceStatus").innerHTML = Object.entries(rows)
+    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd>`)
+    .join("");
+}
+
+function renderSlicePending(items) {
+  if (!items.length) {
+    $("slicePending").innerHTML = `<p class="muted">No pending proposals.</p>`;
+    return;
+  }
+  $("slicePending").innerHTML = items.map((item) => `
+    <div class="card" data-pending-id="${item.id}">
+      <div class="card-head">
+        <strong>#${item.id}</strong>
+        <span class="badge">${escapeHtml(item.kind)}</span>
+        <span class="muted">char ${escapeHtml(String(item.character_guid))}</span>
+      </div>
+      <div class="card-body">${escapeHtml(item.narrative_summary || "(no summary)")}</div>
+      <pre class="output small">${escapeHtml(pretty(item.payload || {}))}</pre>
+      <div class="button-row">
+        <button class="primary" data-slice-approve="${item.id}">Approve</button>
+        <button class="danger" data-slice-reject="${item.id}">Reject</button>
+      </div>
+    </div>
+  `).join("");
+  $("slicePending").querySelectorAll("[data-slice-approve]").forEach((button) => {
+    button.addEventListener("click", () => sliceApprove(Number(button.dataset.sliceApprove)));
+  });
+  $("slicePending").querySelectorAll("[data-slice-reject]").forEach((button) => {
+    button.addEventListener("click", () => sliceReject(Number(button.dataset.sliceReject)));
+  });
+}
+
+function renderSliceIssues(items) {
+  if (!items.length) {
+    $("sliceIssues").innerHTML = `<p class="muted">No open issues.</p>`;
+    return;
+  }
+  $("sliceIssues").innerHTML = items.map((item) => `
+    <div class="card">
+      <div class="card-head">
+        <strong>#${item.id}</strong>
+        <span class="badge">${escapeHtml(item.kind)}</span>
+        <span class="muted">char ${escapeHtml(String(item.character_guid))}</span>
+      </div>
+      <div class="card-body">${escapeHtml(item.reason || "")}</div>
+    </div>
+  `).join("");
+}
+
+function renderSliceError(message) {
+  $("sliceStatus").innerHTML = `<dt>Error</dt><dd>${escapeHtml(String(message))}</dd>`;
+}
+
+async function sliceApprove(id) {
+  try {
+    await api("/api/slice/approve", { method: "POST", body: JSON.stringify({ id }) });
+    await refreshSlice();
+  } catch (error) {
+    renderSliceError(error.message);
+  }
+}
+
+async function sliceReject(id) {
+  const reason = window.prompt("Reject reason:", "operator-rejected");
+  if (reason === null) return;
+  try {
+    await api("/api/slice/reject", { method: "POST", body: JSON.stringify({ id, reason }) });
+    await refreshSlice();
+  } catch (error) {
+    renderSliceError(error.message);
+  }
 }
 
 function capitalize(value) {

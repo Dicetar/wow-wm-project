@@ -18,6 +18,13 @@ from wm.panel.schemas import SchemaCatalog
 from wm.panel.state import PanelState
 from wm.panel.state import utc_now_iso
 
+# slice runtime types — imported lazily inside method bodies to keep
+# panel tests light when the slice deps aren't needed.
+
+SliceFactory = Any            # Callable[..., SliceRuntime]
+SliceDiscoverer = Any         # Callable[[], int | None]
+SlicePumpFactory = Any        # Callable[[SliceRuntime], BridgeEventPump]
+
 
 class PanelApp:
     def __init__(
@@ -27,6 +34,9 @@ class PanelApp:
         schema_catalog: SchemaCatalog | None = None,
         command_catalog: CommandCatalog | None = None,
         cwd: str | Path | None = None,
+        slice_factory: SliceFactory | None = None,
+        slice_discoverer: SliceDiscoverer | None = None,
+        slice_pump_factory: SlicePumpFactory | None = None,
     ) -> None:
         self.state = state or PanelState()
         self.state.ensure()
@@ -36,6 +46,11 @@ class PanelApp:
         self.command_catalog = command_catalog or CommandCatalog()
         self.job_runner = JobRunner(state=self.state, catalog=self.command_catalog, cwd=self.cwd)
         self._api_key: str | None = None
+        self._slice: Any | None = None
+        self._slice_pump: Any | None = None
+        self._slice_factory = slice_factory
+        self._slice_discoverer = slice_discoverer
+        self._slice_pump_factory = slice_pump_factory
 
     def get(self, raw_path: str) -> tuple[int, Any]:
         path = urlparse(raw_path).path
@@ -84,7 +99,73 @@ class PanelApp:
             return 200, self._living_readiness()
         if path == "/api/proposals":
             return 200, {"proposals": self.state.list_drafts(limit=100)}
+        if path == "/api/slice/status":
+            return self._slice_status()
+        if path == "/api/slice/pending":
+            return self._slice_pending()
+        if path == "/api/slice/issues":
+            return self._slice_issues()
+        if path == "/api/slice/log":
+            return self._slice_log()
         return 404, {"ok": False, "error": "Not found."}
+
+    def _require_slice(self) -> tuple[int, Any] | None:
+        if self._slice is None:
+            return 404, {"ok": False, "error": "slice not bootstrapped"}
+        return None
+
+    def _slice_status(self) -> tuple[int, Any]:
+        if (err := self._require_slice()) is not None:
+            return err
+        rt = self._slice
+        return 200, {
+            "ok": True,
+            "character_guid": rt.runner.module.character_guid,
+            "current_beat": rt.runner.current_beat_id,
+            "pending_count": len(rt.gate.pending()),
+            "issues_count": len(rt.issues.list_open()),
+            "applied_log_size": len(rt.applied_log),
+        }
+
+    def _slice_pending(self) -> tuple[int, Any]:
+        if (err := self._require_slice()) is not None:
+            return err
+        rt = self._slice
+        items = []
+        for pp in rt.gate.pending():
+            p = pp.proposal
+            items.append({
+                "id": pp.id,
+                "kind": p.kind.value,
+                "character_guid": p.character_guid,
+                "narrative_summary": p.narrative_summary,
+                "payload": p.payload,
+                "provenance": p.provenance,
+            })
+        return 200, {"pending": items}
+
+    def _slice_issues(self) -> tuple[int, Any]:
+        if (err := self._require_slice()) is not None:
+            return err
+        rt = self._slice
+        items = []
+        for it in rt.issues.list_open():
+            items.append({
+                "id": it.id,
+                "kind": it.kind,
+                "character_guid": it.character_guid,
+                "reason": it.reason,
+                "payload": it.payload,
+                "provenance": it.provenance,
+            })
+        return 200, {"issues": items}
+
+    def _slice_log(self, *, limit: int = 50) -> tuple[int, Any]:
+        if (err := self._require_slice()) is not None:
+            return err
+        rt = self._slice
+        log = list(rt.applied_log)[-limit:]
+        return 200, {"log": log}
 
     def post(self, raw_path: str, body: dict[str, Any]) -> tuple[int, Any]:
         path = urlparse(raw_path).path
@@ -117,7 +198,96 @@ class PanelApp:
             return self._adopt_draft(draft_id=draft_id, body=body)
         if path == "/api/llm/adopt":
             return 200, self._log_llm_adoption(body)
+        if path == "/api/slice/bootstrap":
+            return self._slice_bootstrap(body)
+        if path == "/api/slice/approve":
+            return self._slice_approve(body)
+        if path == "/api/slice/reject":
+            return self._slice_reject(body)
+        if path == "/api/slice/poll":
+            return self._slice_poll(body)
         return 404, {"ok": False, "error": "Not found."}
+
+    def _slice_approve(self, body: dict[str, Any]) -> tuple[int, Any]:
+        if (err := self._require_slice()) is not None:
+            return err
+        pid_raw = body.get("id")
+        if pid_raw in (None, ""):
+            return 400, {"ok": False, "error": "id is required"}
+        try:
+            pid = int(pid_raw)
+        except (TypeError, ValueError):
+            return 400, {"ok": False, "error": "id must be an integer"}
+        try:
+            result = self._slice.gate.approve(pid)
+        except Exception as exc:
+            return 500, {"ok": False, "error": f"approve failed: {exc}"}
+        return 200, {
+            "ok": bool(getattr(result, "ok", False)),
+            "id": pid,
+            "detail": getattr(result, "detail", None),
+            "error": getattr(result, "error", None),
+        }
+
+    def _slice_reject(self, body: dict[str, Any]) -> tuple[int, Any]:
+        if (err := self._require_slice()) is not None:
+            return err
+        pid_raw = body.get("id")
+        if pid_raw in (None, ""):
+            return 400, {"ok": False, "error": "id is required"}
+        try:
+            pid = int(pid_raw)
+        except (TypeError, ValueError):
+            return 400, {"ok": False, "error": "id must be an integer"}
+        reason = str(body.get("reason") or "operator-rejected")
+        try:
+            self._slice.gate.reject(pid, reason=reason)
+        except Exception as exc:
+            return 500, {"ok": False, "error": f"reject failed: {exc}"}
+        return 200, {"ok": True, "id": pid, "reason": reason}
+
+    def _slice_poll(self, _body: dict[str, Any]) -> tuple[int, Any]:
+        if (err := self._require_slice()) is not None:
+            return err
+        if self._slice_pump is None:
+            return 409, {"ok": False, "error": "no pump wired; bootstrap with a pump_factory"}
+        try:
+            n = self._slice_pump.poll_once()
+        except Exception as exc:
+            return 500, {"ok": False, "error": f"pump failed: {exc}"}
+        return 200, {"ok": True, "events_seen": int(n),
+                     "last_seen_event_id": getattr(self._slice_pump, "last_seen_event_id", None)}
+
+    def _slice_bootstrap(self, body: dict[str, Any]) -> tuple[int, Any]:
+        guid_raw = body.get("character_guid")
+        if guid_raw in (None, ""):
+            discoverer = self._slice_discoverer or _default_slice_discoverer
+            try:
+                guid = discoverer()
+            except Exception as exc:
+                return 500, {"ok": False, "error": f"discoverer failed: {exc}"}
+            if guid is None:
+                return 400, {
+                    "ok": False,
+                    "error": "no character_guid supplied and none discoverable from spine",
+                }
+        else:
+            try:
+                guid = int(guid_raw)
+            except (TypeError, ValueError):
+                return 400, {"ok": False, "error": "character_guid must be an integer"}
+        factory = self._slice_factory or _default_slice_factory
+        try:
+            self._slice = factory(character_guid=guid)
+        except Exception as exc:
+            return 500, {"ok": False, "error": f"slice factory failed: {exc}"}
+        # pump is optional — bootstrap an in-process pump if a factory is configured
+        if self._slice_pump_factory is not None:
+            try:
+                self._slice_pump = self._slice_pump_factory(self._slice)
+            except Exception as exc:
+                return 500, {"ok": False, "error": f"pump factory failed: {exc}"}
+        return 200, {"ok": True, "character_guid": guid}
 
     def _generate_llm_draft(self, body: dict[str, Any]) -> dict[str, Any]:
         schema_version = str(body.get("schema_version") or "")
@@ -281,11 +451,51 @@ class PanelApp:
         }
 
 
-def serve(*, host: str = "127.0.0.1", port: int = 8765, state_root: Path | None = None) -> None:
-    app = PanelApp(state=PanelState(state_root) if state_root is not None else None)
+def _default_slice_factory(*, character_guid: int) -> Any:
+    """Production default: hands character to SliceRuntime.bootstrap.
+
+    Live applier wiring is left to the operator (separate config); the
+    runtime returned here has the in-memory record-only compilers. Wire
+    `wrap_with_live_compilers(rt, applier=...)` separately if/when the
+    operator wants live apply.
+    """
+    from wm.cli.slice_demo import SliceRuntime
+    return SliceRuntime.bootstrap(character_guid=character_guid,
+                                  starter_item_entry=0)
+
+
+def _default_slice_discoverer() -> int | None:
+    """Production default: returns None — bootstrap requires an explicit GUID
+    unless the operator wires a real spine discoverer at construction time.
+    """
+    return None
+
+
+def serve(*, host: str = "127.0.0.1", port: int = 8765, state_root: Path | None = None,
+          live_slice: bool = False, db_host: str = "127.0.0.1", db_port: int = 33307,
+          db_user: str = "acore", db_password: str = "acore",
+          world_db: str = "acore_world") -> None:
+    slice_kwargs: dict[str, Any] = {}
+    if live_slice:
+        from wm.db.mysql_cli import MysqlCliClient
+        from wm.panel.slice_wiring import (
+            SliceDbConfig, make_live_slice_factory,
+            make_live_slice_discoverer, make_live_slice_pump_factory,
+        )
+        client = MysqlCliClient()
+        cfg = SliceDbConfig(host=db_host, port=db_port, user=db_user,
+                            password=db_password, world_db=world_db)
+        slice_kwargs = {
+            "slice_factory": make_live_slice_factory(client=client, cfg=cfg),
+            "slice_discoverer": make_live_slice_discoverer(client=client, cfg=cfg),
+            "slice_pump_factory": make_live_slice_pump_factory(client=client, cfg=cfg),
+        }
+    app = PanelApp(state=PanelState(state_root) if state_root is not None else None,
+                   **slice_kwargs)
     handler = _handler_for(app)
     server = ThreadingHTTPServer((host, int(port)), handler)
-    print(f"WM panel listening on http://{host}:{int(port)}")
+    print(f"WM panel listening on http://{host}:{int(port)}"
+          + (" (live slice wiring on)" if live_slice else ""))
     server.serve_forever()
 
 

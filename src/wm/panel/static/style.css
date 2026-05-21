@@ -267,6 +267,40 @@ legend {
   text-align: left;
 }
 
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-body {
+  word-break: break-word;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.output.small {
+  max-height: 160px;
+  overflow: auto;
+  font-size: 12px;
+}
+
 footer {
   position: fixed;
   left: 0;

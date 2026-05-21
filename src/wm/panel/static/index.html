@@ -17,6 +17,7 @@
 
     <nav class="tabs" aria-label="Panel sections">
       <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="slice">Slice</button>
       <button class="tab" data-tab="watcher">Watcher</button>
       <button class="tab" data-tab="llm">LLM</button>
       <button class="tab" data-tab="content">Content Workbench</button>
@@ -35,6 +36,35 @@
           <section class="panel">
             <h2>Latest Job</h2>
             <pre id="latestJob" class="output"></pre>
+          </section>
+        </div>
+      </section>
+
+      <section id="slice" class="tab-panel">
+        <section class="panel">
+          <h2>Approval Gate — Vertical Slice</h2>
+          <div class="inline-fields">
+            <label>Character GUID <input id="sliceCharacterGuid" type="number" placeholder="(auto-discover)"></label>
+            <button id="sliceBootstrap" class="primary">Bootstrap</button>
+            <button id="slicePoll">Poll Spine</button>
+            <button id="sliceRefresh">Refresh</button>
+          </div>
+          <dl id="sliceStatus" class="kv"></dl>
+        </section>
+
+        <section class="panel">
+          <h2>Pending Proposals</h2>
+          <div id="slicePending" class="list"></div>
+        </section>
+
+        <div class="grid two">
+          <section class="panel">
+            <h2>Issues Queue</h2>
+            <div id="sliceIssues" class="list"></div>
+          </section>
+          <section class="panel">
+            <h2>Recent Applied</h2>
+            <pre id="sliceLog" class="output"></pre>
           </section>
         </div>
       </section>

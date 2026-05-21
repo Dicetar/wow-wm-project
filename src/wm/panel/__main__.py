@@ -15,6 +15,13 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_p.add_argument("--host", default="127.0.0.1")
     serve_p.add_argument("--port", type=int, default=8765)
     serve_p.add_argument("--state-root", type=Path)
+    serve_p.add_argument("--live-slice", action="store_true",
+                         help="Wire the slice approval gate to the live MySQL spine + native bus.")
+    serve_p.add_argument("--db-host", default="127.0.0.1")
+    serve_p.add_argument("--db-port", type=int, default=33307)
+    serve_p.add_argument("--db-user", default="acore")
+    serve_p.add_argument("--db-password", default="acore")
+    serve_p.add_argument("--world-db", default="acore_world")
 
     sum_p = sub.add_parser("summary", help="Print a read-only operator dashboard summary")
     sum_p.add_argument("--json", action="store_true", help="Output as JSON")
@@ -23,6 +30,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--state-root", type=Path)
+    parser.add_argument("--live-slice", action="store_true",
+                        help="Wire the slice approval gate to the live MySQL spine + native bus.")
+    parser.add_argument("--db-host", default="127.0.0.1")
+    parser.add_argument("--db-port", type=int, default=33307)
+    parser.add_argument("--db-user", default="acore")
+    parser.add_argument("--db-password", default="acore")
+    parser.add_argument("--world-db", default="acore_world")
 
     return parser
 
@@ -58,7 +72,13 @@ def main(argv: list[str] | None = None) -> int:
     host = getattr(args, "host", "127.0.0.1") or "127.0.0.1"
     port = getattr(args, "port", 8765) or 8765
     state_root = getattr(args, "state_root", None)
-    serve(host=host, port=int(port), state_root=state_root)
+    serve(host=host, port=int(port), state_root=state_root,
+          live_slice=bool(getattr(args, "live_slice", False)),
+          db_host=getattr(args, "db_host", "127.0.0.1") or "127.0.0.1",
+          db_port=int(getattr(args, "db_port", 33307) or 33307),
+          db_user=getattr(args, "db_user", "acore") or "acore",
+          db_password=getattr(args, "db_password", "acore") or "acore",
+          world_db=getattr(args, "world_db", "acore_world") or "acore_world")
     return 0
 
 
