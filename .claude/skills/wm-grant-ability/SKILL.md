@@ -26,7 +26,19 @@ abilities) and enqueues them on `wm_bridge_action_request`.
   `WmBridge.Emit.AuraSpellAllowList` (that's what makes the `applied` event fire,
   e.g. the marker spell 946500). Not required for the grant itself.
 
-## Do it (compile + apply)
+## Canonical operator path (preferred)
+For granting a managed visible spell to a player, the project has a wrapper that
+sets the BridgeLab ports and **waits for the player to come online** — use it
+instead of hand-rolling the bus insert:
+```powershell
+powershell -File scripts/bridge_lab/Grant-BridgeLabManagedSpell.ps1 `
+  -SpellEntry <visible_aura_spell_id> -PlayerGuid 5408 -Mode apply -WaitForPlayerOnline
+```
+(`-DraftPath <spell-draft>` resolves the entry from a `visible_spell_slot` draft;
+`-AllRanks` for multi-rank; `-LabMySqlPort 33307 -SoapPort 7879` are the defaults.)
+This still requires the GUID on both allowlists (above).
+
+## Do it programmatically (the in-slice path — compile + apply)
 ```python
 import json
 from wm.db.mysql_cli import MysqlCliClient

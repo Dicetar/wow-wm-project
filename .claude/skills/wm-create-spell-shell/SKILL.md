@@ -6,10 +6,14 @@ description: Create a new server-known spell "shell" so the WM can apply it as a
 # Create a server spell shell
 
 A WM "shell" is a real spell row the worldserver knows about, used as the
-visible aura / learnable spell that abilities bind to. The proper path edits the
-server's `Spell.dbc` via the shell-bank tooling — **not** by hand-cloning a row
-into the `acore_world.spell_dbc` table (that table-clone is the deprecated hack
-the marker spell 946500 used; prefer the file materialization below).
+visible aura / learnable spell that abilities bind to. Per **ADR 0003**
+(`docs/adr/0003-client-shell-bank-for-visible-wm-spells.md`), player-facing WM
+spells use a **pre-seeded shell bank + client patch** — "server-only spell hacks
+are testing-only, not production-safe." So the table-clone the marker spell
+946500 used is a testing-only marker, **not** the path for a real ability shell.
+Per **ADR 0001**, do **not** reuse stock live spell IDs as carriers — allocate a
+reserved shell-bank ID. The proper flow stages the server `Spell.dbc` from the
+shell bank and ships a client MPQ patch.
 
 > **Honesty note:** I've verified these CLIs exist and run (`--help` works), and
 > read their argument surface, but I have **not executed the full
@@ -35,35 +39,34 @@ Edit `control/runtime/spell_shell_bank.json` — add an entry with the new spell
 (managed range) and an appropriate `patch_seed_template`. (Inspect the existing
 entries for the shape.)
 
-### 2. Inspect / materialize the server Spell.dbc
-```bash
-# look first
-python -m wm.spells.server_dbc inspect \
-  --spell-dbc "D:\WOW\Azerothcore_WoTLK_Rebuild\run\data\dbc\Spell.dbc" --spell-id <id> --summary
-
-# materialize the shell row(s) into a server Spell.dbc copy
-python -m wm.spells.server_dbc materialize \
-  --source-dbc "D:\WOW\Azerothcore_WoTLK_Rebuild\run\data\dbc\Spell.dbc" \
-  --out "<staging>\Spell.dbc" \
-  --spell-id <id> --seed-profile learnable --summary
+### 2. Stage the server Spell.dbc (canonical wrapper)
+Use the BridgeLab wrapper — it materializes from the shell bank, backs up, and
+inspects, against the correct server data dir
+(`D:\WOW\Azerothcore_WoTLK_Rebuild\run\data\dbc\Spell.dbc`, which is BridgeLab's
+DataDir):
+```powershell
+powershell -File scripts/bridge_lab/Stage-BridgeLabServerSpellDbc.ps1 `
+  -Include named -SeedProfile learnable -SpellId <id>
 ```
-`--seed-profile learnable` = neutral seed for grant/revoke validation;
-`castable` = cast-shape seed for visible client tests. **Back up the source
-Spell.dbc** before overwriting the live one; materialize to a staging path, then
-copy into the server data dir.
+`-SeedProfile learnable` = neutral seed for grant/revoke validation; `castable` =
+cast-shape seed for visible client tests. (Underlying module:
+`wm.spells.server_dbc materialize|inspect` — the script wraps it with the right
+paths + a backup, so prefer the script.)
 
 ### 3. RESTART the worldserver
 `Spell.dbc` is read at **startup** — it is NOT hot-reloadable (this is why the
 marker spell needed a restart). `.reload` does nothing for spells.
 
-### 4. (Optional) behavior rules
-If the spell needs procs/linked spells:
-```bash
-WM_WORLD_DB_PORT=33307 WM_SOAP_PORT=7879 \
-  python -m wm.spells.publish --draft-json <spell-behavior>.json --mode apply --summary
+### 4. (Optional) behavior rules — proc / linked spells
+If the spell needs procs/linked spells, publish behavior via the canonical
+wrapper (it wraps `wm.spells.live_publish`, NOT `wm.spells.publish` directly):
+```powershell
+powershell -File scripts/bridge_lab/Publish-BridgeLabManagedSpell.ps1 `
+  -DraftPath <spell-behavior>.json -Mode apply -RuntimeSync soap
 ```
 (`ManagedSpellDraft`: `spell_entry`, `slot_kind`, `name`, `base_visible_spell_id`,
-`proc_rules`, `linked_spells`, …)
+`proc_rules`, `linked_spells`, …) This writes `spell_proc` / `spell_linked_spell`
+— behavior tables that DO hot-reload via SOAP, unlike the dbc shell.
 
 ### 5. Client patch
 Run **wm-build-client-patch** so the spell shows the right icon/name/tooltip.
@@ -75,5 +78,10 @@ Reference the shell's spell id as `shell_binding.visible_aura_spell_id` in a
 ## Gotchas
 - Skipped restart → the server doesn't know the spell; `player_apply_aura` /
   `player_learn_spell` apply nothing real.
-- Overwrote the live Spell.dbc without a backup → keep a copy.
-- Expecting `.reload` to pick up a new spell → it won't; spells need a restart.
+- Reused a stock spell ID as the carrier → forbidden by ADR 0001 (stock-behavior
+  collisions). Use a reserved shell-bank ID.
+- Expecting `.reload` to pick up a new spell → it won't; the dbc shell needs a
+  restart (only proc/linked behavior tables hot-reload).
+- Built patch/dbc artifacts are **not committed** (ADR 0003) — they're generated
+  locally under `.wm-bootstrap/state/...`; until the client patch is installed,
+  iterate on the debug/native lane.

@@ -47,9 +47,16 @@ Useful flags: `--include all|named` (which shells to include), repeatable
   description instead of the placeholder.
 
 ## Gotchas
+- **The running client locks `patch-z.mpq`.** You must fully close `wow.exe`
+  before `--install` (proven repeatedly in the Broug pipeline: "wow.exe ... was
+  stopped because it locked patch-z.mpq"). Install fails or silently no-ops
+  otherwise.
 - `MPQEditor.exe not found` → install it to the expected path or pass `--mpq-editor`.
-- Client not restarted → it still reads the old MPQs; the patch won't show.
+- Client not restarted after install → it still reads the old MPQs; the patch
+  won't show.
 - Server says the spell works but tooltip is still wrong → that's exactly what
   this skill fixes; the server shell and the client patch are independent.
+- Built artifacts are **not committed** (ADR 0003); until installed, behavior
+  iteration stays on the debug/native lane.
 - This covers **spells**. Custom **item** icons need an analogous item client
   patch which may not exist yet — flag that as a gap rather than assuming parity.
