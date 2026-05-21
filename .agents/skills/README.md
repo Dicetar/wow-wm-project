@@ -55,6 +55,18 @@ So, e.g.: `wm-create-spell-shell` is the concrete T3 path under
 | `wm-mark-for-attention` | activate a character for the WM (marker aura 946500) | `player_apply_aura` bus action |
 | `wm-grant-character-state` | money / reputation / health / auras | implemented `player_*` bus actions |
 
+## Domain + lifecycle batch
+
+| Skill | Operation | Wraps |
+|---|---|---|
+| `wm-edit-live-quest` | edit a live quest's title/rewards in place | `wm.quests.edit_live` |
+| `wm-remove-quest` | pull a quest from a character's log | `quest_remove` bus action |
+| `wm-spawn-creature` | spawn/animate an NPC (implemented subset) | `creature_*` bus actions |
+| `wm-auto-bounty` | run the reactive watcher / bounty lane | `Start-BridgeLabAutoBounty.ps1` |
+| `wm-build-context-pack` | assemble the deterministic LLM input | `ContextPackBuilder` (Python API) |
+| `wm-write-journal` | write/read/summarize narrative memory | `wm.journal.*` (Python API) |
+| `wm-run-scene` | sequence a scripted scene | `SceneSequencer` (Python API) |
+
 ## Implemented vs registered native actions (important)
 
 Many `player_*`/`creature_*` action kinds are **registered but NOT implemented** —
@@ -89,8 +101,38 @@ Always check the flag before assuming an action works.
   `docs/adr/0001-no-stock-live-spell-carriers.md` and
   `docs/adr/0003-client-shell-bank-for-visible-wm-spells.md`.
 
-## Not yet built (from the approved catalog)
-Live-slice (LLM-propose LIVE, run-watcher, auto-bounty — likely need code wiring,
-not just doc-wrapping), and other domains (creature/NPC spawn+control,
-gameobject, scene, journal, character-state grants like money/xp/title/teleport,
-mark-for-attention).
+## Catalog close-out: what is NOT skillable (verified against `implemented` flags)
+
+The original catalog optimistically marked many ops `[have]`. Verifying
+`src/wm/sources/native_bridge/action_kinds.py` shows the bridge does **not**
+implement these — a bus row for them just sits `pending`, so no honest skill
+documents them as working until the native bridge implements them:
+
+- **GameObject** — `gameobject_spawn` / `despawn` / `set_state` / template: **none
+  implemented**. No gameobject skill.
+- **Quest complete/turn-in** — `quest_complete` / `quest_complete_objective` /
+  `quest_reward`: not implemented. The player completes quests in-game; only
+  `quest_add` (grant) and `quest_remove` are bus-doable.
+- **Item delivery extras** — `player_equip_item`, `player_create_bound_item`,
+  `player_send_mail[_with_items]`: not implemented (so no offline mail / equip /
+  bound-item grant). Item grant = `player_add_item` to an online player only.
+- **Character rewards** — `player_add_xp`, `player_add_title`,
+  `player_add_achievement_credit`, `player_teleport`, `player_set_phase` /
+  `set_speed` / `resurrect` / `summon_to_location`: not implemented.
+- **Creature control** — only spawn/despawn/display/scale/say/emote/cast are
+  implemented; movement, faction, npc-flags, yell/whisper, attack/flee/evade,
+  waypoints, react-state are **not**. `create-creature-template` (new NPC defs):
+  partial.
+- **build-item-client-patch** — the spell client-patch path exists
+  (`wm-build-client-patch`); an analogous **item** icon MPQ path is not confirmed.
+
+## Still code work, not doc-wrapping (point #3)
+- **`llm-propose` LIVE** — the proposal adapter has a LIVE mode but the slice
+  factories bootstrap it in **FIXTURE**; flipping to LIVE (LM Studio) is a code
+  change, not a skill.
+- **arc-runner** is internal slice machinery (`wm.arcs.runner`), driven by the
+  panel/sentinel; not a standalone operator skill.
+
+Everything in the catalog that maps to verified-implemented tooling now has a
+skill; the rest is honestly enumerated above as bridge-implementation or
+slice-wiring work.
