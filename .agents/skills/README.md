@@ -67,6 +67,18 @@ So, e.g.: `wm-create-spell-shell` is the concrete T3 path under
 | `wm-write-journal` | write/read/summarize narrative memory | `wm.journal.*` (Python API) |
 | `wm-run-scene` | sequence a scripted scene | `SceneSequencer` (Python API) |
 
+## Implemented-action gap batch (the last verified-working bus actions)
+
+| Skill | Operation | Action |
+|---|---|---|
+| `wm-native-smoke-test` | confirm the bridge processes actions | `debug_ping` / `debug_echo` / `debug_fail` |
+| `wm-remove-item` | take an item back from a character | `player_remove_item` |
+| `wm-announce-to-player` | system message to a player | `world_announce_to_player` |
+| `wm-random-enchant-item` | randomized enchant reward | `player_random_enchant_item` |
+
+**Coverage:** every `implemented=True` bus action now has a skill. The remaining
+73 registered action kinds are bridge-implementation work (see close-out below).
+
 ## Implemented vs registered native actions (important)
 
 Many `player_*`/`creature_*` action kinds are **registered but NOT implemented** —
