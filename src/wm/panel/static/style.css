@@ -2,6 +2,8 @@
   --bg: #f5f7f8;
   --surface: #ffffff;
   --surface-2: #eef3f4;
+  --input-bg: #ffffff;
+  --input-disabled: #f7fafb;
   --text: #1c2427;
   --muted: #637174;
   --line: #d7e0e2;
@@ -9,6 +11,40 @@
   --accent-2: #b45309;
   --danger: #b42318;
   --shadow: 0 1px 2px rgba(14, 32, 37, 0.08);
+}
+
+/* Dark palette — applied when the OS prefers dark and no explicit choice is set… */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1416;
+    --surface: #161d20;
+    --surface-2: #1e272b;
+    --input-bg: #11181b;
+    --input-disabled: #161d20;
+    --text: #e3eaec;
+    --muted: #8b999d;
+    --line: #2b363a;
+    --accent: #2dd4bf;
+    --accent-2: #f59e0b;
+    --danger: #f87171;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* …or when the operator explicitly toggles dark. */
+:root[data-theme="dark"] {
+  --bg: #0f1416;
+  --surface: #161d20;
+  --surface-2: #1e272b;
+  --input-bg: #11181b;
+  --input-disabled: #161d20;
+  --text: #e3eaec;
+  --muted: #8b999d;
+  --line: #2b363a;
+  --accent: #2dd4bf;
+  --accent-2: #f59e0b;
+  --danger: #f87171;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -173,7 +209,7 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--text);
-  background: #fff;
+  background: var(--input-bg);
   padding: 8px 9px;
   min-height: 36px;
 }
@@ -204,7 +240,7 @@ label.checkbox-label input[type="checkbox"] {
 input[readonly],
 select:disabled,
 input:disabled {
-  background: #f7fafb;
+  background: var(--input-disabled);
   color: var(--muted);
 }
 

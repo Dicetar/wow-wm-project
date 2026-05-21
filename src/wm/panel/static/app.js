@@ -41,10 +41,35 @@ function schemaForSelect(selectId) {
 }
 
 async function init() {
+  initTheme();
   bindTabs();
   bindEditorTabs();
   bindActions();
   await loadAll();
+}
+
+function currentTheme() {
+  const explicit = document.documentElement.getAttribute("data-theme");
+  if (explicit) return explicit;
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  try { localStorage.setItem("wm-theme", theme); } catch (e) { /* ignore */ }
+  const button = $("themeToggle");
+  if (button) button.textContent = theme === "dark" ? "Light" : "Dark";
+}
+
+function initTheme() {
+  let stored = null;
+  try { stored = localStorage.getItem("wm-theme"); } catch (e) { /* ignore */ }
+  // Honour a stored choice; otherwise follow the OS preference (CSS @media handles it).
+  applyTheme(stored || currentTheme());
+}
+
+function toggleTheme() {
+  applyTheme(currentTheme() === "dark" ? "light" : "dark");
 }
 
 async function loadAll() {
@@ -86,6 +111,7 @@ function bindEditorTabs() {
 }
 
 function bindActions() {
+  $("themeToggle").addEventListener("click", toggleTheme);
   $("refreshAll").addEventListener("click", loadAll);
   $("saveLlmSettings").addEventListener("click", saveLlmSettings);
   $("fetchModels").addEventListener("click", fetchModels);
