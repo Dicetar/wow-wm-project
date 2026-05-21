@@ -10,11 +10,15 @@ Enqueues a `player_add_item` action on the native bus
 **online** player's inventory.
 
 ## Prerequisites
+- **The target GUID is on `WmBridge.PlayerGuidAllowList`** (in
+  `D:\WOW\WM_BridgeLab\run\configs\modules\mod_wm_bridge.conf`). The bridge skips
+  actions for non-allow-listed characters. Add via
+  `Configure-BridgeLabRuntime.ps1 -WmBridgePlayerGuidAllowList "...,<guid>"` and
+  **restart the worldserver** (allowlist is read at startup).
 - The item **exists in `item_template`** and the worldserver was reloaded
   (use **wm-create-item** if not).
 - The **player is online** (else `player_not_online`).
-- Bags have room (else the grant fails / mails depending on server behavior —
-  for guaranteed delivery to an offline or full-bag player, use mail instead).
+- Bags have room (else the grant fails depending on server behavior).
 
 ## Do it (Python seam)
 ```python
@@ -37,8 +41,11 @@ VALUES ('slice.item_grant:humming_token:910500:5408', 5408, 'player_add_item',
 ```
 
 ## Mail variant (offline-safe)
-Use `action_kind="player_send_mail_with_items"` with a payload carrying subject,
-body, and item list — delivers via the mailbox so it survives offline / full bags.
+The `player_send_mail_with_items` action kind exists (registered in
+`src/wm/sources/native_bridge/action_kinds.py`, risk `medium`) for delivery that
+survives an offline or full-bag player. **The exact payload is interpreted by the
+native C++ bridge — confirm its keys there before using it; don't assume the
+shape.** (I have not verified this one end-to-end.)
 
 ## Verify
 ```sql
@@ -47,6 +54,8 @@ WHERE IdempotencyKey = 'slice.item_grant:humming_token:910500:5408';
 ```
 
 ## Gotchas
+- Row stuck `pending` / guid mismatch → GUID not on `WmBridge.PlayerGuidAllowList`
+  (add + restart worldserver).
 - `player_not_online` → log in and re-enqueue, or use the mail variant.
 - Duplicate idempotency key → pick a fresh one.
 - Item entry unknown to the server → reload (wm-create-item step 4 analog) first.

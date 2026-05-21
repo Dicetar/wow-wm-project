@@ -12,10 +12,18 @@ defaults), and reloads. **Never** hand-roll `item_template` SQL.
 
 ## Prerequisites
 - A managed item **entry** in a reserved range (e.g. a story module's
-  `id_ranges.item`). Stage its reserved slot first (same pattern as quests:
-  `ReservedSlotDbAllocator(...).ensure_slot_prepared(entity_type="item", reserved_id=<entry>)`).
+  `id_ranges.item`).
 - A **base item entry** to clone defaults from (`base_item_entry`).
 - BridgeLab DB on **33307**, SOAP on **7879**.
+
+> **Reserved-slot caveat (verify with a dry-run).** `ItemPublisher` checks
+> `wm_reserved_slot` for an `EntityType='item'` row at your entry. Unlike quests,
+> these item-slot rows are **not pre-seeded** in the demo range — so you may need
+> to allocate/create the slot row first (entity_type `"item"`), not just stage an
+> existing one. The exact severity (blocking vs warning) is set by preflight —
+> **run `--mode dry-run` first and follow the preflight output.** I have verified
+> the quest pipeline live this way but not the item pipeline end-to-end, so treat
+> these item steps as the documented shape, confirmed by your dry-run.
 
 ## Steps
 

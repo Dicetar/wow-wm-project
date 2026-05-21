@@ -11,6 +11,14 @@ adds the quest to the **online** player's log — the same effect as a GM
 `.quest add`, but driven by the WM with full audit + idempotency.
 
 ## Prerequisites
+- **The target GUID is on `WmBridge.PlayerGuidAllowList`.** The native bridge
+  only executes actions for allow-listed characters; for anyone else the action
+  is skipped (you'll see a guid/allowlist mismatch result, not `done`). The list
+  lives in `D:\WOW\WM_BridgeLab\run\configs\modules\mod_wm_bridge.conf` (e.g.
+  `WmBridge.PlayerGuidAllowList = "5406,5405,5408"`). Add the GUID via
+  `scripts/bridge_lab/Configure-BridgeLabRuntime.ps1 -WmBridgePlayerGuidAllowList "...,<guid>"`
+  (or edit the conf), then **restart the worldserver** — the allowlist is read
+  at startup, not hot-reloaded.
 - The quest **exists in `quest_template`** and the worldserver has been
   reloaded (use **wm-create-quest** if it doesn't).
 - The **player must be online** — the bus returns `player_not_online` otherwise
@@ -51,6 +59,8 @@ WHERE IdempotencyKey = 'slice.quest_grant:b00:910500:5408';
 AzerothCore holds character state in memory.
 
 ## Gotchas
+- **Row never leaves `pending` / guid mismatch** → the GUID isn't on
+  `WmBridge.PlayerGuidAllowList`; add it and restart the worldserver.
 - `player_not_online` → log the character in, then re-enqueue.
 - `Duplicate entry ... uq_..._idem` → the key was used before; pick a new one.
 - Bus result `failed` with "already completed" → the player already finished that

@@ -10,13 +10,21 @@ actions — typically `player_apply_aura`, and `player_learn_spell` for active
 abilities) and enqueues them on `wm_bridge_action_request`.
 
 ## Prerequisites
-- The **ability spec exists** (`control/examples/abilities/<id>.json`) — see
-  **wm-create-ability**.
-- Its **shell spell exists** in `spell_dbc` (the `visible_aura_spell_id`), else
-  the aura applies nothing real.
+- **The target GUID is on BOTH allowlists.** Aura/spell grants go through the
+  spells module, so the GUID must be on `WmBridge.PlayerGuidAllowList`
+  (`mod_wm_bridge.conf`) **and** `WmSpells.PlayerGuidAllowList`
+  (`mod_wm_spells.conf`). Add via `Configure-BridgeLabRuntime.ps1
+  -WmBridgePlayerGuidAllowList "...,<guid>" -WmSpellsPlayerGuidAllowList "...,<guid>"`
+  and **restart the worldserver**.
+- Its **shell spell exists in `spell_dbc`** (the `visible_aura_spell_id`). New
+  `spell_dbc` rows require a worldserver **restart** — spells are loaded at
+  startup and are NOT hot-reloadable like quests. (See **wm-create-ability**.)
 - The **player is online** (else `player_not_online`).
 - For correct in-client icon/tooltip, the **MPQ client patch** for that spell
   should be shipped (server-side works without it, but the tooltip is wrong).
+- To let the WM *sense* the applied aura on the spine, the spell ID should be in
+  `WmBridge.Emit.AuraSpellAllowList` (that's what makes the `applied` event fire,
+  e.g. the marker spell 946500). Not required for the grant itself.
 
 ## Do it (compile + apply)
 ```python
@@ -52,6 +60,10 @@ ORDER BY RequestID DESC LIMIT 5;
 the buff icon in-game (with the correct art only if the MPQ patch is shipped).
 
 ## Gotchas
+- Row stuck `pending` / guid mismatch → GUID missing from `WmBridge` *or*
+  `WmSpells` allowlist (add to both + restart worldserver).
+- Aura "applies" but nothing happens → the `visible_aura_spell_id` isn't a real
+  `spell_dbc` row, or the worldserver wasn't restarted after adding it.
 - `player_not_online` → log in, re-run.
 - Aura applies but icon/tooltip is wrong → the spell's MPQ client patch is missing.
 - `unknown ability_id` from the compiler → the spec file/id is wrong or unparsed.

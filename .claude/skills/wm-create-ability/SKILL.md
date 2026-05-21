@@ -11,10 +11,20 @@ catalog data; granting compiles it into native bus actions.
 
 ## The dependency chain (do these in order)
 1. **Server spell shell** — a `spell_dbc` row that the ability's
-   `shell_binding.visible_aura_spell_id` points at. Created/managed via
-   `wm.spells.publish` / `wm.spells.shell_bank` / `wm.spells.server_dbc`.
-   Without it, the grant's `player_apply_aura` / `player_learn_spell` has no
-   real spell to apply.
+   `shell_binding.visible_aura_spell_id` points at. Publish it through
+   `wm.spells.publish` from a `ManagedSpellDraft` JSON:
+   ```bash
+   WM_WORLD_DB_PORT=33307 WM_SOAP_PORT=7879 \
+     python -m wm.spells.publish --draft-json <spell>.json --mode dry-run --summary
+   # then --mode apply
+   ```
+   The shell-bank contract lives at `control/runtime/spell_shell_bank.json`
+   (`wm.spells.shell_bank`), and low-level dbc writing is in `wm.spells.server_dbc`.
+   **Critical:** a new `spell_dbc` row requires a worldserver **RESTART** to take
+   effect — spells load at startup and are NOT hot-reloadable like quests (this is
+   exactly why the marker spell 946500 needed a restart). Without the shell +
+   restart, the grant's `player_apply_aura` / `player_learn_spell` has nothing real
+   to apply.
 2. **Client MPQ patch** — for the spell's **icon / name / description** to show
    correctly in-client. Server-side shell alone = working effect but
    broken/placeholder tooltip (e.g. "Caster Centered AOE 0001"). Build it with
@@ -23,6 +33,9 @@ catalog data; granting compiles it into native bus actions.
    MPQEditor). This is a real, required step for player-facing polish — not
    optional cosmetics to wave away.
 3. **Ability spec** — this skill's output.
+
+(A dedicated `wm-create-spell-shell` skill should wrap step 1 + 2 properly; until
+it exists, follow the commands above.)
 
 ## Author the spec
 Put it under `control/examples/abilities/<id>.json`, schema `wm.ability.v1`:
