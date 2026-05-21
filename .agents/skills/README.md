@@ -1,8 +1,30 @@
 # WM pipeline skills
 
-Thin Claude Code skills that wrap the **existing** WM tooling for single pipeline
+Repo-local agent skills (validated by `python scripts/validate_agent_skills.py`,
+root `.agents/skills/`) that wrap the **existing** WM tooling for single pipeline
 operations, so it gets found and used correctly instead of hand-rolled SQL/DBC
 hacks. Each skill is self-contained; this index is just a map.
+
+## These sit BENEATH the three contract skills — read those first
+The fine-grained "how" skills below operate inside the rules defined by the
+existing coarse contract skills. When they conflict, the contract skills win:
+
+- **`wm-workflow`** — repo read-order, dirty-worktree discipline, the
+  `WORKING`/`PARTIAL`/`BROKEN`/`UNKNOWN` status labels, smallest-useful-change loop.
+- **`wm-content-release`** — the publish *contract*: feasibility tiers
+  **T1** (server-only, visible via game state), **T2** (server + existing client
+  assets), **T3** (client patch required), **T4** (client asset/UI work); the
+  `python -m wm.content.release --plan/--packet` + `wm.content.preflight` gates;
+  fresh-ID and rollback policy; retire dirty IDs in
+  `data/specs/custom_id_registry.json` (don't recycle as free); read
+  `docs/CONTENT_REQUIRED_FIELDS.md` before player-facing content.
+- **`wm-live-bridge-lab`** — BridgeLab runtime: the `.bat` launchers, player
+  scope (default `5406`, Broug `5405`), ports (MySQL `33307`, SOAP `7879`, world
+  `8095`), the live-proof loop, dry-run-before-apply.
+
+So, e.g.: `wm-create-spell-shell` is the concrete T3 path under
+`wm-content-release`'s truth-split; `wm-grant-*` run inside
+`wm-live-bridge-lab`'s scope/allowlist rules.
 
 ## Catalog (core CRUD batch)
 

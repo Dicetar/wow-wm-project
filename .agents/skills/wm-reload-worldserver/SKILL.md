@@ -11,11 +11,17 @@ the change up — and **the mechanism depends on the data type**:
 | Changed | Mechanism | Why |
 |---|---|---|
 | `quest_template` (+addon/offer/request) | **SOAP `.reload all quest`** (hot) | quests hot-reload |
-| `creature_queststarter` / `questender` | **SOAP** `.reload creature_quest*` | hot |
-| `item_template` | **SOAP** `.reload item_template` (hot) | items hot-reload |
-| `spell_proc`, `spell_linked_spell`, other `spell_*` behavior | **SOAP** `.reload spell_*` (hot) | behavior tables hot-reload |
+| `creature_queststarter` / `questender` | **SOAP** `.reload creature_queststarter` / `.reload creature_questender` | hot |
+| `creature_template` | **SOAP** `.reload creature_template <entry>` | hot |
+| `item_template` | **SOAP** `.reload all item` (hot) | items hot-reload |
+| `spell_proc`, `spell_linked_spell`, other `spell_*` behavior | **SOAP** `.reload all spell` (hot) | behavior tables hot-reload |
 | **`Spell.dbc` shell rows** (new spells) | **RESTART** | DBCs load at startup only — NOT hot-reloadable |
 | module config (allowlists, etc.) | **RESTART** | configs read at startup |
+
+(Command forms match what the project actually uses — `.reload all quest`,
+`.reload all item`, `.reload all spell`, `.reload creature_quest*`,
+`.reload config` — per `wm.runtime_sync.build_default_quest_reload_commands` and
+the BridgeLab transcripts. Not `.reload item_template` / `.reload spell_*`.)
 
 ## Hot reload (SOAP)
 ```python
