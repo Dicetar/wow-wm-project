@@ -3,7 +3,7 @@
   "payload": {
     "quest_release": {
       "title": "Echo Ridge Investigation",
-      "grant_quest_id": 15,
+      "grant_quest_id": 910502,
       "objective": "Investigate the disturbance at Echo Ridge.",
       "description": "Marshal McBride asks you to scout Echo Ridge for trouble — the regard takes note of your efficiency.",
       "giver_creature_entry": 197,

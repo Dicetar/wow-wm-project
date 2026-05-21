@@ -18,7 +18,7 @@
       "payload": {
         "quest_release": {
           "title": "An Unfamiliar Weight",
-          "grant_quest_id": 783,
+          "grant_quest_id": 910500,
           "objective": "Speak with Marshal McBride in Northshire Abbey.",
           "description": "The token in your pack hums faintly. Marshal McBride may know its meaning.",
           "giver_creature_entry": 197,
@@ -66,7 +66,7 @@
       "payload": {
         "quest_release": {
           "title": "The Watcher's Lash",
-          "grant_quest_id": 33,
+          "grant_quest_id": 910501,
           "objective": "Defeat the wolves troubling Northshire.",
           "description": "The watcher's regard has drawn out the wolves. End them, and the regard becomes yours to use.",
           "giver_creature_entry": 197,
