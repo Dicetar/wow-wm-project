@@ -572,8 +572,7 @@ class QuestPublisher:
             raise MysqlCliError(completed.stderr.strip() or completed.stdout.strip() or "mysql execute failed")
 
 
-def load_bounty_quest_draft(path: str | Path) -> BountyQuestDraft:
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+def bounty_draft_from_dict(raw: dict) -> BountyQuestDraft:
     if isinstance(raw, dict) and isinstance(raw.get("draft"), dict):
         raw = raw["draft"]
     if not isinstance(raw, dict):
@@ -650,6 +649,11 @@ def load_bounty_quest_draft(path: str | Path) -> BountyQuestDraft:
         tags=[str(x) for x in raw.get("tags", [])],
         template_defaults={str(k): v for k, v in (raw.get("template_defaults") or {}).items()},
     )
+
+
+def load_bounty_quest_draft(path: str | Path) -> BountyQuestDraft:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    return bounty_draft_from_dict(raw)
 
 
 def _demo_draft() -> BountyQuestDraft:
@@ -846,6 +850,7 @@ __all__ = [
     "QuestPreflightReport",
     "QuestPublishResult",
     "QuestPublisher",
+    "bounty_draft_from_dict",
     "load_bounty_quest_draft",
     "main",
     "publish_quest",
