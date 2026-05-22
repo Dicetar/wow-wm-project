@@ -505,5 +505,47 @@ class SliceActionEndpointTests(unittest.TestCase):
             self.assertEqual(code, 404, f"{path} -> {body}")
 
 
+def test_wm_session_overview_uses_active_session_guid():
+    from wm.panel.server import PanelApp
+    from wm.panel.state import PanelState
+    from wm.character.reader import CharacterStateBundle
+    import tempfile
+    from pathlib import Path
+
+    captured = {}
+
+    def fake_reader(player_guid: int) -> CharacterStateBundle:
+        captured["guid"] = player_guid
+        return CharacterStateBundle(status="WORKING", arc_states=[object()])
+
+    with tempfile.TemporaryDirectory() as d:
+        state = PanelState(Path(d))
+        state.ensure()
+        state.save_session({"character_guid": 5408, "marker_spell_id": 946602})
+        app = PanelApp(state=state, character_reader=fake_reader)
+        status, payload = app.get("/api/wm/session/overview")
+
+    assert status == 200
+    assert payload["ok"] is True
+    assert captured["guid"] == 5408
+    assert payload["overview"]["player_guid"] == 5408
+    assert payload["overview"]["status"] == "WORKING"
+    assert payload["overview"]["counts"]["arc_states"] == 1
+
+
+def test_wm_session_overview_400_without_active_session():
+    from wm.panel.server import PanelApp
+    from wm.panel.state import PanelState
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as d:
+        state = PanelState(Path(d))
+        state.ensure()
+        app = PanelApp(state=state, character_reader=lambda player_guid: None)
+        status, payload = app.get("/api/wm/session/overview")
+    assert status == 400
+    assert payload["ok"] is False
+
+
 if __name__ == "__main__":
     unittest.main()

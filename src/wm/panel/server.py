@@ -6,7 +6,7 @@ from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
 import subprocess
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import unquote
 from urllib.parse import parse_qs
 from urllib.parse import urlparse
@@ -41,6 +41,7 @@ class PanelApp:
         slice_discoverer: SliceDiscoverer | None = None,
         slice_pump_factory: SlicePumpFactory | None = None,
         marker_discoverer: MarkerDiscoverer | None = None,
+        character_reader: Callable[[int], Any] | None = None,
     ) -> None:
         self.state = state or PanelState()
         self.state.ensure()
@@ -56,6 +57,7 @@ class PanelApp:
         self._slice_discoverer = slice_discoverer
         self._slice_pump_factory = slice_pump_factory
         self._marker_discoverer = marker_discoverer
+        self._character_reader = character_reader
 
     def get(self, raw_path: str) -> tuple[int, Any]:
         parsed_url = urlparse(raw_path)
@@ -114,6 +116,8 @@ class PanelApp:
                 limit=_query_int(query, "limit", 20),
                 marker_spell_id=_query_int(query, "marker_spell_id", DEFAULT_MARKER_SPELL_ID),
             )
+        if path == "/api/wm/session/overview":
+            return self._wm_session_overview()
         if path == "/api/wm/session/status":
             return self._slice_status()
         if path == "/api/wm/session/pending":
@@ -213,6 +217,34 @@ class PanelApp:
         except Exception as exc:
             payload["doctor"] = {"ok": False, "error": str(exc), "checks": []}
         return payload
+
+    def _wm_session_overview(self) -> tuple[int, Any]:
+        session = self.state.load_session()
+        guid = (session or {}).get("character_guid")
+        if guid in (None, ""):
+            return 400, {"ok": False, "error": "no active session; bootstrap a character first"}
+        guid = int(guid)
+        reader = self._character_reader or _default_character_reader
+        try:
+            bundle = reader(guid)
+        except Exception as exc:
+            return 200, {"ok": True, "overview": None, "error": f"character read failed: {exc}"}
+        from wm.character.overview import build_character_overview
+        readiness = self._wm_readiness().get("doctor")
+        proposal_counts = None
+        if self._slice is not None:
+            try:
+                proposal_counts = {
+                    "pending": len(self._slice.gate.pending()),
+                    "issues": len(self._slice.issues.list_open()),
+                }
+            except Exception:
+                proposal_counts = None
+        overview = build_character_overview(
+            player_guid=guid, bundle=bundle,
+            readiness=readiness, proposal_counts=proposal_counts,
+        )
+        return 200, {"ok": True, "overview": overview}
 
     def _wm_markers(self, *, since_seconds: int = 300, limit: int = 20, marker_spell_id: int = DEFAULT_MARKER_SPELL_ID) -> dict[str, Any]:
         candidates: list[dict[str, Any]] = []
@@ -725,6 +757,13 @@ def _body_int(body: dict[str, Any], key: str, default: int) -> int:
         return int(raw)
     except (TypeError, ValueError):
         return int(default)
+
+
+def _default_character_reader(player_guid: int) -> Any:
+    from wm.character.reader import load_character_state
+    from wm.config import Settings
+    from wm.db.mysql_cli import MysqlCliClient
+    return load_character_state(client=MysqlCliClient(), settings=Settings.from_env(), character_guid=int(player_guid))
 
 
 def _session_from_marker_candidate(candidate: dict[str, Any], *, marker_spell_id: int) -> dict[str, Any]:
