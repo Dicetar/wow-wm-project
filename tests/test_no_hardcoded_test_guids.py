@@ -14,7 +14,7 @@ _ALLOWLIST = {
 
 def _violations() -> list[str]:
     root = Path("src/wm")
-    pattern = re.compile(r"\b(5405|5406|5408)\b")
+    pattern = re.compile(r"\b(" + "|".join(_FORBIDDEN) + r")\b")
     out: list[str] = []
     for path in root.rglob("*.py"):
         rel = path.as_posix()
