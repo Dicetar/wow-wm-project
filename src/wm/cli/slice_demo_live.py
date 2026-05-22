@@ -17,7 +17,8 @@ from wm.abilities.grant_compiler import compile_grant_plan
 from wm.llm.proposal_adapter import Proposal
 
 
-def build_live_quest_compiler(*, applied_log, publish_service, applier):
+def build_live_quest_compiler(*, applied_log: list, applier: NativeApplier,
+                              publish_service: SlicePublishService | None = None):
     """Build the live quest compiler closure.
 
     Backward-compatible branch: if the proposal carries a full `draft`
@@ -26,9 +27,11 @@ def build_live_quest_compiler(*, applied_log, publish_service, applier):
     existing grant-existing path.
     """
 
-    def live_quest(p: Proposal) -> dict:
+    def live_quest(p: Proposal) -> dict[str, Any]:
         qr = (p.payload or {}).get("quest_release", {})
         if qr.get("draft"):
+            if publish_service is None:
+                raise ValueError("draft proposal requires a publish_service")
             beat_id = (p.provenance or {}).get("beat_id", "watcher")
             result = publish_service.publish_and_grant(
                 draft_dict=qr["draft"], character_guid=p.character_guid, beat_id=beat_id)
