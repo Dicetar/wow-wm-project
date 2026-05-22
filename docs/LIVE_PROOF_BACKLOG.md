@@ -485,3 +485,31 @@ Proof packet:
 Design + plan:
 [slice LIVE-LLM design](superpowers/specs/2026-05-22-slice-live-llm-quest-pipeline-design.md),
 [implementation plan](superpowers/plans/2026-05-22-slice-live-llm-quest-pipeline.md).
+
+## Next live-proof pass — one ordered BridgeLab session (2026-05-22)
+
+Several lanes are repo/unit `WORKING` but gameplay `UNPROVEN` because BridgeLab
+was down. This is the single ordered pass that converts the stack to proven (or
+surfaces regressions). Do NOT move any lane to gameplay `WORKING` until its step
+passes. Operator action gates everything.
+
+**Step 0 — bring the stack up (operator):**
+```powershell
+start-bridge-lab-all.bat
+$env:WM_WORLD_DB_PORT="33307"; $env:WM_CHAR_DB_PORT="33307"; $env:WM_SOAP_PORT="7879"
+python -m wm.doctor --summary   # must be green on 33307/7879 before continuing
+```
+Gate: world_db + char_db + soap all `WORKING`. If not, stop and fix readiness first.
+
+**Step 1 — Universal Panel marker selection + character view (V1 + V2.1):**
+- In-game, mark the target character with marker aura `946602`.
+- `python -m wm.panel serve --live-slice` → WM Session tab → Bootstrap (must discover the marked GUID, not a hardcoded one) → confirm the **Character** card shows that GUID's status/counts/readiness.
+- Pass: `/api/wm/markers` lists the `946602` bearer; bootstrap selects it; `/api/wm/session/overview` returns real journey/state for the **discovered** GUID. Moves V1 marker-selection + V2.1 view from `PARTIAL` → `WORKING`.
+
+**Step 2 — Slice LIVE-LLM arc loop (Phase 1 + 2):** run the "Slice LIVE-LLM Quest Pipeline" packet above (LM Studio up; b01 OPEN → generate → approve → mint ≥910600 → grant). Watcher LIVE stays parked.
+
+**Step 3 — Energy Surge buff timer (DBC truth):** use item `910014`; confirm aura `946606` shows a **countdown timer** on the buff icon in-client. If no timer, that confirms the repo-side `shell_audit` warning (no `duration_index`) is a real client gap → add `duration_index` to `946606` in client + server DBC, refresh, re-prove.
+
+**Step 4 — Broug regression canary:** log in Broug (`5405`); confirm Lightness + Empty Court abilities cast with correct icons/tooltips/cooldowns/auras (spell-shell/DBC/scoped-grant canary).
+
+Record outcomes here with hard labels. Only after a step passes does its lane earn gameplay `WORKING`.
