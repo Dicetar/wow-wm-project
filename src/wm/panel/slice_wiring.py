@@ -87,7 +87,21 @@ def make_live_slice_factory(*, client: Any, cfg: SliceDbConfig,
                                     quest_schema=quest_schema)
         applier = NativeApplier(client=client, host=cfg.host, port=cfg.port,
                                 user=cfg.user, password=cfg.password, database=cfg.world_db)
-        wrap_with_live_compilers(rt, applier=applier)
+
+        from wm.config import Settings
+        from wm.quests.publish import QuestPublisher
+        from wm.reserved.db_allocator import ReservedSlotDbAllocator
+        from wm.runtime_sync import SoapRuntimeClient
+        from wm.cli.slice_publish import SlicePublishService
+        import dataclasses
+        settings = dataclasses.replace(Settings.from_env(),
+                                       world_db_port=cfg.port, world_db_host=cfg.host)
+        svc = SlicePublishService(
+            allocator=ReservedSlotDbAllocator(client, settings),
+            publisher=QuestPublisher(client=client, settings=settings),
+            soap=SoapRuntimeClient(settings=settings),
+            applier=applier)
+        wrap_with_live_compilers(rt, applier=applier, publish_service=svc)
         return rt
     return factory
 

@@ -83,3 +83,33 @@ def test_no_free_slot_raises():
     svc = _svc(alloc=Empty())
     with pytest.raises(SlicePublishError):
         svc.publish_and_grant(draft_dict=dict(DRAFT), character_guid=5408, beat_id="b01")
+
+
+def test_live_quest_compiler_publishes_when_draft_present():
+    from wm.cli.slice_demo_live import build_live_quest_compiler
+    from wm.llm.proposal_adapter import Proposal, ProposalKind
+    pub, applier = FakePublisher(), FakeApplier()
+    svc = _svc(publisher=pub, applier=applier)
+    log = []
+    compiler = build_live_quest_compiler(applied_log=log, publish_service=svc, applier=applier)
+    prop = Proposal(kind=ProposalKind.QUEST, character_guid=5408,
+                    payload={"quest_release": {"draft": dict(DRAFT)}},
+                    provenance={"beat_id": "b01"})
+    out = compiler(prop)
+    assert out["ok"] is True
+    assert applier.grants == [(5408, 910600)]
+    assert log and log[0]["kind"] == "quest"
+
+
+def test_live_quest_compiler_grants_existing_when_only_id_present():
+    from wm.cli.slice_demo_live import build_live_quest_compiler
+    from wm.llm.proposal_adapter import Proposal, ProposalKind
+    applier = FakeApplier()
+    log = []
+    compiler = build_live_quest_compiler(applied_log=log, publish_service=_svc(applier=applier), applier=applier)
+    prop = Proposal(kind=ProposalKind.QUEST, character_guid=5408,
+                    payload={"quest_release": {"grant_quest_id": 910502}},
+                    provenance={"beat_id": "watcher"})
+    out = compiler(prop)
+    assert out["ok"] is True
+    assert applier.grants == [(5408, 910502)]
