@@ -6,6 +6,8 @@ venv/
 .env.local
 .vscode/
 .idea/
+.claude/
+.superpowers/
 *.log
 .pytest_cache/
 .mypy_cache/
@@ -22,6 +24,7 @@ artifacts/
 data/repack/
 data/test_tmp/
 tmp*/
+pytest-of-*/
 pytest-cache-files-*/
 soap_test.ps1
 sql/dev/generated_seed_reserved_slots.sql
