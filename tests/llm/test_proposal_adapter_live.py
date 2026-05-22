@@ -84,3 +84,23 @@ def test_live_llm_unreachable_blocks():
     prop = adapter.propose(_req())
     assert prop.is_blocked is True
     assert "LM Studio" in prop.block_reason
+
+
+def test_live_missing_constraints_blocks_not_crashes():
+    # questgiver_entry absent -> KeyError must be turned into a blocked Proposal
+    bad_constraints = {"objective": {"target_entry": 299, "target_name": "Young Wolf"}}
+    req = ProposalRequest(kind=ProposalKind.QUEST,
+                          context={"character": {"guid": 5408}},
+                          intent="x", constraints=bad_constraints)
+    adapter = ProposalAdapter(mode=AdapterMode.LIVE, llm_client=FakeClient(GOOD), quest_schema=SCHEMA)
+    prop = adapter.propose(req)
+    assert prop.is_blocked is True
+
+
+def test_live_non_quest_kind_blocks():
+    req = ProposalRequest(kind=ProposalKind.SCENE,
+                          context={"character": {"guid": 5408}},
+                          intent="x", constraints=CONSTRAINTS)
+    adapter = ProposalAdapter(mode=AdapterMode.LIVE, llm_client=FakeClient(GOOD), quest_schema=SCHEMA)
+    prop = adapter.propose(req)
+    assert prop.is_blocked is True

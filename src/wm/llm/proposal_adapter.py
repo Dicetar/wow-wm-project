@@ -2,7 +2,7 @@
 
 Modes:
   FIXTURE: returns the provided recorded proposal (used by tests + CI).
-  LIVE:    calls LM Studio via wm.llm.lmstudio + parses via proposal_parser.
+  LIVE:    calls llm_client.generate_json, screens via ProposalParser, builds + validates a BountyQuestDraft, and wraps it into the slice proposal envelope.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -56,7 +56,6 @@ class ProposalAdapter:
     fixture: dict[str, Any] | None = None
     llm_client: Any | None = None
     quest_schema: dict[str, Any] | None = None
-    model_default: str = "qwen3-coder-30b-a3b-instruct"
 
     def propose(self, req: ProposalRequest) -> Proposal:
         if self.mode is AdapterMode.FIXTURE:
@@ -79,6 +78,8 @@ class ProposalAdapter:
 
         if self.llm_client is None or self.quest_schema is None:
             raise ProposalGenerationError("LIVE adapter missing llm_client/quest_schema")
+        if req.kind is not ProposalKind.QUEST:
+            raise ProposalGenerationError(f"LIVE mode supports only quest proposals, got kind={req.kind.value}")
         try:
             result = self.llm_client.generate_json(
                 schema_version="wm.slice.bounty_draft.v1",
@@ -95,8 +96,8 @@ class ProposalAdapter:
             raise ProposalGenerationError("; ".join(screen.issues) or "screen failed")
 
         authored = result.get("parsed") or {}
-        merged = self._merge_fixed_facts(authored, req.constraints)
         try:
+            merged = self._merge_fixed_facts(authored, req.constraints)
             draft = bounty_draft_from_dict(merged)
         except (KeyError, ValueError, TypeError) as exc:
             raise ProposalGenerationError(f"draft build failed: {exc}") from exc
