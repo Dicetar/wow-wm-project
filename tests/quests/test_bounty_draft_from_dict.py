@@ -34,3 +34,14 @@ def test_load_bounty_quest_draft_still_works(tmp_path):
     p = tmp_path / "d.json"
     p.write_text(json.dumps(_raw()), encoding="utf-8")
     assert load_bounty_quest_draft(p).quest_id == 910503
+
+
+def test_slice_bounty_schema_is_valid_json_and_constrains_kill_count():
+    import json
+    from pathlib import Path
+    schema = json.loads(Path("control/schemas/wm.slice.bounty_draft.v1.schema.json").read_text(encoding="utf-8"))
+    assert schema["properties"]["schema_version"]["const"] == "wm.slice.bounty_draft.v1"
+    assert schema["properties"]["objective"]["properties"]["kill_count"]["maximum"] == 25
+    for fld in ("title", "quest_description", "objective_text", "offer_reward_text",
+                "request_items_text", "objective", "reward"):
+        assert fld in schema["required"]

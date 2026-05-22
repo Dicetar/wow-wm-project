@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "title", "quest_description", "objective_text",
+               "offer_reward_text", "request_items_text", "objective", "reward"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "wm.slice.bounty_draft.v1"},
+    "title": {"type": "string", "minLength": 1, "maxLength": 255},
+    "quest_description": {"type": "string", "minLength": 1},
+    "objective_text": {"type": "string", "minLength": 1},
+    "offer_reward_text": {"type": "string", "minLength": 1},
+    "request_items_text": {"type": "string", "minLength": 1},
+    "narrative_summary": {"type": "string"},
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kill_count"],
+      "properties": {"kill_count": {"type": "integer", "minimum": 1, "maximum": 25}}
+    },
+    "reward": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "money_copper": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "reward_xp_difficulty": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
