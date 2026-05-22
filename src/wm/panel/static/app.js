@@ -651,6 +651,7 @@ async function refreshSlice() {
   } catch (error) {
     renderSliceError(error.message);
   }
+  await refreshCharacterOverview();
 }
 
 function renderSliceStatus(status) {
@@ -759,6 +760,36 @@ function renderSliceIssues(items) {
 
 function renderSliceError(message) {
   $("sliceStatus").innerHTML = `<dt>Error</dt><dd>${escapeHtml(String(message))}</dd>`;
+}
+
+async function refreshCharacterOverview() {
+  const empty = $("wm-character-empty");
+  const body = $("wm-character-body");
+  if (!empty || !body) return;
+  let data;
+  try {
+    const response = await fetch("/api/wm/session/overview");
+    data = await response.json();
+  } catch (e) { return; }
+  if (!data.ok || !data.overview) {
+    empty.hidden = false;
+    body.hidden = true;
+    empty.textContent = data.error || "No active session. Bootstrap a character to see state.";
+    return;
+  }
+  const o = data.overview;
+  $("wm-char-guid").textContent = o.player_guid;
+  $("wm-char-status").textContent = o.status;
+  $("wm-char-arcs").textContent = o.counts.arc_states;
+  $("wm-char-unlocks").textContent = o.counts.unlocks;
+  $("wm-char-rewards").textContent = o.counts.rewards;
+  $("wm-char-prompts").textContent = o.counts.prompt_queue;
+  $("wm-char-proposals").textContent = o.proposals
+    ? `${o.proposals.pending} pending / ${o.proposals.issues} issues` : "n/a";
+  $("wm-char-readiness").textContent = o.readiness
+    ? (o.readiness.ok ? "ready" : "not ready") : "n/a";
+  empty.hidden = true;
+  body.hidden = false;
 }
 
 async function sliceApprove(id) {
