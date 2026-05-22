@@ -228,7 +228,9 @@ class PanelApp:
         try:
             bundle = reader(guid)
         except Exception as exc:
-            return 200, {"ok": True, "overview": None, "error": f"character read failed: {exc}"}
+            # Live-DB read failed: 200 with ok=False matches the panel idiom
+            # (cf. /api/llm/models) — request understood, live read degraded.
+            return 200, {"ok": False, "overview": None, "error": f"character read failed: {exc}"}
         from wm.character.overview import build_character_overview
         readiness = self._wm_readiness().get("doctor")
         proposal_counts = None
@@ -239,7 +241,7 @@ class PanelApp:
                     "issues": len(self._slice.issues.list_open()),
                 }
             except Exception:
-                proposal_counts = None
+                proposal_counts = None  # best-effort enrichment; omit on any error
         overview = build_character_overview(
             player_guid=guid, bundle=bundle,
             readiness=readiness, proposal_counts=proposal_counts,

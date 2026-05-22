@@ -547,5 +547,26 @@ def test_wm_session_overview_400_without_active_session():
     assert payload["ok"] is False
 
 
+def test_wm_session_overview_reader_failure_returns_200_ok_false():
+    from wm.panel.server import PanelApp
+    from wm.panel.state import PanelState
+    import tempfile
+    from pathlib import Path
+
+    def bad_reader(player_guid: int):
+        raise RuntimeError("db gone")
+
+    with tempfile.TemporaryDirectory() as d:
+        state = PanelState(Path(d))
+        state.ensure()
+        state.save_session({"character_guid": 5408})
+        app = PanelApp(state=state, character_reader=bad_reader)
+        status, payload = app.get("/api/wm/session/overview")
+    assert status == 200
+    assert payload["ok"] is False
+    assert payload["overview"] is None
+    assert "character read failed" in payload["error"]
+
+
 if __name__ == "__main__":
     unittest.main()
