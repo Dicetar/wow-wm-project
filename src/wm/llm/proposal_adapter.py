@@ -96,6 +96,12 @@ class ProposalAdapter:
             raise ProposalGenerationError("; ".join(screen.issues) or "screen failed")
 
         authored = result.get("parsed") or {}
+        missing = self._missing_fixed_facts(req.constraints)
+        if missing:
+            raise ProposalGenerationError(
+                "LIVE generation needs arc-style fixed-fact constraints "
+                f"(missing: {', '.join(missing)}); watcher recipe/slots "
+                "constraints are not wired for LIVE quest generation yet")
         try:
             merged = self._merge_fixed_facts(authored, req.constraints)
             draft = bounty_draft_from_dict(merged)
@@ -121,6 +127,21 @@ class ProposalAdapter:
             }},
             "narrative_summary": authored.get("narrative_summary") or draft.offer_reward_text,
         }
+
+    @staticmethod
+    def _missing_fixed_facts(constraints: dict[str, Any]) -> list[str]:
+        """Fixed publish facts the arc beat must supply (the watcher's
+        recipe/slots constraints do not carry these — see design spec)."""
+        c = constraints or {}
+        missing: list[str] = []
+        if c.get("questgiver_entry") in (None, ""):
+            missing.append("questgiver_entry")
+        if c.get("end_npc_entry") in (None, ""):
+            missing.append("end_npc_entry")
+        cobj = c.get("objective") or {}
+        if cobj.get("target_entry") in (None, "") or not cobj.get("target_name"):
+            missing.append("objective.target_entry/target_name")
+        return missing
 
     @staticmethod
     def _merge_fixed_facts(authored: dict[str, Any], constraints: dict[str, Any]) -> dict[str, Any]:

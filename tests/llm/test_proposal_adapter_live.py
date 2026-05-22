@@ -104,3 +104,24 @@ def test_live_non_quest_kind_blocks():
     adapter = ProposalAdapter(mode=AdapterMode.LIVE, llm_client=FakeClient(GOOD), quest_schema=SCHEMA)
     prop = adapter.propose(req)
     assert prop.is_blocked is True
+
+
+def test_live_watcher_shaped_constraints_block_with_honest_reason():
+    # The watcher builds kind=QUEST proposals whose constraints carry
+    # compiler/slots/idempotency_key, NOT the arc's fixed publish facts.
+    # LIVE generation is wired for the arc beat only; the watcher path must
+    # block with an actionable reason rather than a cryptic KeyError.
+    watcher_constraints = {
+        "compiler": "bounty_v1",
+        "slots": {"creature_family": "wolf", "zone": "northshire"},
+        "idempotency_key": "watch:wolf:5408",
+        "feasibility_tier": "T1",
+    }
+    req = ProposalRequest(kind=ProposalKind.QUEST,
+                          context={"character": {"guid": 5408}},
+                          intent="reactive wolf bounty", constraints=watcher_constraints)
+    adapter = ProposalAdapter(mode=AdapterMode.LIVE, llm_client=FakeClient(GOOD), quest_schema=SCHEMA)
+    prop = adapter.propose(req)
+    assert prop.is_blocked is True
+    assert "questgiver_entry" in prop.block_reason
+    assert "watcher" in prop.block_reason.lower()
