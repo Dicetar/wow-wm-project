@@ -1,11 +1,17 @@
 Status: PARTIAL
-Last verified: 2026-05-13
-Verified by: Codex
+Last verified: 2026-05-22
+Verified by: Claude
 Doc type: handoff
 
 # WM Platform Handoff
 
 This is the current entrypoint for a new engineer or LLM.
+
+## 2026-05-22 update — repo CI health restored + slice LIVE-LLM pipeline
+
+- **Full test suite is green again.** `python -m pytest -q` now collects and passes (`910 passed`, exit 0) with **no `--ignore`**. Three integration seams were repaired: (1) the `wm.cli` package/module collision (`src/wm/cli.py` shadowed by the `src/wm/cli/` package) is fixed — the package is canonical, `cli.py` removed, and the `wm = "wm.cli:main"` console script resolves again; (2) the native-bridge safety tests were re-homed onto the post-refactor registry/domain files (`wm_bridge_{player,inventory,quest,creature}_actions.cpp`) with **no assertion weakened** and no dropped safety invariant; (3) the global `tempfile.TemporaryDirectory` monkeypatch + shadowed `tmp_path` fixture were removed in favor of pytest's native fixtures via `--basetemp`. Treat `main` as CI-green; do not reintroduce `--ignore`-based "green except ignored tests".
+- **Slice LIVE-LLM quest pipeline** (panel `--live-slice`): an arc OPEN beat now generates a kill-bounty quest draft via LM Studio, screens it (`ProposalParser`), validates it (`validate_bounty_quest_draft`), and on **panel approval** publishes it through `QuestPublisher` (fresh reserved id) + reloads + grants. Repo/unit level `WORKING` (TDD, full suite green); **gameplay `PARTIAL` / UNPROVEN** — BridgeLab DB/SOAP were down this session, so no live proof was run. The watcher (reactive) LIVE path is intentionally **not** wired — it parks with an actionable reason; see the design spec. Design + plan: `docs/superpowers/specs/2026-05-22-slice-live-llm-quest-pipeline-design.md`, `docs/superpowers/plans/2026-05-22-slice-live-llm-quest-pipeline.md`.
+- **Still not verified this session:** live BridgeLab readiness (`python -m wm.doctor` reported DB/SOAP FAIL — stack stopped). No new gameplay `WORKING` claims are made here.
 
 Use this with:
 

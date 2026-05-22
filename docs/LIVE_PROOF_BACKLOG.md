@@ -1,6 +1,6 @@
 Status: PARTIAL
-Last verified: 2026-05-13
-Verified by: Codex
+Last verified: 2026-05-22
+Verified by: Claude
 Doc type: status
 
 # Live Proof Backlog
@@ -395,3 +395,30 @@ character → b00 PINNED auto-apply → b01 OPEN approve → grant 1 →
 zone_kill_bounty Watcher fire + approve → b02 OPEN approve → b03 PINNED
 auto-apply → grant 2. Evidence: action-request rows + visible buffs +
 in-client quest log.
+
+## Phase — Slice LIVE-LLM Quest Pipeline (2026-05-22)
+
+Status: repo/unit `WORKING`, gameplay `PARTIAL` (UNPROVEN this session)
+
+The panel `--live-slice` arc OPEN beat now generates a kill-bounty quest draft
+via LM Studio, screens + validates it, and on **panel approval** publishes it
+through `QuestPublisher` (fresh reserved id) + reloads + grants. Full suite
+green; LM Studio reachable with the default model. Watcher (reactive) LIVE
+generation is intentionally NOT wired (parks with an actionable reason).
+
+Awaiting live BridgeLab run (DB `33307` / SOAP `7879`, marked character online).
+Proof packet:
+
+```text
+1. python -m wm.panel serve --live-slice   (LM Studio up; stack up)
+2. Slice tab -> Bootstrap -> Poll -> drive the b01 OPEN beat
+3. Phase 1: OPEN card shows LLM-authored prose, provenance mode=live;
+   SELECT ID FROM quest_template WHERE ID >= 910600  -> still empty (no mint)
+4. Phase 2: approve the card; verify quest_template row (>=910600), reserved
+   slot flipped active, character_queststatus row for the player, and
+   wm_publish_log 'success' + wm_rollback_snapshot rows.
+```
+
+Design + plan:
+[slice LIVE-LLM design](superpowers/specs/2026-05-22-slice-live-llm-quest-pipeline-design.md),
+[implementation plan](superpowers/plans/2026-05-22-slice-live-llm-quest-pipeline.md).
