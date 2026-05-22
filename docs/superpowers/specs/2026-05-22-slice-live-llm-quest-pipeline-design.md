@@ -17,17 +17,24 @@ generated anything."
 
 ## Goal / non-goals
 
-**Goal:** an OPEN beat (or reactive watcher) produces an LLM-generated kill-bounty
-quest draft, screened and validated; on panel approval the draft is published to
-the world DB and granted to the active character — proven live against BridgeLab.
+**Goal:** an **arc OPEN beat** produces an LLM-generated kill-bounty quest draft,
+screened and validated; on panel approval the draft is published to the world DB
+and granted to the active character — proven live against BridgeLab.
 
 **Non-goals:**
 - Non-kill objective types (gather/escort/talk). The publish pipeline is
   documented kill-bounty-only (`wm-create-quest` skill); other kinds stay a
   flagged pipeline gap, not faked here.
+- **Watcher (reactive) LIVE generation.** The watcher builds proposals from a
+  different constraint shape (recipe/`compiler`/`slots`/`idempotency_key`), not
+  the arc's fixed publish facts (`questgiver_entry`, `objective.target_*`,
+  `end_npc_entry`). This adapter's `_merge_fixed_facts` is arc-beat-shaped, so a
+  LIVE watcher quest proposal **parks with an actionable block reason** rather
+  than generating. Wiring the watcher (resolving a concrete target/giver from
+  recipe slots via `wm.targets.resolver`) is a follow-up — see "Out of scope".
 - Changing the panel's `/api/llm/*` workbench lane. It stays **draft-only**.
 - Scene compiler → bus wiring (separate bucket-D item; out of scope).
-- Live watcher launcher work beyond proving one reactive generation.
+- Live watcher launcher work.
 
 ## Current state (verified 2026-05-22)
 
@@ -97,7 +104,7 @@ No `grant_quest_id` yet — the quest is not real until approved+published.
 ## Data flow
 
 ```
-OPEN beat / watcher
+arc OPEN beat   (the watcher path parks — see "Fixed facts" below)
   → ProposalRequest(intent=beat.intent, constraints=FIXED publish facts)
   → ProposalAdapter._call_live
        → LmStudioClient.generate_json(schema = wm.slice.bounty_draft.v1)
@@ -120,8 +127,11 @@ OPEN beat / watcher
 
 ## Fixed facts vs. LLM-authored
 
-`beat.constraints` (arc) and reactive-template constraints (watcher) supply the
-facts the LLM must NOT invent, because they gate publish preflight:
+The **arc** `beat.constraints` supply the facts the LLM must NOT invent, because
+they gate publish preflight. (The **watcher** does NOT supply these — its
+constraints are recipe/`slots`-shaped, so a LIVE watcher quest proposal parks
+with an actionable block reason. Wiring it requires resolving a concrete
+target/giver from recipe slots; out of scope here.)
 
 - Fixed (from constraints): `objective.target_entry`, `objective.target_name`
   (must exist in `creature_template`), `end_npc_entry` (turn-in NPC, e.g. 197),
@@ -218,8 +228,9 @@ unresolvable target or leaking a `!` quest offer.
   minted (`quest_template` row), reloaded, and granted to Astel
   (`character_queststatus`), with `wm_publish_log`/`wm_rollback_snapshot` rows.
   Record in `docs/LIVE_PROOF_BACKLOG.md`.
-- **Reactive proof (optional):** run the watcher live and prove one reactive
-  bounty generated from real kills through the same lane.
+- **Reactive (watcher) proof:** NOT achievable as built — the watcher's
+  recipe/slots constraints don't carry fixed publish facts, so a LIVE watcher
+  quest proposal parks. Deferred to the watcher-LIVE follow-up.
 
 ## Risks
 
@@ -236,7 +247,14 @@ unresolvable target or leaking a `!` quest offer.
 
 ## Out of scope / follow-ups
 
+- **Watcher LIVE generation.** Map reactive recipe/`slots` (creature family,
+  zone) → concrete fixed publish facts (`target_entry/target_name` via
+  `wm.targets.resolver`, a `questgiver_entry`/`end_npc_entry` policy) so the
+  watcher can drive the same `_call_live` path. Until then, LIVE watcher quest
+  proposals park with an actionable reason.
 - Non-kill objective publish support (pipeline gap).
 - Scene compiler → bus.
+- Published-but-not-granted retry residue (re-approval allocates a new slot and
+  orphans the first published quest — needs rollback or retry-into-same-slot).
 - Watcher launcher hardening (`-Watcher none` was used last session).
 - Bucket C native-bridge stub actions.
