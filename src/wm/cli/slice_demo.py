@@ -42,7 +42,9 @@ class SliceRuntime:
     @classmethod
     def bootstrap(cls, *, character_guid: int, starter_item_entry: int,
                   adapter_mode: AdapterMode = AdapterMode.FIXTURE,
-                  fixture_path: str = DEFAULT_FIXTURE) -> "SliceRuntime":
+                  fixture_path: str = DEFAULT_FIXTURE,
+                  llm_client: Any | None = None,
+                  quest_schema: dict | None = None) -> "SliceRuntime":
         issues = IssuesQueue()
         applied_log: list[dict] = []
 
@@ -81,7 +83,8 @@ class SliceRuntime:
         module = parse_story_module(_load(DEMO_MODULE_PATH))
         if module.character_guid != character_guid:
             module.character_guid = character_guid  # the demo lets you target any char
-        adapter = ProposalAdapter(mode=adapter_mode, fixture=_load(fixture_path))
+        adapter = ProposalAdapter(mode=adapter_mode, fixture=_load(fixture_path),
+                                  llm_client=llm_client, quest_schema=quest_schema)
         runner = ArcRunner(module=module, adapter=adapter, gate=gate)
 
         # Watcher

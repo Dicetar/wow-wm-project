@@ -38,7 +38,18 @@
         "giver_pool": [197],
         "location_pool": [12],
         "ability_theme_hint": "shadow_warden",
-        "max_objectives": 1
+        "max_objectives": 1,
+        "quest_id_placeholder": 999000,
+        "quest_level": 2,
+        "min_level": 1,
+        "questgiver_entry": 197,
+        "questgiver_name": "Marshal McBride",
+        "objective": {"target_entry": 299, "target_name": "Young Wolf"},
+        "end_npc_entry": 197,
+        "start_npc_entry": null,
+        "grant_mode": "direct_quest_add",
+        "template_defaults": {"SpecialFlags": 0},
+        "tags": ["wm-slice", "demo_one"]
       },
       "outcome": {
         "next_beat_ref": "b02_complication",

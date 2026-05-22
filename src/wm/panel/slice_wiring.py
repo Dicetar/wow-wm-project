@@ -17,6 +17,14 @@ from typing import Any, Callable
 
 MARKER_SPELL_ID = 946500
 
+SLICE_QUEST_SCHEMA_PATH = "control/schemas/wm.slice.bounty_draft.v1.schema.json"
+
+
+def load_slice_quest_schema(path: str = SLICE_QUEST_SCHEMA_PATH) -> dict:
+    import json
+    from pathlib import Path
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
 
 @dataclass(slots=True)
 class SliceDbConfig:
@@ -60,15 +68,23 @@ def make_live_slice_discoverer(*, client: Any, cfg: SliceDbConfig) -> Callable[[
 
 
 def make_live_slice_factory(*, client: Any, cfg: SliceDbConfig,
-                            starter_item_entry: int = 0) -> Callable[..., Any]:
+                            starter_item_entry: int = 0,
+                            adapter_mode: Any | None = None,
+                            llm_client: Any | None = None,
+                            quest_schema: dict | None = None) -> Callable[..., Any]:
     """Production factory: SliceRuntime wired to the native bus via NativeApplier."""
     def factory(*, character_guid: int) -> Any:
         from wm.cli.slice_demo import SliceRuntime
         from wm.cli.slice_demo_live import wrap_with_live_compilers
         from wm.cli.native_applier import NativeApplier
+        from wm.llm.proposal_adapter import AdapterMode
 
+        mode = adapter_mode if adapter_mode is not None else AdapterMode.FIXTURE
         rt = SliceRuntime.bootstrap(character_guid=character_guid,
-                                    starter_item_entry=starter_item_entry)
+                                    starter_item_entry=starter_item_entry,
+                                    adapter_mode=mode,
+                                    llm_client=llm_client,
+                                    quest_schema=quest_schema)
         applier = NativeApplier(client=client, host=cfg.host, port=cfg.port,
                                 user=cfg.user, password=cfg.password, database=cfg.world_db)
         wrap_with_live_compilers(rt, applier=applier)

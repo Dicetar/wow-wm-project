@@ -475,23 +475,34 @@ def serve(*, host: str = "127.0.0.1", port: int = 8765, state_root: Path | None 
           live_slice: bool = False, db_host: str = "127.0.0.1", db_port: int = 33307,
           db_user: str = "acore", db_password: str = "acore",
           world_db: str = "acore_world") -> None:
+    state = PanelState(state_root) if state_root is not None else PanelState()
+    state.ensure()
     slice_kwargs: dict[str, Any] = {}
     if live_slice:
         from wm.db.mysql_cli import MysqlCliClient
+        from wm.llm.proposal_adapter import AdapterMode
         from wm.panel.slice_wiring import (
             SliceDbConfig, make_live_slice_factory,
             make_live_slice_discoverer, make_live_slice_pump_factory,
+            load_slice_quest_schema,
         )
         client = MysqlCliClient()
         cfg = SliceDbConfig(host=db_host, port=db_port, user=db_user,
                             password=db_password, world_db=world_db)
+        saved = state.load_settings()
+        if not saved.get("model"):
+            saved = {**saved, "model": "qwen3-coder-30b-a3b-instruct"}
+        llm_client = LmStudioClient(LmStudioSettings.from_dict(saved))
         slice_kwargs = {
-            "slice_factory": make_live_slice_factory(client=client, cfg=cfg),
+            "slice_factory": make_live_slice_factory(
+                client=client, cfg=cfg,
+                adapter_mode=AdapterMode.LIVE,
+                llm_client=llm_client,
+                quest_schema=load_slice_quest_schema()),
             "slice_discoverer": make_live_slice_discoverer(client=client, cfg=cfg),
             "slice_pump_factory": make_live_slice_pump_factory(client=client, cfg=cfg),
         }
-    app = PanelApp(state=PanelState(state_root) if state_root is not None else None,
-                   **slice_kwargs)
+    app = PanelApp(state=state, **slice_kwargs)
     handler = _handler_for(app)
     server = ThreadingHTTPServer((host, int(port)), handler)
     print(f"WM panel listening on http://{host}:{int(port)}"
