@@ -1,11 +1,13 @@
 Status: PARTIAL
-Last verified: 2026-05-13
+Last verified: 2026-05-23
 Verified by: Codex
 Doc type: status
 
 # WM Control Panel + LM Studio V1
 
-This is the current local operator console for WM.
+This is the current local operator console for WM. The primary operator surface
+is now **WM Session**, not a character-specific Broug/Jecia or vertical-slice
+screen. Broug and Jecia remain useful fixtures, not architecture.
 
 Start it from the repo root:
 
@@ -42,9 +44,11 @@ Panel state is stored under:
   drafts/
   schemas/
   artifacts/
+  session.json
 ```
 
 `settings.json` is preserved across runs. API keys are memory-only in v1.
+`session.json` stores the active operator-selected character session.
 
 ## Covered APIs
 
@@ -66,7 +70,54 @@ GET  /api/drafts
 GET  /api/drafts/<draft_id>
 POST /api/drafts/<draft_id>/adopt
 POST /api/drafts/<draft_id>/reject
+GET  /api/wm/readiness
+GET  /api/wm/markers
+POST /api/wm/session/bootstrap
+GET  /api/wm/session/status
+GET  /api/wm/session/pending
+GET  /api/wm/session/issues
+GET  /api/wm/session/log
+POST /api/wm/session/poll
+POST /api/wm/session/approve
+POST /api/wm/session/reject
 ```
+
+`/api/slice/*` remains as a compatibility alias for one release. New code and
+docs should use `/api/wm/session/*`.
+
+## WM Session Flow
+
+The session can be bootstrapped in two ways:
+
+- explicit `character_guid`
+- recent marker aura discovery
+
+The canonical marker spell is `946602` (`WM Watcher Beacon`), imported from
+`wm.sources.native_bridge.player_marker.DEFAULT_MARKER_SPELL_ID`. The panel may
+override the marker spell per request, but defaults must stay aligned with the
+native marker CLI.
+
+Active session metadata persisted by the panel:
+
+```text
+character_guid
+character_name
+source = explicit_guid | marker
+marker_spell_id
+bridge_event_id
+selected_at
+marker
+```
+
+The panel exposes marker workflow commands through the normal job gate:
+
+- `marker.scan` - read-only marker discovery
+- `marker.scope_latest` - mutating, dry-run required, type-job-id confirmation
+- `marker.observe_all.start` / `marker.observe_all.stop` - optional temporary
+  wildcard observation through the existing bridge configure command, also gated
+
+No raw SQL, raw GM command, shell command, config-edit, or direct LLM live
+mutation lane is added.
 
 ## Schema Catalog
 
@@ -123,7 +174,14 @@ Context pack and candidate pack file inputs are constrained to the WM workspace.
 
 ## Known Gaps
 
-- Browser visual smoke remains `PARTIAL` until the local panel is checked in the in-app browser or a normal browser.
+- Browser visual smoke remains `PARTIAL`: the local API smoke passed on
+  `127.0.0.1:8766`, but the Codex in-app browser refused navigation to that
+  local URL under its security policy.
+- Universal explicit-GUID API proof is `WORKING`: panel job
+  `job-20260522221357-59927577` dry-ran and approved a `debug_ping` control
+  proposal for session GUID `5406`; native request `702` reached `done`.
+  Marker-selection UI proof remains `PARTIAL` because no recent `946602`
+  marker candidate was present in the lab.
 - The current release flow reaches validate/plan/packet and job gates; live apply is intentionally routed through existing owned commands and still needs lane-by-lane proof.
 - Context-pack generation and target recognition are still CLI-first; deeper UI selectors are future work.
 - LM Studio behavior depends on the local model honoring JSON-schema structured output.

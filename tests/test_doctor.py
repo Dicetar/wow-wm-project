@@ -36,6 +36,7 @@ def _settings(tmp: Path, *, soap_enabled: bool = False) -> Settings:
     s.world_db_name = "acore_world"
     s.char_db_name = "acore_characters"
     s.wm_bridge_config_path = str(tmp / "missing_bridge.conf")
+    s.bridge_lab_dir = str(tmp / "missing_bridge_lab")
     s.control_root = str(tmp / "control")
     (tmp / "control").mkdir(parents=True, exist_ok=True)
     (tmp / "control" / "registry.json").write_text("{}", encoding="utf-8")
@@ -102,6 +103,49 @@ class DoctorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             results = run_doctor(_settings(Path(d)), db_client=_FakeDb(world_tables=[], char_tables=[]))
             json.dumps([r.to_dict() for r in results])
+
+    def test_native_bridge_uses_explicit_config_path(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            s = _settings(tmp)
+            config = tmp / "explicit" / "mod_wm_bridge.conf"
+            config.parent.mkdir(parents=True)
+            config.write_text('WmBridge.PlayerGuidAllowList = "5406"\n', encoding="utf-8")
+            s.wm_bridge_config_path = str(config)
+
+            results = run_doctor(s, db_client=_FakeDb(world_tables=[], char_tables=[]))
+            bridge = _by_name(results)["native_bridge"]
+
+            self.assertEqual(bridge.status, WORKING)
+            self.assertIn("5406", bridge.detail)
+
+    def test_native_bridge_probes_bridge_lab_dir_when_explicit_path_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            s = _settings(tmp)
+            lab_config = tmp / "BridgeLab" / "run" / "configs" / "modules" / "mod_wm_bridge.conf"
+            lab_config.parent.mkdir(parents=True)
+            lab_config.write_text('WmBridge.PlayerGuidAllowList = "5410"\n', encoding="utf-8")
+            s.bridge_lab_dir = str(tmp / "BridgeLab")
+
+            results = run_doctor(s, db_client=_FakeDb(world_tables=[], char_tables=[]))
+            bridge = _by_name(results)["native_bridge"]
+
+            self.assertEqual(bridge.status, WORKING)
+            self.assertIn("5410", bridge.detail)
+
+    def test_missing_native_bridge_config_reports_checked_paths_without_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            s = _settings(tmp)
+
+            results = run_doctor(s, db_client=_FakeDb(world_tables=[], char_tables=[]))
+            bridge = _by_name(results)["native_bridge"]
+
+            self.assertEqual(bridge.status, UNKNOWN)
+            self.assertIn("checked:", bridge.detail)
+            self.assertIn("missing_bridge.conf", bridge.detail)
+            self.assertFalse(any(result.name == "native_bridge" and result.status == FAIL for result in results))
 
 
 if __name__ == "__main__":

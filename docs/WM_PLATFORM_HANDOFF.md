@@ -1,11 +1,20 @@
 Status: PARTIAL
-Last verified: 2026-05-22
-Verified by: Claude
+Last verified: 2026-05-23
+Verified by: Codex
 Doc type: handoff
 
 # WM Platform Handoff
 
 This is the current entrypoint for a new engineer or LLM.
+
+## 2026-05-23 update - Universal WM Session panel V1
+
+- **Universal WM Session panel is repo-level `PARTIAL` pending full suite and live proof.** The panel now exposes `/api/wm/readiness`, `/api/wm/markers`, and `/api/wm/session/*` routes; `/api/slice/*` remains a compatibility alias for one release. Session bootstrap accepts an explicit GUID or marker discovery and persists `character_guid`, optional name, source, marker spell, event id, timestamp, and marker payload in panel state. The UI tab is now "WM Session" and no longer shows a hardcoded `5406` default for native queue work.
+- **Marker discovery is canonicalized on `946602`.** Panel wiring imports `wm.sources.native_bridge.player_marker.DEFAULT_MARKER_SPELL_ID`; `BridgeEventPump` now uses the same constant and can read the marker spell from native `SubjectEntry` when payload lacks `spell_id`. The old `946500` slice marker is historical only.
+- **Operator commands were added behind the existing job gate.** `marker.scan` is read-only; `marker.scope_latest`, `marker.observe_all.start`, and `marker.observe_all.stop` are mutating, dry-run-required, and require type-job-id confirmation. These use owned CLIs only; no raw SQL, raw GM, shell-command, config-edit, or direct LLM mutation lane was added.
+- **BridgeLab readiness is less brittle.** `Settings` now has `WM_BRIDGELAB_DIR`, doctor probes both explicit `WM_BRIDGE_CONFIG_PATH` and BridgeLab `run/configs/modules/mod_wm_bridge.conf`, and missing config reports checked paths as `UNKNOWN` rather than a false `FAIL`. The bridge configure CLI also prefers the BridgeLab config when it exists and the bootstrap config does not.
+- **Pytest temp floor on this Windows host is `WORKING`.** Stdlib `TemporaryDirectory`, raw `mkdtemp`, and repo tests' `tmp_path` now use a fresh workspace `.wm-test-runs` root, avoiding Python 3.14 inaccessible `0o700` temp directories and stale fixed basetemp trees. `python -m pytest -q` passed twice consecutively (`922 passed`, then `922 passed`) without manual cleanup.
+- **Universal explicit-GUID live loop is `WORKING`; marker-selection UI is still `PARTIAL`.** BridgeLab doctor on DB `33307` / SOAP `7879` was all `WORKING`. No recent `946602` marker event existed, so the proof used explicit session GUID `5406`; panel job `job-20260522221357-59927577` dry-ran `control.apply`, required type-job-id confirmation, applied, and native request `702` completed `debug_ping` with `status=done`, `player_guid=5406`. Codex in-app browser visual smoke stayed `PARTIAL` because the browser refused local navigation to `127.0.0.1:8766`.
 
 ## 2026-05-22 update — repo CI health restored + slice LIVE-LLM pipeline
 

@@ -1,7 +1,7 @@
 """Tests for the BridgeEventPump — translates wm_bridge_event rows to runtime events."""
 from __future__ import annotations
 import json
-from wm.cli.bridge_event_pump import BridgeEventPump, BridgeEventRow
+from wm.cli.bridge_event_pump import BridgeEventPump, BridgeEventRow, MARKER_SPELL_ID
 
 
 class _FakeRuntime:
@@ -96,7 +96,7 @@ def test_marker_aura_applied_fires_attention():
     rt = _FakeRuntime(5408)
     pump = BridgeEventPump(runtime=rt, fetch=lambda after: [
         _row(42929, "applied", family="aura", player_guid=5408,
-             payload={"spell_id": 946500, "player_guid": 5408}),
+             payload={"spell_id": MARKER_SPELL_ID, "player_guid": 5408}),
     ])
     pump.poll_once()
     assert rt.attentions == [5408]
@@ -118,10 +118,10 @@ def test_marker_aura_fires_attention_only_once_per_character():
     rt = _FakeRuntime(5408)
     batches = iter([
         [_row(42929, "applied", family="aura", player_guid=5408,
-              payload={"spell_id": 946500})],
+              payload={"spell_id": MARKER_SPELL_ID})],
         # a later poll re-observes a marker apply for the same char (replay/re-cast)
         [_row(42999, "applied", family="aura", player_guid=5408,
-              payload={"spell_id": 946500})],
+              payload={"spell_id": MARKER_SPELL_ID})],
     ])
     pump = BridgeEventPump(runtime=rt, fetch=lambda after: next(batches))
     pump.poll_once(); pump.poll_once()
@@ -132,7 +132,17 @@ def test_marker_aura_for_other_character_ignored():
     rt = _FakeRuntime(5408)
     pump = BridgeEventPump(runtime=rt, fetch=lambda after: [
         _row(60, "applied", family="aura", player_guid=9999,
-             payload={"spell_id": 946500}),
+             payload={"spell_id": MARKER_SPELL_ID}),
     ])
     pump.poll_once()
     assert rt.attentions == []
+
+
+def test_marker_aura_uses_subject_entry_when_payload_lacks_spell_id():
+    rt = _FakeRuntime(5408)
+    pump = BridgeEventPump(runtime=rt, fetch=lambda after: [
+        _row(61, "applied", family="aura", player_guid=5408,
+             payload={}, subject_entry=MARKER_SPELL_ID),
+    ])
+    pump.poll_once()
+    assert rt.attentions == [5408]

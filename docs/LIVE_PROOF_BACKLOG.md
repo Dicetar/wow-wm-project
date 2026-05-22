@@ -11,7 +11,7 @@ This sprint does not require in-game proof. It defines the proof packets that mu
 
 ## 1. Panel-Driven Content Dry-Run And Packet Flow
 
-Status: `PARTIAL`
+Status: `WORKING` for explicit-GUID API/control-plane proof; marker-selection UI remains `PARTIAL`
 
 Prerequisite state:
 
@@ -52,6 +52,69 @@ python scripts/cleanup_workspace.py
 ```
 
 Use `--apply` only after reviewing the dry-run target list.
+
+## 1A. Universal WM Session Panel Loop
+
+Status: `PARTIAL`
+
+Prerequisite state:
+
+- BridgeLab is running.
+- `python -m wm.doctor --summary` reports DB/SOAP reachable and either a
+  scoped native bridge config or an actionable `UNKNOWN` config detail.
+- A target character is online.
+- Marker aura `946602` (`WM Watcher Beacon`) is available, or the operator has
+  an explicit player GUID.
+
+Command sequence:
+
+```powershell
+start-bridge-lab-all.bat
+$env:WM_WORLD_DB_PORT="33307"; $env:WM_CHAR_DB_PORT="33307"; $env:WM_SOAP_PORT="7879"
+python -m wm.doctor --summary
+python -m wm.panel --host 127.0.0.1 --port 8765 --live-slice
+```
+
+Use the panel to:
+
+```text
+scan marker candidates with spell 946602 or enter explicit GUID
+bootstrap WM Session
+dry-run marker.scope_latest, then apply with job-id confirmation
+run native.queue.inspect for the selected GUID
+dry-run and apply a low-risk debug_ping control proposal
+```
+
+In-client observation needed:
+
+- None beyond confirming the selected character is the intended online
+  character; `debug_ping` is a control-plane proof, not gameplay content.
+
+Audit/event/DB evidence required:
+
+- Panel session shows `source=marker` or `source=explicit_guid`.
+- Native bridge player scope includes the selected GUID with a TTL.
+- Native queue inspect uses the selected GUID, not a hardcoded fixture.
+- `debug_ping` action request reaches `done` with a `pong` result.
+
+Rollback/cleanup command:
+
+```powershell
+python -m wm.sources.native_bridge.configure --clear --reload-via-soap --summary
+```
+
+Proof note 2026-05-23 (Codex):
+
+- BridgeLab doctor with DB `33307` and SOAP `7879` was all `WORKING`.
+- Recent marker scan for `946602` found no candidates, so proof used explicit
+  GUID `5406`.
+- Panel API bootstrapped `/api/wm/session/bootstrap` for `5406`.
+- Panel job `job-20260522221357-59927577` dry-ran `control.apply`, reached
+  `AWAITING_CONFIRM`, then approved apply with type-job-id confirmation.
+- Native request `702` completed `debug_ping` with `status=done`,
+  `player_guid=5406`, `error=None`.
+- Browser visual smoke is still `PARTIAL`: Codex in-app browser refused local
+  navigation to `127.0.0.1:8766` under its security policy.
 
 ## 2. Auto-Bounty Loop
 

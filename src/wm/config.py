@@ -13,6 +13,10 @@ def _default_bootstrap_path(*parts: str) -> str:
     return str(_repo_root().joinpath(".wm-bootstrap", *parts))
 
 
+def _default_bridge_lab_dir() -> str:
+    return str(_repo_root().parents[0].joinpath("WM_BridgeLab"))
+
+
 def _load_dotenv(dotenv_path: str | Path = ".env") -> None:
     path = Path(dotenv_path)
     if not path.exists():
@@ -84,6 +88,7 @@ class Settings:
     native_bridge_action_poll_seconds: float = 0.25
     native_bridge_gossip_session_timeout_seconds: int = 45
     quest_grant_transport: str = "auto"
+    bridge_lab_dir: str = _default_bridge_lab_dir()
     wm_bridge_config_path: str = _default_bootstrap_path("run", "configs", "modules", "mod_wm_bridge.conf")
     wm_prototypes_config_path: str = _default_bootstrap_path("run", "configs", "modules", "mod_wm_prototypes.conf")
     wm_spells_config_path: str = _default_bootstrap_path("run", "configs", "modules", "mod_wm_spells.conf")
@@ -183,6 +188,7 @@ class Settings:
             native_bridge_action_poll_seconds=float(os.getenv("WM_NATIVE_BRIDGE_ACTION_POLL_SECONDS", "0.25")),
             native_bridge_gossip_session_timeout_seconds=int(os.getenv("WM_NATIVE_BRIDGE_GOSSIP_SESSION_TIMEOUT_SECONDS", "45")),
             quest_grant_transport=os.getenv("WM_QUEST_GRANT_TRANSPORT", "auto"),
+            bridge_lab_dir=os.getenv("WM_BRIDGELAB_DIR", _default_bridge_lab_dir()),
             wm_bridge_config_path=os.getenv(
                 "WM_BRIDGE_CONFIG_PATH",
                 _default_bootstrap_path("run", "configs", "modules", "mod_wm_bridge.conf"),

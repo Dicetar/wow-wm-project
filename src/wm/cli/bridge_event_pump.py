@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 import json
 from typing import Any, Callable, Protocol
 
+from wm.sources.native_bridge.player_marker import DEFAULT_MARKER_SPELL_ID
+
 
 @dataclass(slots=True)
 class BridgeEventRow:
@@ -31,7 +33,7 @@ class BridgeEventRow:
 
 # Marker spell whose `applied` aura event activates a character for the WM
 # (see slice handoff "Mistakes": the aura, not item-use, is the signal).
-MARKER_SPELL_ID = 946500
+MARKER_SPELL_ID = DEFAULT_MARKER_SPELL_ID
 
 
 class _RuntimeProtocol(Protocol):
@@ -75,7 +77,7 @@ class BridgeEventPump:
         et = row.event_type
         try:
             if et == "applied" and row.event_family == "aura":
-                spell_id = int(row.payload.get("spell_id", 0) or 0)
+                spell_id = int(row.payload.get("spell_id", row.subject_entry or 0) or 0)
                 guid = row.player_guid if row.player_guid is not None else active
                 if spell_id == self._marker_spell_id and guid not in self._attention_fired:
                     self._attention_fired.add(guid)

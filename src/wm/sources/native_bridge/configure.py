@@ -202,7 +202,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     settings = Settings.from_env()
-    config_path = args.config_path or Path(settings.wm_bridge_config_path)
+    config_path = args.config_path or _default_bridge_config_path(settings)
     result = update_bridge_player_allowlist(
         config_path=config_path,
         player_guids=[int(guid) for guid in args.player_guid],
@@ -235,6 +235,16 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(raw)
     return 0
+
+
+def _default_bridge_config_path(settings: Settings) -> Path:
+    configured = Path(settings.wm_bridge_config_path)
+    bridge_lab_dir = getattr(settings, "bridge_lab_dir", "")
+    if bridge_lab_dir:
+        bridge_lab_config = Path(bridge_lab_dir) / "run" / "configs" / "modules" / "mod_wm_bridge.conf"
+        if bridge_lab_config.exists() and not configured.exists():
+            return bridge_lab_config
+    return configured
 
 
 def _reload_config_via_soap(*, settings: Settings, command: str) -> RuntimeCommandResult:

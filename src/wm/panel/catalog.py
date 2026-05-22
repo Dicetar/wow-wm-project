@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from wm.sources.native_bridge.player_marker import DEFAULT_MARKER_SPELL_ID
+
 
 @dataclass(frozen=True, slots=True)
 class ParameterSpec:
@@ -108,8 +110,16 @@ def _py(*parts: str) -> tuple[str, ...]:
 
 
 def _default_entries() -> list[CommandEntry]:
-    player = ParameterSpec("player_guid", type="integer", default=5406, description="Scoped player GUID.")
+    player = ParameterSpec("player_guid", type="integer", required=True, description="Scoped player GUID.")
     limit = ParameterSpec("limit", type="integer", default=20, description="Maximum rows to list.")
+    marker_spell = ParameterSpec(
+        "marker_spell_id",
+        type="integer",
+        default=DEFAULT_MARKER_SPELL_ID,
+        description="WM player marker aura spell.",
+    )
+    since_seconds = ParameterSpec("since_seconds", type="integer", default=300, description="Recent marker scan window in seconds.")
+    expires_seconds = ParameterSpec("expires_seconds", type="integer", default=900, description="Scoped player TTL in seconds.")
     return [
         CommandEntry(
             id="watcher.status",
@@ -162,6 +172,82 @@ def _default_entries() -> list[CommandEntry]:
             kind="read_only",
             dry_run_argv=_py("wm.sources.native_bridge.actions_cli", "inspect", "--player-guid", "{player_guid}", "--limit", "{limit}", "--summary"),
             parameters=(player, limit),
+        ),
+        CommandEntry(
+            id="marker.scan",
+            label="Scan Player Markers",
+            category="session",
+            kind="read_only",
+            dry_run_argv=_py(
+                "wm.sources.native_bridge.player_marker",
+                "scan",
+                "--spell-id",
+                "{marker_spell_id}",
+                "--since-seconds",
+                "{since_seconds}",
+                "--limit",
+                "{limit}",
+                "--summary",
+            ),
+            parameters=(marker_spell, since_seconds, limit),
+            description="Read recent marker-aura events and list candidate player sessions.",
+        ),
+        CommandEntry(
+            id="marker.scope_latest",
+            label="Scope Latest Marker",
+            category="session",
+            kind="mutation",
+            dry_run_argv=_py(
+                "wm.sources.native_bridge.player_marker",
+                "scan",
+                "--spell-id",
+                "{marker_spell_id}",
+                "--since-seconds",
+                "{since_seconds}",
+                "--limit",
+                "10",
+                "--summary",
+            ),
+            apply_argv=_py(
+                "wm.sources.native_bridge.player_marker",
+                "scope-latest",
+                "--spell-id",
+                "{marker_spell_id}",
+                "--since-seconds",
+                "{since_seconds}",
+                "--expires-seconds",
+                "{expires_seconds}",
+                "--summary",
+            ),
+            mutating=True,
+            dry_run_required=True,
+            confirmation="type_job_id",
+            parameters=(marker_spell, since_seconds, expires_seconds),
+            description="Scope the latest marker-selected player in wm_bridge_player_scope after a scan dry-run.",
+        ),
+        CommandEntry(
+            id="marker.observe_all.start",
+            label="Temporary Observe All",
+            category="session",
+            kind="mutation",
+            dry_run_argv=_py("wm.doctor", "--summary"),
+            apply_argv=_py("wm.sources.native_bridge.configure", "--allow-all", "--reload-via-soap", "--summary"),
+            mutating=True,
+            dry_run_required=True,
+            confirmation="type_job_id",
+            description="Temporarily set WmBridge.PlayerGuidAllowList='*' through the existing bridge configure CLI.",
+        ),
+        CommandEntry(
+            id="marker.observe_all.stop",
+            label="Stop Observe All",
+            category="session",
+            kind="mutation",
+            dry_run_argv=_py("wm.doctor", "--summary"),
+            apply_argv=_py("wm.sources.native_bridge.configure", "--clear", "--reload-via-soap", "--summary"),
+            mutating=True,
+            dry_run_required=True,
+            confirmation="type_job_id",
+            description="Clear temporary wildcard bridge observation; DB-backed player scope remains separate.",
         ),
         CommandEntry(
             id="native.queue.recover",

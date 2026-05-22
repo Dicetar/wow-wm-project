@@ -20,6 +20,7 @@ venv/
 .wm-tmp/
 .wm-pytest-tmp/
 .wm-test-tmp/
+.wm-test-runs/
 artifacts/
 data/repack/
 data/test_tmp/

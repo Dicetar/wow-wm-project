@@ -122,10 +122,33 @@ def _soap_check(settings: Settings, soap_client: SoapRuntimeClient | None) -> Ch
     )
 
 
+def _native_bridge_config_candidates(settings: Settings) -> list[Path]:
+    candidates: list[Path] = []
+
+    explicit = Path(settings.wm_bridge_config_path)
+    candidates.append(explicit)
+
+    bridge_lab_dir = getattr(settings, "bridge_lab_dir", "")
+    if bridge_lab_dir:
+        candidates.append(Path(bridge_lab_dir) / "run" / "configs" / "modules" / "mod_wm_bridge.conf")
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
 def _native_bridge_check(settings: Settings) -> CheckResult:
-    path = Path(settings.wm_bridge_config_path)
-    if not path.exists():
-        return CheckResult("native_bridge", UNKNOWN, f"config not found at {path} (BridgeLab not built/staged?)")
+    checked = _native_bridge_config_candidates(settings)
+    path = next((candidate for candidate in checked if candidate.exists()), None)
+    if path is None:
+        rendered = "; ".join(str(candidate) for candidate in checked)
+        return CheckResult("native_bridge", UNKNOWN, f"config not found; checked: {rendered}")
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:

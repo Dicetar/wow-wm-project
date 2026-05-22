@@ -4,7 +4,8 @@ const state = {
   activeSchema: null,
   formData: {},
   selectedDraft: null,
-  latestJob: null
+  latestJob: null,
+  activeSession: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -73,20 +74,24 @@ function toggleTheme() {
 }
 
 async function loadAll() {
-  const [status, catalog, schemas, settings, drafts] = await Promise.all([
+  const [status, catalog, schemas, settings, drafts, readiness] = await Promise.all([
     api("/api/status"),
     api("/api/catalog"),
     api("/api/schemas"),
     api("/api/llm/settings"),
-    api("/api/drafts")
+    api("/api/drafts"),
+    api("/api/wm/readiness")
   ]);
   state.commands = catalog.commands;
   state.schemas = schemas.schemas;
+  state.activeSession = readiness.active_session || status.active_session || null;
   renderStatus(status);
+  renderWmReadiness(readiness);
   renderSchemaSelects();
   renderCommands();
   renderSettings(settings);
   renderDrafts(drafts.drafts || []);
+  syncSessionInputs(state.activeSession);
   selectSchema($("contentSchema").value || state.schemas[0]?.id);
 }
 
@@ -131,6 +136,7 @@ function bindActions() {
   $("sliceBootstrap").addEventListener("click", sliceBootstrap);
   $("slicePoll").addEventListener("click", slicePoll);
   $("sliceRefresh").addEventListener("click", refreshSlice);
+  $("scanMarkers").addEventListener("click", scanMarkers);
 }
 
 function renderStatus(status) {
@@ -159,9 +165,17 @@ function renderSchemaSelects() {
 
 function renderCommands() {
   renderCommandGroup("watcherCommands", ["watcher.status", "watcher.start", "watcher.stop", "bridge_lab.start"]);
-  renderCommandGroup("nativeCommands", ["native.queue.inspect", "native.queue.recover", "native.queue.cleanup"], () => ({
-    player_guid: Number($("watcherPlayerGuid").value || 5406),
-    limit: Number($("watcherLimit").value || 20)
+  renderCommandGroup("nativeCommands", ["native.queue.inspect", "native.queue.recover", "native.queue.cleanup"], () => {
+    const guid = activeSessionGuid();
+    const params = { limit: Number($("watcherLimit").value || 20) };
+    if (guid) params.player_guid = guid;
+    return params;
+  });
+  renderCommandGroup("markerCommands", ["marker.scan", "marker.scope_latest", "marker.observe_all.start", "marker.observe_all.stop"], () => ({
+    marker_spell_id: Number($("markerSpellId").value || 946602),
+    since_seconds: Number($("markerSinceSeconds").value || 300),
+    expires_seconds: 900,
+    limit: 20
   }));
   renderCommandGroup("maintenanceCommands", ["items.rollback", "quests.purge_range"], (commandId) => {
     if (commandId === "items.rollback") return { item_entry: Number($("rollbackItemEntry").value || 0) };
@@ -187,6 +201,23 @@ function renderSettings(settings) {
   $("llmTimeout").value = settings.timeout_seconds ?? 60;
   $("llmSchemaMode").value = settings.schema_mode || "json_schema";
   renderModelSelect(settings.model ? [settings.model] : [], settings.model);
+}
+
+function renderWmReadiness(readiness) {
+  const doctor = readiness.doctor || {};
+  const failed = (doctor.checks || []).filter((check) => check.status === "FAIL").length;
+  const unknown = (doctor.checks || []).filter((check) => check.status === "UNKNOWN").length;
+  const session = readiness.active_session || null;
+  const rows = {
+    "Readiness": doctor.ok === false ? "PARTIAL" : "WORKING",
+    "Doctor": `${failed} FAIL, ${unknown} UNKNOWN`,
+    "Marker Spell": readiness.marker_spell_id,
+    "Selected": session ? `${session.character_guid}${session.character_name ? ` / ${session.character_name}` : ""}` : "(none)",
+    "Source": session?.source || "(none)"
+  };
+  $("wmReadiness").innerHTML = Object.entries(rows)
+    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd>`)
+    .join("");
 }
 
 function renderModelSelect(models, selected) {
@@ -511,6 +542,19 @@ async function dryRunSelectedDraft() {
   await runCommand(commandId, {}, state.selectedDraft.parsed_json, "draftDetail");
 }
 
+function activeSessionGuid() {
+  const raw = $("watcherPlayerGuid").value || $("sliceCharacterGuid").value || state.activeSession?.character_guid;
+  const parsed = Number(raw || 0);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function syncSessionInputs(session) {
+  if (!session || !session.character_guid) return;
+  $("sliceCharacterGuid").value = session.character_guid;
+  $("watcherPlayerGuid").value = session.character_guid;
+  if (session.marker_spell_id) $("markerSpellId").value = session.marker_spell_id;
+}
+
 function schemaType(schema) {
   if (!schema) return "string";
   const type = schema.type;
@@ -561,15 +605,21 @@ function valueFromOption(encoded, schema) {
   return encoded;
 }
 
-// --- Slice approval gate -------------------------------------------------
+// --- WM session approval gate --------------------------------------------
 
 async function sliceBootstrap() {
   const raw = $("sliceCharacterGuid").value;
-  const body = raw === "" ? {} : { character_guid: Number(raw) };
+  const body = {
+    marker_spell_id: Number($("markerSpellId").value || 946602),
+    since_seconds: Number($("markerSinceSeconds").value || 300)
+  };
+  if (raw !== "") body.character_guid = Number(raw);
   try {
-    const result = await api("/api/slice/bootstrap", { method: "POST", body: JSON.stringify(body) });
+    const result = await api("/api/wm/session/bootstrap", { method: "POST", body: JSON.stringify(body) });
     state.sliceReady = result.ok === true;
+    state.activeSession = result.session || null;
     if (result.character_guid != null) $("sliceCharacterGuid").value = result.character_guid;
+    syncSessionInputs(state.activeSession);
     await refreshSlice();
   } catch (error) {
     renderSliceError(error.message);
@@ -578,7 +628,7 @@ async function sliceBootstrap() {
 
 async function slicePoll() {
   try {
-    const result = await api("/api/slice/poll", { method: "POST", body: "{}" });
+    const result = await api("/api/wm/session/poll", { method: "POST", body: "{}" });
     await refreshSlice();
     setOutput("sliceLog", `polled: ${result.events_seen} event(s); watermark=${result.last_seen_event_id ?? "?"}`);
   } catch (error) {
@@ -589,10 +639,10 @@ async function slicePoll() {
 async function refreshSlice() {
   try {
     const [status, pending, issues, log] = await Promise.all([
-      api("/api/slice/status"),
-      api("/api/slice/pending"),
-      api("/api/slice/issues"),
-      api("/api/slice/log")
+      api("/api/wm/session/status"),
+      api("/api/wm/session/pending"),
+      api("/api/wm/session/issues"),
+      api("/api/wm/session/log")
     ]);
     renderSliceStatus(status);
     renderSlicePending(pending.pending || []);
@@ -604,8 +654,12 @@ async function refreshSlice() {
 }
 
 function renderSliceStatus(status) {
+  state.activeSession = status.session || state.activeSession;
+  syncSessionInputs(state.activeSession);
   const rows = {
     "Character GUID": status.character_guid,
+    "Source": state.activeSession?.source || "(unknown)",
+    "Marker Spell": state.activeSession?.marker_spell_id || "(none)",
     "Current Beat": status.current_beat ?? "(none)",
     "Pending": status.pending_count,
     "Issues": status.issues_count,
@@ -614,6 +668,48 @@ function renderSliceStatus(status) {
   $("sliceStatus").innerHTML = Object.entries(rows)
     .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd>`)
     .join("");
+}
+
+async function scanMarkers() {
+  try {
+    const query = new URLSearchParams({
+      marker_spell_id: String(Number($("markerSpellId").value || 946602)),
+      since_seconds: String(Number($("markerSinceSeconds").value || 300)),
+      limit: "20"
+    });
+    const result = await api(`/api/wm/markers?${query.toString()}`);
+    renderMarkerCandidates(result.candidates || []);
+  } catch (error) {
+    $("markerCandidates").innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function renderMarkerCandidates(items) {
+  if (!items.length) {
+    $("markerCandidates").innerHTML = `<p class="muted">No recent marker candidates.</p>`;
+    return;
+  }
+  $("markerCandidates").innerHTML = items.map((item) => {
+    const guid = item.character_guid || item.player_guid;
+    const name = item.character_name || item.player_name || "(unknown)";
+    return `
+      <div class="card">
+        <div class="card-head">
+          <strong>${escapeHtml(String(guid))}</strong>
+          <span class="badge">${escapeHtml(name)}</span>
+          <span class="muted">event ${escapeHtml(String(item.bridge_event_id || "?"))}</span>
+        </div>
+        <div class="card-body">spell ${escapeHtml(String(item.spell_id || ""))}; online ${escapeHtml(String(item.character_online ?? "?"))}</div>
+        <button data-marker-guid="${escapeHtml(String(guid))}">Use GUID</button>
+      </div>
+    `;
+  }).join("");
+  $("markerCandidates").querySelectorAll("[data-marker-guid]").forEach((button) => {
+    button.addEventListener("click", () => {
+      $("sliceCharacterGuid").value = button.dataset.markerGuid;
+      $("watcherPlayerGuid").value = button.dataset.markerGuid;
+    });
+  });
 }
 
 function renderSlicePending(items) {
@@ -667,7 +763,7 @@ function renderSliceError(message) {
 
 async function sliceApprove(id) {
   try {
-    await api("/api/slice/approve", { method: "POST", body: JSON.stringify({ id }) });
+    await api("/api/wm/session/approve", { method: "POST", body: JSON.stringify({ id }) });
     await refreshSlice();
   } catch (error) {
     renderSliceError(error.message);
@@ -678,7 +774,7 @@ async function sliceReject(id) {
   const reason = window.prompt("Reject reason:", "operator-rejected");
   if (reason === null) return;
   try {
-    await api("/api/slice/reject", { method: "POST", body: JSON.stringify({ id, reason }) });
+    await api("/api/wm/session/reject", { method: "POST", body: JSON.stringify({ id, reason }) });
     await refreshSlice();
   } catch (error) {
     renderSliceError(error.message);

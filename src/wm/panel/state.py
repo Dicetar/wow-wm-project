@@ -35,6 +35,10 @@ class PanelState:
     def settings_path(self) -> Path:
         return self.root / "settings.json"
 
+    @property
+    def session_path(self) -> Path:
+        return self.root / "session.json"
+
     def load_settings(self) -> dict[str, Any]:
         self.ensure()
         settings = dict(DEFAULT_PANEL_SETTINGS)
@@ -51,6 +55,18 @@ class PanelState:
         sanitized.pop("api_key", None)
         self.write_json(self.settings_path, sanitized)
         return sanitized
+
+    def load_session(self) -> dict[str, Any] | None:
+        self.ensure()
+        if not self.session_path.exists():
+            return None
+        raw = self.read_json(self.session_path)
+        return raw if isinstance(raw, dict) else None
+
+    def save_session(self, session: dict[str, Any]) -> dict[str, Any]:
+        self.ensure()
+        self.write_json(self.session_path, session)
+        return session
 
     def new_id(self, prefix: str) -> str:
         return f"{prefix}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"

@@ -5,7 +5,7 @@ Mirrors the thin-shell + testable-parse split used in
 (they need a live DB), but the row-parsing logic is pure and covered.
 
 Discovery is the *sanctioned* path: the active WM character is whoever
-most recently received the marker aura (spell 946500), observed via the
+most recently received the marker aura (spell 946602), observed via the
 `applied` event on `wm_bridge_event`. No peeking at acore_characters or
 character_queststatus (see the slice handoff "Mistakes to not repeat").
 """
@@ -14,8 +14,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from wm.sources.native_bridge.player_marker import DEFAULT_MARKER_SPELL_ID
+from wm.sources.native_bridge.player_marker import scan_recent_player_markers
 
-MARKER_SPELL_ID = 946500
+
+MARKER_SPELL_ID = DEFAULT_MARKER_SPELL_ID
 
 SLICE_QUEST_SCHEMA_PATH = "control/schemas/wm.slice.bounty_draft.v1.schema.json"
 
@@ -64,6 +67,40 @@ def make_live_slice_discoverer(*, client: Any, cfg: SliceDbConfig) -> Callable[[
         rows = client.query(host=cfg.host, port=cfg.port, user=cfg.user,
                             password=cfg.password, database=cfg.world_db, sql=sql)
         return discover_guid_from_rows(rows)
+    return discover
+
+
+def make_live_marker_discoverer(
+    *,
+    client: Any,
+    cfg: SliceDbConfig,
+    spell_id: int = MARKER_SPELL_ID,
+) -> Callable[..., list[dict[str, Any]]]:
+    """Production marker scanner for the universal WM session panel."""
+    def discover(*, since_seconds: int = 300, limit: int = 20, marker_spell_id: int | None = None) -> list[dict[str, Any]]:
+        from wm.config import Settings
+        import dataclasses
+
+        settings = dataclasses.replace(
+            Settings.from_env(),
+            world_db_host=cfg.host,
+            world_db_port=cfg.port,
+            world_db_name=cfg.world_db,
+            world_db_user=cfg.user,
+            world_db_password=cfg.password,
+            char_db_host=cfg.host,
+            char_db_port=cfg.port,
+            char_db_user=cfg.user,
+            char_db_password=cfg.password,
+        )
+        candidates = scan_recent_player_markers(
+            client=client,
+            settings=settings,
+            spell_id=int(marker_spell_id or spell_id),
+            since_seconds=int(since_seconds),
+            limit=int(limit),
+        )
+        return [candidate.to_dict() for candidate in candidates]
     return discover
 
 

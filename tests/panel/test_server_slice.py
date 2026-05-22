@@ -133,7 +133,7 @@ def _catalog() -> CommandCatalog:
     )
 
 
-def _make_app(*, factory=None, discoverer=None, pump_factory=None) -> PanelApp:
+def _make_app(*, factory=None, discoverer=None, pump_factory=None, marker_discoverer=None) -> PanelApp:
     temp = tempfile.TemporaryDirectory()
     app = PanelApp(
         state=PanelState(Path(temp.name)),
@@ -141,6 +141,7 @@ def _make_app(*, factory=None, discoverer=None, pump_factory=None) -> PanelApp:
         slice_factory=factory,
         slice_discoverer=discoverer,
         slice_pump_factory=pump_factory,
+        marker_discoverer=marker_discoverer,
     )
     # keep temp alive for the app's lifetime
     app._test_temp = temp  # type: ignore[attr-defined]
@@ -195,6 +196,83 @@ class SliceBootstrapTests(unittest.TestCase):
         self.assertEqual(code, 400)
         self.assertFalse(body["ok"])
         self.assertIn("character_guid", body["error"])
+
+
+class WmSessionEndpointTests(unittest.TestCase):
+    def test_wm_session_bootstrap_with_explicit_guid_persists_session(self) -> None:
+        def factory(*, character_guid: int) -> _FakeRuntime:
+            return _FakeRuntime(character_guid=character_guid)
+
+        app = _make_app(factory=factory)
+
+        code, body = app.post("/api/wm/session/bootstrap", {"character_guid": 5410, "character_name": "Tester"})
+
+        self.assertEqual(code, 200, body)
+        self.assertEqual(body["character_guid"], 5410)
+        self.assertEqual(body["session"]["source"], "explicit_guid")
+        self.assertEqual(body["session"]["character_name"], "Tester")
+        self.assertEqual(app.state.load_session()["character_guid"], 5410)  # type: ignore[index]
+
+    def test_wm_session_bootstrap_from_marker_candidate(self) -> None:
+        def factory(*, character_guid: int) -> _FakeRuntime:
+            return _FakeRuntime(character_guid=character_guid)
+
+        def marker_discoverer(**_kwargs):
+            return [{
+                "bridge_event_id": 77,
+                "player_guid": 5411,
+                "character_name": "MarkerUser",
+                "spell_id": 946602,
+            }]
+
+        app = _make_app(factory=factory, marker_discoverer=marker_discoverer)
+
+        code, body = app.post("/api/wm/session/bootstrap", {})
+
+        self.assertEqual(code, 200, body)
+        self.assertEqual(body["character_guid"], 5411)
+        self.assertEqual(body["session"]["source"], "marker")
+        self.assertEqual(body["session"]["bridge_event_id"], 77)
+        self.assertEqual(body["session"]["character_name"], "MarkerUser")
+
+    def test_wm_marker_scan_returns_candidates(self) -> None:
+        seen: dict[str, int] = {}
+
+        def marker_discoverer(**kwargs):
+            seen.update({key: int(value) for key, value in kwargs.items()})
+            return [{"player_guid": 5412, "bridge_event_id": 88, "spell_id": kwargs["marker_spell_id"]}]
+
+        app = _make_app(marker_discoverer=marker_discoverer)
+
+        code, body = app.get("/api/wm/markers?marker_spell_id=946602&since_seconds=120&limit=3")
+
+        self.assertEqual(code, 200, body)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["candidates"][0]["player_guid"], 5412)
+        self.assertEqual(seen, {"since_seconds": 120, "limit": 3, "marker_spell_id": 946602})
+
+    def test_wm_session_aliases_share_slice_runtime(self) -> None:
+        def factory(*, character_guid: int) -> _FakeRuntime:
+            return _FakeRuntime(character_guid=character_guid)
+
+        app = _make_app(factory=factory)
+        code, _ = app.post("/api/wm/session/bootstrap", {"character_guid": 5413})
+        self.assertEqual(code, 200)
+
+        code, body = app.get("/api/slice/status")
+        self.assertEqual(code, 200, body)
+        self.assertEqual(body["character_guid"], 5413)
+
+        code, body = app.get("/api/wm/session/status")
+        self.assertEqual(code, 200, body)
+        self.assertEqual(body["session"]["character_guid"], 5413)
+
+    def test_marker_spell_constant_matches_native_marker_default(self) -> None:
+        from wm.panel.slice_wiring import MARKER_SPELL_ID
+        from wm.sources.native_bridge.player_marker import DEFAULT_MARKER_SPELL_ID
+
+        self.assertEqual(MARKER_SPELL_ID, DEFAULT_MARKER_SPELL_ID)
 
 
 class SliceReadEndpointTests(unittest.TestCase):

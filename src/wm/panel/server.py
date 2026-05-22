@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 from urllib.parse import unquote
+from urllib.parse import parse_qs
 from urllib.parse import urlparse
 
 from wm.llm.lmstudio import LmStudioClient
@@ -17,6 +18,7 @@ from wm.panel.jobs import JobRunner
 from wm.panel.schemas import SchemaCatalog
 from wm.panel.state import PanelState
 from wm.panel.state import utc_now_iso
+from wm.sources.native_bridge.player_marker import DEFAULT_MARKER_SPELL_ID
 
 # slice runtime types — imported lazily inside method bodies to keep
 # panel tests light when the slice deps aren't needed.
@@ -24,6 +26,7 @@ from wm.panel.state import utc_now_iso
 SliceFactory = Any            # Callable[..., SliceRuntime]
 SliceDiscoverer = Any         # Callable[[], int | None]
 SlicePumpFactory = Any        # Callable[[SliceRuntime], BridgeEventPump]
+MarkerDiscoverer = Any        # Callable[..., list[dict[str, Any]]]
 
 
 class PanelApp:
@@ -37,6 +40,7 @@ class PanelApp:
         slice_factory: SliceFactory | None = None,
         slice_discoverer: SliceDiscoverer | None = None,
         slice_pump_factory: SlicePumpFactory | None = None,
+        marker_discoverer: MarkerDiscoverer | None = None,
     ) -> None:
         self.state = state or PanelState()
         self.state.ensure()
@@ -51,9 +55,12 @@ class PanelApp:
         self._slice_factory = slice_factory
         self._slice_discoverer = slice_discoverer
         self._slice_pump_factory = slice_pump_factory
+        self._marker_discoverer = marker_discoverer
 
     def get(self, raw_path: str) -> tuple[int, Any]:
-        path = urlparse(raw_path).path
+        parsed_url = urlparse(raw_path)
+        path = parsed_url.path
+        query = parse_qs(parsed_url.query)
         if path == "/api/status":
             return 200, self._status()
         if path == "/api/catalog":
@@ -99,6 +106,22 @@ class PanelApp:
             return 200, self._living_readiness()
         if path == "/api/proposals":
             return 200, {"proposals": self.state.list_drafts(limit=100)}
+        if path == "/api/wm/readiness":
+            return 200, self._wm_readiness()
+        if path == "/api/wm/markers":
+            return 200, self._wm_markers(
+                since_seconds=_query_int(query, "since_seconds", 300),
+                limit=_query_int(query, "limit", 20),
+                marker_spell_id=_query_int(query, "marker_spell_id", DEFAULT_MARKER_SPELL_ID),
+            )
+        if path == "/api/wm/session/status":
+            return self._slice_status()
+        if path == "/api/wm/session/pending":
+            return self._slice_pending()
+        if path == "/api/wm/session/issues":
+            return self._slice_issues()
+        if path == "/api/wm/session/log":
+            return self._slice_log()
         if path == "/api/slice/status":
             return self._slice_status()
         if path == "/api/slice/pending":
@@ -111,16 +134,18 @@ class PanelApp:
 
     def _require_slice(self) -> tuple[int, Any] | None:
         if self._slice is None:
-            return 404, {"ok": False, "error": "slice not bootstrapped"}
+            return 404, {"ok": False, "error": "WM session not bootstrapped"}
         return None
 
     def _slice_status(self) -> tuple[int, Any]:
         if (err := self._require_slice()) is not None:
             return err
         rt = self._slice
+        session = self.state.load_session()
         return 200, {
             "ok": True,
             "character_guid": rt.runner.module.character_guid,
+            "session": session,
             "current_beat": rt.runner.current_beat_id,
             "pending_count": len(rt.gate.pending()),
             "issues_count": len(rt.issues.list_open()),
@@ -167,6 +192,44 @@ class PanelApp:
         log = list(rt.applied_log)[-limit:]
         return 200, {"log": log}
 
+    def _wm_readiness(self) -> dict[str, Any]:
+        status = self._status()
+        payload: dict[str, Any] = {
+            "ok": True,
+            "panel_status": status["status"],
+            "active_session": self.state.load_session(),
+            "git": status["git"],
+            "marker_spell_id": DEFAULT_MARKER_SPELL_ID,
+        }
+        try:
+            from wm.config import Settings
+            from wm.doctor import run_doctor
+
+            checks = run_doctor(Settings.from_env())
+            payload["doctor"] = {
+                "ok": not any(check.status == "FAIL" for check in checks),
+                "checks": [check.to_dict() for check in checks],
+            }
+        except Exception as exc:
+            payload["doctor"] = {"ok": False, "error": str(exc), "checks": []}
+        return payload
+
+    def _wm_markers(self, *, since_seconds: int = 300, limit: int = 20, marker_spell_id: int = DEFAULT_MARKER_SPELL_ID) -> dict[str, Any]:
+        candidates: list[dict[str, Any]] = []
+        if self._marker_discoverer is not None:
+            candidates = list(self._marker_discoverer(
+                since_seconds=int(since_seconds),
+                limit=int(limit),
+                marker_spell_id=int(marker_spell_id),
+            ))
+        return {
+            "ok": True,
+            "marker_spell_id": int(marker_spell_id),
+            "since_seconds": int(since_seconds),
+            "count": len(candidates),
+            "candidates": candidates,
+        }
+
     def post(self, raw_path: str, body: dict[str, Any]) -> tuple[int, Any]:
         path = urlparse(raw_path).path
         if path == "/api/schema/validate":
@@ -198,6 +261,14 @@ class PanelApp:
             return self._adopt_draft(draft_id=draft_id, body=body)
         if path == "/api/llm/adopt":
             return 200, self._log_llm_adoption(body)
+        if path == "/api/wm/session/bootstrap":
+            return self._slice_bootstrap(body)
+        if path == "/api/wm/session/approve":
+            return self._slice_approve(body)
+        if path == "/api/wm/session/reject":
+            return self._slice_reject(body)
+        if path == "/api/wm/session/poll":
+            return self._slice_poll(body)
         if path == "/api/slice/bootstrap":
             return self._slice_bootstrap(body)
         if path == "/api/slice/approve":
@@ -260,22 +331,31 @@ class PanelApp:
 
     def _slice_bootstrap(self, body: dict[str, Any]) -> tuple[int, Any]:
         guid_raw = body.get("character_guid")
+        session: dict[str, Any]
         if guid_raw in (None, ""):
-            discoverer = self._slice_discoverer or _default_slice_discoverer
             try:
-                guid = discoverer()
+                session = self._discover_session_from_marker(body)
             except Exception as exc:
                 return 500, {"ok": False, "error": f"discoverer failed: {exc}"}
-            if guid is None:
+            if not session:
                 return 400, {
                     "ok": False,
-                    "error": "no character_guid supplied and none discoverable from spine",
+                    "error": "no character_guid supplied and none discoverable from marker/spine",
                 }
+            guid = int(session["character_guid"])
         else:
             try:
                 guid = int(guid_raw)
             except (TypeError, ValueError):
                 return 400, {"ok": False, "error": "character_guid must be an integer"}
+            session = {
+                "character_guid": guid,
+                "character_name": body.get("character_name"),
+                "source": "explicit_guid",
+                "marker_spell_id": _body_int(body, "marker_spell_id", DEFAULT_MARKER_SPELL_ID),
+                "bridge_event_id": None,
+                "selected_at": utc_now_iso(),
+            }
         factory = self._slice_factory or _default_slice_factory
         try:
             self._slice = factory(character_guid=guid)
@@ -287,7 +367,33 @@ class PanelApp:
                 self._slice_pump = self._slice_pump_factory(self._slice)
             except Exception as exc:
                 return 500, {"ok": False, "error": f"pump factory failed: {exc}"}
-        return 200, {"ok": True, "character_guid": guid}
+        self.state.save_session(session)
+        return 200, {"ok": True, "character_guid": guid, "session": session}
+
+    def _discover_session_from_marker(self, body: dict[str, Any]) -> dict[str, Any]:
+        marker_spell_id = _body_int(body, "marker_spell_id", DEFAULT_MARKER_SPELL_ID)
+        since_seconds = _body_int(body, "since_seconds", 300)
+        if self._marker_discoverer is not None:
+            candidates = list(self._marker_discoverer(
+                since_seconds=since_seconds,
+                limit=10,
+                marker_spell_id=marker_spell_id,
+            ))
+            if candidates:
+                return _session_from_marker_candidate(candidates[0], marker_spell_id=marker_spell_id)
+
+        discoverer = self._slice_discoverer or _default_slice_discoverer
+        guid = discoverer()
+        if guid is None:
+            return {}
+        return {
+            "character_guid": int(guid),
+            "character_name": None,
+            "source": "marker",
+            "marker_spell_id": marker_spell_id,
+            "bridge_event_id": None,
+            "selected_at": utc_now_iso(),
+        }
 
     def _generate_llm_draft(self, body: dict[str, Any]) -> dict[str, Any]:
         schema_version = str(body.get("schema_version") or "")
@@ -448,6 +554,7 @@ class PanelApp:
             "latest_draft": (self.state.list_drafts(limit=1) or [None])[0],
             "git": _git_status(),
             "llm": {**self.state.load_settings(), "api_key_set": bool(self._api_key)},
+            "active_session": self.state.load_session(),
         }
 
 
@@ -482,9 +589,12 @@ def serve(*, host: str = "127.0.0.1", port: int = 8765, state_root: Path | None 
         from wm.db.mysql_cli import MysqlCliClient
         from wm.llm.proposal_adapter import AdapterMode
         from wm.panel.slice_wiring import (
-            SliceDbConfig, make_live_slice_factory,
-            make_live_slice_discoverer, make_live_slice_pump_factory,
+            SliceDbConfig,
             load_slice_quest_schema,
+            make_live_marker_discoverer,
+            make_live_slice_discoverer,
+            make_live_slice_factory,
+            make_live_slice_pump_factory,
         )
         client = MysqlCliClient()
         cfg = SliceDbConfig(host=db_host, port=db_port, user=db_user,
@@ -501,6 +611,7 @@ def serve(*, host: str = "127.0.0.1", port: int = 8765, state_root: Path | None 
                 quest_schema=load_slice_quest_schema()),
             "slice_discoverer": make_live_slice_discoverer(client=client, cfg=cfg),
             "slice_pump_factory": make_live_slice_pump_factory(client=client, cfg=cfg),
+            "marker_discoverer": make_live_marker_discoverer(client=client, cfg=cfg),
         }
     app = PanelApp(state=state, **slice_kwargs)
     handler = _handler_for(app)
@@ -594,6 +705,42 @@ def _resolve_workspace_json_path(path_value: str, *, workspace_root: Path) -> Pa
     if not resolved.exists() or not resolved.is_file():
         raise FileNotFoundError(f"JSON path not found: {path_value}")
     return resolved
+
+
+def _query_int(query: dict[str, list[str]], key: str, default: int) -> int:
+    values = query.get(key) or []
+    if not values or values[0] in (None, ""):
+        return int(default)
+    try:
+        return int(values[0])
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _body_int(body: dict[str, Any], key: str, default: int) -> int:
+    raw = body.get(key, default)
+    if raw in (None, ""):
+        return int(default)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _session_from_marker_candidate(candidate: dict[str, Any], *, marker_spell_id: int) -> dict[str, Any]:
+    guid = candidate.get("character_guid") or candidate.get("player_guid")
+    if guid in (None, ""):
+        return {}
+    spell_id = candidate.get("spell_id") or marker_spell_id
+    return {
+        "character_guid": int(guid),
+        "character_name": candidate.get("character_name") or candidate.get("player_name"),
+        "source": "marker",
+        "marker_spell_id": int(spell_id),
+        "bridge_event_id": candidate.get("bridge_event_id"),
+        "selected_at": utc_now_iso(),
+        "marker": candidate,
+    }
 
 
 def _git_status() -> dict[str, Any]:

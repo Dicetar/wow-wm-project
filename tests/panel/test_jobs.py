@@ -56,6 +56,35 @@ class PanelJobRunnerTests(unittest.TestCase):
             self.assertEqual(result["issues"][0]["path"], "command_id")
 
 
+class PanelCatalogTests(unittest.TestCase):
+    def test_marker_scan_is_read_only_and_uses_native_marker_cli(self) -> None:
+        entry = CommandCatalog().get("marker.scan")
+
+        self.assertFalse(entry.mutating)
+        self.assertIn("wm.sources.native_bridge.player_marker", entry.dry_run_argv)
+        self.assertIn("scan", entry.dry_run_argv)
+        self.assertFalse(entry.apply_argv)
+
+    def test_marker_scope_latest_is_gated_mutation(self) -> None:
+        entry = CommandCatalog().get("marker.scope_latest")
+
+        self.assertTrue(entry.mutating)
+        self.assertTrue(entry.dry_run_required)
+        self.assertEqual(entry.confirmation, "type_job_id")
+        self.assertIn("scan", entry.dry_run_argv)
+        self.assertIn("scope-latest", entry.apply_argv)
+
+    def test_observe_all_commands_are_gated_through_existing_configure_cli(self) -> None:
+        catalog = CommandCatalog()
+
+        for command_id in ("marker.observe_all.start", "marker.observe_all.stop"):
+            entry = catalog.get(command_id)
+            self.assertTrue(entry.mutating)
+            self.assertTrue(entry.dry_run_required)
+            self.assertEqual(entry.confirmation, "type_job_id")
+            self.assertIn("wm.sources.native_bridge.configure", entry.apply_argv)
+
+
 def _runner(root: Path) -> JobRunner:
     catalog = CommandCatalog(
         [
