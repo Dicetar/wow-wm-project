@@ -235,23 +235,30 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertNotIn("Enabled = VALUES(Enabled)", sql)
 
     def test_primitive_pack_1_cpp_uses_scope_policy_and_wm_owned_creature_guard(self) -> None:
-        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
-        cpp = cpp_path.read_text(encoding="utf-8")
+        # Phase 0D: per-action handlers and their dispatch registration moved
+        # out of the monolithic queue file into registry + domain files. Each
+        # invariant is asserted against the domain file that now owns it.
+        src = Path("native_modules/mod-wm-bridge/src")
+        support = (src / "wm_bridge_action_support.cpp").read_text(encoding="utf-8")
+        player = (src / "wm_bridge_player_actions.cpp").read_text(encoding="utf-8")
+        inventory = (src / "wm_bridge_inventory_actions.cpp").read_text(encoding="utf-8")
+        creature = (src / "wm_bridge_creature_actions.cpp").read_text(encoding="utf-8")
+        cpp = "\n".join((support, player, inventory, creature))
 
-        for action_kind in (
-            "player_apply_aura",
-            "player_restore_health_power",
-            "player_add_item",
-            "player_remove_item",
-            "player_random_enchant_item",
-            "player_add_reputation",
-            "creature_spawn",
-            "creature_despawn",
-            "creature_say",
-            "creature_emote",
+        for action_kind, execute_fn in (
+            ("player_apply_aura", "ExecutePlayerApplyAura"),
+            ("player_restore_health_power", "ExecutePlayerRestoreHealthPower"),
+            ("player_add_item", "ExecutePlayerAddItem"),
+            ("player_remove_item", "ExecutePlayerRemoveItem"),
+            ("player_random_enchant_item", "ExecutePlayerRandomEnchantItem"),
+            ("player_add_reputation", "ExecutePlayerAddReputation"),
+            ("creature_spawn", "ExecuteCreatureSpawn"),
+            ("creature_despawn", "ExecuteCreatureDespawn"),
+            ("creature_say", "ExecuteCreatureSay"),
+            ("creature_emote", "ExecuteCreatureEmote"),
         ):
             with self.subTest(action_kind=action_kind):
-                self.assertIn(f'actionKind == "{action_kind}"', cpp)
+                self.assertIn(f'registry.Register("{action_kind}", &{execute_fn})', cpp)
 
         self.assertIn("ResolveScopedOnlinePlayer", cpp)
         self.assertIn("target_player_must_match_scoped_player", cpp)
@@ -262,10 +269,10 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("Spawn result payload needs the WM-owned ObjectID immediately", cpp)
 
     def test_player_remove_item_cpp_uses_scope_policy_and_managed_item_guard(self) -> None:
-        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
+        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_inventory_actions.cpp")
         cpp = cpp_path.read_text(encoding="utf-8")
         start = cpp.index("bool ExecutePlayerRemoveItem")
-        end = cpp.index("bool ExecuteCreatureSpawn", start)
+        end = cpp.index("bool IsRandomEnchantEligibleItem", start)
         block = cpp[start:end]
 
         self.assertIn("ResolveScopedOnlinePlayer", block)
@@ -278,15 +285,15 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("player->DestroyItemCount(itemId, count, true, true)", block)
         self.assertIn("player->SaveInventoryAndGoldToDB(trans)", block)
         self.assertIn("CharacterDatabase.CommitTransaction(trans)", block)
-        self.assertIn('actionKind == "player_remove_item"', cpp)
+        self.assertIn('registry.Register("player_remove_item", &ExecutePlayerRemoveItem)', cpp)
 
     def test_player_random_enchant_item_cpp_uses_scope_policy_existing_item_and_preserve_chance(self) -> None:
-        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
+        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_inventory_actions.cpp")
         cpp = cpp_path.read_text(encoding="utf-8")
         helper = Path("native_modules/mod-wm-bridge/src/wm_bridge_random_enchant.cpp").read_text(encoding="utf-8")
         header = Path("native_modules/mod-wm-bridge/src/wm_bridge_random_enchant.h").read_text(encoding="utf-8")
         start = cpp.index("bool ExecutePlayerRandomEnchantItem")
-        end = cpp.index("bool ExecuteCreatureSpawn", start)
+        end = cpp.index("Item* SelectRandomEligibleEquippedItem", start)
         block = cpp[start:end]
 
         self.assertIn("ResolveScopedOnlinePlayer", block)
@@ -330,7 +337,7 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("player->ApplyEnchantment(item, slot, true)", helper)
         self.assertIn("player->SaveInventoryAndGoldToDB(trans)", block)
         self.assertIn("CharacterDatabase.CommitTransaction(trans)", block)
-        self.assertIn('actionKind == "player_random_enchant_item"', cpp)
+        self.assertIn('registry.Register("player_random_enchant_item", &ExecutePlayerRandomEnchantItem)', cpp)
 
     def test_random_enchant_consumable_item_sql_and_script_are_wired(self) -> None:
         sql_path = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_04_24_02_wm_bridge_random_enchant_consumable.sql")
@@ -541,7 +548,7 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn('Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.AoeLoot.Enable" -Value "1"', configure)
 
     def test_player_add_item_cpp_persists_inventory_after_grant(self) -> None:
-        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
+        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_inventory_actions.cpp")
         cpp = cpp_path.read_text(encoding="utf-8")
         start = cpp.index("bool ExecutePlayerAddItem")
         end = cpp.index("bool ExecutePlayerRemoveItem", start)
@@ -553,21 +560,26 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("player->SendNewItem", block)
         self.assertIn("player->SaveInventoryAndGoldToDB(trans)", block)
         self.assertIn("CharacterDatabase.CommitTransaction(trans)", block)
-        self.assertIn('actionKind == "player_add_item"', cpp)
+        self.assertIn('registry.Register("player_add_item", &ExecutePlayerAddItem)', cpp)
 
     def test_primitive_pack_2_cpp_uses_scope_policy_and_wm_owned_creature_guard(self) -> None:
-        cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp")
-        cpp = cpp_path.read_text(encoding="utf-8")
+        # Phase 0D: handlers + dispatch registration moved into registry +
+        # domain files (player_set_display_id lives in the environment domain).
+        src = Path("native_modules/mod-wm-bridge/src")
+        player = (src / "wm_bridge_player_actions.cpp").read_text(encoding="utf-8")
+        environment = (src / "wm_bridge_environment_actions.cpp").read_text(encoding="utf-8")
+        creature = (src / "wm_bridge_creature_actions.cpp").read_text(encoding="utf-8")
+        cpp = "\n".join((player, environment, creature))
 
-        for action_kind in (
-            "player_cast_spell",
-            "player_set_display_id",
-            "creature_cast_spell",
-            "creature_set_display_id",
-            "creature_set_scale",
+        for action_kind, execute_fn in (
+            ("player_cast_spell", "ExecutePlayerCastSpell"),
+            ("player_set_display_id", "ExecutePlayerSetDisplayId"),
+            ("creature_cast_spell", "ExecuteCreatureCastSpell"),
+            ("creature_set_display_id", "ExecuteCreatureSetDisplayId"),
+            ("creature_set_scale", "ExecuteCreatureSetScale"),
         ):
             with self.subTest(action_kind=action_kind):
-                self.assertIn(f'actionKind == "{action_kind}"', cpp)
+                self.assertIn(f'registry.Register("{action_kind}", &{execute_fn})', cpp)
 
         self.assertIn("ExecutePlayerCastSpell", cpp)
         self.assertIn("ResolvePlayerCastTarget", cpp)
@@ -581,9 +593,9 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("std::clamp<float>(scale, 0.10f, 5.0f)", cpp)
 
     def test_quest_add_cpp_matches_gm_add_semantics(self) -> None:
-        cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp").read_text(encoding="utf-8")
-        start = cpp.index('if (actionKind == "quest_add")')
-        end = cpp.index('if (actionKind == "player_apply_aura")', start)
+        cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_quest_actions.cpp").read_text(encoding="utf-8")
+        start = cpp.index("bool ExecuteQuestAdd")
+        end = cpp.index("void RegisterWmBridgeQuestActions", start)
         quest_add_block = cpp[start:end]
 
         self.assertIn("StartQuest == questId", quest_add_block)
@@ -595,9 +607,9 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertNotIn("player->CanTakeQuest(quest, false)", quest_add_block)
 
     def test_quest_remove_cpp_uses_scope_policy_reserved_guard_and_event(self) -> None:
-        cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp").read_text(encoding="utf-8")
+        cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_quest_actions.cpp").read_text(encoding="utf-8")
         start = cpp.index("bool ExecuteQuestRemove")
-        end = cpp.index("bool IsRandomEnchantEligibleItem", start)
+        end = cpp.index("bool ExecuteQuestAdd", start)
         block = cpp[start:end]
 
         self.assertIn("ResolveScopedOnlinePlayer", block)
@@ -615,7 +627,7 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("player->SaveToDB(false, false)", block)
         self.assertIn("EmitQuestRemovedEvent(player, quest", block)
         self.assertIn('MakePlayerScopedEvent(player, "quest", "removed")', cpp)
-        self.assertIn('actionKind == "quest_remove"', cpp)
+        self.assertIn('registry.Register("quest_remove", &ExecuteQuestRemove)', cpp)
 
     def test_client_submits_idempotent_queue_request(self) -> None:
         client = FakeMysqlClient()

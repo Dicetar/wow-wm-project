@@ -432,13 +432,31 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertTrue(expected_files.issubset({path.name for path in root.glob("*.cpp")}))
 
     def test_native_action_queue_avoids_generic_command_escape_hatches(self) -> None:
-        source = Path("native_modules/mod-wm-bridge/src/wm_bridge_action_queue.cpp").read_text(encoding="utf-8")
+        # Phase 0D: the monolithic queue file was split into the queue
+        # (claim/poll/dispatch lifecycle) plus registry + per-domain handler
+        # files. The "no generic command escape hatch" invariant must hold
+        # across the queue AND every domain file that now executes actions.
+        src = Path("native_modules/mod-wm-bridge/src")
+        queue = (src / "wm_bridge_action_queue.cpp").read_text(encoding="utf-8")
+        domain_files = {
+            "wm_bridge_action_queue.cpp": queue,
+            "wm_bridge_debug_actions.cpp": (src / "wm_bridge_debug_actions.cpp").read_text(encoding="utf-8"),
+            "wm_bridge_environment_actions.cpp": (src / "wm_bridge_environment_actions.cpp").read_text(encoding="utf-8"),
+            "wm_bridge_quest_actions.cpp": (src / "wm_bridge_quest_actions.cpp").read_text(encoding="utf-8"),
+            "wm_bridge_player_actions.cpp": (src / "wm_bridge_player_actions.cpp").read_text(encoding="utf-8"),
+            "wm_bridge_inventory_actions.cpp": (src / "wm_bridge_inventory_actions.cpp").read_text(encoding="utf-8"),
+            "wm_bridge_creature_actions.cpp": (src / "wm_bridge_creature_actions.cpp").read_text(encoding="utf-8"),
+        }
+        source = "\n".join(domain_files.values())
 
-        self.assertIn("wm_bridge_action_request", source)
+        # Queue lifecycle plumbing stays in the queue file itself.
+        self.assertIn("wm_bridge_action_request", queue)
+        self.assertIn("ClaimExpiresAt", queue)
+        self.assertIn("sequence_prior_failed", queue)
+        self.assertIn("ORDER BY req.Priority ASC", queue)
+
+        # Action dispatch/behavior now lives in the registry + domain files.
         self.assertIn("debug_ping", source)
-        self.assertIn("ClaimExpiresAt", source)
-        self.assertIn("sequence_prior_failed", source)
-        self.assertIn("ORDER BY req.Priority ASC", source)
         self.assertIn("quest_add", source)
         self.assertIn("quest_remove", source)
         self.assertIn("AddQuestAndCheckCompletion", source)
@@ -447,8 +465,12 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertIn("grant_source", source)
         self.assertIn("remove_source", source)
         self.assertIn("world_announce_to_player", source)
-        self.assertNotIn("HandleCommand", source)
-        self.assertNotIn("ChatHandler", source)
+
+        # No generic GM-command / escape-hatch execution in ANY of them.
+        for name, text in domain_files.items():
+            with self.subTest(file=name):
+                self.assertNotIn("HandleCommand", text)
+                self.assertNotIn("ChatHandler", text)
 
     def test_native_bridge_tracks_owned_summon_kills_beyond_pet_hooks(self) -> None:
         loader = Path("native_modules/mod-wm-bridge/src/mod_wm_bridge_loader.cpp").read_text(encoding="utf-8")
