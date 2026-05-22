@@ -21,6 +21,10 @@ class ProposalKind(str, Enum):
     ABILITY = "ability"
 
 
+class ProposalGenerationError(Exception):
+    """Raised when LIVE generation cannot produce a safe, valid draft."""
+
+
 @dataclass(slots=True)
 class ProposalRequest:
     kind: ProposalKind
@@ -50,37 +54,101 @@ _QUEST_REQUIRED_FIELDS = (
 class ProposalAdapter:
     mode: AdapterMode = AdapterMode.FIXTURE
     fixture: dict[str, Any] | None = None
+    llm_client: Any | None = None
+    quest_schema: dict[str, Any] | None = None
+    model_default: str = "qwen3-coder-30b-a3b-instruct"
 
     def propose(self, req: ProposalRequest) -> Proposal:
         if self.mode is AdapterMode.FIXTURE:
-            raw = self.fixture or {}
-            prov = {"mode": "fixture"}
-        else:
+            return self._validate(self.fixture or {}, req, {"mode": "fixture"})
+        prov = {"mode": "live"}
+        try:
             raw = self._call_live(req)
-            prov = {"mode": "live"}
-
+        except ProposalGenerationError as exc:
+            cg = int(req.context.get("character", {}).get("guid", 0))
+            return Proposal(kind=req.kind, payload={}, character_guid=cg,
+                            provenance=prov, is_blocked=True, block_reason=str(exc))
         return self._validate(raw, req, prov)
 
     # --- internals -----------------------------------------------------
 
     def _call_live(self, req: ProposalRequest) -> dict[str, Any]:
-        # imports are lazy so tests can run without the LM Studio dep
-        from wm.llm import lmstudio, proposal_parser, prompts  # noqa: F401
-        prompt = self._build_prompt(req)
-        text = lmstudio.chat_completion(prompt=prompt)
-        return proposal_parser.parse_structured(text)
+        from wm.llm.proposal_parser import ProposalParser
+        from wm.quests.publish import bounty_draft_from_dict
+        from wm.quests.validator import validate_bounty_quest_draft
 
-    def _build_prompt(self, req: ProposalRequest) -> str:
-        # Real prompt composition is delegated to wm.llm.prompts in follow-up
-        # work; for the slice the live mode is opt-in and the prompt is a
-        # straight JSON contract dump.
-        import json
-        return (
-            "Return ONLY a JSON object matching the WM proposal schema for "
-            f"kind={req.kind.value}. Intent: {req.intent}\n"
-            f"Constraints: {json.dumps(req.constraints)}\n"
-            f"Context: {json.dumps(req.context)}\n"
-        )
+        if self.llm_client is None or self.quest_schema is None:
+            raise ProposalGenerationError("LIVE adapter missing llm_client/quest_schema")
+        try:
+            result = self.llm_client.generate_json(
+                schema_version="wm.slice.bounty_draft.v1",
+                schema=self.quest_schema,
+                instruction=req.intent,
+                context_pack=req.context,
+                candidate_pack=req.constraints,
+            )
+        except Exception as exc:
+            raise ProposalGenerationError(str(exc)) from exc
+
+        screen = ProposalParser().parse(result.get("content") or "")
+        if not screen.ok:
+            raise ProposalGenerationError("; ".join(screen.issues) or "screen failed")
+
+        authored = result.get("parsed") or {}
+        merged = self._merge_fixed_facts(authored, req.constraints)
+        try:
+            draft = bounty_draft_from_dict(merged)
+        except (KeyError, ValueError, TypeError) as exc:
+            raise ProposalGenerationError(f"draft build failed: {exc}") from exc
+        vr = validate_bounty_quest_draft(draft)
+        if not vr.ok:
+            raise ProposalGenerationError(
+                "; ".join(f"{i.path}: {i.message}" for i in vr.errors))
+
+        flat = draft.to_dict()
+        return {
+            "kind": "quest",
+            "payload": {"quest_release": {
+                "title": draft.title,
+                "objective": draft.objective_text,
+                "description": draft.quest_description,
+                "giver_creature_entry": draft.questgiver_entry,
+                "objective_kind": "kill",
+                "rewards": {"xp_difficulty": draft.reward.reward_xp_difficulty,
+                            "money_copper": draft.reward.money_copper},
+                "draft": flat,
+            }},
+            "narrative_summary": authored.get("narrative_summary") or draft.offer_reward_text,
+        }
+
+    @staticmethod
+    def _merge_fixed_facts(authored: dict[str, Any], constraints: dict[str, Any]) -> dict[str, Any]:
+        c = constraints or {}
+        cobj = c.get("objective", {})
+        aobj = authored.get("objective", {})
+        return {
+            "quest_id": int(c.get("quest_id_placeholder", 999000)),
+            "quest_level": int(c.get("quest_level", 1)),
+            "min_level": int(c.get("min_level", 1)),
+            "questgiver_entry": int(c["questgiver_entry"]),
+            "questgiver_name": str(c.get("questgiver_name", "")),
+            "title": str(authored.get("title", "")),
+            "quest_description": str(authored.get("quest_description", "")),
+            "objective_text": str(authored.get("objective_text", "")),
+            "offer_reward_text": str(authored.get("offer_reward_text", "")),
+            "request_items_text": str(authored.get("request_items_text", "")),
+            "objective": {
+                "target_entry": int(cobj["target_entry"]),
+                "target_name": str(cobj["target_name"]),
+                "kill_count": int(aobj.get("kill_count", 1)),
+            },
+            "reward": authored.get("reward", {}),
+            "start_npc_entry": c.get("start_npc_entry"),
+            "end_npc_entry": c.get("end_npc_entry"),
+            "grant_mode": str(c.get("grant_mode", "direct_quest_add")),
+            "tags": list(c.get("tags", ["wm-slice"])),
+            "template_defaults": dict(c.get("template_defaults", {})),
+        }
 
     def _validate(self, raw: dict[str, Any], req: ProposalRequest, prov: dict[str, Any]) -> Proposal:
         cg = int(req.context.get("character", {}).get("guid", 0))
