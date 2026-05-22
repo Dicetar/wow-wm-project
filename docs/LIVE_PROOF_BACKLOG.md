@@ -513,3 +513,16 @@ Gate: world_db + char_db + soap all `WORKING`. If not, stop and fix readiness fi
 **Step 4 — Broug regression canary:** log in Broug (`5405`); confirm Lightness + Empty Court abilities cast with correct icons/tooltips/cooldowns/auras (spell-shell/DBC/scoped-grant canary).
 
 Record outcomes here with hard labels. Only after a step passes does its lane earn gameplay `WORKING`.
+
+### Outcomes — 2026-05-22 pass (BridgeLab up, 33307/7879)
+
+- **Step 0 readiness:** `WORKING`. `wm.doctor --summary` → 8/8, 0 FAIL (world/char DB + SOAP on 33307/7879; native bridge scoped to 5405,5406,5408).
+- **Step 1 character view + selection:** `WORKING` (read-side + bootstrap selection).
+  - Live `build_character_overview` against the real char DB: guid 5406 `status=WORKING has_profile=True` (11 arc_states / 2 unlocks / 3 rewards / 5 steering / 3 prompt_queue); guid 5405 `WORKING` (2/2/2/3/1); guid 5408 `PARTIAL` (no profile/journey). Real per-character state for any scoped GUID — V2.1 read-side is gameplay-`WORKING`.
+  - Bootstrap discoverer selected GUID **5405 from the marker spine** (discovered, not hardcoded).
+  - Marker *candidate list* (`/api/wm/markers` source): `PARTIAL` — 0 recent/online candidates (historical 946602 marks are for an offline/stale Broug). Needs a freshly-marked **online** character to prove the candidate UI.
+- **Step 2 slice LIVE-LLM loop:** `BLOCKED` this pass — LM Studio is **down** (`:1234` HTTP 000). Start LM Studio with the default model, then run the slice packet (Phase 1 generate is non-mutating; Phase 2 mints ≥910600 + grants).
+- **Step 3 Energy Surge timer:** not run — in-client visual (operator).
+- **Step 4 Broug canary:** not run — in-client visual (operator).
+
+**Operator actions to finish the pass:** (1) start LM Studio (unblocks Step 2); (2) cast `946602` on an **online** character (proves the marker candidate UI). In-client visuals (Steps 3-4) need eyes on the game client.
