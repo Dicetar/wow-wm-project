@@ -1232,9 +1232,10 @@ def _serializable_action_block(block: dict[str, Any]) -> dict[str, Any]:
 
 
 def _bridge_lab_notes(*, settings: Settings, player_guid: int) -> list[str]:
+    del player_guid  # advisory is about ports, not a specific character
     notes: list[str] = []
-    if int(player_guid) == 5406 and (int(settings.world_db_port) != 33307 or int(settings.char_db_port) != 33307):
-        notes.append("BridgeLab proof for Jecia expects WM_WORLD_DB_PORT=33307 and WM_CHAR_DB_PORT=33307.")
+    if int(settings.world_db_port) != 33307 or int(settings.char_db_port) != 33307:
+        notes.append("BridgeLab proof expects WM_WORLD_DB_PORT=33307 and WM_CHAR_DB_PORT=33307.")
     return notes
 
 

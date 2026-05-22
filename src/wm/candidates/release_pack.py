@@ -324,7 +324,7 @@ def build_release_test_manifest(pack: dict[str, Any], candidate_artifacts: list[
         ],
         "candidates": entries,
         "live_test_rules": [
-            "Use BridgeLab player 5406 unless the context pack explicitly names another scoped player.",
+            "Provide the scoped player GUID explicitly (e.g. via the context pack).",
             "Do not apply specs with fresh visible IDs until the custom ID ledger/reserved slot state is checked.",
             "After repo or DB proof, leave status PARTIAL until the player sees the quest, item, ability, scene, or effect in-game.",
         ],
@@ -695,7 +695,10 @@ def _generation_input(context_pack: dict[str, Any]) -> dict[str, Any]:
 
 def _player_guid(context_pack: dict[str, Any], generation: dict[str, Any]) -> int:
     player = generation.get("player") if isinstance(generation.get("player"), dict) else {}
-    return _positive_int(player.get("guid") or generation.get("player_guid") or context_pack.get("player_guid")) or 5406
+    guid = _positive_int(player.get("guid") or generation.get("player_guid") or context_pack.get("player_guid"))
+    if guid is None:
+        raise ValueError("scoped player_guid is required")
+    return guid
 
 
 def _target(context_pack: dict[str, Any], generation: dict[str, Any]) -> dict[str, Any]:

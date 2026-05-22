@@ -15,6 +15,13 @@ from wm.sources.native_bridge.action_kinds import NATIVE_ACTION_KIND_BY_ID
 from wm.living import legend, nemesis, oath, patron, rumor
 
 
+# Synthetic sample identity for the dry-run self-test only. NOT a real
+# scoped player; the live catalog operates on whatever GUID the operator
+# selects.
+SAMPLE_PLAYER_GUID = 9_999_001
+SAMPLE_PLAYER_NAME = "SampleHero"
+
+
 @dataclass(slots=True)
 class WildFeature:
     key: str
@@ -29,29 +36,29 @@ class WildFeature:
 
 def _nemesis_demo():
     return nemesis.evaluate_nemesis(
-        nemesis.NemesisTrigger(player_guid=5406, subject_entry=46, subject_name="Murloc Forager", kill_count=12, player_name="Jecia")
+        nemesis.NemesisTrigger(player_guid=SAMPLE_PLAYER_GUID, subject_entry=46, subject_name="Murloc Forager", kill_count=12, player_name=SAMPLE_PLAYER_NAME)
     )
 
 
 def _rumor_demo():
     return rumor.evaluate_rumor(
-        rumor.RumorTrigger(player_guid=5406, player_name="Jecia", subject_name="Defias", deed_count=12, zone_name="Westfall")
+        rumor.RumorTrigger(player_guid=SAMPLE_PLAYER_GUID, player_name=SAMPLE_PLAYER_NAME, subject_name="Defias", deed_count=12, zone_name="Westfall")
     )
 
 
 def _legend_demo():
     return legend.evaluate_legend(
-        legend.LegendTrigger(player_guid=5406, player_name="Jecia", zone_name="Westfall", deed_count=80)
+        legend.LegendTrigger(player_guid=SAMPLE_PLAYER_GUID, player_name=SAMPLE_PLAYER_NAME, zone_name="Westfall", deed_count=80)
     )
 
 
 def _patron_demo():
-    return patron.evaluate_patron(patron.PatronTrigger(player_guid=5406, player_name="Jecia", completed_wm_count=10))
+    return patron.evaluate_patron(patron.PatronTrigger(player_guid=SAMPLE_PLAYER_GUID, player_name=SAMPLE_PLAYER_NAME, completed_wm_count=10))
 
 
 def _oath_demo():
     return oath.evaluate_oath(
-        oath.OathTrigger(player_guid=5406, player_name="Jecia", oath_key="no_death", constraint_label="no deaths for 20 kills", target_count=20, current_count=20, phase="resolve")
+        oath.OathTrigger(player_guid=SAMPLE_PLAYER_GUID, player_name=SAMPLE_PLAYER_NAME, oath_key="no_death", constraint_label="no deaths for 20 kills", target_count=20, current_count=20, phase="resolve")
     )
 
 

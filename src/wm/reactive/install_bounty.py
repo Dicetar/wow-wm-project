@@ -583,7 +583,10 @@ def main(argv: list[str] | None = None) -> int:
     reactive_store = ReactiveQuestStore(client=client, settings=settings)
     slot_allocator = ReservedSlotDbAllocator(client=client, settings=settings)
     rule_key = str(_coalesce(args.rule_key, template.get("rule_key"), "reactive_bounty:kobold_vermin"))
-    player_guid = int(_coalesce(args.player_guid, template.get("player_guid"), 5406))
+    player_guid = _coalesce(args.player_guid, template.get("player_guid"))
+    if player_guid is None:
+        parser.error("--player-guid is required (no scoped player in the template)")
+    player_guid = int(player_guid)
     subject_entry = int(_coalesce(args.subject_entry, template.get("subject_entry"), 6))
     turn_in_npc_entry = int(_coalesce(args.turn_in_npc_entry, template.get("turn_in_npc_entry"), 197))
     kill_threshold = int(_coalesce(args.kill_threshold, template.get("kill_threshold"), 4))
