@@ -530,3 +530,17 @@ Record outcomes here with hard labels. Only after a step passes does its lane ea
 - **Step 4 Broug canary:** not run — in-client visual (operator).
 
 **Operator actions to finish the pass:** (1) start LM Studio (unblocks Step 2); (2) cast `946602` on an **online** character (proves the marker candidate UI). In-client visuals (Steps 3-4) need eyes on the game client.
+
+### MPQ client-patch auto-apply — 2026-05-22 (build+install `WORKING`, in-client `PARTIAL`)
+
+The new MPQ auto-apply lane (publish dirty-flag → apply-on-`wow.exe`-close, plan
+`2026-05-22-mpq-client-patch-auto-apply`) was exercised live:
+- The pending queue already contained `947020` from an **earlier real spell
+  publish** — confirms the `SpellPublisher.publish` → `mark_pending` hook fires
+  in practice.
+- With `wow.exe` closed, `apply_pending_client_patch()` rebuilt `--include all`
+  (1004 spell rows incl. marker aura `946602`, Energy Surge `946606`, Broug
+  `946200`), **installed** the fresh `patch-z.mpq` into the live client `Data`
+  dir (timestamp May 2 → May 23), cleared the WoW cache, and cleared pending.
+- **In-client `PARTIAL`:** relaunch the client and confirm the marker aura /
+  Energy Surge / Broug abilities show correct icon/name/tooltip (operator eyes).
