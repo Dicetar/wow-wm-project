@@ -49,6 +49,20 @@ from wm.sources.combat_log import arm_combat_log_cursor
 from wm.sources.native_bridge.arm import arm_native_bridge_cursor
 
 
+def _run_tasklist() -> str:
+    import subprocess
+    try:
+        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq wow.exe"],
+                             capture_output=True, text=True, check=False)
+        return out.stdout or ""
+    except Exception:
+        return ""
+
+
+def _wow_client_running() -> bool:
+    return "wow.exe" in _run_tasklist().lower()
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Continuously run the WM event spine.")
     parser.add_argument("--adapter", choices=ADAPTER_CHOICES, default="addon_log")
@@ -63,6 +77,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--print-idle", action="store_true")
     parser.add_argument("--arm-from-end", action="store_true")
     parser.add_argument("--mark-existing-evaluated-on-arm", action="store_true")
+    parser.add_argument("--client-patch-on-close", action="store_true",
+                        help="Rebuild+install the client MPQ when wow.exe closes, if a patch is pending.")
+    parser.add_argument("--client-install-path", default=None)
     return parser
 
 
@@ -116,6 +133,12 @@ def main(argv: list[str] | None = None) -> int:
                     flush=True,
                 )
 
+    close_watcher = None
+    if getattr(args, "client_patch_on_close", False):
+        from wm.spells.client_patch_apply import ClientPatchCloseWatcher, apply_pending_client_patch
+        close_watcher = ClientPatchCloseWatcher(
+            apply_fn=lambda: apply_pending_client_patch(install_path=args.client_install_path))
+
     iteration = 0
     try:
         while True:
@@ -143,10 +166,21 @@ def main(argv: list[str] | None = None) -> int:
                     player_guid=args.player_guid,
                     exc=exc,
                 )
-                if args.max_iterations is not None and iteration >= int(args.max_iterations):
-                    break
-                time.sleep(max(float(args.interval_seconds), 0.1))
-                continue
+
+            # Runs every iteration regardless of whether the event-spine step raised.
+            if close_watcher is not None:
+                try:
+                    result = close_watcher.tick(running=_wow_client_running())
+                    if result is not None and args.summary:
+                        print(f"client_patch_on_close applied={result.get('applied')} detail={result}", flush=True)
+                except Exception as exc:
+                    _emit_watch_iteration_error(
+                        iteration=iteration,
+                        adapter_name=args.adapter,
+                        mode=args.mode,
+                        player_guid=args.player_guid,
+                        exc=exc,
+                    )
 
             if args.max_iterations is not None and iteration >= int(args.max_iterations):
                 break

@@ -372,5 +372,29 @@ class EventWatchTests(unittest.TestCase):
         emit_mock.assert_called_once()
 
 
+def test_wow_running_probe_returns_bool(monkeypatch):
+    import wm.events.watch as watch
+    monkeypatch.setattr(watch, "_run_tasklist", lambda: "wow.exe  1234 Console")
+    assert watch._wow_client_running() is True
+    monkeypatch.setattr(watch, "_run_tasklist", lambda: "INFO: No tasks are running")
+    assert watch._wow_client_running() is False
+
+
+def test_watch_loop_applies_client_patch_on_close(monkeypatch):
+    import wm.events.watch as watch
+    monkeypatch.setattr(watch, "execute_event_spine", lambda **k: {"polled_count": 0})
+    seq = iter([True, False])
+    monkeypatch.setattr(watch, "_wow_client_running", lambda: next(seq, False))
+    applied = []
+    import wm.spells.client_patch_apply as apply_mod
+    monkeypatch.setattr(apply_mod, "apply_pending_client_patch",
+                        lambda **k: applied.append(k) or {"applied": True})
+    rc = watch.main(["--adapter", "native_bridge", "--mode", "dry-run",
+                     "--client-patch-on-close", "--max-iterations", "2",
+                     "--interval-seconds", "0", "--player-guid", "5405"])
+    assert rc == 0
+    assert applied  # fired on the running->closed edge
+
+
 if __name__ == "__main__":
     unittest.main()
