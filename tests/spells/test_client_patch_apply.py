@@ -45,3 +45,24 @@ def test_apply_keeps_pending_on_build_failure(tmp_path):
     assert out["applied"] is False
     assert "MPQEditor missing" in out["error"]
     assert load_pending(path=p)["entries"]
+
+
+def test_close_watcher_fires_only_on_running_to_closed_edge():
+    from wm.spells.client_patch_apply import ClientPatchCloseWatcher
+    fired = []
+    w = ClientPatchCloseWatcher(apply_fn=lambda: fired.append(True) or {"applied": True})
+    assert w.tick(running=False) is None
+    assert w.tick(running=True) is None
+    assert w.tick(running=True) is None
+    assert w.tick(running=False) == {"applied": True}
+    assert w.tick(running=False) is None
+    assert fired == [True]
+
+
+def test_close_watcher_handles_open_close_open_close():
+    from wm.spells.client_patch_apply import ClientPatchCloseWatcher
+    fired = []
+    w = ClientPatchCloseWatcher(apply_fn=lambda: fired.append(1) or {})
+    for running in (True, False, True, False):
+        w.tick(running=running)
+    assert fired == [1, 1]

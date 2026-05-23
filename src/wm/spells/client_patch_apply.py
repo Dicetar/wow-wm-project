@@ -66,3 +66,21 @@ def apply_pending_client_patch(
 
     clear_pending(path=pending_path)
     return {"applied": True, "spell_ids": spell_ids, "result": result}
+
+
+class ClientPatchCloseWatcher:
+    """Fires apply_fn on each wow.exe running -> not-running transition.
+
+    Pure edge logic: the caller feeds `running` (from any process probe) each
+    tick; we only fire when the previous tick was running and this one is not.
+    """
+    def __init__(self, *, apply_fn: Callable[[], Any]) -> None:
+        self._apply_fn = apply_fn
+        self._was_running = False
+
+    def tick(self, *, running: bool) -> Any | None:
+        fired = None
+        if self._was_running and not running:
+            fired = self._apply_fn()
+        self._was_running = running
+        return fired
