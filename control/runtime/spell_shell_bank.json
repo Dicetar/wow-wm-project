@@ -370,7 +370,7 @@
       "client_presentation": {
         "cast_time_index": 1,
         "dispel_type": 0,
-        "duration_index": 0,
+        "duration_index": 21,
         "effect_1": 6,
         "effect_base_points_1": 0,
         "effect_apply_aura_name_1": 4,
@@ -383,7 +383,7 @@
       },
       "patch_state": "planned",
       "notes": [
-        "Dedicated WM-owned player discovery marker. It clones an undispellable no-duration dummy-aura seed and forces no gameplay aura payload.",
+        "Dedicated WM-owned player discovery marker. Permanent dummy aura (duration_index 21 = infinite) so it shows on the buff panel with icon 135 / name 'WM Watcher Beacon'; no spell visual (no character VFX) and no gameplay aura payload.",
         "Use this instead of stock spell 132 for durable watcher-target discovery.",
         "Bridge sensing owns the tracking event; the aura is only the visible marker applied during the short wildcard observation window."
       ]
