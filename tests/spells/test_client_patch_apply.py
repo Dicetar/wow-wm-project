@@ -66,3 +66,14 @@ def test_close_watcher_handles_open_close_open_close():
     for running in (True, False, True, False):
         w.tick(running=running)
     assert fired == [1, 1]
+
+
+def test_cli_apply_now_invokes_apply(monkeypatch, capsys):
+    import wm.spells.client_patch_apply as mod
+    called = {}
+    monkeypatch.setattr(mod, "apply_pending_client_patch",
+                        lambda **k: called.update(k) or {"applied": False, "reason": "nothing pending"})
+    rc = mod.main(["--install-path", "C:/WoW/Data"])
+    assert rc == 0
+    assert called["install_path"] == "C:/WoW/Data"
+    assert "applied" in capsys.readouterr().out

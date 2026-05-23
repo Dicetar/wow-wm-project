@@ -84,3 +84,21 @@ class ClientPatchCloseWatcher:
             fired = self._apply_fn()
         self._was_running = running
         return fired
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    import json
+    p = argparse.ArgumentParser(prog="python -m wm.spells.client_patch_apply",
+                                description="Apply the pending client patch now (build-all + install).")
+    p.add_argument("--install-path", default=None)
+    p.add_argument("--mpq-editor", default=None)
+    args = p.parse_args(argv)
+    out = apply_pending_client_patch(install_path=args.install_path, mpq_editor=args.mpq_editor)
+    print(json.dumps(out, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
