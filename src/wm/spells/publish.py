@@ -10,6 +10,7 @@ from typing import Any
 
 from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient, MysqlCliError
+from wm.spells.client_patch_pending import mark_pending
 from wm.spells.models import ManagedSpellDraft, ManagedSpellLink, ManagedSpellProcRule
 from wm.spells.validator import validate_managed_spell_draft
 
@@ -39,6 +40,17 @@ PROC_COLUMN_CANDIDATES: dict[str, list[str]] = {
     "cooldown": ["Cooldown", "cooldown"],
     "charges": ["Charges", "charges"],
 }
+
+
+def _note_client_patch_pending(*, spell_entry: int, mode: str, applied: bool) -> None:
+    """Best-effort: queue a client-patch rebuild after a real spell publish.
+    Never let a pending-write failure break publishing."""
+    if mode != "apply" or not applied:
+        return
+    try:
+        mark_pending([int(spell_entry)], reason="spell publish")
+    except Exception:
+        pass
 
 
 @dataclass(slots=True)
@@ -298,7 +310,7 @@ class SpellPublisher:
             self._log_failure(draft.spell_entry, str(exc))
             raise
 
-        return SpellPublishResult(
+        result = SpellPublishResult(
             mode=mode,
             draft=draft.to_dict(),
             validation=validation.to_dict(),
@@ -307,6 +319,8 @@ class SpellPublisher:
             sql_plan=sql_plan.to_dict(),
             applied=True,
         )
+        _note_client_patch_pending(spell_entry=draft.spell_entry, mode=mode, applied=result.applied)
+        return result
 
     def _table_presence(self, table_names: set[str]) -> dict[str, bool]:
         rows = self.client.query(
