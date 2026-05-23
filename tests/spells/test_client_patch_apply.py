@@ -1,0 +1,47 @@
+import pytest
+from wm.spells.client_patch_apply import apply_pending_client_patch
+from wm.spells.client_patch_pending import mark_pending, load_pending
+
+
+def _build_ok(**kwargs):
+    return {"ok": True, "kwargs": kwargs}
+
+
+def test_apply_noop_when_nothing_pending(tmp_path):
+    p = tmp_path / "pending.json"
+    calls = []
+    out = apply_pending_client_patch(pending_path=p, build_fn=lambda **k: calls.append(k))
+    assert out["applied"] is False
+    assert out["reason"] == "nothing pending"
+    assert calls == []
+
+
+def test_apply_builds_installs_and_clears_when_pending(tmp_path):
+    p = tmp_path / "pending.json"
+    mark_pending([947000], reason="spell publish", path=p)
+    build_calls, cache_calls = [], []
+
+    out = apply_pending_client_patch(
+        pending_path=p,
+        install_path="C:/WoW/Data",
+        build_fn=lambda **k: build_calls.append(k) or _build_ok(**k),
+        cache_clear_fn=lambda: cache_calls.append(True),
+    )
+    assert out["applied"] is True
+    assert build_calls and build_calls[0]["include"] == "all"
+    assert build_calls[0]["install_path"] == "C:/WoW/Data"
+    assert cache_calls == [True]
+    assert load_pending(path=p)["entries"] == []
+
+
+def test_apply_keeps_pending_on_build_failure(tmp_path):
+    p = tmp_path / "pending.json"
+    mark_pending([947000], reason="spell publish", path=p)
+
+    def boom(**k):
+        raise RuntimeError("MPQEditor missing")
+
+    out = apply_pending_client_patch(pending_path=p, install_path="C:/WoW/Data", build_fn=boom)
+    assert out["applied"] is False
+    assert "MPQEditor missing" in out["error"]
+    assert load_pending(path=p)["entries"]
