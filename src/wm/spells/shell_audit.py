@@ -29,6 +29,7 @@ from wm.spells.server_dbc import SPELL_FAMILY_FLAGS_2_FIELD
 from wm.spells.server_dbc import SPELL_FAMILY_FLAGS_3_FIELD
 from wm.spells.server_dbc import SPELL_FAMILY_NAME_FIELD
 from wm.spells.server_dbc import SPELL_ICON_ID_FIELD
+from wm.spells.server_dbc import SPELL_NAME_START_FIELD
 from wm.spells.server_dbc import STACK_AMOUNT_FIELD
 from wm.spells.server_dbc import START_RECOVERY_TIME_FIELD
 from wm.spells.server_dbc import load_spell_dbc
@@ -143,6 +144,8 @@ def audit_spell_shells(
     selected_ids = sorted(set(int(spell_id) for spell_id in (spell_ids or named_rows.keys())))
     client_records = _load_dbc_fields(client_dbc) if client_dbc else {}
     server_records = _load_dbc_fields(server_dbc) if server_dbc else {}
+    client_names = _load_dbc_names(client_dbc) if client_dbc else {}
+    server_names = _load_dbc_names(server_dbc) if server_dbc else {}
 
     results: list[ShellAuditSpellResult] = []
     for spell_id in selected_ids:
@@ -165,8 +168,10 @@ def audit_spell_shells(
         issues.extend(_audit_shell_row(row))
         if client_dbc:
             issues.extend(_audit_dbc_record(row, client_records.get(spell_id), "client"))
+            issues.extend(_audit_dbc_name(row, client_names.get(spell_id), "client"))
         if server_dbc:
             issues.extend(_audit_dbc_record(row, server_records.get(spell_id), "server"))
+            issues.extend(_audit_dbc_name(row, server_names.get(spell_id), "server"))
         if client_dbc and server_dbc:
             issues.extend(_audit_client_server_match(row, client_records.get(spell_id), server_records.get(spell_id)))
 
@@ -234,11 +239,15 @@ def _audit_shell_row(row: SpellShellPatchRow) -> list[ShellAuditIssue]:
                     )
                 )
 
-    if row.family_id in {"unit_target_effect", "self_aura"} and _is_marker_aura(presentation):
-        if presentation.get("duration_index") in (None, 0):
-            issues.append(
-                _issue("warning", row.spell_id, "marker_aura_no_duration", "Visible marker aura has no duration_index.")
+    if _is_marker_aura(presentation) and presentation.get("duration_index") in (None, 0):
+        issues.append(
+            _issue(
+                "error",
+                row.spell_id,
+                "visible_buff_zero_duration",
+                "Visible dummy-aura buff must set a non-zero duration_index (use the infinite index for permanent markers).",
             )
+        )
 
     return issues
 
@@ -303,6 +312,36 @@ def _audit_client_server_match(
                 )
             )
     return issues
+
+
+def _audit_dbc_name(row: SpellShellPatchRow, name: str | None, label: str) -> list[ShellAuditIssue]:
+    if name is None:
+        return []
+    if name != row.label:
+        return [
+            _issue(
+                "error",
+                row.spell_id,
+                f"{label}_dbc_name_mismatch",
+                f"{label} DBC name expected {row.label!r}, found {name!r} (seed name may have leaked through).",
+            )
+        ]
+    return []
+
+
+def _load_dbc_names(path: str | Path | None) -> dict[int, str]:
+    if path is None:
+        return {}
+    dbc = load_spell_dbc(path)
+    names: dict[int, str] = {}
+    for record in dbc.records:
+        if len(record) != dbc.record_size:
+            continue
+        spell_id = record_spell_id(record)
+        name_offset = struct.unpack_from("<I", record, SPELL_NAME_START_FIELD * 4)[0]
+        end = dbc.string_block.find(b"\x00", name_offset)
+        names[spell_id] = dbc.string_block[name_offset:end].decode("utf-8", "replace")
+    return names
 
 
 def _load_dbc_fields(path: str | Path | None) -> dict[int, tuple[int, ...]]:

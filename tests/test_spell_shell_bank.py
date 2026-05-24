@@ -104,7 +104,7 @@ def test_bonebound_shell_definitions_are_present() -> None:
     assert watcher_beacon_shell.behavior_kind == "watcher_marker_beacon_v1"
     assert watcher_beacon_shell.client_presentation is not None
     assert watcher_beacon_shell.client_presentation["dispel_type"] == 0
-    assert watcher_beacon_shell.client_presentation["duration_index"] == 0
+    assert watcher_beacon_shell.client_presentation["duration_index"] == 21
     assert watcher_beacon_shell.client_presentation["effect_apply_aura_name_1"] == 4
     assert watcher_beacon_shell.client_presentation["spell_icon_id"] == 135
     assert broug_vulnerable_shell is not None
@@ -391,7 +391,7 @@ def test_patch_rows_expand_compatibility_and_generic_ranges_and_overlay_named_sh
     assert watcher_beacon_shell.is_named_override is True
     assert watcher_beacon_shell.shell_key == "wm_watcher_beacon_v1"
     assert watcher_beacon_shell.seed_template == "wm_watcher_marker"
-    assert watcher_beacon_shell.client_presentation["duration_index"] == 0
+    assert watcher_beacon_shell.client_presentation["duration_index"] == 21
     assert watcher_beacon_shell.client_presentation["effect_apply_aura_name_1"] == 4
     assert broug_vulnerable_shell.is_named_override is True
     assert broug_vulnerable_shell.shell_key == "broug_vulnerable_v1"

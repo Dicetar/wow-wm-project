@@ -113,6 +113,15 @@ EFFECT_MISC_VALUE_2_FIELD = 111
 EFFECT_MISC_VALUE_3_FIELD = 112
 DAMAGE_CLASS_FIELD = 213
 PREVENTION_TYPE_FIELD = 214
+SPELL_NAME_START_FIELD = 136
+SPELL_NAME_FLAGS_FIELD = 152
+SPELL_RANK_START_FIELD = 153
+SPELL_RANK_FLAGS_FIELD = 169
+SPELL_DESCRIPTION_START_FIELD = 170
+SPELL_DESCRIPTION_FLAGS_FIELD = 186
+SPELL_TOOLTIP_START_FIELD = 187
+SPELL_TOOLTIP_FLAGS_FIELD = 203
+LOCALIZED_FIELD_COUNT = 16
 
 
 @dataclass(slots=True)
@@ -277,6 +286,7 @@ def materialize_server_spell_dbc(
 
     working_records = [bytearray(record) for record in dbc.records]
     working_index_by_id = dbc.id_to_index()
+    working_string_block = bytearray(dbc.string_block)
     appended_count = 0
     replaced_count = 0
     for row in selected_rows:
@@ -284,6 +294,7 @@ def materialize_server_spell_dbc(
         materialized = bytearray(source_records_by_seed_id[seed_spell_id])
         struct.pack_into("<I", materialized, 0, int(row.spell_id))
         _apply_server_presentation(materialized, row)
+        _apply_server_text(materialized, working_string_block, row)
         existing_index = working_index_by_id.get(int(row.spell_id))
         if existing_index is None:
             working_records.append(materialized)
@@ -301,9 +312,9 @@ def materialize_server_spell_dbc(
             record_count=len(working_records),
             field_count=dbc.field_count,
             record_size=dbc.record_size,
-            string_block_size=dbc.string_block_size,
+            string_block_size=len(working_string_block),
             records=[bytes(record) for record in working_records],
-            string_block=dbc.string_block,
+            string_block=bytes(working_string_block),
         ),
     )
     selected_spell_ids = [int(row.spell_id) for row in selected_rows]
@@ -423,6 +434,33 @@ def _apply_server_presentation(record: bytearray, row: SpellShellPatchRow) -> No
                 (REAGENT_COUNT_START_FIELD + reagent_index - 1) * 4,
                 int(presentation[count_key]),
             )
+
+
+def _append_string(string_block: bytearray, text: str) -> int:
+    offset = len(string_block)
+    string_block.extend(text.encode("utf-8"))
+    string_block.append(0)
+    return offset
+
+
+def _apply_localized_string(record: bytearray, start_field: int, flags_field: int, offset: int) -> None:
+    for field_index in range(start_field, start_field + LOCALIZED_FIELD_COUNT):
+        struct.pack_into("<I", record, field_index * 4, offset)
+    struct.pack_into("<I", record, flags_field * 4, 0x00FF_FFFE)
+
+
+def _apply_server_text(record: bytearray, string_block: bytearray, row: SpellShellPatchRow) -> None:
+    if len(record) < (SPELL_TOOLTIP_FLAGS_FIELD + 1) * 4:
+        return
+    label_offset = _append_string(string_block, row.label)
+    tooltip = row.tooltip or f"WM shell {row.shell_key}."
+    tooltip_offset = _append_string(string_block, tooltip)
+    _apply_localized_string(record, SPELL_NAME_START_FIELD, SPELL_NAME_FLAGS_FIELD, label_offset)
+    _apply_localized_string(record, SPELL_DESCRIPTION_START_FIELD, SPELL_DESCRIPTION_FLAGS_FIELD, tooltip_offset)
+    _apply_localized_string(record, SPELL_TOOLTIP_START_FIELD, SPELL_TOOLTIP_FLAGS_FIELD, tooltip_offset)
+    for field_index in range(SPELL_RANK_START_FIELD, SPELL_RANK_START_FIELD + LOCALIZED_FIELD_COUNT):
+        struct.pack_into("<I", record, field_index * 4, 0)
+    struct.pack_into("<I", record, SPELL_RANK_FLAGS_FIELD * 4, 0x00FF_FFEC)
 
 
 def select_shell_patch_rows(

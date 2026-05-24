@@ -73,6 +73,7 @@ CATALOG: dict[str, list[tuple[str, str]]] = {
         ("spells.rollback", "Roll back a published spell"),
         ("spells.client_patch", "Build/install the client spell patch"),
         ("spells.server_dbc", "Materialize server Spell.dbc rows"),
+        ("spells.unified_dbc_publish", "Materialize+verify+stage client & server Spell.dbc in one lane"),
         ("spells.shell_audit", "Audit a shell-bank spell"),
         ("spells.shield_proficiency", "Grant scoped combat proficiencies"),
         ("spells.summon_release", "Fast Bonebound Alpha release submitter"),

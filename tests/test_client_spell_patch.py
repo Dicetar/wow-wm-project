@@ -244,7 +244,7 @@ def test_materialize_client_spell_dbc_applies_watcher_beacon_marker_text(tmp_pat
     assert fields[EFFECT_1_FIELD] == 6
     assert fields[CASTING_TIME_INDEX_FIELD] == 1
     assert fields[DISPEL_TYPE_FIELD] == 0
-    assert fields[DURATION_INDEX_FIELD] == 0
+    assert fields[DURATION_INDEX_FIELD] == 21
     assert fields[EFFECT_BASE_POINTS_1_FIELD] == 0
     assert fields[EFFECT_APPLY_AURA_NAME_1_FIELD] == 4
     assert fields[MANA_COST_FIELD] == 0

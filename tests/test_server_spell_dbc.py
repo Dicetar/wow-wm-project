@@ -665,9 +665,49 @@ def test_materialize_castable_profile_applies_undispellable_no_timer_watcher_mar
     assert result.selected_spell_ids == [946602]
     fields = _read_full_spell_fields(out_path, 946602)
     assert fields[DISPEL_TYPE_FIELD] == 0
-    assert fields[DURATION_INDEX_FIELD] == 0
+    assert fields[DURATION_INDEX_FIELD] == 21
     assert fields[EFFECT_BASE_POINTS_1_FIELD] == 0
     assert fields[EFFECT_APPLY_AURA_NAME_1_FIELD] == 4
+
+
+SPELL_NAME_START_FIELD = 136
+SPELL_DESCRIPTION_START_FIELD = 170
+SPELL_TOOLTIP_START_FIELD = 187
+
+
+def _read_full_spell_string(path: Path, spell_id: int, field_index: int) -> str:
+    raw = path.read_bytes()
+    _, record_count, field_count, record_size, string_block_size = struct.unpack("<4s4I", raw[:20])
+    records_end = 20 + record_count * record_size
+    records = raw[20:records_end]
+    string_block = raw[records_end : records_end + string_block_size]
+    for offset in range(0, len(records), record_size):
+        fields = struct.unpack("<" + "I" * field_count, records[offset : offset + record_size])
+        if fields[0] == spell_id:
+            str_offset = fields[field_index]
+            end = string_block.find(b"\x00", str_offset)
+            return string_block[str_offset:end].decode("utf-8")
+    raise AssertionError(f"Spell {spell_id} not found.")
+
+
+def test_materialize_authors_name_and_tooltip_from_shell_bank(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.dbc"
+    out_path = tmp_path / "out.dbc"
+    _write_full_test_spell_dbc(source_path, [49126])
+
+    result = materialize_server_spell_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        seed_profile="castable",
+        spell_ids=[940001],
+    )
+
+    assert result.selected_spell_ids == [940001]
+    assert _read_full_spell_string(out_path, 940001, SPELL_NAME_START_FIELD) == "Bonebound Alpha"
+    tooltip = "Raise Bonebound Alpha with WM-controlled bleed and echo behavior."
+    assert _read_full_spell_string(out_path, 940001, SPELL_DESCRIPTION_START_FIELD) == tooltip
+    assert _read_full_spell_string(out_path, 940001, SPELL_TOOLTIP_START_FIELD) == tooltip
 
 
 def test_materialize_replaces_existing_shell_rows_with_current_seed_record(tmp_path: Path) -> None:
