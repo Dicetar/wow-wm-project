@@ -120,6 +120,11 @@ class PanelApp:
             return self._wm_session_overview()
         if path == "/api/wm/session/status":
             return self._slice_status()
+        if path == "/api/wm/inbox":
+            return self._slice_inbox(
+                kind=_query_str(query, "kind"),
+                character_guid=_query_int(query, "character_guid", 0),
+            )
         if path == "/api/wm/session/pending":
             return self._slice_pending()
         if path == "/api/wm/session/issues":
@@ -163,6 +168,27 @@ class PanelApp:
         items = []
         for pp in rt.gate.pending():
             p = pp.proposal
+            items.append({
+                "id": pp.id,
+                "kind": p.kind.value,
+                "character_guid": p.character_guid,
+                "narrative_summary": p.narrative_summary,
+                "payload": p.payload,
+                "provenance": p.provenance,
+            })
+        return 200, {"pending": items}
+
+    def _slice_inbox(self, *, kind: str | None = None, character_guid: int = 0) -> tuple[int, Any]:
+        if (err := self._require_slice()) is not None:
+            return err
+        rt = self._slice
+        items = []
+        for pp in rt.gate.pending():
+            p = pp.proposal
+            if kind is not None and p.kind.value != kind:
+                continue
+            if character_guid and int(p.character_guid) != int(character_guid):
+                continue
             items.append({
                 "id": pp.id,
                 "kind": p.kind.value,
@@ -301,6 +327,8 @@ class PanelApp:
             return self._slice_approve(body)
         if path == "/api/wm/session/reject":
             return self._slice_reject(body)
+        if path == "/api/wm/rollback":
+            return self._slice_rollback(body)
         if path == "/api/wm/session/poll":
             return self._slice_poll(body)
         if path == "/api/slice/bootstrap":
@@ -330,6 +358,33 @@ class PanelApp:
         return 200, {
             "ok": bool(getattr(result, "ok", False)),
             "id": pid,
+            "detail": getattr(result, "detail", None),
+            "error": getattr(result, "error", None),
+        }
+
+    def _slice_rollback(self, body: dict[str, Any]) -> tuple[int, Any]:
+        if (err := self._require_slice()) is not None:
+            return err
+        artifact_type = str(body.get("artifact_type") or "").strip()
+        if not artifact_type:
+            return 400, {"ok": False, "error": "artifact_type is required"}
+        entry_raw = body.get("artifact_entry")
+        if entry_raw in (None, ""):
+            return 400, {"ok": False, "error": "artifact_entry is required"}
+        try:
+            artifact_entry = int(entry_raw)
+        except (TypeError, ValueError):
+            return 400, {"ok": False, "error": "artifact_entry must be an integer"}
+        mode = str(body.get("mode") or "apply")
+        try:
+            result = self._slice.gate.rollback(
+                artifact_type=artifact_type, artifact_entry=artifact_entry, mode=mode)
+        except Exception as exc:
+            return 500, {"ok": False, "error": f"rollback failed: {exc}"}
+        return 200, {
+            "ok": bool(getattr(result, "ok", False)),
+            "artifact_type": artifact_type,
+            "artifact_entry": artifact_entry,
             "detail": getattr(result, "detail", None),
             "error": getattr(result, "error", None),
         }
@@ -749,6 +804,13 @@ def _query_int(query: dict[str, list[str]], key: str, default: int) -> int:
         return int(values[0])
     except (TypeError, ValueError):
         return int(default)
+
+
+def _query_str(query: dict[str, list[str]], key: str) -> str | None:
+    values = query.get(key) or []
+    if not values or values[0] in (None, ""):
+        return None
+    return str(values[0])
 
 
 def _body_int(body: dict[str, Any], key: str, default: int) -> int:

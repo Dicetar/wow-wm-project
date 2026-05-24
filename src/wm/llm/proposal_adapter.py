@@ -19,6 +19,9 @@ class ProposalKind(str, Enum):
     QUEST = "quest"
     SCENE = "scene"
     ABILITY = "ability"
+    ITEM = "item"
+    SPELL = "spell"
+    ACTION = "action"
 
 
 class ProposalGenerationError(Exception):
@@ -48,6 +51,16 @@ _QUEST_REQUIRED_FIELDS = (
     "title", "objective", "description", "giver_creature_entry",
     "objective_kind", "rewards",
 )
+
+# Per-kind payload envelope key + the fields that key must carry. The deep
+# contract validation happens in each lane's publisher; this is the lightweight
+# gate-side shape check that mirrors the quest envelope above.
+_ENVELOPE_REQUIRED_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "quest": ("quest_release", _QUEST_REQUIRED_FIELDS),
+    "item": ("item_release", ("item_entry", "name")),
+    "spell": ("spell_release", ("spell_entry", "name")),
+    "action": ("action_request", ("action_kind",)),
+}
 
 
 @dataclass(slots=True)
@@ -181,12 +194,14 @@ class ProposalAdapter:
             return Proposal(kind=req.kind, payload=raw["payload"], character_guid=cg,
                             provenance=prov, is_blocked=True,
                             block_reason=f"kind mismatch: expected {req.kind.value}, got {raw['kind']!r}")
-        if req.kind is ProposalKind.QUEST:
-            q = raw["payload"].get("quest_release")
-            if not q:
+        envelope = _ENVELOPE_REQUIRED_FIELDS.get(req.kind.value)
+        if envelope is not None:
+            envelope_key, required_fields = envelope
+            if envelope_key not in raw["payload"] or raw["payload"].get(envelope_key) is None:
                 return Proposal(kind=req.kind, payload=raw["payload"], character_guid=cg,
-                                provenance=prov, is_blocked=True, block_reason="missing quest_release")
-            missing = [k for k in _QUEST_REQUIRED_FIELDS if k not in q]
+                                provenance=prov, is_blocked=True, block_reason=f"missing {envelope_key}")
+            section = raw["payload"].get(envelope_key) or {}
+            missing = [k for k in required_fields if k not in section]
             if missing:
                 return Proposal(kind=req.kind, payload=raw["payload"], character_guid=cg,
                                 provenance=prov, is_blocked=True,

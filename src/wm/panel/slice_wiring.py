@@ -139,6 +139,22 @@ def make_live_slice_factory(*, client: Any, cfg: SliceDbConfig,
             soap=SoapRuntimeClient(settings=settings),
             applier=applier)
         wrap_with_live_compilers(rt, applier=applier, publish_service=svc)
+
+        # Cross-lane (Panel V2.2): wire item/spell appliers + quest/item/spell
+        # rollbacks to the real publish/rollback contracts so the operator inbox
+        # can approve/roll back any managed artifact, not just quests.
+        from wm.items.publish import ItemPublisher
+        from wm.items.rollback import ItemRollback
+        from wm.panel.cross_lane import attach_cross_lane_wiring
+        from wm.spells.publish import SpellPublisher
+        from wm.spells.rollback import SpellRollback
+        attach_cross_lane_wiring(
+            rt,
+            item_publisher=ItemPublisher(client=client, settings=settings),
+            spell_publisher=SpellPublisher(client=client, settings=settings),
+            item_rollback=ItemRollback(client=client, settings=settings),
+            spell_rollback=SpellRollback(client=client, settings=settings),
+        )
         return rt
     return factory
 

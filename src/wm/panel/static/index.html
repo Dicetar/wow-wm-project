@@ -70,8 +70,37 @@
         </section>
 
         <section class="panel">
-          <h2>Pending Proposals</h2>
+          <h2>Cross-Lane Inbox</h2>
+          <div class="controls">
+            <label>Filter by kind
+              <select id="inboxKindFilter">
+                <option value="">All lanes</option>
+                <option value="quest">Quest</option>
+                <option value="item">Item</option>
+                <option value="spell">Spell</option>
+                <option value="ability">Ability</option>
+                <option value="scene">Scene</option>
+                <option value="action">Action</option>
+              </select>
+            </label>
+          </div>
           <div id="slicePending" class="list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Rollback Published Artifact</h2>
+          <div class="controls">
+            <label>Type
+              <select id="rollbackArtifactType">
+                <option value="quest">Quest</option>
+                <option value="item">Item</option>
+                <option value="spell">Spell</option>
+              </select>
+            </label>
+            <label>Entry <input id="rollbackArtifactEntry" type="number" placeholder="artifact entry id"></label>
+            <button id="rollbackArtifact" class="danger">Rollback</button>
+          </div>
+          <pre id="rollbackResult" class="output small"></pre>
         </section>
 
         <div class="grid two">

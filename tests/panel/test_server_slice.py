@@ -73,6 +73,16 @@ class _FakeApprovalGate:
     def reject(self, pid: int, *, reason: str) -> None:
         self.rejected.append((pid, reason))
 
+    def rollback(self, *, artifact_type: str, artifact_entry: int, mode: str = "apply") -> Any:
+        self.rolled_back = getattr(self, "rolled_back", [])
+        self.rolled_back.append((artifact_type, artifact_entry, mode))
+        @dataclass(slots=True)
+        class _R:
+            ok: bool = True
+            detail: dict | None = None
+            error: str | None = None
+        return _R(ok=True, detail={"artifact_type": artifact_type, "artifact_entry": artifact_entry})
+
 
 class _FakeIssuesQueue:
     def __init__(self) -> None:
@@ -348,6 +358,52 @@ class SliceReadEndpointTests(unittest.TestCase):
         self.assertEqual(first["narrative_summary"], "open zone intro")
         self.assertEqual(first["payload"], {"quest_id": 783})
         self.assertEqual(first["provenance"], {"source": "test"})
+
+    def test_inbox_aggregates_pending_across_all_lanes(self) -> None:
+        def factory(*, character_guid: int) -> _FakeRuntime:
+            return _FakeRuntime(character_guid=character_guid)
+
+        app = _make_app(factory=factory)
+        rt = self._bootstrap(app)
+        self._seed_pending(rt,
+                            (1, "quest", "open zone intro", {"q": 1}),
+                            (2, "item", "grant lens", {"item_entry": 910013}),
+                            (3, "spell", "echo blast", {"spell_entry": 946099}))
+
+        code, body = app.get("/api/wm/inbox")
+
+        self.assertEqual(code, 200, body)
+        self.assertEqual(len(body["pending"]), 3)
+        self.assertEqual({p["kind"] for p in body["pending"]}, {"quest", "item", "spell"})
+
+    def test_inbox_filters_by_kind(self) -> None:
+        def factory(*, character_guid: int) -> _FakeRuntime:
+            return _FakeRuntime(character_guid=character_guid)
+
+        app = _make_app(factory=factory)
+        rt = self._bootstrap(app)
+        self._seed_pending(rt,
+                            (1, "quest", "q", {"q": 1}),
+                            (2, "spell", "s", {"spell_entry": 946099}))
+
+        code, body = app.get("/api/wm/inbox?kind=spell")
+
+        self.assertEqual(code, 200, body)
+        self.assertEqual(len(body["pending"]), 1)
+        self.assertEqual(body["pending"][0]["kind"], "spell")
+
+    def test_rollback_endpoint_drives_gate_rollback(self) -> None:
+        def factory(*, character_guid: int) -> _FakeRuntime:
+            return _FakeRuntime(character_guid=character_guid)
+
+        app = _make_app(factory=factory)
+        rt = self._bootstrap(app)
+
+        code, body = app.post("/api/wm/rollback", {"artifact_type": "spell", "artifact_entry": 946099})
+
+        self.assertEqual(code, 200, body)
+        self.assertTrue(body["ok"], body)
+        self.assertEqual(rt.gate.rolled_back, [("spell", 946099, "apply")])
 
     def test_issues_returns_list_of_open_issues(self) -> None:
         def factory(*, character_guid: int) -> _FakeRuntime:

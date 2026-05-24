@@ -137,6 +137,8 @@ function bindActions() {
   $("slicePoll").addEventListener("click", slicePoll);
   $("sliceRefresh").addEventListener("click", refreshSlice);
   $("scanMarkers").addEventListener("click", scanMarkers);
+  $("inboxKindFilter").addEventListener("change", refreshSlice);
+  $("rollbackArtifact").addEventListener("click", sliceRollback);
 }
 
 function renderStatus(status) {
@@ -638,9 +640,11 @@ async function slicePoll() {
 
 async function refreshSlice() {
   try {
+    const kind = $("inboxKindFilter")?.value || "";
+    const inboxPath = kind ? `/api/wm/inbox?kind=${encodeURIComponent(kind)}` : "/api/wm/inbox";
     const [status, pending, issues, log] = await Promise.all([
       api("/api/wm/session/status"),
-      api("/api/wm/session/pending"),
+      api(inboxPath),
       api("/api/wm/session/issues"),
       api("/api/wm/session/log")
     ]);
@@ -809,6 +813,26 @@ async function sliceReject(id) {
     await refreshSlice();
   } catch (error) {
     renderSliceError(error.message);
+  }
+}
+
+async function sliceRollback() {
+  const artifactType = $("rollbackArtifactType").value;
+  const artifactEntry = Number($("rollbackArtifactEntry").value || 0);
+  if (!artifactEntry) {
+    $("rollbackResult").textContent = "Enter an artifact entry id.";
+    return;
+  }
+  if (!window.confirm(`Roll back ${artifactType} ${artifactEntry}?`)) return;
+  try {
+    const result = await api("/api/wm/rollback", {
+      method: "POST",
+      body: JSON.stringify({ artifact_type: artifactType, artifact_entry: artifactEntry })
+    });
+    $("rollbackResult").textContent = pretty(result);
+    await refreshSlice();
+  } catch (error) {
+    $("rollbackResult").textContent = error.message;
   }
 }
 

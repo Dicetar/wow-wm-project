@@ -462,10 +462,14 @@ def _sql_value(value: Any) -> str:
 
 def load_managed_spell_draft(path: str | Path) -> ManagedSpellDraft:
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    return managed_spell_draft_from_dict(raw)
+
+
+def managed_spell_draft_from_dict(raw: dict[str, Any]) -> ManagedSpellDraft:
     if isinstance(raw, dict) and isinstance(raw.get("draft"), dict):
         raw = raw["draft"]
     if not isinstance(raw, dict):
-        raise ValueError("Managed spell draft JSON must be an object.")
+        raise ValueError("Managed spell draft must be an object.")
     return ManagedSpellDraft(
         spell_entry=int(raw["spell_entry"]),
         slot_kind=str(raw["slot_kind"]),
