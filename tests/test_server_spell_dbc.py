@@ -132,8 +132,9 @@ def test_materialize_named_shell_rows_clones_seed_records(tmp_path: Path) -> Non
 
     result = materialize_server_spell_dbc(source_dbc=source_path, out=out_path, include="named")
 
-    assert result.appended_count == 26
+    assert result.appended_count == 27
     assert result.replaced_count == 0
+    assert result.inspection.checked_ids[946607] is True
     assert result.inspection.checked_ids[940000] is True
     assert result.inspection.checked_ids[940001] is True
     assert result.inspection.checked_ids[944000] is True

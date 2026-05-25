@@ -515,4 +515,4 @@ def test_patch_plan_reports_range_driven_summary() -> None:
     assert plan["slots_per_family"] == 100
     assert plan["reserve_gap_slots"] == 0
     assert plan["total_rows"] == 1004
-    assert plan["named_override_count"] == 26
+    assert plan["named_override_count"] == 27
