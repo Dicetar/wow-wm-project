@@ -119,35 +119,35 @@ class PanelApp:
         if path == "/api/wm/session/overview":
             return self._wm_session_overview()
         if path == "/api/wm/session/status":
-            return self._slice_status()
+            return self._session_status()
         if path == "/api/wm/inbox":
-            return self._slice_inbox(
+            return self._session_inbox(
                 kind=_query_str(query, "kind"),
                 character_guid=_query_int(query, "character_guid", 0),
             )
         if path == "/api/wm/session/pending":
-            return self._slice_pending()
+            return self._session_pending()
         if path == "/api/wm/session/issues":
-            return self._slice_issues()
+            return self._session_issues()
         if path == "/api/wm/session/log":
-            return self._slice_log()
+            return self._session_log()
         if path == "/api/slice/status":
-            return self._slice_status()
+            return self._session_status()
         if path == "/api/slice/pending":
-            return self._slice_pending()
+            return self._session_pending()
         if path == "/api/slice/issues":
-            return self._slice_issues()
+            return self._session_issues()
         if path == "/api/slice/log":
-            return self._slice_log()
+            return self._session_log()
         return 404, {"ok": False, "error": "Not found."}
 
-    def _require_slice(self) -> tuple[int, Any] | None:
+    def _require_session(self) -> tuple[int, Any] | None:
         if self._slice is None:
             return 404, {"ok": False, "error": "WM session not bootstrapped"}
         return None
 
-    def _slice_status(self) -> tuple[int, Any]:
-        if (err := self._require_slice()) is not None:
+    def _session_status(self) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
             return err
         rt = self._slice
         session = self.state.load_session()
@@ -161,8 +161,8 @@ class PanelApp:
             "applied_log_size": len(rt.applied_log),
         }
 
-    def _slice_pending(self) -> tuple[int, Any]:
-        if (err := self._require_slice()) is not None:
+    def _session_pending(self) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
             return err
         rt = self._slice
         items = []
@@ -178,8 +178,8 @@ class PanelApp:
             })
         return 200, {"pending": items}
 
-    def _slice_inbox(self, *, kind: str | None = None, character_guid: int = 0) -> tuple[int, Any]:
-        if (err := self._require_slice()) is not None:
+    def _session_inbox(self, *, kind: str | None = None, character_guid: int = 0) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
             return err
         rt = self._slice
         items = []
@@ -199,8 +199,8 @@ class PanelApp:
             })
         return 200, {"pending": items}
 
-    def _slice_issues(self) -> tuple[int, Any]:
-        if (err := self._require_slice()) is not None:
+    def _session_issues(self) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
             return err
         rt = self._slice
         items = []
@@ -215,8 +215,8 @@ class PanelApp:
             })
         return 200, {"issues": items}
 
-    def _slice_log(self, *, limit: int = 50) -> tuple[int, Any]:
-        if (err := self._require_slice()) is not None:
+    def _session_log(self, *, limit: int = 50) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
             return err
         rt = self._slice
         log = list(rt.applied_log)[-limit:]
@@ -235,13 +235,29 @@ class PanelApp:
             from wm.config import Settings
             from wm.doctor import run_doctor
 
-            checks = run_doctor(Settings.from_env())
+            settings = Settings.from_env()
+            checks = run_doctor(settings)
+            blockers = [
+                {
+                    "check": check.name,
+                    "status": check.status,
+                    "detail": check.detail,
+                }
+                for check in checks
+                if check.status in {"FAIL", "UNKNOWN"}
+            ]
+            payload["operator_profile"] = _operator_profile(settings)
             payload["doctor"] = {
                 "ok": not any(check.status == "FAIL" for check in checks),
                 "checks": [check.to_dict() for check in checks],
             }
+            payload["apply_blockers"] = blockers
+            payload["can_apply"] = not blockers
         except Exception as exc:
             payload["doctor"] = {"ok": False, "error": str(exc), "checks": []}
+            payload["operator_profile"] = {}
+            payload["apply_blockers"] = [{"check": "doctor", "status": "FAIL", "detail": str(exc)}]
+            payload["can_apply"] = False
         return payload
 
     def _wm_session_overview(self) -> tuple[int, Any]:
@@ -322,27 +338,27 @@ class PanelApp:
         if path == "/api/llm/adopt":
             return 200, self._log_llm_adoption(body)
         if path == "/api/wm/session/bootstrap":
-            return self._slice_bootstrap(body)
+            return self._session_bootstrap(body)
         if path == "/api/wm/session/approve":
-            return self._slice_approve(body)
+            return self._session_approve(body)
         if path == "/api/wm/session/reject":
-            return self._slice_reject(body)
+            return self._session_reject(body)
         if path == "/api/wm/rollback":
-            return self._slice_rollback(body)
+            return self._session_rollback(body)
         if path == "/api/wm/session/poll":
-            return self._slice_poll(body)
+            return self._session_poll(body)
         if path == "/api/slice/bootstrap":
-            return self._slice_bootstrap(body)
+            return self._session_bootstrap(body)
         if path == "/api/slice/approve":
-            return self._slice_approve(body)
+            return self._session_approve(body)
         if path == "/api/slice/reject":
-            return self._slice_reject(body)
+            return self._session_reject(body)
         if path == "/api/slice/poll":
-            return self._slice_poll(body)
+            return self._session_poll(body)
         return 404, {"ok": False, "error": "Not found."}
 
-    def _slice_approve(self, body: dict[str, Any]) -> tuple[int, Any]:
-        if (err := self._require_slice()) is not None:
+    def _session_approve(self, body: dict[str, Any]) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
             return err
         pid_raw = body.get("id")
         if pid_raw in (None, ""):
@@ -362,8 +378,8 @@ class PanelApp:
             "error": getattr(result, "error", None),
         }
 
-    def _slice_rollback(self, body: dict[str, Any]) -> tuple[int, Any]:
-        if (err := self._require_slice()) is not None:
+    def _session_rollback(self, body: dict[str, Any]) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
             return err
         artifact_type = str(body.get("artifact_type") or "").strip()
         if not artifact_type:
@@ -389,8 +405,8 @@ class PanelApp:
             "error": getattr(result, "error", None),
         }
 
-    def _slice_reject(self, body: dict[str, Any]) -> tuple[int, Any]:
-        if (err := self._require_slice()) is not None:
+    def _session_reject(self, body: dict[str, Any]) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
             return err
         pid_raw = body.get("id")
         if pid_raw in (None, ""):
@@ -406,8 +422,8 @@ class PanelApp:
             return 500, {"ok": False, "error": f"reject failed: {exc}"}
         return 200, {"ok": True, "id": pid, "reason": reason}
 
-    def _slice_poll(self, _body: dict[str, Any]) -> tuple[int, Any]:
-        if (err := self._require_slice()) is not None:
+    def _session_poll(self, _body: dict[str, Any]) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
             return err
         if self._slice_pump is None:
             return 409, {"ok": False, "error": "no pump wired; bootstrap with a pump_factory"}
@@ -418,7 +434,7 @@ class PanelApp:
         return 200, {"ok": True, "events_seen": int(n),
                      "last_seen_event_id": getattr(self._slice_pump, "last_seen_event_id", None)}
 
-    def _slice_bootstrap(self, body: dict[str, Any]) -> tuple[int, Any]:
+    def _session_bootstrap(self, body: dict[str, Any]) -> tuple[int, Any]:
         guid_raw = body.get("character_guid")
         session: dict[str, Any]
         if guid_raw in (None, ""):
@@ -458,6 +474,20 @@ class PanelApp:
                 return 500, {"ok": False, "error": f"pump factory failed: {exc}"}
         self.state.save_session(session)
         return 200, {"ok": True, "character_guid": guid, "session": session}
+
+    # Back-compat for older tests/extensions that reached into the private
+    # names while the panel was still branded as the slice prototype.
+    _require_slice = _require_session
+    _slice_status = _session_status
+    _slice_pending = _session_pending
+    _slice_inbox = _session_inbox
+    _slice_issues = _session_issues
+    _slice_log = _session_log
+    _slice_approve = _session_approve
+    _slice_rollback = _session_rollback
+    _slice_reject = _session_reject
+    _slice_poll = _session_poll
+    _slice_bootstrap = _session_bootstrap
 
     def _discover_session_from_marker(self, body: dict[str, Any]) -> dict[str, Any]:
         marker_spell_id = _body_int(body, "marker_spell_id", DEFAULT_MARKER_SPELL_ID)
@@ -665,6 +695,38 @@ def _default_slice_discoverer() -> int | None:
     unless the operator wires a real spine discoverer at construction time.
     """
     return None
+
+
+def _operator_profile(settings: Any) -> dict[str, Any]:
+    db_profile = (
+        "bridgelab-explicit"
+        if int(settings.world_db_port) == 33307 and int(settings.char_db_port) == 33307 and int(settings.soap_port) == 7879
+        else "default-or-custom"
+    )
+    return {
+        "profile": db_profile,
+        "world_db": {
+            "host": settings.world_db_host,
+            "port": int(settings.world_db_port),
+            "name": settings.world_db_name,
+            "user": settings.world_db_user,
+        },
+        "char_db": {
+            "host": settings.char_db_host,
+            "port": int(settings.char_db_port),
+            "name": settings.char_db_name,
+            "user": settings.char_db_user,
+        },
+        "soap": {
+            "host": settings.soap_host,
+            "port": int(settings.soap_port),
+            "enabled": bool(settings.soap_enabled),
+        },
+        "hint": (
+            "BridgeLab operator commands should set WM_WORLD_DB_PORT=33307, "
+            "WM_CHAR_DB_PORT=33307, and WM_SOAP_PORT=7879."
+        ),
+    }
 
 
 def serve(*, host: str = "127.0.0.1", port: int = 8765, state_root: Path | None = None,

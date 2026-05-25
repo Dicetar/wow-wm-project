@@ -1,5 +1,5 @@
-Status: PARTIAL
-Last verified: 2026-05-23
+Status: READY (v1 repo) / live loop proven
+Last verified: 2026-05-25
 Verified by: Codex
 Doc type: handoff
 
@@ -7,9 +7,18 @@ Doc type: handoff
 
 This is the current entrypoint for a new engineer or LLM.
 
+## 2026-05-25 update - v1 stabilization truth
+
+- **Universal WM Session is v1 `WORKING` for the release scope.** `origin/main` is at `d60404f` (`docs(release): WM v1 readiness + scope freeze`), the spell-shell and native action loops are live-proven, and the tracked suite is green at `973 passed`. `/api/wm/session/*`, `/api/wm/inbox`, and `/api/wm/rollback` are the canonical panel routes; `/api/slice/*` remains a compatibility alias only.
+- **BridgeLab readiness is explicit-env by design.** Default `wm.doctor --summary` uses generic local ports (`3306` / `7878`) and may report `NOT READY` on this workstation. The canonical live proof command sets `WM_WORLD_DB_PORT=33307`, `WM_CHAR_DB_PORT=33307`, and `WM_SOAP_PORT=7879`; with that profile, `wm.doctor --summary` verified `8/8 WORKING`.
+- **Panel internals still carry slice-prototype compatibility.** Session-named API handlers are canonical, but private `_slice*` aliases and old demo modules remain while tests and compatibility callers still reference them. Treat this as cosmetic debt, not an architecture fork.
+- **Local untracked May 18 platform plans were reviewed.** Their still-useful hardening item was the pytest marker/skip policy for DB and BridgeLab tests; the rest is superseded by current v1 release truth unless explicitly revived as historical planning. The untracked spell-family extractor overlaps with the tracked native split map and should not be promoted without its own tests and refactor decision.
+
+See also: [WM v1 Release Readiness](RELEASE_V1.md) and [BridgeLab Operator Environment](BRIDGELAB_OPERATOR_ENV.md).
+
 ## 2026-05-23 update - Universal WM Session panel V1
 
-- **Universal WM Session panel is repo-level `PARTIAL` pending full suite and live proof.** The panel now exposes `/api/wm/readiness`, `/api/wm/markers`, and `/api/wm/session/*` routes; `/api/slice/*` remains a compatibility alias for one release. Session bootstrap accepts an explicit GUID or marker discovery and persists `character_guid`, optional name, source, marker spell, event id, timestamp, and marker payload in panel state. The UI tab is now "WM Session" and no longer shows a hardcoded `5406` default for native queue work.
+- **Historical note:** Universal WM Session panel was repo-level `PARTIAL` on 2026-05-23 pending full suite and live proof. That is superseded by the 2026-05-25 v1 release state above. The panel exposes `/api/wm/readiness`, `/api/wm/markers`, and `/api/wm/session/*` routes; `/api/slice/*` remains a compatibility alias for one release. Session bootstrap accepts an explicit GUID or marker discovery and persists `character_guid`, optional name, source, marker spell, event id, timestamp, and marker payload in panel state. The UI tab is now "WM Session" and no longer shows a hardcoded `5406` default for native queue work.
 - **Marker discovery is canonicalized on `946602`.** Panel wiring imports `wm.sources.native_bridge.player_marker.DEFAULT_MARKER_SPELL_ID`; `BridgeEventPump` now uses the same constant and can read the marker spell from native `SubjectEntry` when payload lacks `spell_id`. The old `946500` slice marker is historical only.
 - **Operator commands were added behind the existing job gate.** `marker.scan` is read-only; `marker.scope_latest`, `marker.observe_all.start`, and `marker.observe_all.stop` are mutating, dry-run-required, and require type-job-id confirmation. These use owned CLIs only; no raw SQL, raw GM, shell-command, config-edit, or direct LLM mutation lane was added.
 - **BridgeLab readiness is less brittle.** `Settings` now has `WM_BRIDGELAB_DIR`, doctor probes both explicit `WM_BRIDGE_CONFIG_PATH` and BridgeLab `run/configs/modules/mod_wm_bridge.conf`, and missing config reports checked paths as `UNKNOWN` rather than a false `FAIL`. The bridge configure CLI also prefers the BridgeLab config when it exists and the bootstrap config does not.

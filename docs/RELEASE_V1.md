@@ -50,10 +50,10 @@ designed subsystem is built.
 - [x] Full test suite green — `python -m pytest -q` → **973 passed**
 - [x] `python -m wm.status --validate` → OK
 - [x] `python scripts/validate_agent_skills.py` → OK
-- [x] Working tree clean (only untracked planning docs/scripts remain — leave-alone)
-- [x] Branch pushed: `wm/spell-publish-and-panel-v2.2` (4 commits ahead of `main`)
-- [ ] PR opened + reviewed, then merged to `main`
-      (https://github.com/Dicetar/wow-wm-project/pull/new/wm/spell-publish-and-panel-v2.2)
+- [x] `origin/main` is at `d60404f` (`docs(release): WM v1 readiness + scope freeze`)
+- [x] `origin/wm/spell-publish-and-panel-v2.2` points to the same commit as `origin/main`
+- [x] No local ahead/behind delta between `main` and `origin/main`
+- [x] Untracked May 18 planning/tooling drift reviewed; only the pytest marker policy was promoted into v1 stabilization
 - [x] No freeform-SQL / GM-command / direct-LLM mutation lanes (every apply is a typed contract)
 
 ### Live target (BridgeLab) — verified
@@ -111,8 +111,13 @@ scripts/bridge_lab/Restart-BridgeLabWorldServer.ps1
 DB: `127.0.0.1:33307`, `acore`/`acore`. LM Studio: `http://localhost:1234`,
 model `qwen3-coder-30b-a3b-instruct`.
 
+Default `wm.doctor --summary` uses generic local ports (`3306` / `7878`) and may
+correctly report `NOT READY` when BridgeLab is running on lab ports. Use the
+explicit BridgeLab env above for live operator claims. See
+`docs/BRIDGELAB_OPERATOR_ENV.md`.
+
 ## 7. Sign-off
-v1 is **repo-ready and live-proven** for its two core lanes. The only release step
-left is landing the branch to `main` (open the PR above). Post-merge, the scope in
-§2 is frozen: new work either proves the existing loop or is explicitly added to
-the IN table — the OUT list stays out unless a concrete need reopens it.
+v1 is **repo-ready and live-proven** for its two core lanes, and the release branch
+has landed on `origin/main` at `d60404f`. The scope in Section 2 is frozen: new
+work either proves the existing loop or is explicitly added to the IN table; the
+OUT list stays out unless a concrete need reopens it.

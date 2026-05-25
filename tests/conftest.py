@@ -32,6 +32,19 @@ def pytest_configure(config: object) -> None:
     tempfile.TemporaryDirectory = _temporary_directory_factory(root)  # type: ignore[assignment]
 
 
+def pytest_collection_modifyitems(config: object, items: list[pytest.Item]) -> None:
+    del config
+    skip_db = pytest.mark.skip(reason="no DB configured; set WM_TEST_DB_HOST to enable")
+    skip_bridge = pytest.mark.skip(reason="no BridgeLab configured; set WM_TEST_BRIDGELAB=1 to enable")
+    db_enabled = bool(os.getenv("WM_TEST_DB_HOST"))
+    bridge_enabled = os.getenv("WM_TEST_BRIDGELAB", "").strip().lower() in {"1", "true", "yes", "on"}
+    for item in items:
+        if "bridge_contract" in item.keywords and not bridge_enabled:
+            item.add_marker(skip_bridge)
+        if ("db_integration" in item.keywords or "content_plan" in item.keywords) and not db_enabled:
+            item.add_marker(skip_db)
+
+
 @pytest.fixture
 def tmp_path() -> Path:
     root = _RUN_TEMP_ROOT

@@ -210,9 +210,15 @@ function renderWmReadiness(readiness) {
   const failed = (doctor.checks || []).filter((check) => check.status === "FAIL").length;
   const unknown = (doctor.checks || []).filter((check) => check.status === "UNKNOWN").length;
   const session = readiness.active_session || null;
+  const profile = readiness.operator_profile || {};
+  const blockers = readiness.apply_blockers || [];
   const rows = {
-    "Readiness": doctor.ok === false ? "PARTIAL" : "WORKING",
+    "Readiness": readiness.can_apply === false ? "PARTIAL" : "WORKING",
     "Doctor": `${failed} FAIL, ${unknown} UNKNOWN`,
+    "Profile": profile.profile || "(unknown)",
+    "World DB": profile.world_db ? `${profile.world_db.host}:${profile.world_db.port}/${profile.world_db.name}` : "(unknown)",
+    "SOAP": profile.soap ? `${profile.soap.host}:${profile.soap.port}` : "(unknown)",
+    "Cannot Apply Because": blockers.length ? blockers.map((b) => `${b.check}: ${b.status}`).join("; ") : "ready",
     "Marker Spell": readiness.marker_spell_id,
     "Selected": session ? `${session.character_guid}${session.character_name ? ` / ${session.character_name}` : ""}` : "(none)",
     "Source": session?.source || "(none)"

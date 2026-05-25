@@ -11,6 +11,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from typing import Any
+from unittest.mock import patch
 
 from wm.panel.catalog import CommandCatalog, CommandEntry
 from wm.panel.server import PanelApp
@@ -124,6 +125,16 @@ class _FakePump:
     def poll_once(self) -> int:
         self.calls += 1
         return 3 if self.calls == 1 else 0
+
+
+@dataclass(slots=True)
+class _FakeDoctorCheck:
+    name: str
+    status: str
+    detail: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"name": self.name, "status": self.status, "detail": self.detail}
 
 
 # --- fixtures -----------------------------------------------------------
@@ -283,6 +294,31 @@ class WmSessionEndpointTests(unittest.TestCase):
         from wm.sources.native_bridge.player_marker import DEFAULT_MARKER_SPELL_ID
 
         self.assertEqual(MARKER_SPELL_ID, DEFAULT_MARKER_SPELL_ID)
+
+    def test_wm_readiness_reports_operator_profile_and_apply_blockers(self) -> None:
+        checks = [
+            _FakeDoctorCheck("world_db", "WORKING", "reachable"),
+            _FakeDoctorCheck("soap", "FAIL", "connection refused"),
+            _FakeDoctorCheck("native_bridge", "UNKNOWN", "config not found"),
+        ]
+        with patch.dict("os.environ", {
+            "WM_WORLD_DB_PORT": "33307",
+            "WM_CHAR_DB_PORT": "33307",
+            "WM_SOAP_PORT": "7879",
+        }):
+            with patch("wm.doctor.run_doctor", return_value=checks):
+                app = _make_app()
+                code, body = app.get("/api/wm/readiness")
+
+        self.assertEqual(code, 200, body)
+        self.assertFalse(body["can_apply"])
+        self.assertEqual(body["operator_profile"]["profile"], "bridgelab-explicit")
+        self.assertEqual(body["operator_profile"]["world_db"]["port"], 33307)
+        self.assertEqual(body["operator_profile"]["soap"]["port"], 7879)
+        self.assertEqual(
+            {blocker["check"] for blocker in body["apply_blockers"]},
+            {"soap", "native_bridge"},
+        )
 
 
 class SliceReadEndpointTests(unittest.TestCase):
