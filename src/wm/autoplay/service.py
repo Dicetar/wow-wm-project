@@ -78,6 +78,7 @@ class AutoplayService:
         return self.store.save_status(next_status)
 
     def run_forever(self, *, config: AutoplayRuntimeConfig, once: bool = False) -> int:
+        self.store.save_command({"stop_requested": False, "paused": False})
         self.store.update_status(status="starting", running=True, paused=False, stop_requested=False, pid=os.getpid())
         if config.start_watcher and config.player_guid is not None:
             self._start_watcher(config)

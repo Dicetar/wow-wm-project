@@ -12,5 +12,20 @@ set "WM_SOAP_PORT=7879"
 set "WM_SOAP_ENABLED=1"
 
 cd /d "%PROJECT_ROOT%"
-"%PYTHON_EXE%" -m wm.autoplay run --project-root "%PROJECT_ROOT%" %*
+
+set "ARGS="
+:parse_args
+if "%~1"=="" goto run_autoplay
+if /I "%~1"=="-PlayerGuid" (
+  set "ARGS=%ARGS% --player-guid %~2"
+  shift
+  shift
+  goto parse_args
+)
+set "ARGS=%ARGS% %~1"
+shift
+goto parse_args
+
+:run_autoplay
+"%PYTHON_EXE%" -m wm.autoplay run --project-root "%PROJECT_ROOT%" %ARGS%
 exit /b %ERRORLEVEL%
