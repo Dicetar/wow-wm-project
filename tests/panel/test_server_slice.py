@@ -154,7 +154,7 @@ def _catalog() -> CommandCatalog:
     )
 
 
-def _make_app(*, factory=None, discoverer=None, pump_factory=None, marker_discoverer=None) -> PanelApp:
+def _make_app(*, factory=None, discoverer=None, pump_factory=None, marker_discoverer=None, autoplay_store=None) -> PanelApp:
     temp = tempfile.TemporaryDirectory()
     app = PanelApp(
         state=PanelState(Path(temp.name)),
@@ -163,6 +163,7 @@ def _make_app(*, factory=None, discoverer=None, pump_factory=None, marker_discov
         slice_discoverer=discoverer,
         slice_pump_factory=pump_factory,
         marker_discoverer=marker_discoverer,
+        autoplay_store=autoplay_store,
     )
     # keep temp alive for the app's lifetime
     app._test_temp = temp  # type: ignore[attr-defined]
@@ -319,6 +320,35 @@ class WmSessionEndpointTests(unittest.TestCase):
             {blocker["check"] for blocker in body["apply_blockers"]},
             {"soap", "native_bridge"},
         )
+
+    def test_autoplay_status_endpoint_reads_store(self) -> None:
+        from wm.autoplay.state import AutoplayStateStore
+
+        with tempfile.TemporaryDirectory() as temp:
+            store = AutoplayStateStore(Path(temp) / "autoplay")
+            store.update_status(status="running", running=True, paused=False)
+            app = _make_app(autoplay_store=store)
+
+            code, body = app.get("/api/wm/autoplay/status")
+
+            self.assertEqual(code, 200, body)
+            self.assertEqual(body["status"], "running")
+            self.assertTrue(body["running"])
+
+    def test_autoplay_pause_resume_endpoints_update_store(self) -> None:
+        from wm.autoplay.state import AutoplayStateStore
+
+        with tempfile.TemporaryDirectory() as temp:
+            store = AutoplayStateStore(Path(temp) / "autoplay")
+            app = _make_app(autoplay_store=store)
+
+            code, paused = app.post("/api/wm/autoplay/pause", {})
+            self.assertEqual(code, 200, paused)
+            self.assertTrue(paused["autoplay"]["paused"])
+
+            code, resumed = app.post("/api/wm/autoplay/resume", {})
+            self.assertEqual(code, 200, resumed)
+            self.assertFalse(resumed["autoplay"]["paused"])
 
 
 class SliceReadEndpointTests(unittest.TestCase):

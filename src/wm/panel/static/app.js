@@ -74,19 +74,21 @@ function toggleTheme() {
 }
 
 async function loadAll() {
-  const [status, catalog, schemas, settings, drafts, readiness] = await Promise.all([
+  const [status, catalog, schemas, settings, drafts, readiness, autoplay] = await Promise.all([
     api("/api/status"),
     api("/api/catalog"),
     api("/api/schemas"),
     api("/api/llm/settings"),
     api("/api/drafts"),
-    api("/api/wm/readiness")
+    api("/api/wm/readiness"),
+    api("/api/wm/autoplay/status")
   ]);
   state.commands = catalog.commands;
   state.schemas = schemas.schemas;
   state.activeSession = readiness.active_session || status.active_session || null;
   renderStatus(status);
   renderWmReadiness(readiness);
+  renderAutoplay(autoplay);
   renderSchemaSelects();
   renderCommands();
   renderSettings(settings);
@@ -136,6 +138,8 @@ function bindActions() {
   $("sliceBootstrap").addEventListener("click", sliceBootstrap);
   $("slicePoll").addEventListener("click", slicePoll);
   $("sliceRefresh").addEventListener("click", refreshSlice);
+  $("autoplayPause").addEventListener("click", () => setAutoplayPaused(true));
+  $("autoplayResume").addEventListener("click", () => setAutoplayPaused(false));
   $("scanMarkers").addEventListener("click", scanMarkers);
   $("inboxKindFilter").addEventListener("change", refreshSlice);
   $("rollbackArtifact").addEventListener("click", sliceRollback);
@@ -226,6 +230,33 @@ function renderWmReadiness(readiness) {
   $("wmReadiness").innerHTML = Object.entries(rows)
     .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd>`)
     .join("");
+}
+
+function renderAutoplay(autoplay) {
+  const llm = autoplay.llm || {};
+  const readiness = autoplay.readiness || {};
+  const counters = autoplay.counters || {};
+  const rows = {
+    "Status": autoplay.status || "(unknown)",
+    "Running": autoplay.running ? "yes" : "no",
+    "Paused": autoplay.paused ? "yes" : "no",
+    "Readiness": readiness.ok ? "ready" : "blocked",
+    "LLM": llm.ok ? `${llm.model || "(model)"}` : (llm.error || "not ready"),
+    "Ticks": counters.ticks || 0,
+    "Issues": (autoplay.issues || []).length,
+    "Maintenance": (autoplay.maintenance_pending || []).length
+  };
+  $("autoplayStatus").innerHTML = Object.entries(rows)
+    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd>`)
+    .join("");
+}
+
+async function setAutoplayPaused(paused) {
+  const result = await api(paused ? "/api/wm/autoplay/pause" : "/api/wm/autoplay/resume", {
+    method: "POST",
+    body: "{}"
+  });
+  renderAutoplay(result.autoplay || {});
 }
 
 function renderModelSelect(models, selected) {

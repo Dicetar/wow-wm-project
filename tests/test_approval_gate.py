@@ -103,6 +103,27 @@ def test_mode_is_passed_to_mode_aware_applier():
     assert modes == ["dry-run"]
 
 
+def test_dry_run_does_not_consume_pending_proposal():
+    iq = IssuesQueue()
+    modes: list[str] = []
+
+    def mode_aware_applier(p, *, mode):
+        modes.append(mode)
+        return {"ok": True, "mode": mode}
+
+    gate = ApprovalGate(issues=iq, spell_applier=mode_aware_applier)
+    gate.submit(_pending_spell())
+    pid = gate.pending()[0].id
+
+    dry_run = gate.dry_run(pid)
+    apply = gate.approve(pid, mode="apply")
+
+    assert dry_run.ok
+    assert apply.ok
+    assert modes == ["dry-run", "apply"]
+    assert gate.pending() == []
+
+
 def test_legacy_one_arg_compiler_still_works_without_mode():
     iq = IssuesQueue()
     calls: list[int] = []

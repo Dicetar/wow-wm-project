@@ -42,6 +42,7 @@ class PanelApp:
         slice_pump_factory: SlicePumpFactory | None = None,
         marker_discoverer: MarkerDiscoverer | None = None,
         character_reader: Callable[[int], Any] | None = None,
+        autoplay_store: Any | None = None,
     ) -> None:
         self.state = state or PanelState()
         self.state.ensure()
@@ -58,6 +59,7 @@ class PanelApp:
         self._slice_pump_factory = slice_pump_factory
         self._marker_discoverer = marker_discoverer
         self._character_reader = character_reader
+        self._autoplay_store = autoplay_store
 
     def get(self, raw_path: str) -> tuple[int, Any]:
         parsed_url = urlparse(raw_path)
@@ -110,6 +112,8 @@ class PanelApp:
             return 200, {"proposals": self.state.list_drafts(limit=100)}
         if path == "/api/wm/readiness":
             return 200, self._wm_readiness()
+        if path == "/api/wm/autoplay/status":
+            return 200, self._autoplay_status()
         if path == "/api/wm/markers":
             return 200, self._wm_markers(
                 since_seconds=_query_int(query, "since_seconds", 300),
@@ -258,7 +262,22 @@ class PanelApp:
             payload["operator_profile"] = {}
             payload["apply_blockers"] = [{"check": "doctor", "status": "FAIL", "detail": str(exc)}]
             payload["can_apply"] = False
+        payload["autoplay"] = self._autoplay_status()
         return payload
+
+    def _autoplay_status(self) -> dict[str, Any]:
+        try:
+            from wm.autoplay.state import AutoplayStateStore
+            store = self._autoplay_store or AutoplayStateStore()
+            return store.load_status()
+        except Exception as exc:
+            return {
+                "schema_version": "wm.autoplay.status.v1",
+                "status": "unknown",
+                "running": False,
+                "paused": False,
+                "error": str(exc),
+            }
 
     def _wm_session_overview(self) -> tuple[int, Any]:
         session = self.state.load_session()
@@ -339,6 +358,10 @@ class PanelApp:
             return 200, self._log_llm_adoption(body)
         if path == "/api/wm/session/bootstrap":
             return self._session_bootstrap(body)
+        if path == "/api/wm/autoplay/pause":
+            return 200, self._autoplay_pause(paused=True)
+        if path == "/api/wm/autoplay/resume":
+            return 200, self._autoplay_pause(paused=False)
         if path == "/api/wm/session/approve":
             return self._session_approve(body)
         if path == "/api/wm/session/reject":
@@ -356,6 +379,12 @@ class PanelApp:
         if path == "/api/slice/poll":
             return self._session_poll(body)
         return 404, {"ok": False, "error": "Not found."}
+
+    def _autoplay_pause(self, *, paused: bool) -> dict[str, Any]:
+        from wm.autoplay.state import AutoplayStateStore
+        store = self._autoplay_store or AutoplayStateStore()
+        status = store.set_paused(bool(paused))
+        return {"ok": True, "autoplay": status}
 
     def _session_approve(self, body: dict[str, Any]) -> tuple[int, Any]:
         if (err := self._require_session()) is not None:

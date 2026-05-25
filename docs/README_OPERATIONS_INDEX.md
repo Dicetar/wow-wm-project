@@ -23,6 +23,7 @@ Repo-local skills live under `../.agents/skills/` and are selected by task:
 The [WM Agent Skills Lifecycle](AGENT_SKILLS_LIFECYCLE.md) adapts the public Agent Skills define/plan/build/verify/review/ship pattern to WM's repo-local skills and release gates. Validate the local skill set with `python scripts/validate_agent_skills.py`.
 
 The [WM Control Panel + LM Studio V1](CONTROL_PANEL_LM_STUDIO_V1.md) doc is the current status page for the local operator console, schema workbench, and draft-only LM Studio lane.
+The [WM Autoplay + LLM Playability](WM_AUTOPLAY_LLM_PLAYABILITY.md) doc covers the no-Codex local autoplay service and its current limits.
 
 The repo uses a Diataxis-style split:
 
@@ -39,6 +40,7 @@ The repo uses a Diataxis-style split:
 - [Work Summary](WORK_SUMMARY.md) - compact summary of what the repo has built
 - [Summon and Spell Platform Status](SUMMON_SPELL_PLATFORM_STATUS.md) - current summon/spell truth source
 - [WM Control Panel + LM Studio V1](CONTROL_PANEL_LM_STUDIO_V1.md) - local control panel, schema workbench, LM Studio draft lifecycle, and known gaps
+- [WM Autoplay + LLM Playability](WM_AUTOPLAY_LLM_PLAYABILITY.md) - local autoplay service, schema-locked LLM drafts, policy gates, and safe DBC staging
 - [Live Proof Backlog](LIVE_PROOF_BACKLOG.md) - deferred gameplay proof packets that separate repo/API `WORKING` from gameplay `PARTIAL`
 - [Roadmap](ROADMAP.md) - canonical intended product direction: per-character arcs, exclusive rewards, wild powers, companion behavior, live scenes, conversation steering, and locked-contract LLM use. Current-state docs remain the truth for what is proven now
 
@@ -48,6 +50,7 @@ The repo uses a Diataxis-style split:
 - [How-To Conventions](HOWTO_CONVENTIONS.md) - format rules for future operational guides
 - [Cleanup Playbook](CLEANUP_PLAYBOOK.md) - cleanup and reset discipline
 - [Deployment Windows](DEPLOYMENT_WINDOWS.md) - Windows-oriented setup/runtime notes
+- [WM Autoplay + LLM Playability](WM_AUTOPLAY_LLM_PLAYABILITY.md) - run/status/stop commands for playing with WM active
 
 ## Architecture / Decisions
 

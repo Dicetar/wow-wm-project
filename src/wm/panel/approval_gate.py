@@ -113,6 +113,31 @@ class ApprovalGate:
                              payload=p.payload, provenance=p.provenance)
             return ApplyResult(ok=False, error=str(e))
 
+    def dry_run(self, pid: int) -> ApplyResult:
+        """Preview a pending proposal without consuming it.
+
+        Autoplay needs this exact primitive: validate/dry-run the proposal, then
+        apply the same pending item only if policy still allows it.
+        """
+        pp = self._find(pid)
+        if pp is None:
+            return ApplyResult(ok=False, error="not_found")
+        p = pp.proposal
+        applier = self._applier_for(p.kind)
+        if applier is None:
+            self._issues.add(reason=f"no applier wired for kind={p.kind.value}",
+                             kind=p.kind.value, character_guid=p.character_guid,
+                             payload=p.payload, provenance=p.provenance)
+            return ApplyResult(ok=False, error="no_applier")
+        try:
+            detail = _invoke(applier, p, "dry-run")
+            return ApplyResult(ok=True, detail=detail)
+        except Exception as e:
+            self._issues.add(reason=f"dry_run_exception: {e}",
+                             kind=p.kind.value, character_guid=p.character_guid,
+                             payload=p.payload, provenance=p.provenance)
+            return ApplyResult(ok=False, error=str(e))
+
     def rollback(self, *, artifact_type: str, artifact_entry: int, mode: str = "apply") -> ApplyResult:
         fn = self._rollbacks.get(artifact_type)
         if fn is None:
@@ -140,6 +165,12 @@ class ApprovalGate:
         for i, x in enumerate(self._pending):
             if x.id == pid:
                 return self._pending.pop(i)
+        return None
+
+    def _find(self, pid: int) -> PendingProposal | None:
+        for x in self._pending:
+            if x.id == pid:
+                return x
         return None
 
 
