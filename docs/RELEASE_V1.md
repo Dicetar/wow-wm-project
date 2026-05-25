@@ -47,10 +47,11 @@ designed subsystem is built.
 ## 3. Release readiness checklist (verified 2026-05-25)
 
 ### Pre-release
-- [x] Full test suite green — `python -m pytest -q` → **973 passed**
+- [x] Full test suite green — `python -m pytest -q` → **976 passed**
 - [x] `python -m wm.status --validate` → OK
 - [x] `python scripts/validate_agent_skills.py` → OK
-- [x] `origin/main` is at `d60404f` (`docs(release): WM v1 readiness + scope freeze`)
+- [x] `origin/main` is at `32a361e` (`chore(v1): stabilize operator readiness and panel session surface`)
+- [x] Release scope freeze base is `d60404f` (`docs(release): WM v1 readiness + scope freeze`)
 - [x] `origin/wm/spell-publish-and-panel-v2.2` points to the same commit as `origin/main`
 - [x] No local ahead/behind delta between `main` and `origin/main`
 - [x] Untracked May 18 planning/tooling drift reviewed; only the pytest marker policy was promoted into v1 stabilization
@@ -59,8 +60,9 @@ designed subsystem is built.
 ### Live target (BridgeLab) — verified
 - [x] `wm.doctor --summary` (lab ports) → **8/8 WORKING / READY**
 - [x] SOAP `7879` up; worldserver pid stable; DB `33307` reachable
-- [x] Marker → scope → native `debug_ping` → `done`
-- [x] New shell → publish → restart → client patch → apply → **visible in-client**
+- [x] Marker → scope → native `debug_ping` → `done`; latest proof request `714` returned `pong`
+- [x] New shell → publish → restart → client patch → apply → **visible in-client**; latest aura proof request `713` applied `946607` to scoped GUID `5408`
+- [x] Unified DBC publish for `946607` staged server `Spell.dbc`; client `patch-z.mpq` was rebuilt, installed, and hash-verified
 
 ### Bootstrapping a fresh environment
 - [ ] Apply DB bootstrap SQL (`sql/bootstrap/*.sql`, incl. `wm_ability_tables.sql`)
@@ -76,6 +78,9 @@ designed subsystem is built.
 - **Worldserver restart required** for any new spell shell (DBC loads at startup;
   not hot-reloadable) — and a restart disconnects the whole realm.
 - **Client patch** requires the WoW client closed (it locks `patch-z.mpq`).
+- **Live native rollback** requires the scoped character online. The latest
+  `player_remove_aura 946607` rollback attempt reached the bridge as request
+  `715` but correctly failed with `player_not_online`.
 - Panel internals still carry `slice_*` names; `/api/wm/session/*` is canonical
   externally. Cosmetic debt, not a blocker.
 - Native action coverage is 57/99 kinds by design (see §2 OUT).
@@ -117,7 +122,7 @@ explicit BridgeLab env above for live operator claims. See
 `docs/BRIDGELAB_OPERATOR_ENV.md`.
 
 ## 7. Sign-off
-v1 is **repo-ready and live-proven** for its two core lanes, and the release branch
-has landed on `origin/main` at `d60404f`. The scope in Section 2 is frozen: new
+v1 is **repo-ready and live-proven** for its two core lanes, and the stabilization
+work has landed on `origin/main` at `32a361e`. The scope in Section 2 is frozen: new
 work either proves the existing loop or is explicitly added to the IN table; the
 OUT list stays out unless a concrete need reopens it.
