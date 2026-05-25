@@ -18,6 +18,7 @@ from wm.quests.models import BountyQuestDraft
 from wm.quests.models import BountyQuestObjective
 from wm.quests.models import BountyQuestReward
 from wm.quests.publish import QuestPublisher
+from wm.reactive.cooldowns import auto_bounty_grant_cooldown_key
 from wm.reactive.runtime import ReactiveQuestRuntimeManager
 from wm.reactive.store import ReactiveQuestStore
 from wm.refs import creature_ref_from_value
@@ -127,6 +128,18 @@ class ReactionExecutor:
         ):
             self.store.set_cooldown(
                 key=plan.cooldown_key,
+                cooldown_seconds=plan.cooldown_seconds,
+                metadata={"plan_key": plan.plan_key, "opportunity_type": plan.opportunity_type},
+            )
+        if (
+            record_audit
+            and status == "applied"
+            and cooldown_eligible
+            and plan.opportunity_type == "reactive_bounty_grant"
+            and plan.cooldown_seconds
+        ):
+            self.store.set_cooldown(
+                key=auto_bounty_grant_cooldown_key(player_guid=plan.player_guid),
                 cooldown_seconds=plan.cooldown_seconds,
                 metadata={"plan_key": plan.plan_key, "opportunity_type": plan.opportunity_type},
             )

@@ -311,7 +311,10 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         self.assertEqual(rule.quest_id, 910321)
         self.assertEqual(rule.turn_in_npc_entry, 264)
         self.assertEqual(rule.quest.title, "Bounty: Nightbane Shadow Weaver")
-        self.assertTrue(bool(rule.metadata.get("require_consecutive_kills")))
+        self.assertEqual(rule.kill_threshold, 5)
+        self.assertEqual(rule.window_seconds, 180)
+        self.assertFalse(bool(rule.metadata.get("require_consecutive_kills")))
+        self.assertEqual(rule.metadata.get("bounty_trigger_mode"), "rolling_window")
         self.assertEqual(rule.metadata.get("auto_bounty_turn_in_strategy"), "zone_quest_ties")
         self.assertEqual(rule.metadata.get("reward_policy"), "random_suitable_equipment_v1")
         projected_reward = rule.metadata.get("projected_reward")
@@ -323,7 +326,7 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         self.assertEqual(rule.metadata.get("reward_item_name"), "Ice-Layered Barrier")
         self.assertEqual(installer.calls[0][1], "apply")
         self.assertEqual(turn_in_selector.calls, [(5406, 10)])
-        self.assertEqual(reactive_store.deactivated, [(5406, "reactive_bounty:auto:zone:10:subject:533")])
+        self.assertEqual(reactive_store.deactivated, [])
 
     def test_override_target_keeps_explicit_turn_in_npc_and_quest_id(self) -> None:
         reactive_store = _FakeReactiveStore()
@@ -391,7 +394,7 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         )
         manager = ReactiveAutoBountyManager(
             client=_AutoBountyGateClient(quest_ids=[910090]),  # type: ignore[arg-type]
-            settings=Settings(),
+            settings=Settings(reactive_auto_bounty_single_open_per_player=True),
             reactive_store=reactive_store,  # type: ignore[arg-type]
             installer=installer,  # type: ignore[arg-type]
             resolver=_FakeResolver(),  # type: ignore[arg-type]
@@ -438,7 +441,7 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         client = _AutoBountyGateClient(quest_ids=[910090], latest_event_type="quest_granted")
         manager = ReactiveAutoBountyManager(
             client=client,  # type: ignore[arg-type]
-            settings=Settings(),
+            settings=Settings(reactive_auto_bounty_single_open_per_player=True),
             reactive_store=reactive_store,  # type: ignore[arg-type]
             installer=installer,  # type: ignore[arg-type]
             resolver=_FakeResolver(),  # type: ignore[arg-type]
@@ -530,7 +533,7 @@ class ReactiveAutoBountyTests(unittest.TestCase):
         )
         manager = ReactiveAutoBountyManager(
             client=_AutoBountyGateClient(quest_ids=[910090], latest_event_type="quest_removed"),  # type: ignore[arg-type]
-            settings=Settings(),
+            settings=Settings(reactive_auto_bounty_single_open_per_player=True),
             reactive_store=reactive_store,  # type: ignore[arg-type]
             installer=installer,  # type: ignore[arg-type]
             resolver=_FakeResolver(),  # type: ignore[arg-type]

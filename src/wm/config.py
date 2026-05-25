@@ -67,7 +67,7 @@ class Settings:
     event_area_pressure_scene_message: str = "WM senses rising pressure here. Hold the line."
     reactive_auto_bounty_enabled: bool = False
     reactive_auto_bounty_max_event_age_seconds: int = 3600
-    reactive_auto_bounty_single_open_per_player: bool = True
+    reactive_auto_bounty_single_open_per_player: bool = False
     random_enchant_on_kill_enabled: bool = False
     random_enchant_on_kill_chance_pct: float = 7.0
     random_enchant_preserve_existing_chance_pct: float = 15.0
@@ -147,7 +147,7 @@ class Settings:
             ),
             reactive_auto_bounty_single_open_per_player=os.getenv(
                 "WM_REACTIVE_AUTO_BOUNTY_SINGLE_OPEN_PER_PLAYER",
-                "1",
+                "0",
             ).strip().lower()
             in {"1", "true", "yes", "on"},
             random_enchant_on_kill_enabled=os.getenv("WM_RANDOM_ENCHANT_ON_KILL_ENABLED", "0").strip().lower()

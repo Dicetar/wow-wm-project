@@ -340,8 +340,8 @@ if ($Watcher -eq "auto-bounty") {
         "-LabMySqlPort", ([string]$LabMySqlPort),
         "-SoapPort", ([string]$SoapPort)
     )
-    if (-not $ResetBountyRules.IsPresent) {
-        $autoArgs += "-KeepExistingBountyRules"
+    if ($ResetBountyRules.IsPresent) {
+        $autoArgs += "-ResetExistingBountyRules"
     }
     if ($KeepExistingEventBacklog.IsPresent) {
         $autoArgs += "-KeepExistingEventBacklog"

@@ -16,6 +16,7 @@ from wm.events.store import EventStore
 from wm.journal.reader import SubjectJournalBundle
 from wm.journal.reader import load_subject_journal_for_creature
 from wm.reactive.auto_bounty import ReactiveAutoBountyManager
+from wm.reactive.cooldowns import auto_bounty_grant_cooldown_key
 from wm.reactive.models import PlayerQuestRuntimeState
 from wm.reactive.models import ReactiveQuestRule
 from wm.reactive.store import ReactiveQuestStore
@@ -118,6 +119,13 @@ class DeterministicRuleEngine:
             player_guid=event.player_guid,
         )
         rules = [rule for rule in rules if _rule_matches_event(rule=rule, event=event)]
+        bounty_lane_possible = bool(rules) or self.auto_bounty is not None
+        if bounty_lane_possible and _auto_bounty_grant_cooldown_active(
+            store=self.store,
+            event=event,
+            player_guid=int(event.player_guid or 0),
+        ):
+            return True
         if not rules and not preview and self.auto_bounty is not None:
             if not _event_is_fresh_for_auto_bounty(event=event, settings=self.settings):
                 return True
@@ -132,6 +140,10 @@ class DeterministicRuleEngine:
         if not rules:
             return False
 
+        cooldown_floor = _auto_bounty_grant_cooldown_floor(
+            store=self.store,
+            player_guid=int(event.player_guid or 0),
+        )
         # Fetch the newest bounded slice first, then restore chronological order
         # for streak/window math.  `ORDER ASC LIMIT n` returns the oldest rows in
         # a long-running event log, which hides fresh live kills from the watcher.
@@ -155,6 +167,7 @@ class DeterministicRuleEngine:
                 event=event,
                 rule=rule,
                 recent_player_kills=recent_observed_kills,
+                ignore_kills_at_or_before=cooldown_floor,
                 recent_kills=[
                     candidate
                     for candidate in recent_observed_kills
@@ -279,6 +292,7 @@ class DeterministicRuleEngine:
         event: WMEvent,
         rule: ReactiveQuestRule,
         recent_player_kills: list[WMEvent],
+        ignore_kills_at_or_before: datetime | None,
         recent_kills: list[WMEvent],
         result: RuleEvaluationResult,
     ) -> None:
@@ -298,6 +312,7 @@ class DeterministicRuleEngine:
             current_event=event,
             recent_player_kills=recent_player_kills,
             recent_kills=recent_kills,
+            ignore_kills_at_or_before=ignore_kills_at_or_before,
         )
         if not burst["threshold_crossed"]:
             return
@@ -423,7 +438,7 @@ def _reactive_opportunity(
         subject=SubjectRef(subject_type=rule.subject_type, subject_entry=rule.subject_entry),
         source_event_key=event.source_event_key,
         metadata=metadata,
-        cooldown_seconds=None,
+        cooldown_seconds=max(0, int(rule.post_reward_cooldown_seconds)),
     )
 
 
@@ -468,6 +483,7 @@ def _kill_burst_window(
     current_event: WMEvent,
     window_seconds: int,
     threshold: int,
+    ignore_kills_at_or_before: datetime | None = None,
 ) -> dict[str, int | bool]:
     current_at = _parse_timestamp(current_event.occurred_at)
     if current_at is None:
@@ -479,6 +495,8 @@ def _kill_burst_window(
     for candidate in recent_kills:
         candidate_at = _parse_timestamp(candidate.occurred_at)
         if candidate_at is None or candidate_at < cutoff:
+            continue
+        if ignore_kills_at_or_before is not None and candidate_at <= ignore_kills_at_or_before:
             continue
         if _event_after(candidate, current_event, candidate_at=candidate_at, current_at=current_at):
             continue
@@ -501,6 +519,7 @@ def _kill_burst_consecutive(
     recent_player_kills: list[WMEvent],
     current_event: WMEvent,
     rule: ReactiveQuestRule,
+    ignore_kills_at_or_before: datetime | None = None,
 ) -> dict[str, int | bool | str]:
     current_at = _parse_timestamp(current_event.occurred_at)
     if current_at is None:
@@ -518,6 +537,8 @@ def _kill_burst_consecutive(
     for candidate in reversed(recent_player_kills):
         candidate_at = _parse_timestamp(candidate.occurred_at)
         if candidate_at is None:
+            continue
+        if ignore_kills_at_or_before is not None and candidate_at <= ignore_kills_at_or_before:
             continue
         if candidate_at < cutoff:
             break
@@ -548,18 +569,21 @@ def _reactive_rule_threshold_state(
     current_event: WMEvent,
     recent_player_kills: list[WMEvent],
     recent_kills: list[WMEvent],
+    ignore_kills_at_or_before: datetime | None = None,
 ) -> dict[str, int | bool | str]:
     if _rule_requires_consecutive_kills(rule):
         return _kill_burst_consecutive(
             recent_player_kills=recent_player_kills,
             current_event=current_event,
             rule=rule,
+            ignore_kills_at_or_before=ignore_kills_at_or_before,
         )
     return _kill_burst_window(
         recent_kills=recent_kills,
         current_event=current_event,
         window_seconds=rule.window_seconds,
         threshold=rule.kill_threshold,
+        ignore_kills_at_or_before=ignore_kills_at_or_before,
     )
 
 
@@ -611,6 +635,24 @@ def _event_after(
     if candidate_event_id and current_event_id:
         return candidate_event_id > current_event_id
     return candidate.source_event_key > current_event.source_event_key
+
+
+def _auto_bounty_grant_cooldown_active(*, store: EventStore, event: WMEvent, player_guid: int) -> bool:
+    if player_guid <= 0:
+        return False
+    return store.is_cooldown_active(auto_bounty_grant_cooldown_key(player_guid=player_guid), at=event.occurred_at)
+
+
+def _auto_bounty_grant_cooldown_floor(*, store: EventStore, player_guid: int) -> datetime | None:
+    if player_guid <= 0:
+        return None
+    getter = getattr(store, "get_cooldown", None)
+    if getter is None:
+        return None
+    record = getter(auto_bounty_grant_cooldown_key(player_guid=player_guid))
+    if record is None:
+        return None
+    return _parse_timestamp(record.cooldown_until)
 
 
 def _post_reward_cooldown_active(

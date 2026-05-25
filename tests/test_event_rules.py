@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import patch
 
 from wm.config import Settings
+from wm.events.models import ReactionCooldownRecord
+from wm.events.models import SubjectRef
 from wm.events.models import WMEvent
 from wm.events.rules import DeterministicRuleEngine
 from wm.journal.models import JournalCounters
@@ -10,16 +12,22 @@ from wm.journal.models import SubjectCard
 from wm.journal.reader import SubjectJournalBundle
 from wm.reactive.models import PlayerQuestRuntimeState
 from wm.reactive.models import ReactiveQuestRule
+from wm.reactive.cooldowns import auto_bounty_grant_cooldown_key
 
 
 class _DummyClient:
     pass
 
 
+def _time_text(value: str) -> str:
+    return value.replace("T", " ").replace("Z", "").split(".", 1)[0]
+
+
 class FakeRuleStore:
     def __init__(self) -> None:
         self.marked_evaluated: list[int] = []
         self.cooldown_active = False
+        self.cooldown_records: dict[str, ReactionCooldownRecord] = {}
         self.subject_events: list[WMEvent] = []
 
     def is_evaluated(self, *, event_id: int) -> bool:
@@ -29,8 +37,17 @@ class FakeRuleStore:
         self.marked_evaluated.append(event_id)
 
     def is_cooldown_active(self, key, *, at: str | None = None) -> bool:
-        del key, at
-        return self.cooldown_active
+        if self.cooldown_active:
+            return True
+        record = self.cooldown_records.get(key.to_reaction_key())
+        if record is None:
+            return False
+        if at in (None, ""):
+            return True
+        return _time_text(str(record.cooldown_until)) > _time_text(str(at))
+
+    def get_cooldown(self, key):
+        return self.cooldown_records.get(key.to_reaction_key())
 
     def list_subject_events(
         self,
@@ -636,6 +653,126 @@ class DeterministicRuleEngineTests(unittest.TestCase):
         self.assertEqual(fifth_result.opportunities, [])
         self.assertEqual({item.event_type for item in eighth_result.derived_events}, {"kill_burst_detected"})
         self.assertEqual(eighth_result.opportunities[0].metadata["consecutive_kills"], 8)
+
+    def test_auto_bounty_window_rule_counts_non_consecutive_same_creature_kills(self) -> None:
+        store = FakeRuleStore()
+        entries = [116, 500, 116, 116, 501, 116, 116]
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key=f"kill:{index}",
+                occurred_at=f"2026-04-08 12:00:{index:02d}",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=entry,
+                metadata={"payload": {"subject_name": f"Creature {entry}"}},
+            )
+            for index, entry in enumerate(entries, start=1)
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:auto:zone:12:subject:116",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=116,
+                trigger_event_type="kill",
+                kill_threshold=5,
+                window_seconds=180,
+                quest_id=910111,
+                turn_in_npc_entry=261,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={"auto_bounty": True, "require_consecutive_kills": False},
+                notes=["auto_bounty"],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        result = engine.evaluate(store.subject_events[-1], preview=True)
+
+        self.assertEqual({item.event_type for item in result.derived_events}, {"kill_burst_detected"})
+        self.assertEqual(len(result.opportunities), 1)
+        self.assertEqual(result.opportunities[0].metadata["threshold_mode"], "window")
+        self.assertEqual(result.opportunities[0].metadata["kills_in_window"], 5)
+
+    def test_auto_bounty_grant_cooldown_resets_window_counting_after_expiry(self) -> None:
+        store = FakeRuleStore()
+        cooldown_key = auto_bounty_grant_cooldown_key(player_guid=5406)
+        store.cooldown_records[cooldown_key.to_reaction_key()] = ReactionCooldownRecord(
+            reaction_key=cooldown_key.to_reaction_key(),
+            rule_type=cooldown_key.rule_type,
+            player_guid=5406,
+            subject=SubjectRef(subject_type=cooldown_key.subject_type, subject_entry=cooldown_key.subject_entry),
+            cooldown_until="2026-04-08 12:01:00",
+            last_triggered_at="2026-04-08 12:00:00",
+            metadata={},
+        )
+        store.subject_events = [
+            WMEvent(
+                event_id=index,
+                event_class="observed",
+                event_type="kill",
+                source="native_bridge",
+                source_event_key=f"kill:{index}",
+                occurred_at=occurred_at,
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=116,
+                metadata={"payload": {"subject_name": "Defias Bandit"}},
+            )
+            for index, occurred_at in enumerate(
+                [
+                    "2026-04-08 12:00:20",
+                    "2026-04-08 12:00:30",
+                    "2026-04-08 12:00:40",
+                    "2026-04-08 12:01:10",
+                    "2026-04-08 12:01:20",
+                ],
+                start=1,
+            )
+        ]
+        reactive_store = FakeReactiveStore()
+        reactive_store.rules = [
+            ReactiveQuestRule(
+                rule_key="reactive_bounty:auto:zone:12:subject:116",
+                is_active=True,
+                player_guid_scope=5406,
+                subject_type="creature",
+                subject_entry=116,
+                trigger_event_type="kill",
+                kill_threshold=5,
+                window_seconds=180,
+                quest_id=910111,
+                turn_in_npc_entry=261,
+                grant_mode="direct_quest_add",
+                post_reward_cooldown_seconds=60,
+                metadata={"auto_bounty": True, "require_consecutive_kills": False},
+                notes=["auto_bounty"],
+            )
+        ]
+        engine = DeterministicRuleEngine(
+            client=_DummyClient(),
+            settings=Settings(),
+            store=store,
+            reactive_store=reactive_store,  # type: ignore[arg-type]
+        )
+
+        during_cooldown = engine.evaluate(store.subject_events[2], preview=True)
+        after_cooldown = engine.evaluate(store.subject_events[-1], preview=True)
+
+        self.assertEqual(during_cooldown.opportunities, [])
+        self.assertEqual(after_cooldown.opportunities, [])
+        self.assertEqual(after_cooldown.derived_events, [])
 
     def test_reactive_rule_suppresses_active_and_rewarded_states(self) -> None:
         store = FakeRuleStore()

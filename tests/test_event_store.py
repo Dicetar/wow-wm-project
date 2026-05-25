@@ -89,6 +89,9 @@ class MemoryEventStore(EventStore):
 
         if "FROM wm_reaction_cooldown" in sql:
             rows = list(self._cooldowns)
+            if "ReactionKey = " in sql:
+                reaction_key = _extract_single_quoted(sql, "ReactionKey = ")
+                rows = [row for row in rows if row["ReactionKey"] == reaction_key]
             if "PlayerGUID = " in sql:
                 player_guid = int(_extract_int(sql, "PlayerGUID = "))
                 rows = [row for row in rows if row["PlayerGUID"] == player_guid]
@@ -298,6 +301,36 @@ class EventStoreTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].rule_type, "repeat_hunt_followup")
         self.assertEqual(rows[0].metadata["plan_key"], "repeat_hunt_followup:5406:creature:6")
+
+    def test_get_cooldown_parses_one_row_by_key(self) -> None:
+        store = MemoryEventStore()
+        key = "reactive_bounty:auto:grant_cooldown:5406:player:0"
+        store._cooldowns.append(
+            {
+                "ReactionKey": key,
+                "RuleType": "reactive_bounty:auto:grant_cooldown",
+                "PlayerGUID": 5406,
+                "SubjectType": "player",
+                "SubjectEntry": 0,
+                "CooldownUntil": "2026-04-08 11:01:00",
+                "LastTriggeredAt": "2026-04-08 11:00:00",
+                "MetadataJSON": json.dumps({"plan_key": "reactive_bounty:auto"}),
+            }
+        )
+
+        record = store.get_cooldown(
+            type(
+                "Key",
+                (),
+                {"to_reaction_key": lambda self: key},
+            )()
+        )
+
+        self.assertIsNotNone(record)
+        assert record is not None
+        self.assertEqual(record.rule_type, "reactive_bounty:auto:grant_cooldown")
+        self.assertEqual(record.subject.subject_type, "player")
+        self.assertEqual(record.metadata["plan_key"], "reactive_bounty:auto")
 
     def test_list_subject_events_filters_by_subject_and_type(self) -> None:
         store = MemoryEventStore()

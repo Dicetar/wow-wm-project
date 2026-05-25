@@ -20,8 +20,8 @@ from wm.refs import QuestRef
 from wm.quests.generate_bounty import LiveCreatureResolver
 from wm.reserved.db_allocator import ReservedSlotDbAllocator
 
-DEFAULT_AUTO_BOUNTY_KILL_THRESHOLD = 4
-DEFAULT_AUTO_BOUNTY_WINDOW_SECONDS = 300
+DEFAULT_AUTO_BOUNTY_KILL_THRESHOLD = 5
+DEFAULT_AUTO_BOUNTY_WINDOW_SECONDS = 180
 DEFAULT_AUTO_BOUNTY_POST_REWARD_COOLDOWN_SECONDS = 60
 
 
@@ -109,10 +109,8 @@ class ReactiveAutoBountyManager:
             return None
 
         player_guid = int(event.player_guid)
-        if (
-            bool(getattr(self.settings, "reactive_auto_bounty_single_open_per_player", True))
-            and self._has_open_auto_bounty_for_player(player_guid=player_guid)
-        ):
+        single_open_per_player = bool(getattr(self.settings, "reactive_auto_bounty_single_open_per_player", False))
+        if single_open_per_player and self._has_open_auto_bounty_for_player(player_guid=player_guid):
             return None
 
         plan = self._resolve_plan_for_event(event)
@@ -150,17 +148,18 @@ class ReactiveAutoBountyManager:
             grant_mode="direct_quest_add",
             post_reward_cooldown_seconds=int(plan.post_reward_cooldown_seconds),
             metadata=dict(plan.metadata),
-            notes=["auto_bounty", "dynamic_auto_bounty", "consecutive_kill_streak"],
+            notes=["auto_bounty", "dynamic_auto_bounty", "rolling_kill_window"],
             player_scope=PlayerRef(guid=player_guid, name=player_name),
             subject=CreatureRef(entry=subject.entry, name=subject.name),
             quest=QuestRef(id=int(quest_id), title=plan.quest_title),
             turn_in_npc=NpcRef(entry=int(plan.turn_in_npc_entry), name=plan.turn_in_npc_name),
         )
         self.installer.install(rule=rule, mode="apply")
-        self.reactive_store.deactivate_player_auto_bounty_rules(
-            player_guid=player_guid,
-            except_rule_key=rule.rule_key,
-        )
+        if single_open_per_player:
+            self.reactive_store.deactivate_player_auto_bounty_rules(
+                player_guid=player_guid,
+                except_rule_key=rule.rule_key,
+            )
         return rule
 
     def _has_open_auto_bounty_for_player(self, *, player_guid: int) -> bool:
@@ -278,7 +277,8 @@ class ReactiveAutoBountyManager:
                 "auto_bounty_turn_in_npc_entry": int(target.turn_in_npc_entry),
                 "auto_bounty_source_name_prefix": target.subject_name_prefix,
                 "auto_bounty_turn_in_strategy": "override",
-                "require_consecutive_kills": True,
+                "require_consecutive_kills": False,
+                "bounty_trigger_mode": "rolling_window",
                 "objective_target_name": objective_target_name,
                 "quest_title": quest_title,
                 "projected_reward": reward_preview,
@@ -338,7 +338,8 @@ class ReactiveAutoBountyManager:
                     "ender_count": int(turn_in_choice.ender_count),
                     "spawn_count": int(turn_in_choice.spawn_count),
                 },
-                "require_consecutive_kills": True,
+                "require_consecutive_kills": False,
+                "bounty_trigger_mode": "rolling_window",
                 "objective_target_name": objective_target_name,
                 "quest_title": quest_title,
                 "projected_reward": reward_preview,

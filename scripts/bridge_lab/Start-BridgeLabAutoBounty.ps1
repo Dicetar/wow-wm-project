@@ -7,7 +7,7 @@ param(
     [double]$IntervalSeconds = 1.0,
     [int]$BatchSize = 1,
     [int]$ReactiveAutoBountyMaxEventAgeSeconds = 3600,
-    [bool]$ReactiveAutoBountySingleOpenPerPlayer = $true,
+    [bool]$ReactiveAutoBountySingleOpenPerPlayer = $false,
     [int]$LabMySqlPort = 33307,
     [int]$SoapPort = 7879,
     [ValidateSet("auto", "native", "soap")]
@@ -27,6 +27,7 @@ param(
     [int]$QuestSlotSeedEnd = 910999,
     [switch]$SkipQuestSlotSeed,
     [switch]$KeepExistingBountyRules,
+    [switch]$ResetExistingBountyRules,
     [switch]$KeepExistingEventBacklog,
     [switch]$PrintIdle,
     [switch]$DoNotArmFromEnd
@@ -89,7 +90,7 @@ $autoArgs = @(
     ([string]$PlayerGuid),
     "--summary"
 )
-if (-not $KeepExistingBountyRules.IsPresent) {
+if ($ResetExistingBountyRules.IsPresent -and -not $KeepExistingBountyRules.IsPresent) {
     $autoArgs += "--deactivate-existing-bounty-rules"
 }
 

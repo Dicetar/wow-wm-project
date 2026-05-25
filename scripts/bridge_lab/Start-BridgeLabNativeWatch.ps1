@@ -7,7 +7,7 @@ param(
     [double]$IntervalSeconds = 1.0,
     [int]$BatchSize = 1,
     [int]$ReactiveAutoBountyMaxEventAgeSeconds = 3600,
-    [bool]$ReactiveAutoBountySingleOpenPerPlayer = $true,
+    [bool]$ReactiveAutoBountySingleOpenPerPlayer = $false,
     [int]$LabMySqlPort = 33307,
     [int]$SoapPort = 7879,
     [ValidateSet("auto", "native", "soap")]

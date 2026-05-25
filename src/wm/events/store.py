@@ -302,6 +302,29 @@ class EventStore:
             )
         return records
 
+    def get_cooldown(self, key: ReactionCooldownKey) -> ReactionCooldownRecord | None:
+        rows = self._query_world(
+            "SELECT ReactionKey, RuleType, PlayerGUID, SubjectType, SubjectEntry, CooldownUntil, LastTriggeredAt, MetadataJSON "
+            "FROM wm_reaction_cooldown "
+            f"WHERE ReactionKey = {_sql_string(key.to_reaction_key())} "
+            "LIMIT 1"
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        return ReactionCooldownRecord(
+            reaction_key=str(row["ReactionKey"]),
+            rule_type=str(row["RuleType"]),
+            player_guid=int(row["PlayerGUID"]),
+            subject=SubjectRef(
+                subject_type=str(row["SubjectType"]),
+                subject_entry=int(row["SubjectEntry"]),
+            ),
+            cooldown_until=str(row["CooldownUntil"]),
+            last_triggered_at=str(row["LastTriggeredAt"]),
+            metadata=_json_object_or_default(row.get("MetadataJSON")),
+        )
+
     def mark_projected(self, *, event_id: int) -> None:
         self._execute_world(
             "UPDATE wm_event_log "

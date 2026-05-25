@@ -7,6 +7,7 @@ from wm.events.models import PlannedAction
 from wm.events.models import ReactionCooldownKey
 from wm.events.models import ReactionPlan
 from wm.events.models import SubjectRef
+from wm.reactive.cooldowns import auto_bounty_grant_cooldown_key
 from wm.refs import CreatureRef
 from wm.refs import NpcRef
 from wm.refs import PlayerRef
@@ -321,6 +322,13 @@ class ReactionExecutorTests(unittest.TestCase):
                     },
                 )
             ],
+            cooldown_key=ReactionCooldownKey(
+                rule_type="reactive_bounty:kobold_vermin",
+                player_guid=5406,
+                subject_type="creature",
+                subject_entry=6,
+            ),
+            cooldown_seconds=60,
         )
 
         preview = executor.preview(plan=plan)
@@ -336,6 +344,9 @@ class ReactionExecutorTests(unittest.TestCase):
         )
         self.assertEqual(runtime_manager.preview_calls[0], (5406, "Qraaglock", 910000))
         self.assertEqual(runtime_manager.grant_calls[0], (5406, "Qraaglock", 910000))
+        self.assertEqual(len(store.cooldowns), 2)
+        self.assertEqual(store.cooldowns[1][0].to_reaction_key(), auto_bounty_grant_cooldown_key(player_guid=5406).to_reaction_key())
+        self.assertEqual(store.cooldowns[1][1], 60)
 
     def test_reactive_quest_grant_prefers_native_bridge_when_ready(self) -> None:
         store = FakeExecutionStore()
