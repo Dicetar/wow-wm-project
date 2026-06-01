@@ -30,6 +30,7 @@ Implemented native actions in the first safe slice:
 - `context_snapshot_request` writes one `wm_bridge_context_request` plus one `wm_bridge_context_snapshot` when the scoped player is online; live bridge-lab proof is `WORKING`
 - `quest_add`
 - `world_announce_to_player`
+- `player_chat_message`
 - Primitive Pack 1 is `WORKING` in BridgeLab behind policy-disabled defaults:
   - `player_apply_aura`
   - `player_remove_aura`
@@ -272,11 +273,14 @@ python -m wm.sources.native_bridge.actions_cli recover-stale --summary
 python -m wm.sources.native_bridge.actions_cli cleanup --older-than-seconds 3600 --summary
 ```
 
-`world_announce_to_player` is implemented but policy-disabled by default. Enable it only in the lab for one scoped player:
+`world_announce_to_player` and `player_chat_message` are implemented but
+policy-disabled by default. Enable them only in the lab for one scoped player:
 
 ```powershell
 python -m wm.sources.native_bridge.actions_cli policy --action-kind world_announce_to_player --enable --max-risk-level low --cooldown-ms 1000 --burst-limit 5 --summary
 python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --action-kind world_announce_to_player --payload-json '{"message":"WM bridge lab ping"}' --idempotency-key lab-announce-1 --wait --summary
+python -m wm.sources.native_bridge.actions_cli policy --action-kind player_chat_message --enable --max-risk-level low --cooldown-ms 1000 --burst-limit 5 --summary
+python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --action-kind player_chat_message --payload-json '{"message":"WM chat ping","style":"channel","channel_name":"WM","sender_name":"WorldMaster"}' --idempotency-key lab-chat-1 --wait --summary
 ```
 
 Lab verification on 2026-04-11:

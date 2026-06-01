@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
+#include "ObjectAccessor.h"
 #include "Player.h"
 
 #include <algorithm>
@@ -16,6 +17,7 @@ namespace
 {
     WmBridge::BridgeConfig gBridgeConfig;
     uint32 gDbControlRefreshTimer = 0;
+    uint32 gPresenceRefreshTimer = 0;
 
     std::string EscapeForSql(std::string value)
     {
@@ -117,10 +119,17 @@ namespace WmBridge
         gBridgeConfig.emitGossip = sConfigMgr->GetOption<bool>("WmBridge.Emit.Gossip", true);
         gBridgeConfig.emitArea = sConfigMgr->GetOption<bool>("WmBridge.Emit.Area", true);
         gBridgeConfig.emitAura = sConfigMgr->GetOption<bool>("WmBridge.Emit.Aura", false);
+        gBridgeConfig.emitLevelUp = sConfigMgr->GetOption<bool>("WmBridge.Emit.LevelUp", true);
+        gBridgeConfig.emitDeath = sConfigMgr->GetOption<bool>("WmBridge.Emit.Death", true);
         gBridgeConfig.dbControlEnabled = sConfigMgr->GetOption<bool>("WmBridge.DbControl.Enable", false);
         gBridgeConfig.dbControlRefreshIntervalMs = sConfigMgr->GetOption<uint32>("WmBridge.DbControl.RefreshIntervalMS", 5000);
         gBridgeConfig.actionQueueEnabled = sConfigMgr->GetOption<bool>("WmBridge.ActionQueue.Enable", false);
         gBridgeConfig.actionPollIntervalMs = sConfigMgr->GetOption<uint32>("WmBridge.ActionQueue.PollIntervalMS", 1000);
+        gBridgeConfig.presenceEnabled = sConfigMgr->GetOption<bool>("WmBridge.Presence.Enable", true);
+        gBridgeConfig.presenceIntervalMs = sConfigMgr->GetOption<uint32>("WmBridge.Presence.IntervalMS", 3000);
+        gBridgeConfig.perceptionEnabled = sConfigMgr->GetOption<bool>("WmBridge.Perception.Enable", true);
+        gBridgeConfig.perceptionIntervalMs = sConfigMgr->GetOption<uint32>("WmBridge.Perception.IntervalMS", 150000);
+        gBridgeConfig.perceptionRadius = sConfigMgr->GetOption<uint32>("WmBridge.Perception.Radius", 40);
         gBridgeConfig.aoeLootEnabled = sConfigMgr->GetOption<bool>("WmBridge.AoeLoot.Enable", false);
         gBridgeConfig.aoeLootRadius = sConfigMgr->GetOption<float>("WmBridge.AoeLoot.Radius", 35.0f);
         gBridgeConfig.aoeLootMaxCorpses = sConfigMgr->GetOption<uint32>("WmBridge.AoeLoot.MaxCorpses", 25);
@@ -141,6 +150,7 @@ namespace WmBridge
             gBridgeConfig.dbPlayerGuidAllowList.clear();
         }
         gDbControlRefreshTimer = 0;
+        gPresenceRefreshTimer = 0;
     }
 
     bool IsPlayerGuidAllowed(uint32 playerGuid)
@@ -210,6 +220,111 @@ namespace WmBridge
         gBridgeConfig.dbPlayerGuidAllowList = std::move(nextAllowList);
     }
 
+    void RefreshPlayerPresence(uint32 diff)
+    {
+        if (!gBridgeConfig.enabled || !gBridgeConfig.presenceEnabled)
+        {
+            return;
+        }
+
+        if (gPresenceRefreshTimer > diff)
+        {
+            gPresenceRefreshTimer -= diff;
+            return;
+        }
+
+        gPresenceRefreshTimer = gBridgeConfig.presenceIntervalMs;
+
+        std::unordered_set<uint32> onlineSeen;
+
+        auto upsertOnline = [&](Player* player)
+        {
+            if (!player || !player->IsInWorld())
+            {
+                return;
+            }
+
+            uint32 const guid = static_cast<uint32>(player->GetGUID().GetCounter());
+            onlineSeen.insert(guid);
+
+            uint32 accountId = 0;
+            if (WorldSession const* session = player->GetSession())
+            {
+                accountId = session->GetAccountId();
+            }
+
+            uint32 const zoneId = player->GetZoneId();
+            uint32 const areaId = player->GetAreaId();
+            uint32 const maxHealth = player->GetMaxHealth();
+            uint32 const healthPct = maxHealth ? static_cast<uint32>((player->GetHealth() * 100) / maxHealth) : 0;
+
+            WorldDatabase.Execute(
+                "INSERT INTO wm_bridge_player_presence ("
+                "PlayerGUID, AccountID, Online, MapID, ZoneID, AreaID, ZoneName, AreaName, "
+                "PosX, PosY, PosZ, Orientation, Level, HealthPct, InCombat, UpdatedAt"
+                ") VALUES ({}, {}, 1, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, NOW()) "
+                "ON DUPLICATE KEY UPDATE "
+                "AccountID = VALUES(AccountID), Online = 1, MapID = VALUES(MapID), "
+                "ZoneID = VALUES(ZoneID), AreaID = VALUES(AreaID), ZoneName = VALUES(ZoneName), "
+                "AreaName = VALUES(AreaName), PosX = VALUES(PosX), PosY = VALUES(PosY), "
+                "PosZ = VALUES(PosZ), Orientation = VALUES(Orientation), Level = VALUES(Level), "
+                "HealthPct = VALUES(HealthPct), InCombat = VALUES(InCombat), UpdatedAt = NOW()",
+                guid,
+                accountId,
+                player->GetMapId(),
+                zoneId,
+                areaId,
+                SqlString(LookupAreaName(zoneId)),
+                SqlString(LookupAreaName(areaId)),
+                player->GetPositionX(),
+                player->GetPositionY(),
+                player->GetPositionZ(),
+                player->GetOrientation(),
+                static_cast<uint32>(player->GetLevel()),
+                healthPct,
+                player->IsInCombat() ? 1 : 0);
+        };
+
+        auto markOffline = [&](uint32 guid)
+        {
+            if (onlineSeen.find(guid) != onlineSeen.end())
+            {
+                return;
+            }
+
+            WorldDatabase.Execute(
+                "UPDATE wm_bridge_player_presence SET Online = 0, UpdatedAt = NOW() WHERE PlayerGUID = {}",
+                guid);
+        };
+
+        if (gBridgeConfig.allowAllPlayers)
+        {
+            for (auto const& pair : ObjectAccessor::GetPlayers())
+            {
+                upsertOnline(pair.second);
+            }
+            return;
+        }
+
+        for (uint32 guid : gBridgeConfig.playerGuidAllowList)
+        {
+            upsertOnline(ObjectAccessor::FindPlayerByLowGUID(guid));
+        }
+        for (uint32 guid : gBridgeConfig.dbPlayerGuidAllowList)
+        {
+            upsertOnline(ObjectAccessor::FindPlayerByLowGUID(guid));
+        }
+
+        for (uint32 guid : gBridgeConfig.playerGuidAllowList)
+        {
+            markOffline(guid);
+        }
+        for (uint32 guid : gBridgeConfig.dbPlayerGuidAllowList)
+        {
+            markOffline(guid);
+        }
+    }
+
     EventRow MakePlayerScopedEvent(Player const* player, std::string const& eventFamily, std::string const& eventType)
     {
         EventRow row;
@@ -264,7 +379,10 @@ namespace WmBridge
 
     std::string LookupAreaName(uint32 areaId)
     {
-        if (AreaTableEntry const* areaEntry = GetAreaEntryByAreaID(areaId))
+        // GetZoneId()/GetAreaId() return AreaTable DBC record IDs, so look them
+        // up directly. GetAreaEntryByAreaID resolves via the terrain exploreFlag
+        // (a different field) and returns an unrelated area for plain zone IDs.
+        if (AreaTableEntry const* areaEntry = sAreaTableStore.LookupEntry(areaId))
         {
             if (areaEntry->area_name[0] != nullptr)
             {

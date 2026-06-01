@@ -232,6 +232,38 @@ CREATE TABLE IF NOT EXISTS wm_bridge_chat_keyword (
     KEY idx_wm_bridge_chat_keyword_scope (PlayerGUID, Enabled)
 );
 
+CREATE TABLE IF NOT EXISTS wm_bridge_player_presence (
+    PlayerGUID INT NOT NULL PRIMARY KEY,
+    AccountID INT NULL,
+    Online TINYINT(1) NOT NULL DEFAULT 0,
+    MapID INT NULL,
+    ZoneID INT NULL,
+    AreaID INT NULL,
+    ZoneName VARCHAR(128) NULL,
+    AreaName VARCHAR(128) NULL,
+    PosX FLOAT NULL,
+    PosY FLOAT NULL,
+    PosZ FLOAT NULL,
+    Orientation FLOAT NULL,
+    Level INT NULL,
+    HealthPct INT NULL,
+    InCombat TINYINT(1) NOT NULL DEFAULT 0,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_wm_bridge_player_presence_online (Online, UpdatedAt)
+);
+
+CREATE TABLE IF NOT EXISTS wm_bridge_player_perception (
+    PlayerGUID INT NOT NULL PRIMARY KEY,
+    MapID INT NULL,
+    ZoneID INT NULL,
+    AreaID INT NULL,
+    CreatureCount INT NOT NULL DEFAULT 0,
+    GameObjectCount INT NOT NULL DEFAULT 0,
+    PayloadJSON LONGTEXT NULL,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_wm_bridge_player_perception_updated (UpdatedAt)
+);
+
 CREATE TABLE IF NOT EXISTS wm_bridge_runtime_status (
     StatusKey VARCHAR(96) NOT NULL PRIMARY KEY,
     StatusValue VARCHAR(255) NULL,
@@ -328,6 +360,7 @@ INSERT INTO wm_bridge_action_policy (ActionKind, Profile, Enabled, MaxRiskLevel,
 ('zone_set_weather', 'default', 0, 'medium', 1000, 5, 0),
 ('zone_clear_weather_override', 'default', 0, 'low', 1000, 5, 0),
 ('world_announce_to_player', 'default', 0, 'low', 1000, 5, 0),
+('player_chat_message', 'default', 0, 'low', 1000, 5, 0),
 ('player_play_sound', 'default', 0, 'low', 1000, 5, 0),
 ('player_play_movie', 'default', 0, 'medium', 1000, 5, 0),
 ('area_trigger_marker_set', 'default', 0, 'medium', 1000, 5, 0),

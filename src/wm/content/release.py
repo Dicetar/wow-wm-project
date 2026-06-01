@@ -245,6 +245,7 @@ _ITEM_SLOT_POLICIES = {"fresh_item_slot_required", "existing_proven_item_slot_ex
 _SCENE_TYPES = {"area_pressure", "creature_marker", "companion_intervention", "environment_effect", "arc_beat"}
 _SCENE_TRIGGER_KINDS = {"manual_operator", "area_pressure", "kill_reaction", "talk_reaction", "quest_reaction", "arc_beat"}
 _SCENE_ALLOWED_ACTION_KINDS = {
+    "player_chat_message",
     "world_announce_to_player",
     "player_apply_aura",
     "player_remove_aura",
@@ -1899,7 +1900,15 @@ def _validate_scene_payload_contract(
     path: str,
     issues: list[ReleaseIssue],
 ) -> None:
-    if action_kind == "world_announce_to_player":
+    if action_kind == "player_chat_message":
+        if not (str(payload.get("message") or "").strip() or str(payload.get("text") or "").strip()):
+            issues.append(
+                ReleaseIssue(
+                    path=path,
+                    message="player_chat_message payload needs message or text.",
+                )
+            )
+    elif action_kind == "world_announce_to_player":
         _require_non_empty_string(payload, "message", path=f"{path}.message", issues=issues)
     elif action_kind in {"player_apply_aura", "player_remove_aura"}:
         _require_positive_int(payload, "spell_id", path=f"{path}.spell_id", issues=issues)

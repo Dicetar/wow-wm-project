@@ -5,7 +5,9 @@ const state = {
   formData: {},
   selectedDraft: null,
   latestJob: null,
-  activeSession: null
+  activeSession: null,
+  tools: null,
+  panelMode: "simple"
 };
 
 const $ = (id) => document.getElementById(id);
@@ -43,10 +45,13 @@ function schemaForSelect(selectId) {
 
 async function init() {
   initTheme();
+  initPanelMode();
   bindTabs();
+  bindPanelMode();
   bindEditorTabs();
   bindActions();
   await loadAll();
+  setPanelMode(state.panelMode);
 }
 
 function currentTheme() {
@@ -74,21 +79,26 @@ function toggleTheme() {
 }
 
 async function loadAll() {
-  const [status, catalog, schemas, settings, drafts, readiness, autoplay] = await Promise.all([
+  const [status, catalog, schemas, settings, drafts, readiness, autoplay, tools] = await Promise.all([
     api("/api/status"),
     api("/api/catalog"),
     api("/api/schemas"),
     api("/api/llm/settings"),
     api("/api/drafts"),
     api("/api/wm/readiness"),
-    api("/api/wm/autoplay/status")
+    api("/api/wm/autoplay/status"),
+    api("/api/wm/tools")
   ]);
   state.commands = catalog.commands;
   state.schemas = schemas.schemas;
   state.activeSession = readiness.active_session || status.active_session || null;
+  state.tools = tools;
   renderStatus(status);
   renderWmReadiness(readiness);
   renderAutoplay(autoplay);
+  renderConvVerbModes(autoplay.conversational_verb_modes || {});
+  renderPendingIntents(autoplay.pending_intents || {});
+  renderSimple(status, readiness, autoplay, tools);
   renderSchemaSelects();
   renderCommands();
   renderSettings(settings);
@@ -100,11 +110,52 @@ async function loadAll() {
 function bindTabs() {
   document.querySelectorAll(".tab").forEach((button) => {
     button.addEventListener("click", () => {
-      document.querySelectorAll(".tab, .tab-panel").forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
-      $(button.dataset.tab).classList.add("active");
+      activateTab(button.dataset.tab);
     });
   });
+}
+
+function initPanelMode() {
+  try {
+    state.panelMode = localStorage.getItem("wm-panel-mode") || "simple";
+  } catch (e) {
+    state.panelMode = "simple";
+  }
+}
+
+function bindPanelMode() {
+  document.querySelectorAll("[data-panel-mode]").forEach((button) => {
+    button.addEventListener("click", () => setPanelMode(button.dataset.panelMode));
+  });
+}
+
+function setPanelMode(mode) {
+  state.panelMode = mode === "advanced" ? "advanced" : "simple";
+  try { localStorage.setItem("wm-panel-mode", state.panelMode); } catch (e) { /* ignore */ }
+  document.querySelectorAll("[data-panel-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.panelMode === state.panelMode);
+  });
+  document.querySelectorAll(".tab").forEach((button) => {
+    const scope = button.dataset.modeScope || "advanced";
+    button.hidden = scope !== state.panelMode;
+  });
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    const scope = panel.dataset.modeScope || "advanced";
+    panel.hidden = scope !== state.panelMode;
+  });
+  const activeButton = document.querySelector(`.tab.active[data-mode-scope="${state.panelMode}"], .tab.active:not([data-mode-scope])`);
+  if (!activeButton || activeButton.hidden) {
+    const first = document.querySelector(`.tab[data-mode-scope="${state.panelMode}"]:not([hidden])`);
+    if (first) activateTab(first.dataset.tab);
+  }
+}
+
+function activateTab(tabId) {
+  document.querySelectorAll(".tab, .tab-panel").forEach((item) => item.classList.remove("active"));
+  const button = Array.from(document.querySelectorAll(".tab")).find((item) => item.dataset.tab === tabId);
+  const panel = $(tabId);
+  if (button) button.classList.add("active");
+  if (panel) panel.classList.add("active");
 }
 
 function bindEditorTabs() {
@@ -138,11 +189,36 @@ function bindActions() {
   $("sliceBootstrap").addEventListener("click", sliceBootstrap);
   $("slicePoll").addEventListener("click", slicePoll);
   $("sliceRefresh").addEventListener("click", refreshSlice);
+  $("autoplaySaveConfig").addEventListener("click", configureAutoplay);
+  $("convVerbModesSave").addEventListener("click", saveConvVerbModes);
+  $("pendingIntentsList").addEventListener("click", onPendingListClick);
+  $("simplePendingIntentsList").addEventListener("click", onPendingListClick);
+  $("autoplayGenerate").addEventListener("click", generateAutoplayOnce);
   $("autoplayPause").addEventListener("click", () => setAutoplayPaused(true));
   $("autoplayResume").addEventListener("click", () => setAutoplayPaused(false));
+  $("autoplayResetChatContext").addEventListener("click", resetChatContext);
   $("scanMarkers").addEventListener("click", scanMarkers);
   $("inboxKindFilter").addEventListener("change", refreshSlice);
   $("rollbackArtifact").addEventListener("click", sliceRollback);
+  $("simpleRefresh").addEventListener("click", loadAll);
+  $("simplePause").addEventListener("click", () => setAutoplayPaused(true));
+  $("simpleResume").addEventListener("click", () => setAutoplayPaused(false));
+  $("simplePublishLane").addEventListener("change", renderSchemaSelects);
+  $("simplePublishSchema").addEventListener("change", (event) => selectSchema(event.target.value));
+  $("simpleValidate").addEventListener("click", simpleValidateSelected);
+  $("simpleDryRun").addEventListener("click", simpleRunSelected);
+  $("simpleOpenAdvanced").addEventListener("click", () => {
+    setPanelMode("advanced");
+    activateTab("content");
+  });
+  $("simpleSaveLlm").addEventListener("click", simpleSaveLlmSettings);
+  $("simpleFetchModels").addEventListener("click", simpleFetchModels);
+  $("simpleGenerateOnce").addEventListener("click", simpleGenerateAutoplayOnce);
+  $("simpleResetChatContext").addEventListener("click", simpleResetChatContext);
+  $("simpleAdoptDraft").addEventListener("click", adoptSelectedDraft);
+  $("simpleRejectDraft").addEventListener("click", rejectSelectedDraft);
+  $("simpleDryRunDraft").addEventListener("click", dryRunSelectedDraft);
+  $("simpleRollback").addEventListener("click", simpleRollback);
 }
 
 function renderStatus(status) {
@@ -160,13 +236,69 @@ function renderStatus(status) {
   setOutput("latestJob", status.latest_job || {});
 }
 
+function renderSimple(status, readiness, autoplay, tools) {
+  const session = readiness.active_session || state.activeSession || {};
+  const llm = autoplay.llm || {};
+  const config = autoplay.config || {};
+  const blockers = readiness.apply_blockers || [];
+  const rows = {
+    "Character": session.character_guid ? `${session.character_guid}${session.character_name ? ` / ${session.character_name}` : ""}` : "(none)",
+    "Readiness": readiness.can_apply === false ? "blocked" : "ready",
+    "Autoplay": autoplay.running ? (autoplay.paused ? "paused" : "running") : "stopped",
+    "LLM": llm.ok ? (llm.model || "ready") : (llm.error || "not ready"),
+    "Chat Context": `epoch ${config.llm_chat_context_epoch || 0}`,
+    "Lanes": (config.llm_lanes || []).join(",") || "(none)",
+    "Latest": autoplay.latest_opportunity?.source_event_key || autoplay.latest_autoplay?.status || "(none)"
+  };
+  $("simpleStatus").innerHTML = Object.entries(rows)
+    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd>`)
+    .join("");
+  $("simpleBlockers").innerHTML = blockers.length
+    ? blockers.map((blocker) => `<div class="card">${escapeHtml(blocker.check || "blocker")}: ${escapeHtml(blocker.status || "")}</div>`).join("")
+    : `<div class="card">Ready</div>`;
+  setOutput("simpleActivity", {
+    latest_opportunity: autoplay.latest_opportunity || null,
+    latest_proposal: autoplay.latest_proposal || null,
+    latest_apply: autoplay.latest_autoplay || autoplay.latest_apply || null,
+    latest_job: status.latest_job || null,
+  });
+  const nativeActions = Array.isArray(tools.native_actions) ? tools.native_actions.length : 0;
+  $("simpleTools").innerHTML = Object.entries({
+    "Input": tools.player_input?.preferred || "WM chat channel",
+    "Output": tools.player_output?.preferred_action || "player_chat_message",
+    "Native Actions": nativeActions,
+    "Draft Contract": tools.model_contract || "typed drafts only"
+  }).map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd>`).join("");
+  if (session.character_guid) $("simpleCharacterGuid").value = session.character_guid;
+  const verbModes = autoplay.conversational_verb_modes || {};
+  const verbValues = Object.values(verbModes);
+  const nAuto = verbValues.filter((m) => m === "auto").length;
+  const nConfirm = verbValues.filter((m) => m === "confirm").length;
+  const nOff = verbValues.filter((m) => m === "off").length;
+  const summaryEl = $("simpleConvVerbSummary");
+  if (summaryEl) {
+    summaryEl.textContent = verbValues.length
+      ? `${nAuto} auto, ${nConfirm} confirm, ${nOff} off`
+      : "—";
+  }
+}
+
 function renderSchemaSelects() {
+  const lane = $("simplePublishLane")?.value || "";
+  const filtered = lane ? state.schemas.filter((schema) => String(schema.id).includes(`.${lane}.`) || String(schema.id).includes(`${lane}.`) || (lane === "action" && schema.id === "control.proposal.v1")) : state.schemas;
   const options = state.schemas.map((schema) => `<option value="${escapeHtml(schema.id)}">${escapeHtml(schema.label)}</option>`).join("");
+  const simpleOptions = (filtered.length ? filtered : state.schemas).map((schema) => `<option value="${escapeHtml(schema.id)}">${escapeHtml(schema.label)}</option>`).join("");
   ["llmSchema", "contentSchema"].forEach((id) => {
     const current = $(id).value;
     $(id).innerHTML = options;
     if (current) $(id).value = current;
   });
+  const simple = $("simplePublishSchema");
+  if (simple) {
+    const current = simple.value;
+    simple.innerHTML = simpleOptions;
+    if (current && Array.from(simple.options).some((option) => option.value === current)) simple.value = current;
+  }
 }
 
 function renderCommands() {
@@ -203,9 +335,14 @@ function renderCommandGroup(containerId, commandIds, paramsFactory = () => ({}))
 function renderSettings(settings) {
   $("llmBaseUrl").value = settings.base_url || "http://localhost:1234/v1";
   $("llmTemperature").value = settings.temperature ?? 0.2;
+  $("llmTopP").value = settings.top_p ?? "";
   $("llmMaxTokens").value = settings.max_tokens ?? 2048;
   $("llmTimeout").value = settings.timeout_seconds ?? 60;
   $("llmSchemaMode").value = settings.schema_mode || "json_schema";
+  $("simpleLlmBaseUrl").value = settings.base_url || "http://localhost:1234/v1";
+  $("simpleLlmTemperature").value = settings.temperature ?? 0.2;
+  $("simpleLlmTopP").value = settings.top_p ?? "";
+  $("simpleLlmMaxTokens").value = settings.max_tokens ?? 2048;
   renderModelSelect(settings.model ? [settings.model] : [], settings.model);
 }
 
@@ -236,19 +373,196 @@ function renderAutoplay(autoplay) {
   const llm = autoplay.llm || {};
   const readiness = autoplay.readiness || {};
   const counters = autoplay.counters || {};
+  const config = autoplay.config || {};
   const rows = {
     "Status": autoplay.status || "(unknown)",
     "Running": autoplay.running ? "yes" : "no",
     "Paused": autoplay.paused ? "yes" : "no",
     "Readiness": readiness.ok ? "ready" : "blocked",
     "LLM": llm.ok ? `${llm.model || "(model)"}` : (llm.error || "not ready"),
+    "WM Chat": config.llm_chat_enabled === false ? "off" : "on",
+    "Chat Context": `epoch ${config.llm_chat_context_epoch || 0}`,
+    "Last Forget": config.llm_chat_context_reset_at || "(never)",
+    "Lanes": (config.llm_lanes || []).join(",") || "(none)",
+    "Drafts": counters.drafts_generated || 0,
+    "Auto Applied": counters.auto_applied || 0,
     "Ticks": counters.ticks || 0,
     "Issues": (autoplay.issues || []).length,
-    "Maintenance": (autoplay.maintenance_pending || []).length
+    "Maintenance": (autoplay.maintenance_pending || []).length,
+    "Latest Event": autoplay.latest_opportunity?.source_event_key || "(none)",
+    "Latest Draft": autoplay.latest_proposal?.draft_id || "(none)",
+    "Latest Apply": autoplay.latest_autoplay?.status || autoplay.latest_apply?.status || "(none)"
   };
   $("autoplayStatus").innerHTML = Object.entries(rows)
     .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd>`)
     .join("");
+  $("autoplayLlmEnabled").checked = config.llm_enabled !== false;
+  $("autoplayLanes").value = (config.llm_lanes || ["chat", "scene", "action"]).join(",");
+  $("autoplayModel").value = config.llm_model || llm.model || $("llmModel")?.value || "";
+  $("simpleLlmLanes").value = (config.llm_lanes || ["chat"]).join(",");
+  $("simpleLlmModel").value = config.llm_model || llm.model || $("llmModel")?.value || "";
+  $("autoplayEventAgeSeconds").value = config.llm_event_age_seconds ?? 300;
+  $("autoplayCooldownSeconds").value = config.llm_cooldown_seconds ?? 60;
+  $("autoplayEventsPerTick").value = config.llm_events_per_tick ?? 1;
+}
+
+function autoplayConfigPayload() {
+  return {
+    llm_enabled: $("autoplayLlmEnabled").checked,
+    llm_chat_enabled: true,
+    llm_lanes: $("autoplayLanes").value.split(",").map((item) => item.trim()).filter(Boolean),
+    llm_model: $("autoplayModel").value || $("llmModel").value || null,
+    llm_base_url: $("llmBaseUrl").value || null,
+    llm_event_age_seconds: Number($("autoplayEventAgeSeconds").value || 300),
+    llm_cooldown_seconds: Number($("autoplayCooldownSeconds").value || 60),
+    llm_events_per_tick: Number($("autoplayEventsPerTick").value || 1)
+  };
+}
+
+async function configureAutoplay() {
+  const result = await api("/api/wm/autoplay/configure", {
+    method: "POST",
+    body: JSON.stringify(autoplayConfigPayload())
+  });
+  renderAutoplay(result.autoplay || {});
+  setOutput("autoplayOutput", result);
+}
+
+function renderConvVerbModes(modes) {
+  state.convVerbModes = { ...(modes || {}) };
+  const list = $("convVerbModesList");
+  const empty = $("convVerbModesEmpty");
+  const actions = $("convVerbModesActions");
+  if (!list) return;
+  const meta = {};
+  (state.tools?.native_actions || []).forEach((action) => { meta[action.kind] = action; });
+  const entries = Object.entries(state.convVerbModes).sort(([a], [b]) => a.localeCompare(b));
+  if (!entries.length) {
+    list.hidden = true;
+    list.innerHTML = "";
+    if (actions) actions.hidden = true;
+    if (empty) { empty.hidden = false; empty.textContent = "No conversational verbs available."; }
+    return;
+  }
+  if (empty) empty.hidden = true;
+  list.hidden = false;
+  if (actions) actions.hidden = false;
+  const option = (mode, value, label) => `<option value="${value}"${value === mode ? " selected" : ""}>${label}</option>`;
+  list.innerHTML = entries.map(([verb, mode]) => {
+    const info = meta[verb] || {};
+    const risk = info.risk ? ` <span class="muted small">risk: ${escapeHtml(String(info.risk))}</span>` : "";
+    const desc = info.description ? `<div class="muted small">${escapeHtml(String(info.description))}</div>` : "";
+    return `<div class="card verb-mode-row">
+      <div class="verb-mode-head">
+        <code>${escapeHtml(verb)}</code>${risk}
+        <select data-verb-mode="${escapeHtml(verb)}">${option(mode, "off", "Off")}${option(mode, "confirm", "Confirm")}${option(mode, "auto", "Auto")}</select>
+      </div>${desc}
+    </div>`;
+  }).join("");
+}
+
+async function saveConvVerbModes() {
+  const modes = {};
+  document.querySelectorAll("[data-verb-mode]").forEach((select) => {
+    modes[select.dataset.verbMode] = select.value;
+  });
+  try {
+    const result = await api("/api/wm/autoplay/configure", {
+      method: "POST",
+      body: JSON.stringify({ conversational_verb_modes: modes })
+    });
+    setOutput("autoplayOutput", result);
+    const saved = $("convVerbModesSaved");
+    if (saved) { saved.hidden = false; setTimeout(() => { saved.hidden = true; }, 2000); }
+    await loadAll();
+  } catch (error) {
+    setOutput("autoplayOutput", { ok: false, error: error.message });
+  }
+}
+
+function pendingIntentCards(pending) {
+  const now = Date.now();
+  return Object.entries(pending || {})
+    .map(([guid, record]) => ({ guid, record: record || {} }))
+    .filter(({ record }) => {
+      if (!record.expires_at) return true;
+      const expires = Date.parse(record.expires_at);
+      return Number.isNaN(expires) || expires > now;
+    });
+}
+
+function renderPendingIntents(pending) {
+  const cards = pendingIntentCards(pending);
+  const html = cards.map(({ guid, record }) => {
+    const verb = escapeHtml(String(record.verb || "action").replaceAll("_", " "));
+    const risk = record.risk ? `<span class="muted small">risk: ${escapeHtml(String(record.risk))}</span>` : "";
+    const summary = record.summary ? `<div class="muted small">${escapeHtml(String(record.summary))}</div>` : "";
+    const expires = record.expires_at ? `<div class="muted small">expires ${escapeHtml(String(record.expires_at))}</div>` : "";
+    return `<div class="card pending-intent">
+      <div class="pending-intent-head"><strong>${verb}</strong> ${risk} <span class="muted small">guid ${escapeHtml(String(guid))}</span></div>
+      ${summary}${expires}
+      <div class="button-row">
+        <button class="primary" data-intent-approve="${escapeHtml(String(guid))}">Approve</button>
+        <button class="danger" data-intent-reject="${escapeHtml(String(guid))}">Reject</button>
+      </div>
+    </div>`;
+  }).join("");
+  [["pendingIntentsList", "pendingIntentsEmpty"], ["simplePendingIntentsList", "simplePendingIntentsEmpty"]].forEach(([listId, emptyId]) => {
+    const list = $(listId);
+    const empty = $(emptyId);
+    if (!list) return;
+    if (cards.length) {
+      list.hidden = false;
+      list.innerHTML = html;
+      if (empty) empty.hidden = true;
+    } else {
+      list.hidden = true;
+      list.innerHTML = "";
+      if (empty) empty.hidden = false;
+    }
+  });
+}
+
+async function resolveIntent(path, guid) {
+  try {
+    const result = await api(path, {
+      method: "POST",
+      body: JSON.stringify({ player_guid: Number(guid) })
+    });
+    setOutput("autoplayOutput", result);
+  } catch (error) {
+    setOutput("autoplayOutput", { ok: false, error: error.message });
+  }
+  await loadAll();
+}
+
+function onPendingListClick(event) {
+  const approve = event.target.closest("[data-intent-approve]");
+  if (approve) { resolveIntent("/api/wm/autoplay/intent/approve", approve.dataset.intentApprove); return; }
+  const reject = event.target.closest("[data-intent-reject]");
+  if (reject) { resolveIntent("/api/wm/autoplay/intent/reject", reject.dataset.intentReject); }
+}
+
+async function generateAutoplayOnce() {
+  const guid = activeSessionGuid();
+  if (!guid) {
+    setOutput("autoplayOutput", { ok: false, error: "Select or bootstrap a session character first." });
+    return;
+  }
+  await configureAutoplay();
+  const lanes = autoplayConfigPayload().llm_lanes;
+  const result = await api("/api/wm/autoplay/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      player_guid: guid,
+      lane: lanes[0] || "scene",
+      llm_model: $("autoplayModel").value || $("llmModel").value || null,
+      llm_base_url: $("llmBaseUrl").value || null
+    })
+  });
+  setOutput("autoplayOutput", result);
+  await refreshDrafts();
+  await loadAll();
 }
 
 async function setAutoplayPaused(paused) {
@@ -259,13 +573,28 @@ async function setAutoplayPaused(paused) {
   renderAutoplay(result.autoplay || {});
 }
 
+async function resetChatContext() {
+  const guid = activeSessionGuid();
+  const result = await api("/api/wm/autoplay/reset-chat-context", {
+    method: "POST",
+    body: JSON.stringify({ actor_guid: guid || null })
+  });
+  renderAutoplay(result.autoplay || {});
+  setOutput("autoplayOutput", result);
+  return result;
+}
+
 function renderModelSelect(models, selected) {
   const unique = Array.from(new Set(models.filter(Boolean)));
-  $("llmModel").innerHTML = [
+  if (selected && !unique.includes(selected)) unique.unshift(selected);
+  const html = [
     `<option value="">Select model</option>`,
     ...unique.map((model) => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`)
   ].join("");
+  $("llmModel").innerHTML = html;
+  $("simpleLlmModel").innerHTML = html;
   if (selected) $("llmModel").value = selected;
+  if (selected) $("simpleLlmModel").value = selected;
 }
 
 function currentLlmSettings() {
@@ -273,6 +602,7 @@ function currentLlmSettings() {
     base_url: $("llmBaseUrl").value,
     model: $("llmModel").value || null,
     temperature: Number($("llmTemperature").value || 0.2),
+    top_p: $("llmTopP").value === "" ? null : Number($("llmTopP").value),
     max_tokens: Number($("llmMaxTokens").value || 2048),
     timeout_seconds: Number($("llmTimeout").value || 60),
     schema_mode: $("llmSchemaMode").value,
@@ -280,8 +610,45 @@ function currentLlmSettings() {
   };
 }
 
+function syncSimpleLlmToAdvanced() {
+  $("llmBaseUrl").value = $("simpleLlmBaseUrl").value || "http://localhost:1234/v1";
+  $("llmModel").value = $("simpleLlmModel").value || "";
+  $("llmTemperature").value = $("simpleLlmTemperature").value || 0.2;
+  $("llmTopP").value = $("simpleLlmTopP").value || "";
+  $("llmMaxTokens").value = $("simpleLlmMaxTokens").value || 2048;
+  $("autoplayModel").value = $("simpleLlmModel").value || "";
+  $("autoplayLanes").value = $("simpleLlmLanes").value || "chat";
+}
+
+async function simpleSaveLlmSettings() {
+  syncSimpleLlmToAdvanced();
+  const settings = await api("/api/llm/settings", { method: "POST", body: JSON.stringify(currentLlmSettings()) });
+  const autoplay = await api("/api/wm/autoplay/configure", { method: "POST", body: JSON.stringify(autoplayConfigPayload()) });
+  setOutput("simpleLlmOutput", { settings, autoplay });
+}
+
+async function simpleFetchModels() {
+  syncSimpleLlmToAdvanced();
+  await saveLlmSettings();
+  const result = await api("/api/llm/models");
+  renderModelSelect(result.models || [], $("simpleLlmModel").value || $("llmModel").value);
+  setOutput("simpleLlmOutput", result);
+}
+
+async function simpleGenerateAutoplayOnce() {
+  syncSimpleLlmToAdvanced();
+  await generateAutoplayOnce();
+  $("simpleLlmOutput").textContent = $("autoplayOutput").textContent;
+}
+
+async function simpleResetChatContext() {
+  const result = await resetChatContext();
+  setOutput("simpleLlmOutput", result);
+}
+
 async function saveLlmSettings() {
   const result = await api("/api/llm/settings", { method: "POST", body: JSON.stringify(currentLlmSettings()) });
+  if (result.autoplay) renderAutoplay(result.autoplay);
   setOutput("llmResult", result);
 }
 
@@ -305,6 +672,24 @@ async function generateDraft() {
   });
   setOutput("llmResult", result);
   await refreshDrafts();
+}
+
+async function simpleValidateSelected() {
+  const schemaId = $("simplePublishSchema").value;
+  if (schemaId) selectSchema(schemaId);
+  const payload = payloadFromEditor();
+  const result = await api("/api/schema/validate", {
+    method: "POST",
+    body: JSON.stringify({ schema_version: state.activeSchema.id, payload })
+  });
+  setOutput("simplePublishOutput", result);
+}
+
+async function simpleRunSelected() {
+  const schemaId = $("simplePublishSchema").value;
+  if (schemaId) selectSchema(schemaId);
+  const result = await runPayloadCommand($("simplePublishCommand").value, "simplePublishOutput");
+  setOutput("simplePublishOutput", result);
 }
 
 function selectSchema(schemaId) {
@@ -532,16 +917,23 @@ async function refreshDrafts() {
 }
 
 function renderDrafts(drafts) {
-  $("draftList").innerHTML = drafts.map((draft) => {
+  const html = drafts.map((draft) => {
     const label = `${draft.created_at || ""} | ${draft.origin} | ${draft.schema_version} | ${draft.state}`;
     return `<button data-draft-id="${escapeHtml(draft.draft_id)}">${escapeHtml(label)}</button>`;
   }).join("");
-  $("draftList").querySelectorAll("button").forEach((button) => {
+  $("draftList").innerHTML = html;
+  $("simpleDraftList").innerHTML = html;
+  document.querySelectorAll("#draftList button, #simpleDraftList button").forEach((button) => {
     button.addEventListener("click", async () => {
       state.selectedDraft = await api(`/api/drafts/${encodeURIComponent(button.dataset.draftId)}`);
-      setOutput("draftDetail", state.selectedDraft);
+      setDraftOutput(state.selectedDraft);
     });
   });
+}
+
+function setDraftOutput(value) {
+  setOutput("draftDetail", value);
+  setOutput("simpleDraftDetail", value);
 }
 
 async function adoptSelectedDraft() {
@@ -551,7 +943,7 @@ async function adoptSelectedDraft() {
     body: JSON.stringify({ operator_name: "operator-reviewed" })
   });
   state.selectedDraft = adopted;
-  setOutput("draftDetail", adopted);
+  setDraftOutput(adopted);
   await refreshDrafts();
 }
 
@@ -562,14 +954,14 @@ async function rejectSelectedDraft() {
     body: JSON.stringify({})
   });
   state.selectedDraft = rejected;
-  setOutput("draftDetail", rejected);
+  setDraftOutput(rejected);
   await refreshDrafts();
 }
 
 async function dryRunSelectedDraft() {
   if (!state.selectedDraft || !state.selectedDraft.parsed_json) return;
   if (state.selectedDraft.origin !== "human_reviewed") {
-    setOutput("draftDetail", {
+    setDraftOutput({
       ok: false,
       error: "Adopt the draft as reviewed before dry-run. LLM drafts never run directly.",
       draft: state.selectedDraft
@@ -578,7 +970,8 @@ async function dryRunSelectedDraft() {
   }
   const schemaVersion = state.selectedDraft.schema_version;
   const commandId = schemaVersion === "control.proposal.v1" ? "control.apply" : "content.release.plan";
-  await runCommand(commandId, {}, state.selectedDraft.parsed_json, "draftDetail");
+  const result = await runCommand(commandId, {}, state.selectedDraft.parsed_json, "draftDetail");
+  setOutput("simpleDraftDetail", result);
 }
 
 function activeSessionGuid() {
@@ -871,6 +1264,13 @@ async function sliceRollback() {
   } catch (error) {
     $("rollbackResult").textContent = error.message;
   }
+}
+
+async function simpleRollback() {
+  $("rollbackArtifactType").value = $("simpleRollbackType").value;
+  $("rollbackArtifactEntry").value = $("simpleRollbackEntry").value;
+  await sliceRollback();
+  setOutput("simpleActivity", $("rollbackResult").textContent || {});
 }
 
 function capitalize(value) {

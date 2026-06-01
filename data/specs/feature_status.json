@@ -147,6 +147,15 @@
       "evidence_ref": "tests/test_journal_projector.py"
     },
     {
+      "feature_key": "autoplay.conversational_action_loop",
+      "layer": "autoplay",
+      "repo_status": "WORKING",
+      "gameplay_status": "PARTIAL",
+      "scope": "Chat model emits typed intent -> deterministic compile to ControlProposal -> dry-run/apply/audit, gated by per-verb modes (off/confirm/auto); confirm in-chat (yes/no) or via panel inbox. Needs in-client walk.",
+      "last_verified": "2026-05-29",
+      "evidence_ref": "tests/test_autoplay.py"
+    },
+    {
       "feature_key": "release.ci",
       "layer": "release",
       "repo_status": "WORKING",

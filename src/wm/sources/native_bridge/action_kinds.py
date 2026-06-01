@@ -100,6 +100,7 @@ NATIVE_ACTION_KINDS: tuple[NativeActionKind, ...] = (
     NativeActionKind("zone_set_weather", "environment", "medium", description="Set scoped zone weather override."),
     NativeActionKind("zone_clear_weather_override", "environment", "low", description="Clear scoped zone weather override."),
     NativeActionKind("world_announce_to_player", "environment", "low", implemented=True, description="Send a server announcement to the scoped player."),
+    NativeActionKind("player_chat_message", "social", "low", implemented=True, description="Send a scoped WM chat-style message to the player."),
     NativeActionKind("player_play_sound", "environment", "low", description="Play a sound ID for the scoped player."),
     NativeActionKind("player_play_movie", "environment", "medium", description="Play a movie/cinematic ID for the scoped player."),
     NativeActionKind("area_trigger_marker_set", "environment", "medium", description="Set a scoped area trigger marker."),

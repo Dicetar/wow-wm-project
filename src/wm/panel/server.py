@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 from wm.llm.lmstudio import LmStudioClient
 from wm.llm.lmstudio import LmStudioSettings
+from wm.autoplay.tools import autoplay_tool_manifest
 from wm.panel.catalog import CommandCatalog
 from wm.panel.jobs import JobRunner
 from wm.panel.schemas import SchemaCatalog
@@ -96,6 +97,8 @@ class PanelApp:
                 return 200, {"ok": True, "models": LmStudioClient(settings).list_models()}
             except Exception as exc:
                 return 200, {"ok": False, "models": [], "error": str(exc)}
+        if path == "/api/wm/tools":
+            return 200, autoplay_tool_manifest()
         if path == "/api/living":
             try:
                 from wm.living.catalog import build_wild_feature_catalog
@@ -267,9 +270,13 @@ class PanelApp:
 
     def _autoplay_status(self) -> dict[str, Any]:
         try:
+            from wm.autoplay.intent import resolve_verb_modes
             from wm.autoplay.state import AutoplayStateStore
             store = self._autoplay_store or AutoplayStateStore()
-            return store.load_status()
+            status = store.load_status()
+            config = status.get("config") if isinstance(status.get("config"), dict) else {}
+            status["conversational_verb_modes"] = resolve_verb_modes(config.get("conversational_verb_modes"))
+            return status
         except Exception as exc:
             return {
                 "schema_version": "wm.autoplay.status.v1",
@@ -345,7 +352,8 @@ class PanelApp:
             if body.get("api_key") not in (None, ""):
                 self._api_key = str(body["api_key"])
             settings = self.state.save_settings(dict(body))
-            return 200, {**settings, "api_key_set": bool(self._api_key)}
+            autoplay = self._sync_autoplay_llm_settings(settings=settings, source_body=body)
+            return 200, {**settings, "api_key_set": bool(self._api_key), "autoplay": autoplay}
         if path == "/api/llm/generate":
             return 200, self._generate_llm_draft(body)
         if path.startswith("/api/drafts/") and path.endswith("/reject"):
@@ -362,6 +370,16 @@ class PanelApp:
             return 200, self._autoplay_pause(paused=True)
         if path == "/api/wm/autoplay/resume":
             return 200, self._autoplay_pause(paused=False)
+        if path == "/api/wm/autoplay/reset-chat-context":
+            return 200, self._autoplay_reset_chat_context(body)
+        if path == "/api/wm/autoplay/configure":
+            return 200, self._autoplay_configure(body)
+        if path == "/api/wm/autoplay/generate":
+            return self._autoplay_generate(body)
+        if path == "/api/wm/autoplay/intent/approve":
+            return self._autoplay_intent_approve(body)
+        if path == "/api/wm/autoplay/intent/reject":
+            return self._autoplay_intent_reject(body)
         if path == "/api/wm/session/approve":
             return self._session_approve(body)
         if path == "/api/wm/session/reject":
@@ -385,6 +403,105 @@ class PanelApp:
         store = self._autoplay_store or AutoplayStateStore()
         status = store.set_paused(bool(paused))
         return {"ok": True, "autoplay": status}
+
+    def _autoplay_reset_chat_context(self, body: dict[str, Any]) -> dict[str, Any]:
+        from wm.autoplay.state import AutoplayStateStore
+
+        store = self._autoplay_store or AutoplayStateStore()
+        actor = body.get("actor_guid")
+        actor_guid = int(actor) if actor not in (None, "") else None
+        status = store.reset_chat_context(actor_guid=actor_guid, source="panel")
+        return {"ok": True, "autoplay": status, "reset": status.get("latest_chat_context_reset")}
+
+    def _autoplay_configure(self, body: dict[str, Any]) -> dict[str, Any]:
+        from wm.autoplay.state import AutoplayStateStore
+
+        store = self._autoplay_store or AutoplayStateStore()
+        updates: dict[str, Any] = {}
+        for key in (
+            "llm_enabled",
+            "llm_chat_enabled",
+            "llm_lanes",
+            "llm_model",
+            "llm_base_url",
+            "llm_event_age_seconds",
+            "llm_cooldown_seconds",
+            "llm_events_per_tick",
+        ):
+            if key in body:
+                updates[key] = body[key]
+        if isinstance(body.get("conversational_verb_modes"), dict):
+            from wm.autoplay.intent import resolve_verb_modes
+            updates["conversational_verb_modes"] = resolve_verb_modes(body["conversational_verb_modes"])
+        status = store.configure(updates)
+        return {"ok": True, "autoplay": status}
+
+    def _sync_autoplay_llm_settings(self, *, settings: dict[str, Any], source_body: dict[str, Any]) -> dict[str, Any] | None:
+        """Keep the running autoplay model in step with panel LLM settings.
+
+        Autoplay config takes precedence over saved panel settings, so a model
+        chosen in the LLM tab must also update the autoplay command store.
+        """
+        from wm.autoplay.state import AutoplayStateStore
+
+        updates: dict[str, Any] = {}
+        if "model" in source_body and settings.get("model") not in (None, ""):
+            updates["llm_model"] = settings["model"]
+        if "base_url" in source_body and settings.get("base_url") not in (None, ""):
+            updates["llm_base_url"] = settings["base_url"]
+        if not updates:
+            return None
+        store = self._autoplay_store or AutoplayStateStore()
+        return store.configure(updates)
+
+    def _autoplay_generate(self, body: dict[str, Any]) -> tuple[int, Any]:
+        from wm.autoplay.service import AutoplayRuntimeConfig
+        from wm.autoplay.service import AutoplayService
+        from wm.autoplay.state import AutoplayStateStore
+
+        session = self.state.load_session() or {}
+        guid = body.get("player_guid") or body.get("character_guid") or session.get("character_guid")
+        if guid in (None, ""):
+            return 400, {"ok": False, "error": "player_guid or active session is required"}
+        store = self._autoplay_store or AutoplayStateStore()
+        config = AutoplayRuntimeConfig(
+            player_guid=int(guid),
+            start_watcher=False,
+            project_root=self.cwd,
+            llm_model=(str(body["llm_model"]) if body.get("llm_model") not in (None, "") else None),
+            llm_base_url=(str(body["llm_base_url"]) if body.get("llm_base_url") not in (None, "") else None),
+            llm_lanes=tuple(body.get("llm_lanes") if isinstance(body.get("llm_lanes"), list) else [str(body.get("lane") or "scene")]),
+        )
+        result = AutoplayService(store=store, panel_state=self.state).generate_once(
+            config=config,
+            lane=(str(body["lane"]) if body.get("lane") not in (None, "") else None),
+            event_id=(int(body["event_id"]) if body.get("event_id") not in (None, "") else None),
+            source_event_key=(str(body["source_event_key"]) if body.get("source_event_key") not in (None, "") else None),
+        )
+        return (200 if result.get("ok") else 409), result
+
+    def _autoplay_intent_approve(self, body: dict[str, Any]) -> tuple[int, Any]:
+        from wm.autoplay.service import AutoplayService
+        from wm.autoplay.state import AutoplayStateStore
+
+        session = self.state.load_session() or {}
+        guid = body.get("player_guid") or body.get("character_guid") or session.get("character_guid")
+        if guid in (None, ""):
+            return 400, {"ok": False, "error": "player_guid or active session is required"}
+        store = self._autoplay_store or AutoplayStateStore()
+        result = AutoplayService(store=store, panel_state=self.state).approve_pending(player_guid=int(guid))
+        return (200 if result.get("ok") else 409), result
+
+    def _autoplay_intent_reject(self, body: dict[str, Any]) -> tuple[int, Any]:
+        from wm.autoplay.state import AutoplayStateStore
+
+        session = self.state.load_session() or {}
+        guid = body.get("player_guid") or body.get("character_guid") or session.get("character_guid")
+        if guid in (None, ""):
+            return 400, {"ok": False, "error": "player_guid or active session is required"}
+        store = self._autoplay_store or AutoplayStateStore()
+        store.clear_pending_intent(int(guid), reason="panel_rejected")
+        return 200, {"ok": True, "player_guid": int(guid)}
 
     def _session_approve(self, body: dict[str, Any]) -> tuple[int, Any]:
         if (err := self._require_session()) is not None:

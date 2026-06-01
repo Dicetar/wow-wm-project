@@ -247,6 +247,63 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertEqual(spell_event.event_type, "spell_cast")
         self.assertEqual(aura_event.event_type, "aura_applied")
 
+    def test_native_bridge_maps_level_up_and_death(self) -> None:
+        level_event = _record_to_event(
+            NativeBridgeRecord(
+                bridge_event_id=30,
+                occurred_at="2026-06-01 12:00:00",
+                event_family="progress",
+                event_type="level_up",
+                source="native_bridge",
+                player_guid=5408,
+                subject_type="player",
+                subject_entry=5408,
+                payload={"old_level": 11, "new_level": 12, "player_name": "Astel"},
+            )
+        )
+        death_event = _record_to_event(
+            NativeBridgeRecord(
+                bridge_event_id=31,
+                occurred_at="2026-06-01 12:00:05",
+                event_family="combat",
+                event_type="death",
+                source="native_bridge",
+                player_guid=5408,
+                subject_type="player",
+                subject_entry=5408,
+                payload={"player_name": "Astel", "zone_name": "Westfall", "area_name": "Sentinel Hill"},
+            )
+        )
+        assert level_event is not None and death_event is not None
+        self.assertEqual(level_event.event_type, "level_up")
+        self.assertEqual(level_event.event_value, "12")
+        self.assertEqual(death_event.event_type, "death")
+        self.assertEqual(death_event.event_value, "Westfall")
+
+    def test_native_bridge_maps_wm_chat_events(self) -> None:
+        event = _record_to_event(
+            NativeBridgeRecord(
+                bridge_event_id=23,
+                occurred_at="2026-04-09 12:00:05",
+                event_family="chat",
+                event_type="wm_chat",
+                source="native_bridge",
+                player_guid=5408,
+                subject_type="player",
+                subject_entry=5408,
+                payload={"player_name": "Astel", "message": "What should I do next?", "source_chat": "default"},
+            )
+        )
+
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual(event.event_type, "wm_chat")
+        self.assertEqual(event.player_guid, 5408)
+        self.assertEqual(event.subject_type, "player")
+        self.assertEqual(event.subject_entry, 5408)
+        self.assertEqual(event.event_value, "What should I do next?")
+        self.assertEqual(event.metadata["payload"]["source_chat"], "default")
+
     def test_adapter_derives_gossip_session_expired_after_timeout(self) -> None:
         client = _FakeClient(
             rows=[

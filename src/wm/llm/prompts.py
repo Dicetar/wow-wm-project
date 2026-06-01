@@ -19,6 +19,7 @@ def build_messages(
     instruction: str,
     context_pack: Any | None = None,
     candidate_pack: Any | None = None,
+    output_schema: Any | None = None,
 ) -> list[dict[str, str]]:
     user_payload = {
         "schema_version": schema_version,
@@ -26,6 +27,8 @@ def build_messages(
         "context_pack": context_pack,
         "candidate_pack": candidate_pack,
     }
+    if output_schema is not None:
+        user_payload["json_schema"] = output_schema
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(user_payload, indent=2, ensure_ascii=False, sort_keys=True)},

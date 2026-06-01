@@ -108,6 +108,40 @@ def _record_to_event(record: NativeBridgeRecord) -> WMEvent | None:
             metadata=metadata,
         )
 
+    if family == "progress" and event_type == "level_up":
+        return WMEvent(
+            event_class="observed",
+            event_type="level_up",
+            source="native_bridge",
+            source_event_key=f"native_bridge:{record.bridge_event_id}",
+            occurred_at=record.occurred_at,
+            player_guid=record.player_guid,
+            subject_type=record.subject_type or "player",
+            subject_entry=record.subject_entry,
+            map_id=record.map_id,
+            zone_id=record.zone_id,
+            area_id=record.area_id,
+            event_value=_string_from_payload(record.payload, "new_level"),
+            metadata=metadata,
+        )
+
+    if family == "combat" and event_type == "death":
+        return WMEvent(
+            event_class="observed",
+            event_type="death",
+            source="native_bridge",
+            source_event_key=f"native_bridge:{record.bridge_event_id}",
+            occurred_at=record.occurred_at,
+            player_guid=record.player_guid,
+            subject_type=record.subject_type or "player",
+            subject_entry=record.subject_entry,
+            map_id=record.map_id,
+            zone_id=record.zone_id,
+            area_id=record.area_id,
+            event_value=_string_from_payload(record.payload, "zone_name") or "death",
+            metadata=metadata,
+        )
+
     if family == "loot" and event_type == "item":
         return WMEvent(
             event_class="observed",
@@ -174,6 +208,23 @@ def _record_to_event(record: NativeBridgeRecord) -> WMEvent | None:
             zone_id=record.zone_id,
             area_id=record.area_id,
             event_value=_string_from_payload(record.payload, "area_name"),
+            metadata=metadata,
+        )
+
+    if family == "chat" and event_type in {"wm_chat", "wmchat", "towm"}:
+        return WMEvent(
+            event_class="observed",
+            event_type="wm_chat",
+            source="native_bridge",
+            source_event_key=f"native_bridge:{record.bridge_event_id}",
+            occurred_at=record.occurred_at,
+            player_guid=record.player_guid,
+            subject_type=record.subject_type or "player",
+            subject_entry=record.subject_entry or record.player_guid,
+            map_id=record.map_id,
+            zone_id=record.zone_id,
+            area_id=record.area_id,
+            event_value=_string_from_payload(record.payload, "message"),
             metadata=metadata,
         )
 

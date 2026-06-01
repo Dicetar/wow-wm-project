@@ -75,6 +75,11 @@
       "required_any": ["message", "text"],
       "notes": "Sends a server announcement to the scoped player (implemented). Accepts message or text."
     },
+    "player_chat_message": {
+      "required_any": ["message", "text"],
+      "optional": ["style", "channel_name", "sender_name"],
+      "notes": "Sends a scoped chat-box WM message to the online player. style may be channel, whisper, or system; channel_name defaults to WM and sender_name defaults to WorldMaster."
+    },
     "quest_add": {
       "required": ["quest_id"],
       "optional": ["target_player_guid"],
@@ -87,7 +92,7 @@
     },
     "player_add_money": {
       "required": ["copper"],
-      "notes": "Adds a positive copper amount to the scoped online player."
+      "notes": "Adds a positive copper amount to the scoped online player. 'copper' is the total in COPPER, not gold. Convert from what the player asked: 1 gold = 10000 copper, 1 silver = 100 copper. Examples: '10 gold' -> copper=100000; '5 silver' -> copper=500; '50 copper' -> copper=50."
     },
     "player_add_reputation": {
       "required": ["faction_id", "value"],
@@ -95,9 +100,9 @@
       "notes": "Adjusts one faction for the scoped online player; no_spillover defaults true."
     },
     "creature_spawn": {
-      "required": ["creature_entry"],
+      "required_any": ["creature_entry", "creature_name"],
       "optional": ["arc_key", "duration_ms", "distance", "angle_offset", "follow_player", "follow_distance", "follow_angle"],
-      "notes": "Spawns a temporary WM-owned creature near the scoped player and records it in wm_bridge_world_object with LiveGUIDLow."
+      "notes": "Spawns a temporary WM-owned creature near the scoped player and records it in wm_bridge_world_object with LiveGUIDLow. Provide creature_name (e.g. 'deer', 'wolf') and WM resolves it to a creature_entry automatically, or pass a known creature_entry directly. The creature appears near the player; no coordinates are needed."
     },
     "creature_despawn": {
       "required_any": ["object_id", "live_guid_low", "live_guid", "arc_key"],

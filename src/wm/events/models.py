@@ -24,6 +24,7 @@ OBSERVED_EVENT_TYPES = {
     "aura_removed",
     "weather_changed",
     "enter_area",
+    "wm_chat",
 }
 
 DERIVED_EVENT_TYPES = {

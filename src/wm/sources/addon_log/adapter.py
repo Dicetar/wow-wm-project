@@ -40,30 +40,56 @@ class AddonLogTailAdapter:
         )
         self.last_scan_result = scan_result
         self.last_cursor_value = scan_result.cursor.to_cursor_value()
-        return [
-            WMEvent(
-                event_class="observed",
-                event_type="kill",
-                source=self.name,
-                source_event_key=signal.source_event_key,
-                occurred_at=signal.occurred_at,
-                player_guid=signal.player_ref.guid,
-                subject_type="creature",
-                subject_entry=signal.subject_ref.entry if signal.subject_ref is not None else None,
-                event_value="1",
-                metadata={
-                    "player_name": signal.player_ref.name,
-                    "subject_name": signal.subject_ref.name if signal.subject_ref is not None else None,
-                    "addon_channel": signal.channel or self.settings.addon_channel_name,
-                    "raw_payload": signal.raw_payload,
-                    "raw_line": signal.raw_line,
-                    "byte_offset": signal.byte_offset,
-                    "resolution_source": signal.resolution_source,
-                    "target_guid": signal.target_guid,
-                    "combat_subevent": signal.subevent,
-                    "log_path": signal.log_path,
-                },
-            )
-            for signal in scan_result.signals
-            if signal.event_type == "kill" and signal.subject_ref is not None
-        ]
+        events: list[WMEvent] = []
+        for signal in scan_result.signals:
+            if signal.event_type == "kill" and signal.subject_ref is not None:
+                events.append(
+                    WMEvent(
+                        event_class="observed",
+                        event_type="kill",
+                        source=self.name,
+                        source_event_key=signal.source_event_key,
+                        occurred_at=signal.occurred_at,
+                        player_guid=signal.player_ref.guid,
+                        subject_type="creature",
+                        subject_entry=signal.subject_ref.entry,
+                        event_value="1",
+                        metadata={
+                            "player_name": signal.player_ref.name,
+                            "subject_name": signal.subject_ref.name,
+                            "addon_channel": signal.channel or self.settings.addon_channel_name,
+                            "raw_payload": signal.raw_payload,
+                            "raw_line": signal.raw_line,
+                            "byte_offset": signal.byte_offset,
+                            "resolution_source": signal.resolution_source,
+                            "target_guid": signal.target_guid,
+                            "combat_subevent": signal.subevent,
+                            "log_path": signal.log_path,
+                        },
+                    )
+                )
+            elif signal.event_type == "wm_chat":
+                events.append(
+                    WMEvent(
+                        event_class="observed",
+                        event_type="wm_chat",
+                        source=self.name,
+                        source_event_key=signal.source_event_key,
+                        occurred_at=signal.occurred_at,
+                        player_guid=signal.player_ref.guid,
+                        subject_type="player",
+                        subject_entry=signal.player_ref.guid,
+                        event_value=signal.message,
+                        metadata={
+                            "player_name": signal.player_ref.name,
+                            "message": signal.message,
+                            "addon_channel": signal.channel or self.settings.addon_channel_name,
+                            "raw_payload": signal.raw_payload,
+                            "raw_line": signal.raw_line,
+                            "byte_offset": signal.byte_offset,
+                            "resolution_source": signal.resolution_source,
+                            "log_path": signal.log_path,
+                        },
+                    )
+                )
+        return events

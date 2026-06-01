@@ -9,6 +9,8 @@ from pydantic import ValidationError
 
 from wm.content.release import validate_content_release_spec
 from wm.control.models import ControlProposal
+from wm.spells.publish import managed_spell_draft_from_dict
+from wm.spells.validator import validate_managed_spell_draft
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +137,21 @@ def _validate_domain(entry: SchemaEntry, payload: Any) -> dict[str, Any]:
                 ],
             }
         return {"ok": True, "issues": [], "normalized": proposal.model_dump(mode="json")}
+    if entry.validator == "wm.spell.managed":
+        try:
+            draft = managed_spell_draft_from_dict(payload)
+            result = validate_managed_spell_draft(draft)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "issues": [SchemaIssue(path="", message=str(exc)).to_dict()],
+            }
+        return {
+            "ok": result.ok,
+            "issues": [issue.to_dict() for issue in result.issues],
+            "content_kind": "spell",
+            "normalized": draft.to_dict(),
+        }
     return {"ok": True, "issues": []}
 
 

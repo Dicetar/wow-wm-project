@@ -23,6 +23,10 @@ _KILL_LINE = (
     'player_guid=5406|target=Kobold Vermin|target_guid=Creature-0-0-0-0-6-0000000001|'
     'subevent=PARTY_KILL|ts=1712600001123'
 )
+_TOWM_LINE = (
+    '2026-04-08T20:01:03Z [Addon] incoming payload WMB1|type=TOWM|player=Jecia|'
+    'player_guid=5406|message=Where should I go next?|channel=WMBridgePrivate|ts=1712600002123'
+)
 _OTHER_LINE = "2026-04-08T20:01:03Z [Server] normal line without addon bridge payload"
 
 
@@ -163,6 +167,29 @@ class AddonLogSourceTests(unittest.TestCase):
         self.assertEqual(kill_signal.subject_ref.entry, 6)
         self.assertEqual(kill_signal.resolution_source, "payload_guid+rule_hint")
 
+    def test_resolver_supports_direct_wm_chat(self) -> None:
+        resolver = AddonLogResolver(
+            client=_ResolverClient(),
+            settings=Settings(),
+            reactive_store=_ReactiveStore(),  # type: ignore[arg-type]
+        )
+        chat_record = AddonLogParser().parse_line(raw_line=_TOWM_LINE, byte_offset=25)
+        assert chat_record is not None
+
+        chat_signal, chat_failure = resolver.resolve(
+            record=chat_record,
+            player_guid=5406,
+            log_path="D:/fake/WMOps.log",
+            fingerprint="fpr",
+        )
+
+        self.assertIsNone(chat_failure)
+        self.assertIsNotNone(chat_signal)
+        assert chat_signal is not None
+        self.assertEqual(chat_signal.event_type, "wm_chat")
+        self.assertEqual(chat_signal.player_ref.guid, 5406)
+        self.assertEqual(chat_signal.message, "Where should I go next?")
+
     def test_resolver_falls_back_to_exact_creature_name(self) -> None:
         resolver = AddonLogResolver(
             client=_ResolverClient(
@@ -217,6 +244,33 @@ class AddonLogSourceTests(unittest.TestCase):
             self.assertEqual({event.subject_entry for event in events}, {6})
             self.assertEqual(len(adapter.last_scan_result.signals), 3)
             self.assertTrue(all(event.source_event_key.startswith(adapter.last_scan_result.cursor.fingerprint) for event in events))
+        finally:
+            if path.exists():
+                path.unlink()
+
+    def test_adapter_emits_direct_wm_chat_events(self) -> None:
+        path = self._workspace_path("addon_log_source_chat_adapter.txt")
+        try:
+            path.write_text(_HELLO_LINE + "\n" + _TOWM_LINE + "\n", encoding="utf-8")
+            adapter = AddonLogTailAdapter(
+                client=_ResolverClient(),
+                settings=Settings(addon_log_path=str(path), addon_log_batch_size=20),
+                store=_AdapterStore(),  # type: ignore[arg-type]
+                reactive_store=_ReactiveStore(),  # type: ignore[arg-type]
+                batch_size=20,
+                player_guid_filter=5406,
+            )
+
+            events = adapter.poll()
+
+            self.assertEqual(len(events), 1)
+            event = events[0]
+            self.assertEqual(event.event_type, "wm_chat")
+            self.assertEqual(event.player_guid, 5406)
+            self.assertEqual(event.subject_type, "player")
+            self.assertEqual(event.subject_entry, 5406)
+            self.assertEqual(event.event_value, "Where should I go next?")
+            self.assertEqual(event.metadata["message"], "Where should I go next?")
         finally:
             if path.exists():
                 path.unlink()

@@ -48,6 +48,13 @@ class AddonLogResolver:
                 log_path=log_path,
                 fingerprint=fingerprint,
             )
+        if record.event_type in {"TOWM", "WMCHAT"}:
+            return self._resolve_wm_chat(
+                record=record,
+                player_guid=player_guid,
+                log_path=log_path,
+                fingerprint=fingerprint,
+            )
         return None, _failure(
             reason="unsupported_event_type",
             record=record,
@@ -85,6 +92,48 @@ class AddonLogResolver:
             log_path=log_path,
             resolution_source=player_source,
             channel=record.payload_fields.get("channel") or self.settings.addon_channel_name,
+        )
+        return signal, None
+
+    def _resolve_wm_chat(
+        self,
+        *,
+        record: AddonLogRecord,
+        player_guid: int,
+        log_path: str,
+        fingerprint: str | None,
+    ) -> tuple[AddonEventSignal | None, AddonResolutionFailure | None]:
+        player_ref, player_source, failure = self._resolve_player_ref(
+            player_guid=int(player_guid),
+            payload_player_guid=record.payload_fields.get("player_guid"),
+            payload_player_name=record.payload_fields.get("player"),
+        )
+        message = str(record.payload_fields.get("message") or record.payload_fields.get("text") or "").strip()
+        if failure is not None or player_ref is None:
+            return None, _failure(
+                reason=failure or "player_unresolved",
+                record=record,
+                details={"player_guid": int(player_guid)},
+            )
+        if not message:
+            return None, _failure(
+                reason="missing_message",
+                record=record,
+                details={"event_type": record.event_type},
+            )
+
+        signal = AddonEventSignal(
+            event_type="wm_chat",
+            player_ref=player_ref,
+            occurred_at=record.occurred_at,
+            raw_line=record.raw_line,
+            raw_payload=record.raw_payload,
+            byte_offset=int(record.byte_offset),
+            source_event_key=f"{fingerprint or 'unknown'}:{int(record.byte_offset)}",
+            log_path=log_path,
+            resolution_source=player_source,
+            channel=record.payload_fields.get("channel") or self.settings.addon_channel_name,
+            message=message[:1000],
         )
         return signal, None
 

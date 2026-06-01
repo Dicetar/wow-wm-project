@@ -18,6 +18,8 @@ public:
     void OnUpdate(uint32 diff) override
     {
         WmBridge::RefreshRuntimeControls(diff);
+        WmBridge::RefreshPlayerPresence(diff);
+        WmBridge::RefreshPlayerPerception(diff);
         WmBridge::PollActionQueue(diff);
         WmBridge::WMEffectRegistry::Instance().ExpireOverdue();
     }

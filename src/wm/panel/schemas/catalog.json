@@ -480,6 +480,109 @@
     }
   },
   {
+    "id": "wm.spell.release.managed_spell.v1",
+    "label": "Managed Spell",
+    "description": "A WM-owned managed spell draft routed through the spell publisher and rollback lane.",
+    "lane": "spell",
+    "mutating": true,
+    "dry_run_required": true,
+    "validator": "wm.spell.managed",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "content_kind", "player_guid", "spell_key", "spell_entry", "slot_kind", "name", "runtime"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "wm.spell.release.managed_spell.v1", "default": "wm.spell.release.managed_spell.v1" },
+        "content_kind": { "type": "string", "const": "spell", "default": "spell" },
+        "player_guid": { "type": "integer", "default": 5406 },
+        "spell_key": { "type": "string", "minLength": 1 },
+        "spell_entry": { "type": "integer", "minimum": 1, "maximum": 999999, "default": 947000 },
+        "slot_kind": {
+          "type": "string",
+          "enum": ["visible_spell_slot", "passive_slot", "helper_slot", "item_trigger_slot"],
+          "ui:enumNames": ["Visible spell slot", "Passive slot", "Helper slot", "Item trigger slot"],
+          "default": "visible_spell_slot"
+        },
+        "name": { "type": "string", "minLength": 1, "default": "WM Autoplay Spell" },
+        "base_visible_spell_id": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 999999,
+          "default": 133,
+          "ui:suggestions": [133, 116, 44614, 172, 132, 770]
+        },
+        "helper_spell_id": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 999999,
+          "default": null,
+          "ui:suggestions": [133, 116, 132, 770]
+        },
+        "trigger_item_entry": { "type": ["integer", "null"], "minimum": 1, "maximum": 999999, "default": null },
+        "aura_description": { "type": ["string", "null"], "ui:widget": "textarea", "default": null },
+        "proc_rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["spell_id"],
+            "properties": {
+              "spell_id": { "type": "integer", "minimum": 1, "maximum": 999999 },
+              "school_mask": { "type": "integer", "default": 0 },
+              "spell_family_name": { "type": "integer", "default": 0 },
+              "spell_family_mask_0": { "type": "integer", "default": 0 },
+              "spell_family_mask_1": { "type": "integer", "default": 0 },
+              "spell_family_mask_2": { "type": "integer", "default": 0 },
+              "proc_flags": { "type": "integer", "default": 0 },
+              "spell_type_mask": { "type": "integer", "default": 0 },
+              "spell_phase_mask": { "type": "integer", "default": 0 },
+              "hit_mask": { "type": "integer", "default": 0 },
+              "attributes_mask": { "type": "integer", "default": 0 },
+              "disable_effect_mask": { "type": "integer", "default": 0 },
+              "procs_per_minute": { "type": "number", "default": 0 },
+              "chance": { "type": "number", "default": 0 },
+              "cooldown": { "type": "integer", "default": 0 },
+              "charges": { "type": "integer", "default": 0 }
+            }
+          },
+          "default": []
+        },
+        "linked_spells": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["trigger_spell_id", "effect_spell_id"],
+            "properties": {
+              "trigger_spell_id": { "type": "integer", "minimum": 1, "maximum": 999999 },
+              "effect_spell_id": { "type": "integer", "minimum": 1, "maximum": 999999 },
+              "link_type": { "type": "integer", "default": 0 },
+              "comment": { "type": ["string", "null"], "default": null }
+            }
+          },
+          "default": []
+        },
+        "tags": { "type": "array", "items": { "type": "string" }, "default": ["wm_autoplay", "llm_draft"] },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["audit_required", "rollback_required", "client_patch_required"],
+          "properties": {
+            "audit_required": { "type": "boolean", "default": true },
+            "rollback_required": { "type": "boolean", "default": true },
+            "client_patch_required": { "type": "boolean", "default": true },
+            "notes": { "type": ["string", "null"], "ui:widget": "textarea", "default": null }
+          }
+        },
+        "notes": { "type": ["array", "string", "null"], "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "ui": {
+      "order": ["schema_version", "content_kind", "player_guid", "spell_key", "spell_entry", "slot_kind", "name", "base_visible_spell_id", "helper_spell_id", "trigger_item_entry", "aura_description", "proc_rules", "linked_spells", "tags", "runtime", "notes"],
+      "icon": "spell"
+    }
+  },
+  {
     "id": "wm.ability.release.shell_power.v1",
     "label": "Shell Power",
     "description": "A visible shell-backed WM ability contract.",
@@ -638,7 +741,7 @@
               "step_key": { "type": "string" },
               "native_action_kind": {
                 "type": "string",
-                "enum": ["world_announce_to_player", "player_apply_aura", "player_remove_aura", "player_cast_spell", "player_restore_health_power", "player_set_display_id", "creature_spawn", "creature_despawn", "creature_say", "creature_emote", "creature_cast_spell", "creature_set_display_id", "creature_set_scale"],
+                "enum": ["player_chat_message", "world_announce_to_player", "player_apply_aura", "player_remove_aura", "player_cast_spell", "player_restore_health_power", "player_set_display_id", "creature_spawn", "creature_despawn", "creature_say", "creature_emote", "creature_cast_spell", "creature_set_display_id", "creature_set_scale"],
                 "ui:enumNames": ["Announce to player", "Apply aura to player", "Remove player aura", "Player casts spell", "Restore player health/power", "Set player display ID", "Spawn creature", "Despawn creature", "Creature says text", "Creature emote", "Creature casts spell", "Set creature display ID", "Set creature scale"]
               },
               "payload": { "type": "object", "additionalProperties": true, "default": {} },

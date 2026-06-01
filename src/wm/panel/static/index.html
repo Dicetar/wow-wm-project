@@ -13,23 +13,163 @@
         <div id="statusLine" class="status-line">Loading...</div>
       </div>
       <div class="button-row">
+        <div class="mode-toggle" role="group" aria-label="Panel mode">
+          <button id="simpleMode" class="active" data-panel-mode="simple">Simple</button>
+          <button id="advancedMode" data-panel-mode="advanced">Advanced</button>
+        </div>
         <button id="themeToggle" title="Toggle light/dark theme">Dark</button>
         <button id="refreshAll" class="primary">Refresh</button>
       </div>
     </header>
 
     <nav class="tabs" aria-label="Panel sections">
-      <button class="tab active" data-tab="overview">Overview</button>
-      <button class="tab" data-tab="slice">WM Session</button>
-      <button class="tab" data-tab="watcher">Watcher</button>
-      <button class="tab" data-tab="llm">LLM</button>
-      <button class="tab" data-tab="content">Content Workbench</button>
-      <button class="tab" data-tab="proposals">Proposal Inbox</button>
-      <button class="tab" data-tab="release">Release Gates</button>
-      <button class="tab" data-tab="maintenance">Rollback</button>
+      <button class="tab active" data-tab="simpleDashboard" data-mode-scope="simple">Dashboard</button>
+      <button class="tab" data-tab="simplePublish" data-mode-scope="simple">Publish</button>
+      <button class="tab" data-tab="simpleLlm" data-mode-scope="simple">LLM</button>
+      <button class="tab" data-tab="simpleInbox" data-mode-scope="simple">Inbox</button>
+      <button class="tab" data-tab="overview" data-mode-scope="advanced">Overview</button>
+      <button class="tab" data-tab="slice" data-mode-scope="advanced">WM Session</button>
+      <button class="tab" data-tab="watcher" data-mode-scope="advanced">Watcher</button>
+      <button class="tab" data-tab="llm" data-mode-scope="advanced">LLM</button>
+      <button class="tab" data-tab="content" data-mode-scope="advanced">Content Workbench</button>
+      <button class="tab" data-tab="proposals" data-mode-scope="advanced">Proposal Inbox</button>
+      <button class="tab" data-tab="release" data-mode-scope="advanced">Release Gates</button>
+      <button class="tab" data-tab="maintenance" data-mode-scope="advanced">Rollback</button>
     </nav>
 
     <main>
+      <section id="simpleDashboard" class="tab-panel active" data-mode-scope="simple">
+        <div class="grid two">
+          <section class="panel">
+            <h2>Play Status</h2>
+            <dl id="simpleStatus" class="kv"></dl>
+            <div class="button-row">
+              <button id="simpleRefresh" class="primary">Refresh</button>
+              <button id="simplePause">Pause</button>
+              <button id="simpleResume">Resume</button>
+            </div>
+          </section>
+          <section class="panel">
+            <h2>Current Blockers</h2>
+            <div id="simpleBlockers" class="list"></div>
+          </section>
+        </div>
+        <div class="grid two">
+          <section class="panel">
+            <h2>Latest Activity</h2>
+            <pre id="simpleActivity" class="output small"></pre>
+          </section>
+          <section class="panel">
+            <h2>Rollback</h2>
+            <div class="inline-fields">
+              <label>Type
+                <select id="simpleRollbackType">
+                  <option value="quest">Quest</option>
+                  <option value="item">Item</option>
+                  <option value="spell">Spell</option>
+                </select>
+              </label>
+              <label>Entry <input id="simpleRollbackEntry" type="number"></label>
+              <button id="simpleRollback" class="danger">Rollback</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="simplePublish" class="tab-panel" data-mode-scope="simple">
+        <section class="panel">
+          <h2>Publish</h2>
+          <div class="form-grid">
+            <label>Lane
+              <select id="simplePublishLane">
+                <option value="">Any</option>
+                <option value="quest">Quest</option>
+                <option value="item">Item</option>
+                <option value="spell">Spell</option>
+                <option value="ability">Ability</option>
+                <option value="scene">Scene</option>
+                <option value="action">Native Action</option>
+              </select>
+            </label>
+            <label>Schema <select id="simplePublishSchema"></select></label>
+            <label>Character GUID <input id="simpleCharacterGuid" type="number" placeholder="active session"></label>
+            <label>Command
+              <select id="simplePublishCommand">
+                <option value="content.release.plan">Plan</option>
+                <option value="content.release.packet">Packet</option>
+                <option value="content.release.validate">Validate</option>
+              </select>
+            </label>
+          </div>
+          <div class="button-row">
+            <button id="simpleValidate">Validate</button>
+            <button id="simpleDryRun" class="primary">Run Selected</button>
+            <button id="simpleOpenAdvanced">Advanced Editor</button>
+          </div>
+          <pre id="simplePublishOutput" class="output"></pre>
+        </section>
+      </section>
+
+      <section id="simpleLlm" class="tab-panel" data-mode-scope="simple">
+        <div class="grid two">
+          <section class="panel">
+            <h2>LLM Control</h2>
+            <div class="form-grid">
+              <label>Base URL <input id="simpleLlmBaseUrl" value="http://localhost:1234/v1"></label>
+              <label>Model <select id="simpleLlmModel"></select></label>
+              <label>Temperature <input id="simpleLlmTemperature" type="number" step="0.05" value="0.2"></label>
+              <label>Top P <input id="simpleLlmTopP" type="number" step="0.05" min="0" max="1" placeholder="default"></label>
+              <label>Max Tokens <input id="simpleLlmMaxTokens" type="number" value="2048"></label>
+              <label>Lanes
+                <select id="simpleLlmLanes">
+                  <option value="chat">Chat only</option>
+                  <option value="chat,scene,action">Chat + scene/action</option>
+                  <option value="chat,quest,item,spell,ability,scene,action">All low-risk lanes</option>
+                </select>
+              </label>
+            </div>
+            <div class="button-row">
+              <button id="simpleSaveLlm" class="primary">Save</button>
+              <button id="simpleFetchModels">Fetch Models</button>
+              <button id="simpleGenerateOnce">Generate Once</button>
+              <button id="simpleResetChatContext">Forget Context</button>
+            </div>
+          </section>
+          <section class="panel">
+            <h2>WM Tools</h2>
+            <dl id="simpleTools" class="kv"></dl>
+          </section>
+        </div>
+        <pre id="simpleLlmOutput" class="output"></pre>
+      </section>
+
+      <section id="simpleInbox" class="tab-panel" data-mode-scope="simple">
+        <div class="grid two">
+          <section class="panel">
+            <h2>Pending</h2>
+            <div id="simpleDraftList" class="list"></div>
+          </section>
+          <section class="panel">
+            <h2>Selected</h2>
+            <div class="button-row">
+              <button id="simpleAdoptDraft">Adopt</button>
+              <button id="simpleDryRunDraft">Dry-run</button>
+              <button id="simpleRejectDraft">Reject</button>
+            </div>
+            <pre id="simpleDraftDetail" class="output"></pre>
+          </section>
+        </div>
+        <section class="panel">
+          <h2>Conversational Actions</h2>
+          <dl class="kv">
+            <dt>Verb modes</dt>
+            <dd id="simpleConvVerbSummary" class="muted">—</dd>
+          </dl>
+          <p class="muted" id="simplePendingIntentsEmpty">No pending actions awaiting confirmation.</p>
+          <div id="simplePendingIntentsList" class="list" hidden></div>
+        </section>
+      </section>
+
       <section id="overview" class="tab-panel active">
         <div class="grid two">
           <section class="panel">
@@ -61,11 +201,39 @@
 
         <section class="panel">
           <h2>Autoplay</h2>
+          <div class="form-grid">
+            <label class="checkbox-label"><input id="autoplayLlmEnabled" type="checkbox"> LLM enabled</label>
+            <label>Lanes <input id="autoplayLanes" value="scene,action"></label>
+            <label>Model <input id="autoplayModel" placeholder="LM Studio model id"></label>
+            <label>Event Age Seconds <input id="autoplayEventAgeSeconds" type="number" value="300"></label>
+            <label>Cooldown Seconds <input id="autoplayCooldownSeconds" type="number" value="60"></label>
+            <label>Events Per Tick <input id="autoplayEventsPerTick" type="number" value="1"></label>
+          </div>
           <div class="button-row">
+            <button id="autoplaySaveConfig">Save LLM Controls</button>
+            <button id="autoplayGenerate">Generate Once</button>
             <button id="autoplayPause">Pause</button>
             <button id="autoplayResume">Resume</button>
+            <button id="autoplayResetChatContext">Forget Chat Context</button>
           </div>
           <dl id="autoplayStatus" class="kv"></dl>
+          <pre id="autoplayOutput" class="output small"></pre>
+        </section>
+
+        <section class="panel">
+          <h2>Conversational Actions</h2>
+          <p class="muted" id="convVerbModesEmpty">Loading…</p>
+          <div id="convVerbModesList" class="list" hidden></div>
+          <div class="button-row" id="convVerbModesActions" hidden>
+            <button id="convVerbModesSave" class="primary">Save</button>
+            <span id="convVerbModesSaved" class="muted" hidden>Saved.</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Pending Approvals</h2>
+          <p class="muted" id="pendingIntentsEmpty">No pending actions awaiting confirmation.</p>
+          <div id="pendingIntentsList" class="list" hidden></div>
         </section>
 
         <section class="panel">
@@ -162,6 +330,7 @@
               <label>Base URL <input id="llmBaseUrl" value="http://localhost:1234/v1"></label>
               <label>Model <select id="llmModel"></select></label>
               <label>Temperature <input id="llmTemperature" type="number" step="0.1" value="0.2"></label>
+              <label>Top P <input id="llmTopP" type="number" step="0.05" min="0" max="1" placeholder="default"></label>
               <label>Max Tokens <input id="llmMaxTokens" type="number" value="2048"></label>
               <label>Timeout Seconds <input id="llmTimeout" type="number" value="60"></label>
               <label>Schema Mode
@@ -234,6 +403,11 @@
             <pre id="draftDetail" class="output"></pre>
           </section>
         </div>
+        <section class="panel">
+          <h2>Pending Conversational Intents</h2>
+          <p class="muted" id="pendingIntentsEmpty">No pending conversational intents.</p>
+          <div id="pendingIntentsList" class="list" hidden></div>
+        </section>
       </section>
 
       <section id="release" class="tab-panel">

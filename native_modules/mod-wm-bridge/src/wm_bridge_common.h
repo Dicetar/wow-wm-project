@@ -19,12 +19,19 @@ namespace WmBridge
         bool emitGossip = true;
         bool emitArea = true;
         bool emitAura = false;
+        bool emitLevelUp = true;
+        bool emitDeath = true;
         bool allowAllPlayers = false;
         bool allowAllAuraSpells = false;
         bool dbControlEnabled = false;
         uint32 dbControlRefreshIntervalMs = 5000;
         bool actionQueueEnabled = false;
         uint32 actionPollIntervalMs = 1000;
+        bool presenceEnabled = true;
+        uint32 presenceIntervalMs = 3000;
+        bool perceptionEnabled = true;
+        uint32 perceptionIntervalMs = 150000;
+        uint32 perceptionRadius = 40;
         bool aoeLootEnabled = false;
         float aoeLootRadius = 35.0f;
         uint32 aoeLootMaxCorpses = 25;
@@ -57,6 +64,8 @@ namespace WmBridge
     bool IsPlayerAllowed(Player const* player);
     bool IsAuraSpellAllowed(uint32 spellId);
     void RefreshRuntimeControls(uint32 diff);
+    void RefreshPlayerPresence(uint32 diff);
+    void RefreshPlayerPerception(uint32 diff);
 
     EventRow MakePlayerScopedEvent(Player const* player, std::string const& eventFamily, std::string const& eventType);
     void EmitEvent(EventRow const& row);

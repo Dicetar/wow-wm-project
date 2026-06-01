@@ -29,7 +29,7 @@ Use this checklist to verify a fresh WM installation is fully operational.
 ## BridgeLab Checks (requires running AzerothCore + mod_wm_bridge)
 
 - [ ] Player Jecia (guid=5406) online
-- [ ] `world_announce_to_player` action delivers message in-game
+- [ ] `player_chat_message` action delivers a WM-channel chat line in-game
 - [ ] `wm_journal_counter` row inserted when player kills a creature
 - [ ] Nemesis plan executes at least the spawn step (creature_spawn)
 

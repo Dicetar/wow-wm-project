@@ -17,6 +17,7 @@ class PanelSchemaCatalogTests(unittest.TestCase):
         self.assertIn("wm.quest.release.one_shot.v1", schema_ids)
         self.assertIn("wm.quest.release.story_arc.v1", schema_ids)
         self.assertIn("wm.item.release.managed_power.v1", schema_ids)
+        self.assertIn("wm.spell.release.managed_spell.v1", schema_ids)
         self.assertIn("wm.ability.release.shell_power.v1", schema_ids)
         self.assertIn("wm.scene.release.native_sequence.v1", schema_ids)
         self.assertIn("properties", catalog.get("control.proposal.v1").schema)

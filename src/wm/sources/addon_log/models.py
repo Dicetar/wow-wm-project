@@ -90,6 +90,7 @@ class AddonEventSignal:
     channel: str | None = None
     subevent: str | None = None
     target_guid: str | None = None
+    message: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -106,6 +107,7 @@ class AddonEventSignal:
             "channel": self.channel,
             "subevent": self.subevent,
             "target_guid": self.target_guid,
+            "message": self.message,
         }
 
 

@@ -94,6 +94,7 @@ class NativeBridgeActionTests(unittest.TestCase):
             "zone_set_weather",
             "context_snapshot_request",
             "world_announce_to_player",
+            "player_chat_message",
             "debug_ping",
         }
 
@@ -102,6 +103,7 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["quest_add"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["quest_remove"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["world_announce_to_player"].implemented)
+        self.assertTrue(NATIVE_ACTION_KIND_BY_ID["player_chat_message"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["player_remove_item"].implemented)
         self.assertTrue(NATIVE_ACTION_KIND_BY_ID["player_random_enchant_item"].implemented)
         self.assertFalse(NATIVE_ACTION_KIND_BY_ID["player_teleport"].default_enabled)
@@ -177,6 +179,10 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("Tiers are clamped to 1-5", contracts["player_random_enchant_item"]["notes"])
         self.assertIn("LiveGUIDLow", contracts["creature_spawn"]["notes"])
         self.assertIn("arc_key", contracts["creature_despawn"]["required_any"])
+        self.assertIn("message", contracts["player_chat_message"]["required_any"])
+        self.assertIn("style", contracts["player_chat_message"]["optional"])
+        self.assertIn("channel_name", contracts["player_chat_message"]["optional"])
+        self.assertIn("sender_name", contracts["player_chat_message"]["optional"])
 
     def test_primitive_pack_2_contracts_are_documented(self) -> None:
         schema_path = Path("control/actions/native/native_bridge_action.json")
@@ -267,6 +273,17 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("DespawnPolicy <> 'despawned'", cpp)
         self.assertIn("WorldDatabase.DirectExecute(", cpp)
         self.assertIn("Spawn result payload needs the WM-owned ObjectID immediately", cpp)
+
+    def test_player_chat_message_cpp_uses_chat_packets(self) -> None:
+        cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_environment_actions.cpp").read_text(encoding="utf-8")
+        script = Path("native_modules/mod-wm-bridge/src/wm_bridge_player_script.cpp").read_text(encoding="utf-8")
+
+        self.assertIn('registry.Register("player_chat_message", &ExecutePlayerChatMessage)', cpp)
+        self.assertIn("CHAT_MSG_CHANNEL", cpp)
+        self.assertIn("CHAT_MSG_WHISPER_FOREIGN", cpp)
+        self.assertIn("SendDirectMessage", cpp)
+        self.assertIn("OnPlayerCanUseChat(Player* player, uint32 /*type*/, uint32 /*language*/, std::string& msg, Channel* channel)", script)
+        self.assertIn('name == "wm"', script)
 
     def test_player_remove_item_cpp_uses_scope_policy_and_managed_item_guard(self) -> None:
         cpp_path = Path("native_modules/mod-wm-bridge/src/wm_bridge_inventory_actions.cpp")

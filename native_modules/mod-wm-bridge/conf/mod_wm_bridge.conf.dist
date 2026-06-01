@@ -34,6 +34,17 @@ WmBridge.Emit.Gossip = 1
 WmBridge.Emit.Area = 1
 
 #
+#    WmBridge.Emit.LevelUp / WmBridge.Emit.Death
+#        Emit progress/level_up and combat/death events for scoped players so
+#        WM can react to those moments (ambient narration, arcs). Server-truth
+#        only; no client changes.
+#
+#        Default: 1
+#
+WmBridge.Emit.LevelUp = 1
+WmBridge.Emit.Death = 1
+
+#
 #    WmBridge.Emit.Aura
 #        Emit player aura apply/remove events for the configured marker spells.
 #        Keep this scoped through PlayerGuidAllowList / wm_bridge_player_scope.
@@ -88,3 +99,35 @@ WmBridge.DbControl.RefreshIntervalMS = 5000
 #
 WmBridge.ActionQueue.Enable = 0
 WmBridge.ActionQueue.PollIntervalMS = 1000
+
+#
+#    WmBridge.Presence.Enable
+#        Heartbeat live player location/state into wm_bridge_player_presence
+#        for scoped players. Gives WM an always-fresh map/zone/area + coords
+#        + level/health/combat row per player, replacing the stale
+#        characters-table position for online players.
+#
+#        Default: 1
+#
+WmBridge.Presence.Enable = 1
+WmBridge.Presence.IntervalMS = 3000
+
+#
+#    WmBridge.Perception.Enable
+#        Heartbeat the nearby creatures/gameobjects around each scoped player
+#        into wm_bridge_player_perception, so WM is continuously aware of the
+#        player's surroundings (same payload as context_snapshot_request, but
+#        ambient and upserted per player rather than on demand). Heavier than
+#        presence (a radius scan per player), so it runs on a slower timer.
+#
+#        The interval is deliberately long: WM only needs cheap ambient
+#        awareness (entity counts) on this timer, and pulls full detail on
+#        demand via context_snapshot_request when it decides to look closer.
+#        A fast perception timer would flood a small local model with new
+#        surroundings data every turn.
+#
+#        Default: 1
+#
+WmBridge.Perception.Enable = 1
+WmBridge.Perception.IntervalMS = 150000
+WmBridge.Perception.Radius = 40

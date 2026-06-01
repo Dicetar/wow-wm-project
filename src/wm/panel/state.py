@@ -12,6 +12,7 @@ DEFAULT_PANEL_SETTINGS: dict[str, Any] = {
     "base_url": "http://localhost:1234/v1",
     "model": None,
     "temperature": 0.2,
+    "top_p": None,
     "max_tokens": 2048,
     "timeout_seconds": 60,
     "schema_mode": "json_schema",

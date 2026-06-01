@@ -350,6 +350,58 @@ class WmSessionEndpointTests(unittest.TestCase):
             self.assertEqual(code, 200, resumed)
             self.assertFalse(resumed["autoplay"]["paused"])
 
+    def test_autoplay_reset_chat_context_endpoint_updates_epoch(self) -> None:
+        from wm.autoplay.state import AutoplayStateStore
+
+        with tempfile.TemporaryDirectory() as temp:
+            store = AutoplayStateStore(Path(temp) / "autoplay")
+            app = _make_app(autoplay_store=store)
+
+            code, body = app.post("/api/wm/autoplay/reset-chat-context", {"actor_guid": 5408})
+
+            self.assertEqual(code, 200, body)
+            self.assertTrue(body["ok"])
+            self.assertEqual(body["autoplay"]["config"]["llm_chat_context_epoch"], 1)
+            self.assertEqual(body["reset"]["actor_guid"], 5408)
+            self.assertEqual(store.load_status()["latest_chat_context_reset"]["source"], "panel")
+
+    def test_autoplay_configure_endpoint_updates_llm_controls(self) -> None:
+        from wm.autoplay.state import AutoplayStateStore
+
+        with tempfile.TemporaryDirectory() as temp:
+            store = AutoplayStateStore(Path(temp) / "autoplay")
+            app = _make_app(autoplay_store=store)
+
+            code, body = app.post("/api/wm/autoplay/configure", {
+                "llm_enabled": True,
+                "llm_lanes": ["scene", "action", "quest"],
+                "llm_model": "local-model",
+                "llm_cooldown_seconds": 30,
+            })
+
+            self.assertEqual(code, 200, body)
+            self.assertEqual(body["autoplay"]["config"]["llm_model"], "local-model")
+            self.assertEqual(body["autoplay"]["config"]["llm_lanes"], ["scene", "action", "quest"])
+            self.assertEqual(body["autoplay"]["config"]["llm_cooldown_seconds"], 30)
+
+    def test_llm_settings_save_updates_autoplay_model_override(self) -> None:
+        from wm.autoplay.state import AutoplayStateStore
+
+        with tempfile.TemporaryDirectory() as temp:
+            store = AutoplayStateStore(Path(temp) / "autoplay")
+            app = _make_app(autoplay_store=store)
+
+            code, body = app.post("/api/llm/settings", {
+                "base_url": "http://localhost:1234/v1",
+                "model": "new-model",
+                "temperature": 0.2,
+            })
+
+            self.assertEqual(code, 200, body)
+            self.assertEqual(body["model"], "new-model")
+            self.assertEqual(body["autoplay"]["config"]["llm_model"], "new-model")
+            self.assertEqual(store.load_status()["config"]["llm_model"], "new-model")
+
 
 class SliceReadEndpointTests(unittest.TestCase):
     def _bootstrap(self, app: PanelApp, *, character_guid: int = 5408) -> _FakeRuntime:

@@ -1,4 +1,5 @@
 #include "CellImpl.h"
+#include "Channel.h"
 #include "ScriptMgr.h"
 #include "Creature.h"
 #include "GameObject.h"
@@ -16,12 +17,72 @@
 #include "wm_bridge_common.h"
 
 #include <algorithm>
+#include <cctype>
 #include <list>
 #include <unordered_set>
 
 namespace
 {
     std::unordered_set<uint32> gAoeLootPlayersInProgress;
+
+    std::string TrimCopy(std::string const& value)
+    {
+        auto begin = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch); });
+        auto end = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) { return std::isspace(ch); }).base();
+        if (begin >= end)
+        {
+            return "";
+        }
+        return std::string(begin, end);
+    }
+
+    bool ExtractWmChatMessage(std::string const& rawMessage, std::string& outMessage)
+    {
+        std::string trimmed = TrimCopy(rawMessage);
+        std::string lowered = trimmed;
+        std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+        std::string const prefix = "towm ";
+        if (lowered.rfind(prefix, 0) != 0)
+        {
+            return false;
+        }
+
+        outMessage = TrimCopy(trimmed.substr(prefix.size()));
+        return !outMessage.empty();
+    }
+
+    bool IsWmChannelName(std::string const& rawName)
+    {
+        std::string name = TrimCopy(rawName);
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        return name == "wm" || name == "worldmaster" || name == "world master";
+    }
+
+    void EmitWmChat(Player* player, std::string const& message, char const* sourceChat)
+    {
+        if (!WmBridge::IsPlayerAllowed(player) || message.empty())
+        {
+            return;
+        }
+
+        auto row = WmBridge::MakePlayerScopedEvent(player, "chat", "wm_chat");
+        row.subjectType = "player";
+        row.subjectGuid = player->GetGUID().ToString();
+        row.subjectEntry = static_cast<uint32>(player->GetGUID().GetCounter());
+
+        std::string payload;
+        bool firstField = true;
+        WmBridge::JsonBegin(payload, firstField);
+        WmBridge::JsonAppendString(payload, firstField, "player_name", player->GetName());
+        WmBridge::JsonAppendString(payload, firstField, "message", message);
+        WmBridge::JsonAppendString(payload, firstField, "source_chat", sourceChat ? sourceChat : "default");
+        WmBridge::JsonAppendNumber(payload, firstField, "player_guid", static_cast<long long>(player->GetGUID().GetCounter()));
+        WmBridge::JsonEnd(payload);
+        row.payloadJson = payload;
+
+        WmBridge::EmitEvent(row);
+    }
 
     std::string GetItemName(Item const* item)
     {
@@ -258,6 +319,59 @@ public:
         WmBridge::EmitEvent(row);
     }
 
+    void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override
+    {
+        if (!WmBridge::GetConfig().emitLevelUp || !WmBridge::IsPlayerAllowed(player))
+        {
+            return;
+        }
+
+        uint32 const newLevel = static_cast<uint32>(player->GetLevel());
+        if (newLevel <= static_cast<uint32>(oldLevel))
+        {
+            return;  // only narrate gains, not resets/decreases
+        }
+
+        auto row = WmBridge::MakePlayerScopedEvent(player, "progress", "level_up");
+        row.subjectType = "player";
+        row.subjectEntry = static_cast<uint32>(player->GetGUID().GetCounter());
+
+        std::string payload;
+        bool firstField = true;
+        WmBridge::JsonBegin(payload, firstField);
+        WmBridge::JsonAppendString(payload, firstField, "player_name", player->GetName());
+        WmBridge::JsonAppendNumber(payload, firstField, "old_level", static_cast<long long>(oldLevel));
+        WmBridge::JsonAppendNumber(payload, firstField, "new_level", static_cast<long long>(newLevel));
+        WmBridge::JsonEnd(payload);
+        row.payloadJson = payload;
+
+        WmBridge::EmitEvent(row);
+    }
+
+    void OnPlayerJustDied(Player* player) override
+    {
+        if (!WmBridge::GetConfig().emitDeath || !WmBridge::IsPlayerAllowed(player))
+        {
+            return;
+        }
+
+        auto row = WmBridge::MakePlayerScopedEvent(player, "combat", "death");
+        row.subjectType = "player";
+        row.subjectEntry = static_cast<uint32>(player->GetGUID().GetCounter());
+
+        std::string payload;
+        bool firstField = true;
+        WmBridge::JsonBegin(payload, firstField);
+        WmBridge::JsonAppendString(payload, firstField, "player_name", player->GetName());
+        WmBridge::JsonAppendNumber(payload, firstField, "level", static_cast<long long>(player->GetLevel()));
+        WmBridge::JsonAppendString(payload, firstField, "zone_name", WmBridge::LookupAreaName(player->GetZoneId()));
+        WmBridge::JsonAppendString(payload, firstField, "area_name", WmBridge::LookupAreaName(player->GetAreaId()));
+        WmBridge::JsonEnd(payload);
+        row.payloadJson = payload;
+
+        WmBridge::EmitEvent(row);
+    }
+
     void OnPlayerUpdateArea(Player* player, uint32 oldArea, uint32 newArea) override
     {
         if (!WmBridge::GetConfig().emitArea || !WmBridge::IsPlayerAllowed(player))
@@ -317,6 +431,39 @@ public:
     void OnPlayerAfterCreatureLootMoney(Player* player) override
     {
         TryAoeLootNearbyCorpses(player);
+    }
+
+    bool OnPlayerCanUseChat(Player* player, uint32 /*type*/, uint32 /*language*/, std::string& msg) override
+    {
+        std::string wmMessage;
+        if (ExtractWmChatMessage(msg, wmMessage))
+        {
+            EmitWmChat(player, wmMessage, "default");
+        }
+        return true;
+    }
+
+    bool OnPlayerCanUseChat(Player* player, uint32 /*type*/, uint32 /*language*/, std::string& msg, Channel* channel) override
+    {
+        std::string wmMessage;
+        if (channel && IsWmChannelName(channel->GetName()))
+        {
+            if (!ExtractWmChatMessage(msg, wmMessage))
+            {
+                wmMessage = TrimCopy(msg);
+            }
+            if (!wmMessage.empty())
+            {
+                EmitWmChat(player, wmMessage, "channel:wm");
+            }
+            return true;
+        }
+
+        if (ExtractWmChatMessage(msg, wmMessage))
+        {
+            EmitWmChat(player, wmMessage, "channel");
+        }
+        return true;
     }
 };
 
