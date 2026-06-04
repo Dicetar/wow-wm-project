@@ -14,12 +14,14 @@ import webbrowser
 from wm.autoplay.state import AutoplayStateStore
 from wm.llm.lmstudio import LmStudioClient, LmStudioSettings
 from wm.panel.state import PanelState
+from wm.runtime.status import collect_runtime_status
 
 
 DEFAULT_DB_PORT = 33307
 DEFAULT_SOAP_PORT = 7879
 DEFAULT_PANEL_HOST = "127.0.0.1"
 DEFAULT_PANEL_PORT = 8765
+CORE_SERVICE_KEYS = ("db", "auth", "world")
 
 
 def default_project_root() -> Path:
@@ -495,9 +497,41 @@ def _stop_processes_matching_any(needles: Iterable[str]) -> subprocess.Completed
     )
 
 
+def _stop_processes_by_names_or_commandline(*, names: Iterable[str], needles: Iterable[str]) -> subprocess.CompletedProcess[str]:
+    process_names = [item for item in names if item]
+    command_needles = [item for item in needles if item]
+    script = (
+        "$names=ConvertFrom-Json $env:WM_LAUNCHER_NAMES;"
+        "$needles=ConvertFrom-Json $env:WM_LAUNCHER_NEEDLES;"
+        "if ($names -is [string]) { $names=@($names) };"
+        "if ($needles -is [string]) { $needles=@($needles) };"
+        "$items=Get-CimInstance Win32_Process | Where-Object { "
+        "$cmd=$_.CommandLine; $name=$_.Name; "
+        "(@($names | Where-Object { $name -ieq $_ }).Count -gt 0) -or "
+        "($cmd -and (@($needles | Where-Object { $cmd -like ('*' + $_ + '*') }).Count -gt 0)) "
+        "};"
+        "$items | ForEach-Object { Stop-Process -Id $_.ProcessId -Force };"
+        "'stopped=' + (($items | Measure-Object).Count)"
+    )
+    return subprocess.run(
+        ["powershell", "-NoProfile", "-Command", script],
+        env={
+            **os.environ,
+            "WM_LAUNCHER_NAMES": json.dumps(process_names),
+            "WM_LAUNCHER_NEEDLES": json.dumps(command_needles),
+        },
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+
+
 def summarize_launcher_status(config: LauncherConfig) -> dict[str, str]:
     autoplay = AutoplayStateStore(config.project_root / ".wm-bootstrap" / "state" / "autoplay").load_status()
     panel_settings = PanelState(config.project_root / ".wm-bootstrap" / "state" / "control-panel").load_settings()
+    runtime = _runtime_status(config, autoplay_status=autoplay)
+    services = runtime.get("services") if isinstance(runtime.get("services"), dict) else {}
     llm_model = _first_text(
         _nested(autoplay, "llm", "model"),
         _nested(autoplay, "config", "llm_model"),
@@ -508,25 +542,100 @@ def summarize_launcher_status(config: LauncherConfig) -> dict[str, str]:
     latest_issue = _latest_issue(autoplay)
     latest_blocker = ", ".join(str(item) for item in blockers[:3]) if blockers else latest_issue or "none"
 
-    watcher_count = _process_count_by_commandline(["wm.events.watch", "native_bridge"])
-    autoplay_count = _process_count_by_commandline(["wm.autoplay", "run"])
-    panel_count = _process_count_by_commandline(["wm.panel", "serve"])
-    auth_count = _process_count_by_commandline(["authserver.exe"])
-    world_count = _process_count_by_commandline(["worldserver.exe"])
+    watcher = services.get("watcher", {})
+    autoplay_service = services.get("autoplay", {})
+    panel = services.get("panel", {})
+    auth = services.get("auth", {})
+    world = services.get("world", {})
+    autoplay_count = _service_count(autoplay_service)
     if not autoplay_count:
         latest_blocker = "none"
 
     return {
         "DB": f"BridgeLab MySQL 127.0.0.1:{config.db_port}",
         "SOAP": f"enabled on 127.0.0.1:{config.soap_port}",
-        "Auth": _process_label(auth_count),
-        "World": _process_label(world_count),
-        "Watcher": _process_label(watcher_count),
-        "Autoplay": _autoplay_label(autoplay, autoplay_count),
+        "Auth": _service_label(auth),
+        "World": _service_label(world),
+        "Watcher": _service_label(watcher),
+        "Autoplay": _autoplay_label(autoplay, autoplay_count, service=autoplay_service),
         "LM Studio": f"model={llm_model}",
-        "Panel": f"{config.panel_url} ({_process_label(panel_count)})",
+        "Panel": f"{config.panel_url} ({_service_label(panel)})",
         "Player": str(_nested(autoplay, "active_session", "character_guid") or config.player_guid or "(unset)"),
         "Latest Blocker": latest_blocker,
+    }
+
+
+def _runtime_status(config: LauncherConfig, *, autoplay_status: dict[str, Any] | None = None) -> dict[str, Any]:
+    return collect_runtime_status(
+        project_root=config.project_root,
+        db_port=config.db_port,
+        soap_port=config.soap_port,
+        panel_host=config.panel_host,
+        panel_port=config.panel_port,
+        autoplay_status=autoplay_status,
+    )
+
+
+def _runtime_service(config: LauncherConfig, key: str) -> dict[str, Any]:
+    runtime = _runtime_status(config)
+    services = runtime.get("services") if isinstance(runtime.get("services"), dict) else {}
+    service = services.get(key)
+    return service if isinstance(service, dict) else {}
+
+
+def _service_count(service: dict[str, Any]) -> int | None:
+    try:
+        return int(service.get("logical_count"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _service_label(service: dict[str, Any]) -> str:
+    if not service:
+        return "unknown"
+    count = _service_count(service)
+    state = str(service.get("state") or "")
+    if service.get("stale"):
+        return f"stale ({state or 'unknown'})"
+    if state == "duplicate":
+        return f"duplicate ({count})"
+    return _process_label(count)
+
+
+def core_start_decision(runtime: dict[str, Any]) -> dict[str, Any]:
+    services = runtime.get("services") if isinstance(runtime.get("services"), dict) else {}
+    blockers: list[str] = []
+    missing: list[str] = []
+    summary: list[str] = []
+    for key in CORE_SERVICE_KEYS:
+        service = services.get(key) if isinstance(services.get(key), dict) else {}
+        label = str(service.get("label") or key)
+        state = str(service.get("state") or "unknown")
+        count = _service_count(service)
+        stale = bool(service.get("stale"))
+        summary.append(f"{label}={state}{f'({count})' if count is not None else ''}{' stale' if stale else ''}")
+        if stale:
+            blockers.append(f"{label} state is stale")
+        elif state == "duplicate":
+            blockers.append(f"{label} has duplicate logical instances")
+        elif state != "running":
+            missing.append(label)
+    if blockers:
+        return {
+            "action": "blocked",
+            "message": f"Core start blocked: {'; '.join(blockers)}. Press Stop All WM, then Start Core.",
+            "summary": summary,
+        }
+    if not missing:
+        return {
+            "action": "already_running",
+            "message": f"BridgeLab core already running: {'; '.join(summary)}.",
+            "summary": summary,
+        }
+    return {
+        "action": "start",
+        "message": f"Starting BridgeLab core; missing: {', '.join(missing)}.",
+        "summary": summary,
     }
 
 
@@ -565,7 +674,10 @@ def _process_label(count: int | None) -> str:
     return f"running ({count})"
 
 
-def _autoplay_label(status: dict[str, Any], process_count: int | None) -> str:
+def _autoplay_label(status: dict[str, Any], process_count: int | None, *, service: dict[str, Any] | None = None) -> str:
+    if service and service.get("stale"):
+        durable = service.get("durable") if isinstance(service.get("durable"), dict) else {}
+        return f"stale durable={durable.get('status') or 'unknown'}, live={service.get('state')}"
     if process_count is not None and process_count <= 0:
         return "not running"
     state = str(status.get("status") or "unknown")
@@ -638,6 +750,17 @@ def set_lm_studio_model(config: LauncherConfig, model: str) -> dict[str, Any]:
     return {"model": chosen, "panel_settings": saved, "autoplay": status}
 
 
+def _completed_process_output(result: Any) -> str:
+    parts = []
+    stdout = (getattr(result, "stdout", "") or "").strip()
+    stderr = (getattr(result, "stderr", "") or "").strip()
+    if stdout:
+        parts.append(stdout)
+    if stderr:
+        parts.append(stderr)
+    return "\n".join(parts)
+
+
 class WmLauncherApp:
     def __init__(self, tk_root: Any, config: LauncherConfig) -> None:
         import tkinter as tk
@@ -699,6 +822,7 @@ class WmLauncherApp:
             ("Pause/Resume Autoplay", self.toggle_autoplay_pause),
             ("Stop Autoplay", self.stop_autoplay),
             ("Close Aux Windows", self.close_aux_windows),
+            ("Stop All WM", self.stop_all_wm),
             ("Refresh Status", self.refresh_status),
         ]
         for index, (text, command) in enumerate(buttons):
@@ -767,7 +891,7 @@ class WmLauncherApp:
         self.root.after(1200, self.refresh_status)
 
     def launch_once(self, key: str, needles: list[str]) -> None:
-        running = _process_count_by_commandline(needles)
+        running = _service_count(_runtime_service(self.config, key))
         if running and running > 0:
             self.output_var.set(f"{self.commands[key].title} is already running ({running}).")
             self.refresh_status()
@@ -778,10 +902,9 @@ class WmLauncherApp:
         self.start_core()
 
     def start_core(self) -> None:
-        auth_running = _process_count_by_commandline(["authserver.exe"])
-        world_running = _process_count_by_commandline(["worldserver.exe"])
-        if auth_running and world_running:
-            self.output_var.set("BridgeLab core is already running.")
+        decision = core_start_decision(_runtime_status(self.config))
+        if decision["action"] != "start":
+            self.output_var.set(str(decision["message"]))
             self.refresh_status()
             return
         self._run_background("core start", lambda: run_core_start(self.config, timeout_seconds=180))
@@ -842,6 +965,44 @@ class WmLauncherApp:
 
         self._run_background("close aux windows", worker)
 
+    def stop_all_wm(self) -> None:
+        def worker() -> subprocess.CompletedProcess[str]:
+            run_control_python(self.config, "-m", "wm.autoplay", "stop", "--summary")
+            stop_watch = self.config.project_root / "stop-bridge-lab-watch.bat"
+            if stop_watch.exists():
+                subprocess.run(
+                    [str(stop_watch)],
+                    cwd=str(self.config.project_root),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+            stop_mysql = self.config.project_root / "stop-bridge-lab-mysql.bat"
+            if stop_mysql.exists():
+                subprocess.run(
+                    [str(stop_mysql)],
+                    cwd=str(self.config.project_root),
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                    check=False,
+                )
+            return _stop_processes_by_names_or_commandline(
+                names=["authserver.exe", "worldserver.exe", "mysqld.exe"],
+                needles=[
+                    "wm.autoplay run",
+                    "wm.events.watch",
+                    "wm.panel serve",
+                    "launcher\\autoplay.bat",
+                    "launcher\\watcher.bat",
+                    "launcher\\panel.bat",
+                    "launcher\\core.bat",
+                ],
+            )
+
+        self._run_background("stop all WM", worker)
+
     def run_doctor(self) -> None:
         self._run_background(
             "doctor",
@@ -874,11 +1035,11 @@ class WmLauncherApp:
         def worker() -> None:
             try:
                 result = fn()
-                output = (getattr(result, "stdout", "") or getattr(result, "stderr", "") or "").strip()
+                output = _completed_process_output(result)
                 code = getattr(result, "returncode", 0)
                 message = f"{label} exit={code}"
                 if output:
-                    message += f": {output[-700:]}"
+                    message += f": {output[-900:]}"
             except Exception as exc:
                 message = f"{label} failed: {exc}"
             self.root.after(0, lambda: self.output_var.set(message))

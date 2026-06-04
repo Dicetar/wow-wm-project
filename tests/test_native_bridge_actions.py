@@ -155,6 +155,17 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertTrue(action.implemented)
         self.assertFalse(action.default_enabled)
 
+    def test_native_action_metadata_exposes_autonomy_contract(self) -> None:
+        chat = NATIVE_ACTION_KIND_BY_ID["player_chat_message"]
+        spawn = NATIVE_ACTION_KIND_BY_ID["creature_spawn"]
+
+        self.assertEqual(chat.proof_status, "WORKING")
+        self.assertTrue(chat.auto_apply_allowed)
+        self.assertTrue(chat.client_visible)
+        self.assertEqual(chat.verification_strategy, "native_request_done")
+        self.assertTrue(spawn.cleanup_required)
+        self.assertFalse(spawn.auto_apply_allowed)
+
     def test_primitive_pack_1_contracts_are_documented(self) -> None:
         schema_path = Path("control/actions/native/native_bridge_action.json")
         schema = json.loads(schema_path.read_text(encoding="utf-8"))

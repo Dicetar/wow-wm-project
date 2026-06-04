@@ -6,6 +6,7 @@ import sys
 
 from wm.status.feature_status import (
     load_feature_status,
+    summarize_by_axis,
     summarize_by_status,
     validate_feature_status,
 )
@@ -34,13 +35,18 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"schema_version": doc.schema_version, "entries": [e.to_dict() for e in entries]}, indent=2))
         return 0 if validation.ok else 1
 
-    counts = summarize_by_status(doc)
-    print(f"feature status ({doc.schema_version})  gameplay: " + " ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+    repo_counts = summarize_by_axis(doc, "repo_status")
+    runtime_counts = summarize_by_axis(doc, "runtime_status")
+    gameplay_counts = summarize_by_status(doc)
+    print(f"feature status ({doc.schema_version})")
+    print("  repo    : " + " ".join(f"{k}={v}" for k, v in sorted(repo_counts.items())))
+    print("  runtime : " + " ".join(f"{k}={v}" for k, v in sorted(runtime_counts.items())))
+    print("  gameplay: " + " ".join(f"{k}={v}" for k, v in sorted(gameplay_counts.items())))
     if not validation.ok:
         print(f"  WARNING: file invalid ({len(validation.issues)} issues) - run `wm status --validate`")
     width = max((len(e.feature_key) for e in entries), default=10)
     for e in sorted(entries, key=lambda x: (x.layer, x.feature_key)):
-        print(f"  [{e.repo_status:<7}/{e.gameplay_status:<7}] {e.feature_key:<{width}}  {e.scope}")
+        print(f"  [{e.repo_status:<7}/{e.runtime_status:<7}/{e.gameplay_status:<7}] {e.feature_key:<{width}}  {e.scope}")
     return 0 if validation.ok else 1
 
 

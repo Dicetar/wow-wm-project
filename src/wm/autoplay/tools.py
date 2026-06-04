@@ -23,6 +23,11 @@ def autoplay_tool_manifest(*, modes: dict[str, str] | None = None) -> dict[str, 
             "risk": item.default_risk,
             "mode": resolved[item.kind],
             "description": item.description,
+            "proof_status": item.proof_status,
+            "verification_strategy": item.verification_strategy,
+            "auto_apply_allowed": item.auto_apply_allowed,
+            "client_visible": item.client_visible,
+            "cleanup_required": item.cleanup_required,
         }
         contract = contracts.get(item.kind) or {}
         for field in ("required", "required_any", "optional", "notes"):

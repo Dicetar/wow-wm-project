@@ -1499,7 +1499,7 @@ def test_default_verb_modes_low_auto_medium_high_confirm():
 
 def test_resolve_verb_modes_applies_overrides_and_ignores_unimplemented():
     resolved = resolve_verb_modes({"player_apply_aura": "auto", "player_teleport": "auto"})
-    assert resolved["player_apply_aura"] == "auto"
+    assert resolved["player_apply_aura"] == "confirm"
     assert "player_teleport" not in resolved
     assert resolved["player_restore_health_power"] == "auto"
 
@@ -1510,6 +1510,8 @@ def test_manifest_excludes_off_verbs_and_lists_modes():
     verbs = {item["kind"]: item for item in manifest["native_actions"]}
     assert "player_apply_aura" not in verbs
     assert verbs["player_restore_health_power"]["mode"] == "auto"
+    assert verbs["player_restore_health_power"]["verification_strategy"] == "native_request_done"
+    assert verbs["player_restore_health_power"]["auto_apply_allowed"] is True
 
 
 def test_manifest_includes_payload_arg_contracts():

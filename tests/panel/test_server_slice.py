@@ -335,6 +335,35 @@ class WmSessionEndpointTests(unittest.TestCase):
             self.assertEqual(body["status"], "running")
             self.assertTrue(body["running"])
 
+    def test_autoplay_status_endpoint_includes_session_agenda(self) -> None:
+        from wm.autoplay.agenda import DEFAULT_AGENDA_SERVICES
+        from wm.autoplay.state import AutoplayStateStore
+
+        services = {
+            key: {
+                "service": key,
+                "label": key,
+                "state": "running",
+                "health": "running",
+                "logical_count": 1,
+                "stale": False,
+            }
+            for key in DEFAULT_AGENDA_SERVICES
+        }
+        runtime = {"schema_version": "wm.runtime.status.v1", "services": services, "incidents": []}
+        with tempfile.TemporaryDirectory() as temp:
+            store = AutoplayStateStore(Path(temp) / "autoplay")
+            store.update_status(status="running", running=True, paused=False, readiness={"ok": True, "blockers": []})
+            app = _make_app(autoplay_store=store)
+            app.state.save_session({"character_guid": 5408})
+
+            with patch("wm.runtime.status.collect_runtime_status", return_value=runtime):
+                code, body = app.get("/api/wm/autoplay/status")
+
+        self.assertEqual(code, 200, body)
+        self.assertEqual(body["session_agenda"]["status"], "ready")
+        self.assertEqual(body["session_agenda"]["player_guid"], 5408)
+
     def test_autoplay_pause_resume_endpoints_update_store(self) -> None:
         from wm.autoplay.state import AutoplayStateStore
 

@@ -951,8 +951,18 @@ class AutoplayService:
         compiled: Any,
         source_message: str,
     ) -> dict[str, Any]:
+        from wm.autoplay.verification import verify_control_result
+        from wm.sources.native_bridge.action_kinds import NATIVE_ACTION_KIND_BY_ID
+
         coordinator = self._control_coordinator(settings)
         applied = coordinator.execute(proposal=compiled.proposal, mode="apply", confirm_live_apply=True)
+        meta = NATIVE_ACTION_KIND_BY_ID.get(compiled.verb)
+        verification = verify_control_result(
+            verb=compiled.verb,
+            applied_result=applied,
+            expected_effect=getattr(compiled.proposal, "expected_effect", None),
+            strategy=getattr(meta, "verification_strategy", "native_request_done"),
+        )
         record = {
             "at": utc_now_iso(),
             "player_guid": int(player_guid),
@@ -960,13 +970,14 @@ class AutoplayService:
             "risk": compiled.risk,
             "source_message": source_message,
             "apply": _result_to_dict(applied),
+            "verification": verification,
         }
         self.store.append_journal("deed", record)
-        ok = applied.status == "applied"
+        ok = bool(verification.get("ok"))
         counters_status = self.store.load_status()
         counters = dict(counters_status.get("counters") or {})
         counters["auto_applied"] = int(counters.get("auto_applied") or 0) + (1 if ok else 0)
-        self.store.update_status(counters=counters)
+        self.store.update_status(counters=counters, latest_verification=verification)
         msg = (f"Done - {compiled.verb.replace('_', ' ')}." if ok
                else f"That did not take ({compiled.verb.replace('_', ' ')}).")
         self._speak(settings=settings, player_guid=player_guid, text=msg, source_message=source_message)
@@ -1058,6 +1069,7 @@ class AutoplayService:
         steps: list[dict[str, Any]],
         source_message: str,
     ) -> dict[str, Any]:
+        from wm.autoplay.verification import verify_control_result
         from wm.control.models import ControlProposal
         from wm.sources.native_bridge.action_kinds import NATIVE_ACTION_KIND_BY_ID
 
@@ -1100,8 +1112,14 @@ class AutoplayService:
             })
             applied = coordinator.execute(proposal=proposal, mode="apply", confirm_live_apply=True)
             status_value = getattr(applied, "status", "error")
-            step_results.append({"index": index, "verb": verb, "status": status_value})
-            if status_value != "applied":
+            verification = verify_control_result(
+                verb=verb,
+                applied_result=applied,
+                expected_effect=str(step.get("expected_effect") or ""),
+                strategy=getattr(kind, "verification_strategy", "native_request_done"),
+            )
+            step_results.append({"index": index, "verb": verb, "status": status_value, "verification": verification})
+            if not verification.get("ok"):
                 ok_all = False
                 break
         record = {
@@ -1114,6 +1132,15 @@ class AutoplayService:
             "step_results": step_results,
         }
         self.store.append_journal("scene_run", record)
+        self.store.update_status(latest_verification={
+            "schema_version": "wm.autoplay.verification.v1",
+            "at": utc_now_iso(),
+            "verb": "scene",
+            "strategy": "scene_steps",
+            "status": "verified" if ok_all else "failed",
+            "ok": ok_all,
+            "step_count": len(step_results),
+        })
         self._speak(settings=settings, player_guid=player_guid,
                     text=("The scene plays out as willed." if ok_all else "The scene falters partway through."),
                     source_message=source_message)

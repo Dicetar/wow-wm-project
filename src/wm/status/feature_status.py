@@ -21,17 +21,25 @@ class FeatureStatus:
     gameplay_status: str
     scope: str
     last_verified: str
+    runtime_status: str = "UNKNOWN"
+    requires_live_proof: bool = False
+    last_live_proof: str | None = None
     evidence_ref: str | None = None
+    evidence_refs: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "feature_key": self.feature_key,
             "layer": self.layer,
             "repo_status": self.repo_status,
+            "runtime_status": self.runtime_status,
             "gameplay_status": self.gameplay_status,
+            "requires_live_proof": self.requires_live_proof,
             "scope": self.scope,
             "last_verified": self.last_verified,
+            "last_live_proof": self.last_live_proof,
             "evidence_ref": self.evidence_ref,
+            "evidence_refs": list(self.evidence_refs),
         }
 
 
@@ -54,10 +62,14 @@ def load_feature_status(path: str | Path | None = None) -> FeatureStatusDoc:
             feature_key=str(e["feature_key"]),
             layer=str(e["layer"]),
             repo_status=str(e["repo_status"]),
+            runtime_status=str(e.get("runtime_status") or "UNKNOWN"),
             gameplay_status=str(e["gameplay_status"]),
+            requires_live_proof=bool(e.get("requires_live_proof", False)),
             scope=str(e["scope"]),
             last_verified=str(e["last_verified"]),
+            last_live_proof=e.get("last_live_proof"),
             evidence_ref=e.get("evidence_ref"),
+            evidence_refs=[str(item) for item in e.get("evidence_refs", []) if item],
         )
         for e in data.get("entries", [])
     ]
@@ -82,15 +94,23 @@ def validate_feature_status(path: str | Path | None = None) -> StatusValidationR
         if key in seen:
             issues.append(f"{prefix}.feature_key duplicate {key!r}")
         seen.add(key)
-        for sfield in ("repo_status", "gameplay_status"):
+        for sfield in ("repo_status", "runtime_status", "gameplay_status"):
             val = str(entry.get(sfield) or "")
             if val and val not in VALID_STATUSES:
                 issues.append(f"{prefix}.{sfield} invalid {val!r}; expected {sorted(VALID_STATUSES)}")
+        if bool(entry.get("requires_live_proof")) and str(entry.get("gameplay_status") or "") == "WORKING":
+            if not entry.get("last_live_proof") and not entry.get("evidence_refs"):
+                issues.append(f"{prefix}.last_live_proof missing for live-proof-required WORKING gameplay feature")
     return StatusValidationResult(ok=not issues, issues=issues)
 
 
 def summarize_by_status(doc: FeatureStatusDoc) -> dict[str, int]:
+    return summarize_by_axis(doc, "gameplay_status")
+
+
+def summarize_by_axis(doc: FeatureStatusDoc, axis: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     for e in doc.entries:
-        counts[e.gameplay_status] = counts.get(e.gameplay_status, 0) + 1
+        value = getattr(e, axis)
+        counts[value] = counts.get(value, 0) + 1
     return counts

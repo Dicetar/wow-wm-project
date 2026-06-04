@@ -12,6 +12,11 @@ class NativeActionKind:
     default_enabled: bool = False
     admin_only: bool = False
     description: str = ""
+    proof_status: str = "UNKNOWN"
+    verification_strategy: str = "native_request_done"
+    auto_apply_allowed: bool = False
+    client_visible: bool = False
+    cleanup_required: bool = False
 
 
 NATIVE_ACTION_KINDS: tuple[NativeActionKind, ...] = (
@@ -30,7 +35,7 @@ NATIVE_ACTION_KINDS: tuple[NativeActionKind, ...] = (
     NativeActionKind("player_teleport", "player", "high", description="Teleport the scoped player."),
     NativeActionKind("player_summon_to_location", "player", "high", description="Summon the scoped player to a location."),
     NativeActionKind("player_resurrect", "player", "medium", description="Resurrect the scoped player."),
-    NativeActionKind("player_restore_health_power", "player", "low", implemented=True, description="Restore health and power for the scoped player."),
+    NativeActionKind("player_restore_health_power", "player", "low", implemented=True, description="Restore health and power for the scoped player.", proof_status="WORKING", auto_apply_allowed=True, client_visible=True),
     NativeActionKind("player_set_speed", "player", "medium", description="Temporarily adjust player movement speed."),
     NativeActionKind("player_add_item", "inventory", "medium", implemented=True, description="Add an item to the scoped player."),
     NativeActionKind("player_remove_item", "inventory", "medium", implemented=True, description="Remove a WM-managed item from the scoped player."),
@@ -52,8 +57,8 @@ NATIVE_ACTION_KINDS: tuple[NativeActionKind, ...] = (
     NativeActionKind("wm_counter_set", "quest", "low", description="Set a hidden WM progress counter."),
     NativeActionKind("wm_counter_increment", "quest", "low", description="Increment a hidden WM progress counter."),
     NativeActionKind("wm_counter_clear", "quest", "low", description="Clear a hidden WM progress counter."),
-    NativeActionKind("creature_spawn", "world_object", "medium", implemented=True, description="Spawn a WM-owned creature."),
-    NativeActionKind("creature_despawn", "world_object", "medium", implemented=True, description="Despawn a WM-owned creature."),
+    NativeActionKind("creature_spawn", "world_object", "medium", implemented=True, description="Spawn a WM-owned creature.", proof_status="PARTIAL", client_visible=True, cleanup_required=True),
+    NativeActionKind("creature_despawn", "world_object", "medium", implemented=True, description="Despawn a WM-owned creature.", proof_status="PARTIAL", client_visible=True),
     NativeActionKind("creature_set_name", "world_object", "medium", description="Set a WM-owned creature name."),
     NativeActionKind("creature_set_subname", "world_object", "medium", description="Set a WM-owned creature subname."),
     NativeActionKind("creature_set_faction", "world_object", "medium", description="Set a WM-owned creature faction."),
@@ -66,11 +71,11 @@ NATIVE_ACTION_KINDS: tuple[NativeActionKind, ...] = (
     NativeActionKind("creature_follow_player", "world_object", "medium", description="Make a WM-owned creature follow the scoped player."),
     NativeActionKind("creature_stop_movement", "world_object", "low", description="Stop WM-owned creature movement."),
     NativeActionKind("creature_set_waypoints", "world_object", "medium", description="Assign waypoints to a WM-owned creature."),
-    NativeActionKind("creature_say", "world_object", "low", implemented=True, description="Make a WM-owned creature say text."),
+    NativeActionKind("creature_say", "world_object", "low", implemented=True, description="Make a WM-owned creature say text.", proof_status="PARTIAL", client_visible=True),
     NativeActionKind("creature_yell", "world_object", "low", description="Make a WM-owned creature yell text."),
     NativeActionKind("creature_whisper_player", "world_object", "low", description="Make a WM-owned creature whisper the scoped player."),
-    NativeActionKind("creature_emote", "world_object", "low", implemented=True, description="Make a WM-owned creature emote."),
-    NativeActionKind("creature_cast_spell", "world_object", "medium", implemented=True, description="Make a WM-owned creature cast a spell."),
+    NativeActionKind("creature_emote", "world_object", "low", implemented=True, description="Make a WM-owned creature emote.", proof_status="PARTIAL", client_visible=True),
+    NativeActionKind("creature_cast_spell", "world_object", "medium", implemented=True, description="Make a WM-owned creature cast a spell.", proof_status="PARTIAL", client_visible=True),
     NativeActionKind("creature_attack_target", "world_object", "high", description="Make a WM-owned creature attack a target."),
     NativeActionKind("creature_attack_player", "world_object", "high", description="Make a WM-owned creature attack the scoped player."),
     NativeActionKind("creature_flee", "world_object", "medium", description="Make a WM-owned creature flee."),
@@ -99,19 +104,19 @@ NATIVE_ACTION_KINDS: tuple[NativeActionKind, ...] = (
     NativeActionKind("companion_set_gossip", "companion", "medium", description="Set WM companion gossip."),
     NativeActionKind("zone_set_weather", "environment", "medium", description="Set scoped zone weather override."),
     NativeActionKind("zone_clear_weather_override", "environment", "low", description="Clear scoped zone weather override."),
-    NativeActionKind("world_announce_to_player", "environment", "low", implemented=True, description="Send a server announcement to the scoped player."),
-    NativeActionKind("player_chat_message", "social", "low", implemented=True, description="Send a scoped WM chat-style message to the player."),
+    NativeActionKind("world_announce_to_player", "environment", "low", implemented=True, description="Send a server announcement to the scoped player.", proof_status="WORKING", auto_apply_allowed=True, client_visible=True),
+    NativeActionKind("player_chat_message", "social", "low", implemented=True, description="Send a scoped WM chat-style message to the player.", proof_status="WORKING", auto_apply_allowed=True, client_visible=True),
     NativeActionKind("player_play_sound", "environment", "low", description="Play a sound ID for the scoped player."),
     NativeActionKind("player_play_movie", "environment", "medium", description="Play a movie/cinematic ID for the scoped player."),
     NativeActionKind("area_trigger_marker_set", "environment", "medium", description="Set a scoped area trigger marker."),
     NativeActionKind("area_trigger_marker_clear", "environment", "low", description="Clear a scoped area trigger marker."),
-    NativeActionKind("context_snapshot_request", "environment", "low", implemented=True, default_enabled=True, description="Request an on-demand native context snapshot."),
+    NativeActionKind("context_snapshot_request", "environment", "low", implemented=True, default_enabled=True, description="Request an on-demand native context snapshot.", proof_status="WORKING", auto_apply_allowed=True),
     NativeActionKind("group_invite_player", "social", "medium", description="Invite the scoped player to a group."),
     NativeActionKind("group_remove_player", "social", "medium", description="Remove the scoped player from a group."),
     NativeActionKind("duel_request_hint", "social", "low", description="Send a duel prompt/hint."),
     NativeActionKind("guild_message_to_player", "social", "low", description="Send scoped guild-style text to a player."),
-    NativeActionKind("debug_ping", "debug", "low", implemented=True, default_enabled=True, admin_only=True, description="Return a native bridge health ping."),
-    NativeActionKind("debug_echo", "debug", "low", implemented=True, default_enabled=True, admin_only=True, description="Echo payload through the native bridge queue."),
+    NativeActionKind("debug_ping", "debug", "low", implemented=True, default_enabled=True, admin_only=True, description="Return a native bridge health ping.", proof_status="WORKING", auto_apply_allowed=True),
+    NativeActionKind("debug_echo", "debug", "low", implemented=True, default_enabled=True, admin_only=True, description="Echo payload through the native bridge queue.", proof_status="WORKING", auto_apply_allowed=True),
     NativeActionKind("debug_fail", "debug", "low", implemented=True, default_enabled=True, admin_only=True, description="Intentionally fail to test error propagation."),
     NativeActionKind("debug_snapshot_player", "debug", "low", description="Emit a lightweight player snapshot for diagnostics."),
     NativeActionKind("debug_policy_reload", "debug", "low", description="Force native bridge policy/scope reload."),

@@ -14,7 +14,7 @@ _RISK_DEFAULT_MODE = {"low": "auto", "medium": "confirm", "high": "confirm"}
 
 def default_verb_modes() -> dict[str, str]:
     return {
-        kind.kind: _RISK_DEFAULT_MODE.get(kind.default_risk, "confirm")
+        kind.kind: ("auto" if kind.auto_apply_allowed and kind.default_risk in {"low", "medium"} else "confirm")
         for kind in NATIVE_ACTION_KIND_BY_ID.values()
         if kind.implemented and not kind.admin_only
     }
@@ -24,7 +24,11 @@ def resolve_verb_modes(config: dict[str, Any] | None) -> dict[str, str]:
     modes = default_verb_modes()
     for verb, mode in (config or {}).items():
         if verb in modes and str(mode) in VERB_MODES:
-            modes[verb] = str(mode)
+            kind = NATIVE_ACTION_KIND_BY_ID[verb]
+            if str(mode) == "auto" and not kind.auto_apply_allowed:
+                modes[verb] = "confirm"
+            else:
+                modes[verb] = str(mode)
     return modes
 
 

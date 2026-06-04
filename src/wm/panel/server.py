@@ -115,8 +115,18 @@ class PanelApp:
             return 200, {"proposals": self.state.list_drafts(limit=100)}
         if path == "/api/wm/readiness":
             return 200, self._wm_readiness()
+        if path == "/api/wm/runtime/status":
+            return 200, self._runtime_status()
         if path == "/api/wm/autoplay/status":
             return 200, self._autoplay_status()
+        if path == "/api/wm/proofs":
+            return 200, {"ok": True, "proofs": self._observability_store().list_proofs(limit=_query_int(query, "limit", 50))}
+        if path == "/api/wm/timeline":
+            runtime = self._runtime_status()
+            return 200, {"ok": True, "timeline": self._observability_store().list_timeline(limit=_query_int(query, "limit", 100), runtime_status=runtime)}
+        if path == "/api/wm/incidents":
+            runtime = self._runtime_status()
+            return 200, {"ok": True, "incidents": self._observability_store().list_incidents(limit=_query_int(query, "limit", 50), runtime_status=runtime)}
         if path == "/api/wm/markers":
             return 200, self._wm_markers(
                 since_seconds=_query_int(query, "since_seconds", 300),
@@ -266,16 +276,64 @@ class PanelApp:
             payload["apply_blockers"] = [{"check": "doctor", "status": "FAIL", "detail": str(exc)}]
             payload["can_apply"] = False
         payload["autoplay"] = self._autoplay_status()
+        payload["runtime"] = self._runtime_status()
         return payload
+
+    def _runtime_status(self) -> dict[str, Any]:
+        from wm.runtime.status import collect_runtime_status
+
+        try:
+            from wm.config import Settings
+            settings = Settings.from_env()
+            return collect_runtime_status(
+                project_root=self.cwd,
+                db_port=int(settings.world_db_port),
+                soap_port=int(settings.soap_port),
+            )
+        except Exception as exc:
+            return {
+                "schema_version": "wm.runtime.status.v1",
+                "ok": False,
+                "error": str(exc),
+                "services": {},
+                "incidents": [{
+                    "kind": "runtime_status_failed",
+                    "severity": "error",
+                    "service": "runtime",
+                    "message": str(exc),
+                    "at": utc_now_iso(),
+                }],
+            }
+
+    def _observability_store(self) -> Any:
+        from wm.observability import WmObservabilityStore
+
+        return WmObservabilityStore.for_project(self.cwd)
 
     def _autoplay_status(self) -> dict[str, Any]:
         try:
+            from wm.autoplay.agenda import build_session_agenda
             from wm.autoplay.intent import resolve_verb_modes
             from wm.autoplay.state import AutoplayStateStore
             store = self._autoplay_store or AutoplayStateStore()
             status = store.load_status()
             config = status.get("config") if isinstance(status.get("config"), dict) else {}
             status["conversational_verb_modes"] = resolve_verb_modes(config.get("conversational_verb_modes"))
+            runtime = self._runtime_status()
+            services = runtime.get("services") if isinstance(runtime.get("services"), dict) else {}
+            status["runtime"] = services.get("autoplay", {})
+            status["timeline_refs"] = {
+                "timeline_url": "/api/wm/timeline",
+                "proofs_url": "/api/wm/proofs",
+                "incidents_url": "/api/wm/incidents",
+            }
+            session = self.state.load_session() or {}
+            player_guid = session.get("character_guid") or session.get("player_guid")
+            status["session_agenda"] = build_session_agenda(
+                autoplay_status=status,
+                runtime_status=runtime,
+                player_guid=_int_or_none(player_guid),
+            )
             return status
         except Exception as exc:
             return {
@@ -376,6 +434,8 @@ class PanelApp:
             return 200, self._autoplay_configure(body)
         if path == "/api/wm/autoplay/generate":
             return self._autoplay_generate(body)
+        if path == "/api/wm/proofs/run":
+            return 200, self._proof_run(body)
         if path == "/api/wm/autoplay/intent/approve":
             return self._autoplay_intent_approve(body)
         if path == "/api/wm/autoplay/intent/reject":
@@ -435,6 +495,22 @@ class PanelApp:
             updates["conversational_verb_modes"] = resolve_verb_modes(body["conversational_verb_modes"])
         status = store.configure(updates)
         return {"ok": True, "autoplay": status}
+
+    def _proof_run(self, body: dict[str, Any]) -> dict[str, Any]:
+        from wm.proofs.runner import run_proof_packet
+
+        kind = str(body.get("proof_kind") or body.get("kind") or "runtime_startup")
+        mode = str(body.get("mode") or "dry-run")
+        guid = body.get("player_guid") or body.get("character_guid")
+        player_guid = int(guid) if guid not in (None, "") else None
+        proof = run_proof_packet(
+            proof_kind=kind,
+            project_root=self.cwd,
+            mode=mode,
+            player_guid=player_guid,
+            store=self._observability_store(),
+        )
+        return {"ok": True, "proof": proof}
 
     def _sync_autoplay_llm_settings(self, *, settings: dict[str, Any], source_body: dict[str, Any]) -> dict[str, Any] | None:
         """Keep the running autoplay model in step with panel LLM settings.
@@ -766,17 +842,28 @@ class PanelApp:
     def _feature_status(self) -> dict[str, Any]:
         try:
             from wm.living.catalog import build_wild_feature_catalog, validate_wild_catalog
+            from wm.status.feature_status import load_feature_status, summarize_by_axis, summarize_by_status, validate_feature_status
             cat = build_wild_feature_catalog()
             issues = validate_wild_catalog()
+            doc = load_feature_status()
+            validation = validate_feature_status()
             return {
-                "ok": not issues,
+                "ok": not issues and validation.ok,
                 "live_ready_count": cat["live_ready_count"],
                 "total_count": cat["count"],
-                "issues": issues,
+                "issues": [*issues, *validation.issues],
                 "entries": [
                     {"key": e["key"], "live_ready": e["live_ready"], "batch": e["batch"]}
                     for e in cat["entries"]
                 ],
+                "feature_status": {
+                    "schema_version": doc.schema_version,
+                    "total_count": len(doc.entries),
+                    "repo_counts": summarize_by_axis(doc, "repo_status"),
+                    "runtime_counts": summarize_by_axis(doc, "runtime_status"),
+                    "gameplay_counts": summarize_by_status(doc),
+                    "entries": [entry.to_dict() for entry in doc.entries],
+                },
             }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
@@ -1029,6 +1116,15 @@ def _body_int(body: dict[str, Any], key: str, default: int) -> int:
         return int(raw)
     except (TypeError, ValueError):
         return int(default)
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _default_character_reader(player_guid: int) -> Any:

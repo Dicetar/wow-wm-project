@@ -8,6 +8,7 @@ from wm.launcher import build_autoplay_command
 from wm.launcher import build_start_all_commands
 from wm.launcher import build_visible_runtime_commands
 from wm.launcher import build_watcher_command
+from wm.launcher import core_start_decision
 
 
 def _config(tmp_path: Path) -> LauncherConfig:
@@ -84,3 +85,62 @@ def test_start_all_runtime_commands_do_not_hide_or_minimize(tmp_path: Path):
     assert "Start-BridgeLabAll.ps1" in rendered
     assert "wm.events.watch" not in rendered
     assert "wm.autoplay" not in rendered
+
+
+def test_core_start_decision_starts_when_auth_world_missing():
+    decision = core_start_decision(_runtime(
+        db=_service("BridgeLab MySQL", "running", 1),
+        auth=_service("Auth Server", "not_running", 0),
+        world=_service("World Server", "not_running", 0),
+    ))
+
+    assert decision["action"] == "start"
+    assert "Auth Server" in decision["message"]
+    assert "World Server" in decision["message"]
+
+
+def test_core_start_decision_already_running_requires_full_core():
+    decision = core_start_decision(_runtime(
+        db=_service("BridgeLab MySQL", "running", 1),
+        auth=_service("Auth Server", "running", 1),
+        world=_service("World Server", "running", 1),
+    ))
+
+    assert decision["action"] == "already_running"
+    assert "BridgeLab core already running" in decision["message"]
+
+
+def test_core_start_decision_blocks_duplicates_before_spawn():
+    decision = core_start_decision(_runtime(
+        db=_service("BridgeLab MySQL", "running", 1),
+        auth=_service("Auth Server", "duplicate", 2),
+        world=_service("World Server", "running", 1),
+    ))
+
+    assert decision["action"] == "blocked"
+    assert "duplicate" in decision["message"]
+    assert "Stop All WM" in decision["message"]
+
+
+def test_core_start_decision_blocks_stale_state_before_spawn():
+    decision = core_start_decision(_runtime(
+        db=_service("BridgeLab MySQL", "running", 1, stale=True),
+        auth=_service("Auth Server", "running", 1),
+        world=_service("World Server", "running", 1),
+    ))
+
+    assert decision["action"] == "blocked"
+    assert "stale" in decision["message"]
+
+
+def _runtime(**services: dict) -> dict:
+    return {"services": services}
+
+
+def _service(label: str, state: str, count: int, *, stale: bool = False) -> dict:
+    return {
+        "label": label,
+        "state": state,
+        "logical_count": count,
+        "stale": stale,
+    }

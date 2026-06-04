@@ -8,7 +8,7 @@ def _make_app():
     from wm.panel.server import PanelApp
     from wm.panel.state import PanelState
     tmp = Path(tempfile.mkdtemp())
-    return PanelApp(state=PanelState(tmp))
+    return PanelApp(state=PanelState(tmp), cwd=tmp)
 
 
 def test_health_route():
@@ -37,6 +37,34 @@ def test_proposals_route():
     status, body = app.get("/api/proposals")
     assert status == 200
     assert "proposals" in body
+
+
+def test_runtime_status_route():
+    app = _make_app()
+    status, body = app.get("/api/wm/runtime/status")
+    assert status == 200
+    assert body["schema_version"] == "wm.runtime.status.v1"
+    assert "services" in body
+
+
+def test_proof_timeline_incident_routes():
+    app = _make_app()
+
+    status, proof = app.post("/api/wm/proofs/run", {"proof_kind": "chat_action", "player_guid": 5408})
+    assert status == 200
+    assert proof["ok"] is True
+
+    status, proofs = app.get("/api/wm/proofs")
+    assert status == 200
+    assert proofs["proofs"][0]["proof_kind"] == "chat_action"
+
+    status, timeline = app.get("/api/wm/timeline")
+    assert status == 200
+    assert timeline["timeline"]
+
+    status, incidents = app.get("/api/wm/incidents")
+    assert status == 200
+    assert "incidents" in incidents
 
 
 def test_llm_adopt_post():

@@ -241,10 +241,13 @@ function renderSimple(status, readiness, autoplay, tools) {
   const llm = autoplay.llm || {};
   const config = autoplay.config || {};
   const blockers = readiness.apply_blockers || [];
+  const agenda = autoplay.session_agenda || {};
   const rows = {
     "Character": session.character_guid ? `${session.character_guid}${session.character_name ? ` / ${session.character_name}` : ""}` : "(none)",
     "Readiness": readiness.can_apply === false ? "blocked" : "ready",
     "Autoplay": autoplay.running ? (autoplay.paused ? "paused" : "running") : "stopped",
+    "Agenda": agenda.status || "(none)",
+    "Next": agenda.next_action || "(none)",
     "LLM": llm.ok ? (llm.model || "ready") : (llm.error || "not ready"),
     "Chat Context": `epoch ${config.llm_chat_context_epoch || 0}`,
     "Lanes": (config.llm_lanes || []).join(",") || "(none)",
@@ -374,10 +377,13 @@ function renderAutoplay(autoplay) {
   const readiness = autoplay.readiness || {};
   const counters = autoplay.counters || {};
   const config = autoplay.config || {};
+  const agenda = autoplay.session_agenda || {};
   const rows = {
     "Status": autoplay.status || "(unknown)",
     "Running": autoplay.running ? "yes" : "no",
     "Paused": autoplay.paused ? "yes" : "no",
+    "Agenda": agenda.status || "(none)",
+    "Next": agenda.next_action || "(none)",
     "Readiness": readiness.ok ? "ready" : "blocked",
     "LLM": llm.ok ? `${llm.model || "(model)"}` : (llm.error || "not ready"),
     "WM Chat": config.llm_chat_enabled === false ? "off" : "on",
