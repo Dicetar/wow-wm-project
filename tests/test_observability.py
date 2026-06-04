@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from wm.observability import WmObservabilityStore
 
 
@@ -28,3 +30,20 @@ def test_observability_includes_runtime_incidents(tmp_path):
 
     assert incidents[0]["source"] == "runtime"
     assert incidents[0]["service"] == "panel"
+
+
+def test_observability_timeline_summarizes_autoplay_journal(tmp_path):
+    autoplay_root = tmp_path / "autoplay"
+    journal = autoplay_root / "journal"
+    journal.mkdir(parents=True)
+    (journal / "20260101000000-chat.json").write_text(json.dumps({
+        "kind": "chat",
+        "at": "2026-01-01T00:00:00Z",
+        "reply": {"message": "The road ahead is clear."},
+    }), encoding="utf-8")
+    store = WmObservabilityStore(root=tmp_path / "obs", autoplay_root=autoplay_root)
+
+    timeline = store.list_timeline()
+
+    assert timeline[0]["kind"] == "autoplay.chat"
+    assert timeline[0]["summary"] == "Chat: The road ahead is clear."

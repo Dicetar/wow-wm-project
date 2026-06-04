@@ -79,7 +79,7 @@ function toggleTheme() {
 }
 
 async function loadAll() {
-  const [status, catalog, schemas, settings, drafts, readiness, autoplay, tools] = await Promise.all([
+  const [status, catalog, schemas, settings, drafts, readiness, autoplay, tools, timeline] = await Promise.all([
     api("/api/status"),
     api("/api/catalog"),
     api("/api/schemas"),
@@ -87,7 +87,8 @@ async function loadAll() {
     api("/api/drafts"),
     api("/api/wm/readiness"),
     api("/api/wm/autoplay/status"),
-    api("/api/wm/tools")
+    api("/api/wm/tools"),
+    api("/api/wm/timeline?limit=12")
   ]);
   state.commands = catalog.commands;
   state.schemas = schemas.schemas;
@@ -98,7 +99,7 @@ async function loadAll() {
   renderAutoplay(autoplay);
   renderConvVerbModes(autoplay.conversational_verb_modes || {});
   renderPendingIntents(autoplay.pending_intents || {});
-  renderSimple(status, readiness, autoplay, tools);
+  renderSimple(status, readiness, autoplay, tools, timeline.timeline || []);
   renderSchemaSelects();
   renderCommands();
   renderSettings(settings);
@@ -236,7 +237,7 @@ function renderStatus(status) {
   setOutput("latestJob", status.latest_job || {});
 }
 
-function renderSimple(status, readiness, autoplay, tools) {
+function renderSimple(status, readiness, autoplay, tools, timeline) {
   const session = readiness.active_session || state.activeSession || {};
   const llm = autoplay.llm || {};
   const config = autoplay.config || {};
@@ -260,6 +261,11 @@ function renderSimple(status, readiness, autoplay, tools) {
     ? blockers.map((blocker) => `<div class="card">${escapeHtml(blocker.check || "blocker")}: ${escapeHtml(blocker.status || "")}</div>`).join("")
     : `<div class="card">Ready</div>`;
   setOutput("simpleActivity", {
+    timeline: (timeline || []).map((item) => ({
+      at: item.at || null,
+      kind: item.kind || "event",
+      summary: item.summary || "(recorded)"
+    })),
     latest_opportunity: autoplay.latest_opportunity || null,
     latest_proposal: autoplay.latest_proposal || null,
     latest_apply: autoplay.latest_autoplay || autoplay.latest_apply || null,

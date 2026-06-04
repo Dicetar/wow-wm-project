@@ -95,11 +95,19 @@ class WmObservabilityStore:
     def list_timeline(self, *, limit: int = 100, runtime_status: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         for proof in self.list_proofs(limit=limit):
-            items.append({"at": proof.get("created_at"), "kind": "proof", "payload": proof})
+            items.append(_timeline_item(at=proof.get("created_at"), kind="proof", payload=proof))
         for incident in self.list_incidents(limit=limit, runtime_status=runtime_status):
-            items.append({"at": incident.get("created_at") or incident.get("at"), "kind": "incident", "payload": incident})
+            items.append(_timeline_item(
+                at=incident.get("created_at") or incident.get("at"),
+                kind="incident",
+                payload=incident,
+            ))
         for entry in self._autoplay_journal(limit=limit):
-            items.append({"at": entry.get("at"), "kind": f"autoplay.{entry.get('kind', 'event')}", "payload": entry})
+            items.append(_timeline_item(
+                at=entry.get("at"),
+                kind=f"autoplay.{entry.get('kind', 'event')}",
+                payload=entry,
+            ))
         items.sort(key=lambda item: str(item.get("at") or ""), reverse=True)
         return items[:limit]
 
@@ -145,3 +153,62 @@ class WmObservabilityStore:
 
 def _safe_name(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in str(value))[:120]
+
+
+def _timeline_item(*, at: Any, kind: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "at": at,
+        "kind": kind,
+        "summary": _timeline_summary(kind=kind, payload=payload),
+        "payload": payload,
+    }
+
+
+def _timeline_summary(*, kind: str, payload: dict[str, Any]) -> str:
+    if kind == "proof":
+        proof_kind = payload.get("proof_kind") or payload.get("title") or "proof"
+        status = payload.get("status") or "unknown"
+        return _short(f"Proof {proof_kind}: {status}")
+    if kind == "incident":
+        service = payload.get("service") or payload.get("kind") or "incident"
+        message = payload.get("message") or payload.get("detail") or payload.get("severity") or "recorded"
+        return _short(f"{service}: {message}")
+
+    entry_kind = str(payload.get("kind") or kind.removeprefix("autoplay."))
+    if entry_kind == "chat":
+        message = _nested_text(payload, "reply", "message") or payload.get("message") or payload.get("player_message")
+        return _short(f"Chat: {message or 'turn recorded'}")
+    if entry_kind == "ambient_narration":
+        return _short(f"Ambient: {payload.get('line') or payload.get('message') or 'narration recorded'}")
+    if entry_kind == "conversation_memory":
+        note = payload.get("note") if isinstance(payload.get("note"), dict) else {}
+        return _short(f"Memory: {note.get('summary') or note.get('value') or payload.get('summary') or 'stored'}")
+    if entry_kind == "deed":
+        return _short(f"Deed: {payload.get('action_kind') or payload.get('native_action_kind') or payload.get('status') or 'recorded'}")
+    if entry_kind == "scene_run":
+        return _short(f"Scene: {payload.get('scene_key') or payload.get('status') or 'run recorded'}")
+    if entry_kind == "issue":
+        return _short(f"Issue: {payload.get('reason') or payload.get('detail') or 'recorded'}")
+    if entry_kind.startswith("pending_intent"):
+        return _short(f"Intent: {payload.get('native_action_kind') or payload.get('reason') or entry_kind}")
+    if entry_kind.startswith("autoplay_"):
+        return _short(f"Autoplay: {payload.get('status') or payload.get('draft_id') or entry_kind}")
+    return _short(f"{entry_kind}: recorded")
+
+
+def _nested_text(raw: dict[str, Any], *keys: str) -> str | None:
+    current: Any = raw
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    if current in (None, ""):
+        return None
+    return str(current)
+
+
+def _short(value: Any, *, limit: int = 180) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "..."

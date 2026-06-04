@@ -61,6 +61,7 @@ def test_proof_timeline_incident_routes():
     status, timeline = app.get("/api/wm/timeline")
     assert status == 200
     assert timeline["timeline"]
+    assert "summary" in timeline["timeline"][0]
 
     status, incidents = app.get("/api/wm/incidents")
     assert status == 200
