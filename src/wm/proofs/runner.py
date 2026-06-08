@@ -176,6 +176,7 @@ def run_proof_packet(
 ) -> dict[str, Any]:
     packet = _packet_by_kind(proof_kind)
     root = Path(project_root).resolve()
+    obs = store or WmObservabilityStore.for_project(root)
     runtime = runtime_status or collect_runtime_status(project_root=root)
     checks = _runtime_checks(packet=packet, runtime=runtime)
     blockers = [check["detail"] for check in checks if check["status"] == "FAIL"]
@@ -183,7 +184,14 @@ def run_proof_packet(
         checks.append({"name": "player_guid", "status": "FAIL", "detail": "player_guid is required for this live proof"})
         blockers.append("player_guid is required for this live proof")
 
-    status = _record_status(packet=packet, checks=checks, mode=mode)
+    evidence_checks = _evidence_checks(packet=packet, project_root=root, store=obs, player_guid=player_guid)
+    evidence_refs = [
+        ref
+        for check in evidence_checks
+        for ref in check.get("evidence_refs", [])
+        if isinstance(ref, dict)
+    ]
+    status = _record_status(packet=packet, checks=checks, evidence_checks=evidence_checks, mode=mode)
     record = {
         "schema_version": "wm.proof.record.v1",
         "proof_id": f"proof-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
@@ -203,6 +211,8 @@ def run_proof_packet(
         "next_actions": _next_actions(checks),
         "runtime_summary": runtime.get("summary", {}),
         "runtime_incidents": runtime.get("incidents", []),
+        "evidence_checks": evidence_checks,
+        "evidence_refs": evidence_refs,
         "timeline_refs": {
             "timeline_url": "/api/wm/timeline",
             "proofs_url": "/api/wm/proofs",
@@ -211,7 +221,7 @@ def run_proof_packet(
         "manual_evidence": list(manual_evidence or []),
         "evidence": list(manual_evidence or []),
     }
-    return (store or WmObservabilityStore.for_project(root)).save_proof(record)
+    return obs.save_proof(record)
 
 
 def _packet_by_kind(proof_kind: str) -> ProofPacket:
@@ -247,9 +257,298 @@ def _runtime_checks(*, packet: ProofPacket, runtime: dict[str, Any]) -> list[dic
     return checks
 
 
-def _record_status(*, packet: ProofPacket, checks: list[dict[str, str]], mode: str) -> str:
+def _evidence_checks(
+    *,
+    packet: ProofPacket,
+    project_root: Path,
+    store: WmObservabilityStore,
+    player_guid: int | None,
+) -> list[dict[str, Any]]:
+    if packet.proof_kind not in {"chat_action", "ambient", "memory", "scene"}:
+        return []
+    journal = store.list_autoplay_journal(limit=200)
+    autoplay_status = _load_autoplay_status(project_root)
+    if packet.proof_kind == "chat_action":
+        return _chat_action_evidence(journal=journal, autoplay_status=autoplay_status, player_guid=player_guid)
+    if packet.proof_kind == "ambient":
+        return _ambient_evidence(journal=journal, player_guid=player_guid)
+    if packet.proof_kind == "memory":
+        return _memory_evidence(journal=journal, player_guid=player_guid)
+    if packet.proof_kind == "scene":
+        return _scene_evidence(journal=journal, player_guid=player_guid)
+    return []
+
+
+def _chat_action_evidence(
+    *,
+    journal: list[dict[str, Any]],
+    autoplay_status: dict[str, Any],
+    player_guid: int | None,
+) -> list[dict[str, Any]]:
+    chat = _latest_journal_entry(journal, {"chat"}, player_guid=player_guid)
+    action = _latest_journal_entry(
+        journal,
+        {"deed", "pending_intent_set", "pending_intent_cleared"},
+        player_guid=player_guid,
+    )
+    intent_issue = _latest_issue(autoplay_status, kinds={"intent"}, player_guid=player_guid)
+    verification = _latest_verification(autoplay_status, action)
+    checks = [
+        _evidence_check(
+            "journal:chat",
+            "PASS" if chat else "PENDING",
+            "chat turn recorded" if chat else "No autoplay chat journal entry found for this player.",
+            chat,
+        ),
+        _evidence_check(
+            "journal:intent_or_deed",
+            "PASS" if action or intent_issue else "PENDING",
+            (
+                "intent/deed record found"
+                if action
+                else "intent blocker recorded"
+                if intent_issue
+                else "No deed, pending intent, cleared intent, or intent blocker found."
+            ),
+            action,
+            extra_refs=[_issue_ref(intent_issue)] if intent_issue else None,
+        ),
+    ]
+    if verification:
+        checks.append(_evidence_check(
+            "verification:latest",
+            "PASS" if bool(verification.get("ok")) else "FAIL",
+            str(verification.get("status") or "verification recorded"),
+            None,
+            extra_refs=[_status_ref("latest_verification", verification)],
+        ))
+    elif intent_issue and chat:
+        checks.append(_evidence_check(
+            "verification:blocker_explained",
+            "PASS",
+            "Intent blocker and chat reply are both recorded.",
+            chat,
+            extra_refs=[_issue_ref(intent_issue)],
+        ))
+    else:
+        checks.append(_evidence_check(
+            "verification:latest",
+            "PENDING",
+            "No latest verification or recorded blocker explanation found yet.",
+            None,
+        ))
+    return checks
+
+
+def _ambient_evidence(*, journal: list[dict[str, Any]], player_guid: int | None) -> list[dict[str, Any]]:
+    ambient = _latest_journal_entry(journal, {"ambient_narration"}, player_guid=player_guid)
+    if ambient is None:
+        return [_evidence_check("journal:ambient_narration", "PENDING", "No ambient narration journal entry found.", None)]
+    return [_evidence_check(
+        "journal:ambient_narration",
+        "PASS" if bool(ambient.get("ok")) else "FAIL",
+        "ambient narration spoken" if bool(ambient.get("ok")) else "ambient narration attempted but did not apply",
+        ambient,
+    )]
+
+
+def _memory_evidence(*, journal: list[dict[str, Any]], player_guid: int | None) -> list[dict[str, Any]]:
+    memory = _latest_journal_entry(journal, {"conversation_memory"}, player_guid=player_guid)
+    later_chat = None
+    if memory is not None:
+        memory_at = str(memory.get("at") or "")
+        later_chat = next(
+            (
+                entry for entry in journal
+                if str(entry.get("kind") or "") == "chat"
+                and _matches_player(entry, player_guid)
+                and str(entry.get("at") or "") > memory_at
+            ),
+            None,
+        )
+    return [
+        _evidence_check(
+            "journal:conversation_memory",
+            "PASS" if memory and bool(memory.get("ok")) else "FAIL" if memory else "PENDING",
+            (
+                "durable conversation memory stored"
+                if memory and bool(memory.get("ok"))
+                else "conversation memory write failed"
+                if memory
+                else "No conversation memory journal entry found."
+            ),
+            memory,
+        ),
+        _evidence_check(
+            "journal:later_chat",
+            "PASS" if later_chat else "PENDING",
+            "later chat turn recorded after memory write" if later_chat else "No later chat turn found after the memory write.",
+            later_chat,
+        ),
+    ]
+
+
+def _scene_evidence(*, journal: list[dict[str, Any]], player_guid: int | None) -> list[dict[str, Any]]:
+    scene = _latest_journal_entry(journal, {"scene_run"}, player_guid=player_guid)
+    if scene is None:
+        return [
+            _evidence_check("journal:scene_run", "PENDING", "No scene_run journal entry found.", None),
+            _evidence_check("scene:cleanup", "PENDING", "No scene cleanup evidence found.", None),
+        ]
+    cleanup = scene.get("cleanup_status") if isinstance(scene.get("cleanup_status"), dict) else {}
+    cleanup_state = str(cleanup.get("status") or "unknown")
+    return [
+        _evidence_check(
+            "journal:scene_run",
+            "PASS" if int(scene.get("steps_executed") or 0) > 0 else "FAIL",
+            f"scene steps executed={scene.get('steps_executed')} total={scene.get('steps_total')}",
+            scene,
+        ),
+        _evidence_check(
+            "scene:cleanup",
+            "PASS" if cleanup_state in {"not_required", "temporary_spawn", "despawn_step_planned"} else "FAIL",
+            f"cleanup_status={cleanup_state}",
+            scene,
+        ),
+    ]
+
+
+def _load_autoplay_status(project_root: Path) -> dict[str, Any]:
+    try:
+        from wm.autoplay.state import AutoplayStateStore
+
+        return AutoplayStateStore(project_root / ".wm-bootstrap" / "state" / "autoplay").load_status()
+    except Exception:
+        return {}
+
+
+def _latest_journal_entry(
+    journal: list[dict[str, Any]],
+    kinds: set[str],
+    *,
+    player_guid: int | None,
+) -> dict[str, Any] | None:
+    return next(
+        (
+            entry for entry in journal
+            if str(entry.get("kind") or "") in kinds and _matches_player(entry, player_guid)
+        ),
+        None,
+    )
+
+
+def _latest_issue(
+    autoplay_status: dict[str, Any],
+    *,
+    kinds: set[str],
+    player_guid: int | None,
+) -> dict[str, Any] | None:
+    for issue in autoplay_status.get("issues") or []:
+        if not isinstance(issue, dict):
+            continue
+        if str(issue.get("kind") or "") not in kinds:
+            continue
+        payload = issue.get("payload") if isinstance(issue.get("payload"), dict) else {}
+        if player_guid is not None and payload.get("player_guid") not in (None, int(player_guid)):
+            continue
+        return issue
+    return None
+
+
+def _latest_verification(autoplay_status: dict[str, Any], action_entry: dict[str, Any] | None) -> dict[str, Any] | None:
+    status_verification = autoplay_status.get("latest_verification")
+    if isinstance(status_verification, dict):
+        return status_verification
+    if isinstance(action_entry, dict) and isinstance(action_entry.get("verification"), dict):
+        return action_entry["verification"]
+    return None
+
+
+def _matches_player(entry: dict[str, Any], player_guid: int | None) -> bool:
+    if player_guid is None:
+        return True
+    raw = entry.get("player_guid")
+    if raw in (None, ""):
+        return True
+    try:
+        return int(raw) == int(player_guid)
+    except (TypeError, ValueError):
+        return False
+
+
+def _evidence_check(
+    name: str,
+    status: str,
+    detail: str,
+    entry: dict[str, Any] | None,
+    *,
+    extra_refs: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    refs: list[dict[str, Any]] = []
+    if entry is not None:
+        refs.append(_journal_ref(entry))
+    refs.extend(ref for ref in (extra_refs or []) if ref)
+    return {
+        "name": name,
+        "status": status,
+        "detail": detail,
+        "evidence_refs": refs,
+    }
+
+
+def _journal_ref(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": "autoplay_journal",
+        "kind": entry.get("kind"),
+        "at": entry.get("at"),
+        "player_guid": entry.get("player_guid"),
+        "summary": _short_ref(entry),
+    }
+
+
+def _issue_ref(issue: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": "autoplay_status.issues",
+        "kind": issue.get("kind"),
+        "at": issue.get("at"),
+        "reason": issue.get("reason"),
+        "summary": str(issue.get("detail") or issue.get("reason") or "")[:180],
+    }
+
+
+def _status_ref(name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": f"autoplay_status.{name}",
+        "kind": payload.get("verb") or name,
+        "at": payload.get("at"),
+        "summary": str(payload.get("status") or payload.get("strategy") or name)[:180],
+    }
+
+
+def _short_ref(entry: dict[str, Any]) -> str:
+    for key in ("summary", "line", "message", "scene_name", "verb", "reason"):
+        value = entry.get(key)
+        if value not in (None, ""):
+            return str(value)[:180]
+    reply = entry.get("reply") if isinstance(entry.get("reply"), dict) else {}
+    if reply.get("message"):
+        return str(reply["message"])[:180]
+    return "recorded"
+
+
+def _record_status(
+    *,
+    packet: ProofPacket,
+    checks: list[dict[str, str]],
+    evidence_checks: list[dict[str, Any]],
+    mode: str,
+) -> str:
     if any(check["status"] == "FAIL" for check in checks):
         return "failed"
+    if any(check.get("status") == "FAIL" for check in evidence_checks):
+        return "failed"
+    if packet.manual_live and evidence_checks and all(check.get("status") == "PASS" for check in evidence_checks):
+        return "passed"
     if packet.manual_live:
         return "manual_required"
     return "passed" if str(mode or "dry-run") == "dry-run" else "manual_required"

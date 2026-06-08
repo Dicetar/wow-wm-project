@@ -291,7 +291,10 @@ class AutoplayStateStore:
 
     def append_journal(self, kind: str, payload: dict[str, Any]) -> dict[str, Any]:
         self.ensure()
-        entry = {"kind": kind, "at": utc_now_iso(), **payload}
+        entry = {"at": utc_now_iso(), **payload}
+        if "kind" in payload and payload.get("kind") != kind:
+            entry["payload_kind"] = payload.get("kind")
+        entry["kind"] = kind
         path = self.root / "journal" / f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{kind}.json"
         self.write_json(path, entry)
         return entry

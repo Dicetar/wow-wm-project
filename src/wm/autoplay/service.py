@@ -1158,6 +1158,7 @@ class AutoplayService:
             "scene_name": scene_name,
             "steps_total": len(steps),
             "steps_executed": len(step_results),
+            "cleanup_status": _scene_cleanup_status(steps),
             "ok": ok_all,
             "step_results": step_results,
         }
@@ -3104,6 +3105,35 @@ def _result_to_dict(result: Any) -> dict[str, Any]:
         return json.loads(json.dumps(result, default=str))
     except TypeError:
         return {"value": str(result)}
+
+
+def _scene_cleanup_status(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    spawn_steps = [
+        step for step in steps
+        if isinstance(step, dict) and str(step.get("native_action_kind") or "") == "creature_spawn"
+    ]
+    despawn_steps = [
+        step for step in steps
+        if isinstance(step, dict) and str(step.get("native_action_kind") or "") == "creature_despawn"
+    ]
+    temporary_spawns = [
+        step for step in spawn_steps
+        if isinstance(step.get("payload"), dict) and step["payload"].get("duration_ms") not in (None, "")
+    ]
+    if not spawn_steps:
+        status = "not_required"
+    elif len(temporary_spawns) == len(spawn_steps):
+        status = "temporary_spawn"
+    elif despawn_steps:
+        status = "despawn_step_planned"
+    else:
+        status = "missing"
+    return {
+        "status": status,
+        "spawn_count": len(spawn_steps),
+        "temporary_spawn_count": len(temporary_spawns),
+        "despawn_step_count": len(despawn_steps),
+    }
 
 
 def _compact_store_result(payload: dict[str, Any]) -> dict[str, Any]:

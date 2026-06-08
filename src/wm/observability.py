@@ -52,6 +52,9 @@ class WmObservabilityStore:
                 latest[kind] = proof
         return latest
 
+    def list_autoplay_journal(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        return self._autoplay_journal(limit=limit)
+
     def record_proof(self, *, proof_kind: str, mode: str = "dry-run", player_guid: int | None = None) -> dict[str, Any]:
         self.ensure()
         kind = proof_kind if proof_kind in PROOF_KINDS else "custom"

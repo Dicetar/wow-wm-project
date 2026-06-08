@@ -305,6 +305,9 @@ function renderProofChecklist(proofs) {
     const record = latest[kind] || {};
     const status = record.status || "not_run";
     const blocker = Array.isArray(record.blockers) && record.blockers.length ? record.blockers[0] : "";
+    const evidence = Array.isArray(record.evidence_checks)
+      ? record.evidence_checks.find((item) => item.status && item.status !== "PASS")
+      : null;
     const when = record.created_at ? ` · ${record.created_at}` : "";
     return `
       <div class="card proof-card proof-${escapeHtml(status)}">
@@ -312,7 +315,7 @@ function renderProofChecklist(proofs) {
           <strong>${escapeHtml(packet.title || kind)}</strong>
           <span class="badge">${escapeHtml(status)}</span>
         </div>
-        <div class="small muted">${escapeHtml(blocker || record.summary || packet.summary || "")}${escapeHtml(when)}</div>
+        <div class="small muted">${escapeHtml(blocker || evidence?.detail || record.summary || packet.summary || "")}${escapeHtml(when)}</div>
       </div>`;
   }).join("");
 }

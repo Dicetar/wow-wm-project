@@ -567,6 +567,8 @@ def test_apply_pending_runs_scene_steps(tmp_path: Path):
     assert result["scene"] == "applied"
     assert result["steps_executed"] == 2
     assert executed == ["creature_spawn", "creature_say"]
+    journal = service.store.read_json(next((service.store.root / "journal").glob("*-scene_run.json")))
+    assert journal["cleanup_status"]["status"] == "temporary_spawn"
 
 
 def test_handle_intent_spawn_resolves_name_to_entry(tmp_path: Path):
