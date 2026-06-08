@@ -172,6 +172,7 @@ def run_proof_packet(
     mode: str = "dry-run",
     store: WmObservabilityStore | None = None,
     runtime_status: dict[str, Any] | None = None,
+    manual_evidence: list[str] | None = None,
 ) -> dict[str, Any]:
     packet = _packet_by_kind(proof_kind)
     root = Path(project_root).resolve()
@@ -199,9 +200,16 @@ def run_proof_packet(
         "required_services": list(packet.required_services),
         "checks": checks,
         "blockers": blockers,
+        "next_actions": _next_actions(checks),
         "runtime_summary": runtime.get("summary", {}),
         "runtime_incidents": runtime.get("incidents", []),
-        "evidence": [],
+        "timeline_refs": {
+            "timeline_url": "/api/wm/timeline",
+            "proofs_url": "/api/wm/proofs",
+            "incidents_url": "/api/wm/incidents",
+        },
+        "manual_evidence": list(manual_evidence or []),
+        "evidence": list(manual_evidence or []),
     }
     return (store or WmObservabilityStore.for_project(root)).save_proof(record)
 
@@ -245,3 +253,32 @@ def _record_status(*, packet: ProofPacket, checks: list[dict[str, str]], mode: s
     if packet.manual_live:
         return "manual_required"
     return "passed" if str(mode or "dry-run") == "dry-run" else "manual_required"
+
+
+def _next_actions(checks: list[dict[str, str]]) -> list[str]:
+    actions: list[str] = []
+    for check in checks:
+        if check.get("status") != "FAIL":
+            continue
+        name = str(check.get("name") or "")
+        detail = str(check.get("detail") or "")
+        if name.startswith("service:"):
+            service = name.removeprefix("service:")
+            if "duplicate" in detail:
+                actions.append(f"Stop duplicate {service} instances with Stop All WM or Close Aux Windows, then start it once.")
+            elif "stale" in detail:
+                actions.append(f"Clear stale {service} heartbeat with Close Aux Windows or Stop All WM, then rerun the proof.")
+            else:
+                actions.append(f"Start {service} from the launcher, wait for status=running, then rerun the proof.")
+        elif name == "player_guid":
+            actions.append("Select or pass the configured proof player_guid before running this live proof.")
+        elif name.startswith("incident:"):
+            service = name.removeprefix("incident:")
+            actions.append(f"Open panel incidents for {service}, resolve the blocker, then rerun the proof.")
+        elif detail:
+            actions.append(detail)
+    deduped: list[str] = []
+    for action in actions:
+        if action not in deduped:
+            deduped.append(action)
+    return deduped

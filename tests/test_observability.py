@@ -32,6 +32,17 @@ def test_observability_includes_runtime_incidents(tmp_path):
     assert incidents[0]["service"] == "panel"
 
 
+def test_observability_latest_proofs_by_kind(tmp_path):
+    store = WmObservabilityStore(root=tmp_path / "obs")
+    first = store.record_proof(proof_kind="ambient", mode="dry-run")
+    second = store.record_proof(proof_kind="ambient", mode="apply")
+
+    latest = store.latest_proofs_by_kind()
+
+    assert first["proof_id"] != second["proof_id"]
+    assert latest["ambient"]["proof_id"] == second["proof_id"]
+
+
 def test_observability_timeline_summarizes_autoplay_journal(tmp_path):
     autoplay_root = tmp_path / "autoplay"
     journal = autoplay_root / "journal"

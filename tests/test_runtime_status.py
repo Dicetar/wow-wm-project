@@ -105,3 +105,102 @@ def test_runtime_status_does_not_mark_stopping_autoplay_without_process_stale(tm
     assert autoplay["stale"] is False
     assert autoplay["health"] == "not_running"
     assert not any(item["kind"] == "stale_service_state" for item in status["incidents"])
+
+
+def test_runtime_status_uses_active_marker_for_python_service(tmp_path):
+    status = collect_runtime_status(
+        project_root=tmp_path,
+        processes=[],
+        autoplay_status={},
+        generated_at="2026-01-01T00:00:10Z",
+        runtime_markers=[{
+            "schema_version": "wm.runtime.marker.v1",
+            "service": "watcher",
+            "pid": 101,
+            "started_at": "2026-01-01T00:00:00Z",
+            "last_seen": "2026-01-01T00:00:09Z",
+            "command_key": "wm.events.watch:native_bridge:apply",
+            "health": "running",
+        }],
+    )
+
+    watcher = status["services"]["watcher"]
+    assert watcher["state"] == "running"
+    assert watcher["logical_count"] == 1
+    assert watcher["runtime_markers"]["active_count"] == 1
+    assert watcher["pids"] == [101]
+
+
+def test_runtime_status_marks_duplicate_active_markers(tmp_path):
+    markers = [
+        {
+            "schema_version": "wm.runtime.marker.v1",
+            "service": "autoplay",
+            "pid": pid,
+            "started_at": "2026-01-01T00:00:00Z",
+            "last_seen": "2026-01-01T00:00:09Z",
+            "command_key": "wm.autoplay run",
+            "health": "running",
+        }
+        for pid in (201, 202)
+    ]
+
+    status = collect_runtime_status(
+        project_root=tmp_path,
+        processes=[],
+        autoplay_status={},
+        generated_at="2026-01-01T00:00:10Z",
+        runtime_markers=markers,
+    )
+
+    autoplay = status["services"]["autoplay"]
+    assert autoplay["state"] == "duplicate"
+    assert autoplay["logical_count"] == 2
+    assert any(item["kind"] == "duplicate_service" and item["service"] == "autoplay" for item in status["incidents"])
+
+
+def test_runtime_status_marks_stale_marker(tmp_path):
+    status = collect_runtime_status(
+        project_root=tmp_path,
+        processes=[],
+        autoplay_status={},
+        generated_at="2026-01-01T00:01:00Z",
+        marker_stale_after_seconds=30,
+        runtime_markers=[{
+            "schema_version": "wm.runtime.marker.v1",
+            "service": "panel",
+            "pid": 301,
+            "started_at": "2026-01-01T00:00:00Z",
+            "last_seen": "2026-01-01T00:00:10Z",
+            "command_key": "wm.panel serve",
+            "health": "running",
+        }],
+    )
+
+    panel = status["services"]["panel"]
+    assert panel["state"] == "stale"
+    assert panel["stale"] is True
+    assert panel["runtime_markers"]["stale_count"] == 1
+    assert any("runtime marker heartbeat" in item["message"] for item in status["incidents"])
+
+
+def test_runtime_status_ignores_stopped_marker(tmp_path):
+    status = collect_runtime_status(
+        project_root=tmp_path,
+        processes=[],
+        autoplay_status={},
+        generated_at="2026-01-01T00:00:10Z",
+        runtime_markers=[{
+            "schema_version": "wm.runtime.marker.v1",
+            "service": "watcher",
+            "pid": 401,
+            "started_at": "2026-01-01T00:00:00Z",
+            "last_seen": "2026-01-01T00:00:09Z",
+            "command_key": "wm.events.watch:native_bridge:apply",
+            "health": "stopped",
+        }],
+    )
+
+    watcher = status["services"]["watcher"]
+    assert watcher["state"] == "not_running"
+    assert watcher["runtime_markers"]["stopped_count"] == 1

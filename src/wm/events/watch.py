@@ -44,6 +44,8 @@ from wm.events.run import _apply_settings_overrides
 from wm.events.run import _emit_output
 from wm.events.run import _validate_run_arguments
 from wm.events.run import execute_event_spine
+from wm.runtime.markers import mark_runtime_service_stopped
+from wm.runtime.markers import write_runtime_marker
 from wm.sources.addon_log import arm_addon_log_cursor
 from wm.sources.combat_log import arm_combat_log_cursor
 from wm.sources.native_bridge.arm import arm_native_bridge_cursor
@@ -140,9 +142,27 @@ def main(argv: list[str] | None = None) -> int:
             apply_fn=lambda: apply_pending_client_patch(install_path=args.client_install_path))
 
     iteration = 0
+    marker_metadata = {
+        "adapter": args.adapter,
+        "mode": args.mode,
+        "player_guid": args.player_guid,
+        "batch_size": args.batch_size,
+    }
+    write_runtime_marker(
+        service="watcher",
+        command_key=f"wm.events.watch:{args.adapter}:{args.mode}",
+        health="running",
+        metadata=marker_metadata,
+    )
     try:
         while True:
             iteration += 1
+            write_runtime_marker(
+                service="watcher",
+                command_key=f"wm.events.watch:{args.adapter}:{args.mode}",
+                health="running",
+                metadata={**marker_metadata, "iteration": iteration},
+            )
             try:
                 payload = execute_event_spine(
                     settings=settings,
@@ -189,6 +209,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.summary:
             print("watch_stopped=true", flush=True)
         return 130
+    finally:
+        mark_runtime_service_stopped(
+            service="watcher",
+            command_key=f"wm.events.watch:{args.adapter}:{args.mode}",
+            metadata={**marker_metadata, "iteration": iteration},
+        )
 
     return 0
 

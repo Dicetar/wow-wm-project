@@ -6,6 +6,7 @@ from wm.launcher import FORBIDDEN_VISIBLE_RUNTIME_TOKENS
 from wm.launcher import LauncherConfig
 from wm.launcher import build_autoplay_command
 from wm.launcher import build_start_all_commands
+from wm.launcher import build_panel_command
 from wm.launcher import build_visible_runtime_commands
 from wm.launcher import build_watcher_command
 from wm.launcher import core_start_decision
@@ -74,6 +75,18 @@ def test_autoplay_launches_python_directly_instead_of_hidden_helper(tmp_path: Pa
     assert "start-wm-playable.bat" not in rendered
     assert "WindowStyle Hidden" not in rendered
     assert "/MIN" not in rendered
+
+
+def test_python_runtime_commands_set_marker_root(tmp_path: Path):
+    config = _config(tmp_path)
+    marker_root = config.project_root / ".wm-bootstrap" / "state" / "runtime"
+    rendered = "\n".join([
+        build_watcher_command(config).as_text(),
+        build_autoplay_command(config).as_text(),
+        build_panel_command(config).as_text(),
+    ])
+
+    assert f'set "WM_RUNTIME_MARKER_ROOT={marker_root}"' in rendered
 
 
 def test_start_all_runtime_commands_do_not_hide_or_minimize(tmp_path: Path):

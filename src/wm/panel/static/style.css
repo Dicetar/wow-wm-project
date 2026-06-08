@@ -348,6 +348,26 @@ legend {
   letter-spacing: 0.04em;
 }
 
+.proof-card {
+  border-left: 4px solid var(--line);
+}
+
+.proof-passed {
+  border-left-color: var(--accent);
+}
+
+.proof-failed {
+  border-left-color: var(--danger);
+}
+
+.proof-manual_required {
+  border-left-color: var(--accent-2);
+}
+
+.proof-not_run {
+  opacity: 0.82;
+}
+
 .output.small {
   max-height: 160px;
   overflow: auto;

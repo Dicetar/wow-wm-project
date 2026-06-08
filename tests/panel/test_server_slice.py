@@ -274,6 +274,32 @@ class WmSessionEndpointTests(unittest.TestCase):
         self.assertEqual(body["candidates"][0]["player_guid"], 5412)
         self.assertEqual(seen, {"since_seconds": 120, "limit": 3, "marker_spell_id": 946602})
 
+    def test_wm_proofs_route_includes_checklist_and_latest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_name:
+            root = Path(temp_name)
+            app = PanelApp(
+                state=PanelState(root / "state"),
+                command_catalog=_catalog(),
+                cwd=root,
+            )
+
+            post_code, post_body = app.post(
+                "/api/wm/proofs/run",
+                {
+                    "kind": "failure",
+                    "mode": "dry-run",
+                    "evidence_notes": "SOAP disabled for operator failure proof",
+                },
+            )
+            get_code, get_body = app.get("/api/wm/proofs")
+
+        self.assertEqual(post_code, 200, post_body)
+        self.assertEqual(post_body["proof"]["manual_evidence"], ["SOAP disabled for operator failure proof"])
+        self.assertEqual(get_code, 200, get_body)
+        self.assertIn("packets", get_body)
+        self.assertIn("latest_by_kind", get_body)
+        self.assertIn("failure", get_body["latest_by_kind"])
+
     def test_wm_session_aliases_share_slice_runtime(self) -> None:
         def factory(*, character_guid: int) -> _FakeRuntime:
             return _FakeRuntime(character_guid=character_guid)

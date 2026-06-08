@@ -6,6 +6,7 @@ from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
 import subprocess
+import threading
 from typing import Any, Callable
 from urllib.parse import unquote
 from urllib.parse import parse_qs
@@ -120,7 +121,15 @@ class PanelApp:
         if path == "/api/wm/autoplay/status":
             return 200, self._autoplay_status()
         if path == "/api/wm/proofs":
-            return 200, {"ok": True, "proofs": self._observability_store().list_proofs(limit=_query_int(query, "limit", 50))}
+            from wm.proofs.runner import list_proof_packets
+
+            store = self._observability_store()
+            return 200, {
+                "ok": True,
+                "proofs": store.list_proofs(limit=_query_int(query, "limit", 50)),
+                "packets": list_proof_packets(),
+                "latest_by_kind": store.latest_proofs_by_kind(),
+            }
         if path == "/api/wm/timeline":
             runtime = self._runtime_status()
             return 200, {"ok": True, "timeline": self._observability_store().list_timeline(limit=_query_int(query, "limit", 100), runtime_status=runtime)}
@@ -509,6 +518,7 @@ class PanelApp:
             mode=mode,
             player_guid=player_guid,
             store=self._observability_store(),
+            manual_evidence=_manual_evidence_from_body(body),
         )
         return {"ok": True, "proof": proof}
 
@@ -1000,9 +1010,50 @@ def serve(*, host: str = "127.0.0.1", port: int = 8765, state_root: Path | None 
     app = PanelApp(state=state, **slice_kwargs)
     handler = _handler_for(app)
     server = ThreadingHTTPServer((host, int(port)), handler)
+    marker_metadata = {
+        "host": str(host),
+        "port": int(port),
+        "live_slice": bool(live_slice),
+    }
+    from wm.runtime.markers import mark_runtime_service_stopped
+    from wm.runtime.markers import write_runtime_marker
+
+    write_runtime_marker(
+        service="panel",
+        command_key="wm.panel serve",
+        project_root=app.cwd,
+        health="running",
+        port=int(port),
+        metadata=marker_metadata,
+    )
+    heartbeat_stop = threading.Event()
+
+    def heartbeat_loop() -> None:
+        while not heartbeat_stop.wait(5.0):
+            write_runtime_marker(
+                service="panel",
+                command_key="wm.panel serve",
+                project_root=app.cwd,
+                health="running",
+                port=int(port),
+                metadata=marker_metadata,
+            )
+
+    threading.Thread(target=heartbeat_loop, daemon=True).start()
     print(f"WM panel listening on http://{host}:{int(port)}"
           + (" (live slice wiring on)" if live_slice else ""))
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        heartbeat_stop.set()
+        mark_runtime_service_stopped(
+            service="panel",
+            command_key="wm.panel serve",
+            project_root=app.cwd,
+            port=int(port),
+            metadata=marker_metadata,
+        )
+        server.server_close()
 
 
 def _handler_for(app: PanelApp) -> type[BaseHTTPRequestHandler]:
@@ -1116,6 +1167,17 @@ def _body_int(body: dict[str, Any], key: str, default: int) -> int:
         return int(raw)
     except (TypeError, ValueError):
         return int(default)
+
+
+def _manual_evidence_from_body(body: dict[str, Any]) -> list[str]:
+    raw = body.get("manual_evidence", body.get("evidence_notes", body.get("evidence")))
+    if raw in (None, ""):
+        return []
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, list):
+        return [str(item) for item in raw if item not in (None, "")]
+    return [str(raw)]
 
 
 def _int_or_none(value: Any) -> int | None:

@@ -79,7 +79,7 @@ function toggleTheme() {
 }
 
 async function loadAll() {
-  const [status, catalog, schemas, settings, drafts, readiness, autoplay, tools, timeline] = await Promise.all([
+  const [status, catalog, schemas, settings, drafts, readiness, autoplay, tools, timeline, proofs] = await Promise.all([
     api("/api/status"),
     api("/api/catalog"),
     api("/api/schemas"),
@@ -88,7 +88,8 @@ async function loadAll() {
     api("/api/wm/readiness"),
     api("/api/wm/autoplay/status"),
     api("/api/wm/tools"),
-    api("/api/wm/timeline?limit=12")
+    api("/api/wm/timeline?limit=12"),
+    api("/api/wm/proofs?limit=12")
   ]);
   state.commands = catalog.commands;
   state.schemas = schemas.schemas;
@@ -99,7 +100,7 @@ async function loadAll() {
   renderAutoplay(autoplay);
   renderConvVerbModes(autoplay.conversational_verb_modes || {});
   renderPendingIntents(autoplay.pending_intents || {});
-  renderSimple(status, readiness, autoplay, tools, timeline.timeline || []);
+  renderSimple(status, readiness, autoplay, tools, timeline.timeline || [], proofs);
   renderSchemaSelects();
   renderCommands();
   renderSettings(settings);
@@ -237,7 +238,7 @@ function renderStatus(status) {
   setOutput("latestJob", status.latest_job || {});
 }
 
-function renderSimple(status, readiness, autoplay, tools, timeline) {
+function renderSimple(status, readiness, autoplay, tools, timeline, proofs) {
   const session = readiness.active_session || state.activeSession || {};
   const llm = autoplay.llm || {};
   const config = autoplay.config || {};
@@ -271,6 +272,7 @@ function renderSimple(status, readiness, autoplay, tools, timeline) {
     latest_apply: autoplay.latest_autoplay || autoplay.latest_apply || null,
     latest_job: status.latest_job || null,
   });
+  renderProofChecklist(proofs || {});
   const nativeActions = Array.isArray(tools.native_actions) ? tools.native_actions.length : 0;
   $("simpleTools").innerHTML = Object.entries({
     "Input": tools.player_input?.preferred || "WM chat channel",
@@ -290,6 +292,29 @@ function renderSimple(status, readiness, autoplay, tools, timeline) {
       ? `${nAuto} auto, ${nConfirm} confirm, ${nOff} off`
       : "—";
   }
+}
+
+function renderProofChecklist(proofs) {
+  const target = $("simpleProofChecklist");
+  if (!target) return;
+  const latest = proofs.latest_by_kind || {};
+  const packets = Array.isArray(proofs.packets) ? proofs.packets : [];
+  const sprintKinds = ["runtime_startup", "chat_action", "ambient", "memory", "scene"];
+  target.innerHTML = sprintKinds.map((kind) => {
+    const packet = packets.find((item) => item.proof_kind === kind) || { proof_kind: kind, title: kind };
+    const record = latest[kind] || {};
+    const status = record.status || "not_run";
+    const blocker = Array.isArray(record.blockers) && record.blockers.length ? record.blockers[0] : "";
+    const when = record.created_at ? ` · ${record.created_at}` : "";
+    return `
+      <div class="card proof-card proof-${escapeHtml(status)}">
+        <div class="card-head">
+          <strong>${escapeHtml(packet.title || kind)}</strong>
+          <span class="badge">${escapeHtml(status)}</span>
+        </div>
+        <div class="small muted">${escapeHtml(blocker || record.summary || packet.summary || "")}${escapeHtml(when)}</div>
+      </div>`;
+  }).join("");
 }
 
 function renderSchemaSelects() {

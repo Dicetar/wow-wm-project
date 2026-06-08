@@ -31,6 +31,8 @@ from wm.llm.lmstudio import LmStudioSettings
 from wm.llm.results import LlmResultError
 from wm.llm.results import parse_json_object
 from wm.panel.state import PanelState
+from wm.runtime.markers import mark_runtime_service_stopped
+from wm.runtime.markers import write_runtime_marker
 
 
 DoctorFn = Callable[[Settings], list[Any]]
@@ -150,6 +152,11 @@ class AutoplayService:
         return self.store.save_status(next_status)
 
     def run_forever(self, *, config: AutoplayRuntimeConfig, once: bool = False) -> int:
+        marker_metadata = {
+            "player_guid": config.player_guid,
+            "lanes": list(_normalize_lanes(config.llm_lanes)),
+            "once": bool(once),
+        }
         existing_command = self.store.load_command()
         command_config = _config_to_dict(config)
         existing_config = existing_command.get("config") if isinstance(existing_command.get("config"), dict) else {}
@@ -167,28 +174,51 @@ class AutoplayService:
             "config": command_config,
         })
         self.store.update_status(status="starting", running=True, paused=False, stop_requested=False, pid=os.getpid())
-        if config.start_watcher and config.player_guid is not None:
-            lanes = _normalize_lanes(config.llm_lanes)
-            if lanes == ["chat"]:
-                self.store.append_journal(
-                    "watcher_start",
-                    {
-                        "kind": "native_bridge",
-                        "mode": "chat",
-                        "status": "skipped",
-                        "reason": "chat mode polls recent native bridge chat directly",
-                    },
+        write_runtime_marker(
+            service="autoplay",
+            command_key="wm.autoplay run",
+            project_root=config.project_root,
+            health="running",
+            metadata=marker_metadata,
+        )
+        status: dict[str, Any] = {}
+        try:
+            if config.start_watcher and config.player_guid is not None:
+                lanes = _normalize_lanes(config.llm_lanes)
+                if lanes == ["chat"]:
+                    self.store.append_journal(
+                        "watcher_start",
+                        {
+                            "kind": "native_bridge",
+                            "mode": "chat",
+                            "status": "skipped",
+                            "reason": "chat mode polls recent native bridge chat directly",
+                        },
+                    )
+                else:
+                    self._start_watcher(config)
+            while True:
+                write_runtime_marker(
+                    service="autoplay",
+                    command_key="wm.autoplay run",
+                    project_root=config.project_root,
+                    health="running",
+                    metadata=marker_metadata,
                 )
-            else:
-                self._start_watcher(config)
-        while True:
-            status = self.tick(config=config)
-            if once or status.get("stop_requested"):
-                break
-            time.sleep(max(float(config.interval_seconds), 0.25))
-        final_status = "stopped" if once or status.get("stop_requested") else status.get("status", "stopped")
-        self.store.update_status(status=final_status, running=False)
-        return 0
+                status = self.tick(config=config)
+                if once or status.get("stop_requested"):
+                    break
+                time.sleep(max(float(config.interval_seconds), 0.25))
+            final_status = "stopped" if once or status.get("stop_requested") else status.get("status", "stopped")
+            self.store.update_status(status=final_status, running=False)
+            return 0
+        finally:
+            mark_runtime_service_stopped(
+                service="autoplay",
+                command_key="wm.autoplay run",
+                project_root=config.project_root,
+                metadata=marker_metadata,
+            )
 
     def _readiness(self, settings: Settings) -> dict[str, Any]:
         try:

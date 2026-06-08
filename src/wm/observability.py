@@ -44,6 +44,14 @@ class WmObservabilityStore:
     def list_proofs(self, *, limit: int = 50) -> list[dict[str, Any]]:
         return self._list_dir("proofs", limit=limit)
 
+    def latest_proofs_by_kind(self, *, limit: int = 200) -> dict[str, dict[str, Any]]:
+        latest: dict[str, dict[str, Any]] = {}
+        for proof in self.list_proofs(limit=limit):
+            kind = str(proof.get("proof_kind") or "")
+            if kind and kind not in latest:
+                latest[kind] = proof
+        return latest
+
     def record_proof(self, *, proof_kind: str, mode: str = "dry-run", player_guid: int | None = None) -> dict[str, Any]:
         self.ensure()
         kind = proof_kind if proof_kind in PROOF_KINDS else "custom"

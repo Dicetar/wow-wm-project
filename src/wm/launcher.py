@@ -14,6 +14,7 @@ import webbrowser
 from wm.autoplay.state import AutoplayStateStore
 from wm.llm.lmstudio import LmStudioClient, LmStudioSettings
 from wm.panel.state import PanelState
+from wm.runtime.markers import clear_runtime_markers
 from wm.runtime.status import collect_runtime_status
 
 
@@ -160,6 +161,7 @@ def _runtime_env_segments(config: LauncherConfig) -> list[str]:
         _cmd_set("WM_CHAR_DB_PORT", config.db_port),
         _cmd_set("WM_SOAP_PORT", config.soap_port),
         _cmd_set("WM_SOAP_ENABLED", "1"),
+        _cmd_set("WM_RUNTIME_MARKER_ROOT", config.project_root / ".wm-bootstrap" / "state" / "runtime"),
     ]
 
 
@@ -301,7 +303,7 @@ def build_panel_command(config: LauncherConfig) -> LaunchCommand:
         "WM Panel Server",
         config.project_root,
         [
-            _cmd_set("PYTHONPATH", "src"),
+            *_runtime_env_segments(config),
             f"cd /d {cmd_quote(config.project_root)}",
             _python_segment(config, "wm.panel", "serve", "--host", config.panel_host, "--port", config.panel_port),
         ],
@@ -404,6 +406,7 @@ def control_env(config: LauncherConfig) -> dict[str, str]:
             "WM_SOAP_PORT": str(config.soap_port),
             "WM_SOAP_ENABLED": "1",
             "WM_BRIDGE_CONFIG_PATH": str(config.bridge_config_path),
+            "WM_RUNTIME_MARKER_ROOT": str(config.project_root / ".wm-bootstrap" / "state" / "runtime"),
         }
     )
     return env
@@ -891,7 +894,17 @@ class WmLauncherApp:
         self.root.after(1200, self.refresh_status)
 
     def launch_once(self, key: str, needles: list[str]) -> None:
-        running = _service_count(_runtime_service(self.config, key))
+        service = _runtime_service(self.config, key)
+        state = str(service.get("state") or "")
+        if state == "duplicate":
+            self.output_var.set(f"{self.commands[key].title} has duplicate instances. Press Close Aux Windows, then start it once.")
+            self.refresh_status()
+            return
+        if service.get("stale") or state == "stale":
+            self.output_var.set(f"{self.commands[key].title} heartbeat is stale. Press Close Aux Windows, then start it once.")
+            self.refresh_status()
+            return
+        running = _service_count(service)
         if running and running > 0:
             self.output_var.set(f"{self.commands[key].title} is already running ({running}).")
             self.refresh_status()
@@ -928,6 +941,7 @@ class WmLauncherApp:
         def worker() -> subprocess.CompletedProcess[str]:
             result = run_control_python(self.config, "-m", "wm.autoplay", "stop", "--summary")
             _stop_processes_matching_any(["wm.autoplay run", "launcher\\autoplay.bat"])
+            clear_runtime_markers(project_root=self.config.project_root, services=["autoplay"])
             return result
 
         self._run_background("autoplay stop", worker)
@@ -944,14 +958,16 @@ class WmLauncherApp:
                     timeout=10,
                     check=False,
                 )
-            return _stop_processes_matching_any(["wm.events.watch", "launcher\\watcher.bat"])
+            result = _stop_processes_matching_any(["wm.events.watch", "launcher\\watcher.bat"])
+            clear_runtime_markers(project_root=self.config.project_root, services=["watcher"])
+            return result
 
         self._run_background("watcher stop", worker)
 
     def close_aux_windows(self) -> None:
         def worker() -> subprocess.CompletedProcess[str]:
             run_control_python(self.config, "-m", "wm.autoplay", "stop", "--summary")
-            return _stop_processes_matching_any(
+            result = _stop_processes_matching_any(
                 [
                     "wm.autoplay run",
                     "wm.events.watch",
@@ -962,6 +978,8 @@ class WmLauncherApp:
                     "start-wm-panel-app",
                 ]
             )
+            clear_runtime_markers(project_root=self.config.project_root, services=["autoplay", "watcher", "panel"])
+            return result
 
         self._run_background("close aux windows", worker)
 
@@ -988,7 +1006,7 @@ class WmLauncherApp:
                     timeout=20,
                     check=False,
                 )
-            return _stop_processes_by_names_or_commandline(
+            result = _stop_processes_by_names_or_commandline(
                 names=["authserver.exe", "worldserver.exe", "mysqld.exe"],
                 needles=[
                     "wm.autoplay run",
@@ -1000,6 +1018,8 @@ class WmLauncherApp:
                     "launcher\\core.bat",
                 ],
             )
+            clear_runtime_markers(project_root=self.config.project_root, services=["autoplay", "watcher", "panel"])
+            return result
 
         self._run_background("stop all WM", worker)
 

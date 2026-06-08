@@ -9,6 +9,11 @@ from pathlib import Path
 import subprocess
 from typing import Any, Iterable
 
+from wm.runtime.markers import DEFAULT_MARKER_STALE_SECONDS
+from wm.runtime.markers import load_runtime_markers
+from wm.runtime.markers import normalize_runtime_marker
+from wm.runtime.markers import STOPPED_HEALTH
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -67,6 +72,8 @@ def collect_runtime_status(
     panel_port: int = 8765,
     processes: Iterable[RuntimeProcess | dict[str, Any]] | None = None,
     autoplay_status: dict[str, Any] | None = None,
+    runtime_markers: Iterable[dict[str, Any]] | None = None,
+    marker_stale_after_seconds: int = DEFAULT_MARKER_STALE_SECONDS,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """Return the shared local runtime view used by launcher, panel, and CLI.
@@ -90,6 +97,14 @@ def collect_runtime_status(
         spec.key: _service_status(spec, processes_list, generated_at=generated)
         for spec in default_service_specs()
     }
+
+    markers = _load_or_normalize_markers(
+        root=root,
+        runtime_markers=runtime_markers,
+        generated_at=generated,
+        stale_after_seconds=marker_stale_after_seconds,
+    )
+    _apply_runtime_markers(services, markers)
 
     durable_autoplay = autoplay_status if autoplay_status is not None else _load_autoplay_status(root)
     _apply_autoplay_staleness(services["autoplay"], durable_autoplay)
@@ -115,6 +130,11 @@ def collect_runtime_status(
             "panel": {"host": str(panel_host), "port": int(panel_port)},
         },
         "process_scan_error": scan_error,
+        "runtime_markers": {
+            "root": str(root / ".wm-bootstrap" / "state" / "runtime"),
+            "stale_after_seconds": int(marker_stale_after_seconds),
+            "count": len(markers),
+        },
         "services": services,
         "summary": {
             key: {
@@ -179,6 +199,105 @@ def _service_status(spec: RuntimeServiceSpec, processes: list[RuntimeProcess], *
     }
 
 
+def _load_or_normalize_markers(
+    *,
+    root: Path,
+    runtime_markers: Iterable[dict[str, Any]] | None,
+    generated_at: str,
+    stale_after_seconds: int,
+) -> list[dict[str, Any]]:
+    if runtime_markers is None:
+        return load_runtime_markers(
+            project_root=root,
+            now=generated_at,
+            stale_after_seconds=stale_after_seconds,
+        )
+    return [
+        normalize_runtime_marker(
+            dict(item),
+            now=generated_at,
+            stale_after_seconds=stale_after_seconds,
+        )
+        for item in runtime_markers
+        if isinstance(item, dict)
+    ]
+
+
+def _apply_runtime_markers(services: dict[str, dict[str, Any]], markers: list[dict[str, Any]]) -> None:
+    marker_services = {"watcher", "panel", "autoplay"}
+    for key in marker_services:
+        service = services.get(key)
+        if service is None:
+            continue
+        relevant = [marker for marker in markers if marker.get("service") == key]
+        if not relevant:
+            service["runtime_markers"] = {"available": False, "active_count": 0, "stale_count": 0, "stopped_count": 0}
+            continue
+        active = [marker for marker in relevant if bool(marker.get("active"))]
+        stale = [
+            marker
+            for marker in relevant
+            if str(marker.get("health") or "") not in STOPPED_HEALTH and bool(marker.get("stale"))
+        ]
+        stopped = [marker for marker in relevant if str(marker.get("health") or "") in STOPPED_HEALTH]
+        service["runtime_markers"] = {
+            "available": True,
+            "active_count": len(active),
+            "stale_count": len(stale),
+            "stopped_count": len(stopped),
+            "markers": [_marker_public(marker) for marker in relevant],
+        }
+        if active:
+            _replace_service_with_markers(service, active, state="running" if len(active) == 1 else "duplicate")
+        elif stale:
+            _replace_service_with_markers(service, stale, state="stale")
+        elif int(service.get("logical_count") or 0) <= 0:
+            service["state"] = "not_running"
+            service["health"] = "not_running"
+            service["stale"] = False
+            service["last_seen"] = None
+
+
+def _replace_service_with_markers(service: dict[str, Any], markers: list[dict[str, Any]], *, state: str) -> None:
+    pids = sorted(int(marker["pid"]) for marker in markers if marker.get("pid") is not None)
+    commands = [str(marker.get("command_key") or "") for marker in markers if marker.get("command_key")]
+    previous_process_count = int(service.get("process_count") or 0)
+    service["state"] = state
+    service["health"] = "stale" if state == "stale" else state
+    service["stale"] = state == "stale"
+    service["logical_count"] = len(markers)
+    service["process_count"] = max(previous_process_count, len(markers))
+    service["pid_tree"] = [
+        {
+            "pid": marker.get("pid"),
+            "child_pids": [],
+            "name": "runtime_marker",
+            "started_at": marker.get("started_at"),
+        }
+        for marker in markers
+    ]
+    service["pids"] = pids
+    service["command_hash"] = _command_hash(commands)
+    service["started_at"] = min((str(marker.get("started_at")) for marker in markers if marker.get("started_at")), default=None)
+    service["last_seen"] = max((str(marker.get("last_seen")) for marker in markers if marker.get("last_seen")), default=None)
+
+
+def _marker_public(marker: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "service": marker.get("service"),
+        "pid": marker.get("pid"),
+        "started_at": marker.get("started_at"),
+        "last_seen": marker.get("last_seen"),
+        "command_key": marker.get("command_key"),
+        "command_hash": marker.get("command_hash"),
+        "health": marker.get("health"),
+        "port": marker.get("port"),
+        "age_seconds": marker.get("age_seconds"),
+        "stale": bool(marker.get("stale")),
+        "active": bool(marker.get("active")),
+    }
+
+
 def _matches(spec: RuntimeServiceSpec, proc: RuntimeProcess) -> bool:
     name = _normalize_process_name(proc.name)
     names = {_normalize_process_name(item) for item in spec.names}
@@ -235,11 +354,13 @@ def _runtime_incidents(services: dict[str, dict[str, Any]]) -> list[dict[str, An
                 "at": now,
             })
         if svc.get("stale"):
+            markers = svc.get("runtime_markers") if isinstance(svc.get("runtime_markers"), dict) else {}
+            source = "runtime marker heartbeat" if int(markers.get("stale_count") or 0) > 0 else "durable state"
             incidents.append({
                 "kind": "stale_service_state",
                 "severity": "warning",
                 "service": key,
-                "message": f"{svc.get('label', key)} durable state disagrees with live process state.",
+                "message": f"{svc.get('label', key)} {source} is stale.",
                 "at": now,
             })
     return incidents

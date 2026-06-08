@@ -53,6 +53,8 @@ def test_chat_action_packet_requires_player_and_live_services(tmp_path):
     assert record["status"] == "failed"
     assert any("player_guid" in blocker for blocker in record["blockers"])
     assert any(check["name"] == "service:autoplay" for check in record["checks"])
+    assert any("Start autoplay" in action for action in record["next_actions"])
+    assert record["timeline_refs"]["timeline_url"] == "/api/wm/timeline"
 
 
 def test_manual_packet_records_manual_required_when_prereqs_pass(tmp_path):
@@ -79,3 +81,17 @@ def test_manual_packet_records_manual_required_when_prereqs_pass(tmp_path):
 
     assert record["status"] == "manual_required"
     assert record["acceptance"]
+
+
+def test_proof_packet_records_manual_evidence(tmp_path):
+    runtime = collect_runtime_status(project_root=tmp_path, processes=[], autoplay_status={})
+
+    record = run_proof_packet(
+        proof_kind="failure",
+        project_root=tmp_path,
+        runtime_status=runtime,
+        manual_evidence=["SOAP disabled for failure proof"],
+    )
+
+    assert record["manual_evidence"] == ["SOAP disabled for failure proof"]
+    assert record["evidence"] == ["SOAP disabled for failure proof"]
