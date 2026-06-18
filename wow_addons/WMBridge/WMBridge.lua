@@ -4,6 +4,7 @@ local USER_CHANNEL_NAME = "WM"
 local PREFIX = "WMBRIDGE"
 local MARKER = "WMB1"
 local CHAT_TRIGGER = "towm"
+local ENCHANTING_STONE_ITEM_ENTRY = 910015
 
 local bridge = CreateFrame("Frame", "WMBridgeFrame")
 local channelId = 0
@@ -12,6 +13,12 @@ local helloPending = false
 local helloElapsed = 0
 local helloAttempts = 0
 local activeTransport = "NONE"
+local stoneFrame = nil
+local stoneSlot = nil
+local stoneStatus = nil
+local stoneSelectedTarget = nil
+local stonePendingPickup = nil
+local stoneSuppressPickup = false
 
 local function nowMillis()
   local coarse = time() * 1000
@@ -188,6 +195,15 @@ local function sendKill(targetName, targetGuid, subevent)
   }))
 end
 
+local function sendPrivatePayload(rawPayload)
+  local playerName = UnitName("player")
+  if not playerName or playerName == "" then
+    return false
+  end
+  local ok = pcall(SendAddonMessage, PREFIX, rawPayload, "WHISPER", playerName)
+  return ok and true or false
+end
+
 local function sendTowm(message, sourceChat)
   local playerName = UnitName("player")
   local playerGuid = lowGuid(UnitGUID("player"))
@@ -206,6 +222,267 @@ local function sendTowm(message, sourceChat)
     "ts=" .. nowMillis(),
   }))
 end
+
+local function parseBridgePayload(rawPayload)
+  local text = tostring(rawPayload or "")
+  local prefixed = PREFIX .. "\t"
+  if string.sub(text, 1, string.len(prefixed)) == prefixed then
+    text = string.sub(text, string.len(prefixed) + 1)
+  end
+  local marker = MARKER .. "|"
+  if string.sub(text, 1, string.len(marker)) ~= marker then
+    return nil
+  end
+
+  local fields = {}
+  for field in string.gmatch(string.sub(text, string.len(marker) + 1), "([^|]+)") do
+    local key, value = string.match(field, "^([^=]+)=(.*)$")
+    if key then
+      fields[key] = value or ""
+    end
+  end
+  return fields
+end
+
+local function stoneTargetLabel(target)
+  if not target then
+    return "Empty"
+  end
+  return target.link or "Selected item"
+end
+
+local function stoneTargetTexture(target)
+  if not target then
+    return "Interface\\Icons\\INV_Misc_QuestionMark"
+  end
+  if target.loc == "BAG" then
+    local texture = GetContainerItemInfo(target.bag, target.slot)
+    return texture or "Interface\\Icons\\INV_Misc_QuestionMark"
+  end
+  if target.loc == "EQUIP" then
+    return GetInventoryItemTexture("player", target.clientSlot) or "Interface\\Icons\\INV_Misc_QuestionMark"
+  end
+  return "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+local function updateStoneSlot()
+  if not stoneSlot then
+    return
+  end
+  stoneSlot.icon:SetTexture(stoneTargetTexture(stoneSelectedTarget))
+  stoneSlot.label:SetText(stoneTargetLabel(stoneSelectedTarget))
+end
+
+local function restoreCursorFromStonePickup()
+  if not stonePendingPickup then
+    ClearCursor()
+    return
+  end
+
+  stoneSuppressPickup = true
+  if stonePendingPickup.loc == "BAG" then
+    PickupContainerItem(stonePendingPickup.bag, stonePendingPickup.slot)
+  elseif stonePendingPickup.loc == "EQUIP" then
+    PickupInventoryItem(stonePendingPickup.clientSlot)
+  end
+  stoneSuppressPickup = false
+  ClearCursor()
+end
+
+local function selectStoneTargetFromPending()
+  if not stonePendingPickup then
+    if stoneStatus then
+      stoneStatus:SetText("No item selected.")
+    end
+    ClearCursor()
+    return
+  end
+
+  local target = {
+    loc = stonePendingPickup.loc,
+    bag = stonePendingPickup.bag or 0,
+    slot = stonePendingPickup.slot,
+    clientSlot = stonePendingPickup.clientSlot,
+  }
+
+  if target.loc == "BAG" then
+    target.link = GetContainerItemLink(target.bag, target.slot)
+  elseif target.loc == "EQUIP" then
+    target.link = GetInventoryItemLink("player", target.clientSlot)
+  end
+
+  stoneSelectedTarget = target
+  restoreCursorFromStonePickup()
+  stonePendingPickup = nil
+  updateStoneSlot()
+  if stoneStatus then
+    stoneStatus:SetText("Ready.")
+  end
+end
+
+local function ensureStoneFrame()
+  if stoneFrame then
+    return stoneFrame
+  end
+
+  stoneFrame = CreateFrame("Frame", "WMEnchantingStoneFrame", UIParent)
+  stoneFrame:SetWidth(300)
+  stoneFrame:SetHeight(190)
+  stoneFrame:SetPoint("CENTER")
+  stoneFrame:SetFrameStrata("DIALOG")
+  stoneFrame:SetMovable(true)
+  stoneFrame:EnableMouse(true)
+  stoneFrame:RegisterForDrag("LeftButton")
+  stoneFrame:SetScript("OnDragStart", function(self) self:StartMoving() end)
+  stoneFrame:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+  stoneFrame:SetBackdrop({
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    tile = true,
+    tileSize = 32,
+    edgeSize = 32,
+    insets = { left = 11, right = 12, top = 12, bottom = 11 },
+  })
+
+  local title = stoneFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  title:SetPoint("TOP", 0, -18)
+  title:SetText("Enchanting Stone")
+
+  stoneSlot = CreateFrame("Button", "WMEnchantingStoneItemSlot", stoneFrame)
+  stoneSlot:SetWidth(58)
+  stoneSlot:SetHeight(58)
+  stoneSlot:SetPoint("TOP", 0, -54)
+  stoneSlot:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  stoneSlot:RegisterForDrag("LeftButton")
+  stoneSlot:SetNormalTexture("Interface\\Buttons\\UI-Quickslot2")
+  stoneSlot:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
+  stoneSlot:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+  stoneSlot.icon = stoneSlot:CreateTexture(nil, "ARTWORK")
+  stoneSlot.icon:SetWidth(42)
+  stoneSlot.icon:SetHeight(42)
+  stoneSlot.icon:SetPoint("CENTER")
+  stoneSlot.label = stoneFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  stoneSlot.label:SetPoint("TOP", stoneSlot, "BOTTOM", 0, -7)
+  stoneSlot.label:SetWidth(250)
+  stoneSlot.label:SetJustifyH("CENTER")
+  stoneSlot.label:SetText("Empty")
+  stoneSlot:SetScript("OnReceiveDrag", selectStoneTargetFromPending)
+  stoneSlot:SetScript("OnClick", function()
+    if CursorHasItem and CursorHasItem() then
+      selectStoneTargetFromPending()
+    end
+  end)
+  stoneSlot:SetScript("OnEnter", function(self)
+    if stoneSelectedTarget and stoneSelectedTarget.link then
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetHyperlink(stoneSelectedTarget.link)
+      GameTooltip:Show()
+    end
+  end)
+  stoneSlot:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+  end)
+
+  local upgrade = CreateFrame("Button", "WMEnchantingStoneUpgradeButton", stoneFrame, "UIPanelButtonTemplate")
+  upgrade:SetWidth(92)
+  upgrade:SetHeight(24)
+  upgrade:SetPoint("BOTTOMLEFT", 52, 26)
+  upgrade:SetText("Upgrade")
+  upgrade:SetScript("OnClick", function()
+    if not stoneSelectedTarget then
+      stoneStatus:SetText("No item selected.")
+      return
+    end
+    local sent = sendPrivatePayload(payload({
+      MARKER,
+      "type=STONE_UPGRADE",
+      "loc=" .. sanitize(stoneSelectedTarget.loc),
+      "bag=" .. sanitize(stoneSelectedTarget.bag or 0),
+      "slot=" .. sanitize(stoneSelectedTarget.slot or 0),
+      "entry=" .. ENCHANTING_STONE_ITEM_ENTRY,
+      "ts=" .. nowMillis(),
+    }))
+    if sent then
+      stoneStatus:SetText("Upgrading...")
+    else
+      stoneStatus:SetText("Upgrade command failed.")
+    end
+  end)
+
+  local cancel = CreateFrame("Button", "WMEnchantingStoneCancelButton", stoneFrame, "UIPanelButtonTemplate")
+  cancel:SetWidth(92)
+  cancel:SetHeight(24)
+  cancel:SetPoint("BOTTOMRIGHT", -52, 26)
+  cancel:SetText("Cancel")
+  cancel:SetScript("OnClick", function()
+    stoneFrame:Hide()
+  end)
+
+  stoneStatus = stoneFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  stoneStatus:SetPoint("BOTTOM", 0, 58)
+  stoneStatus:SetWidth(250)
+  stoneStatus:SetJustifyH("CENTER")
+  stoneStatus:SetText("Ready.")
+
+  updateStoneSlot()
+  stoneFrame:Hide()
+  return stoneFrame
+end
+
+local function openStoneFrame()
+  ensureStoneFrame()
+  stoneSelectedTarget = nil
+  stonePendingPickup = nil
+  updateStoneSlot()
+  stoneStatus:SetText("Ready.")
+  stoneFrame:Show()
+end
+
+local function handleStoneResult(fields)
+  ensureStoneFrame()
+  stoneStatus:SetText(fields.message or "Done.")
+  stoneFrame:Show()
+end
+
+local function handleAddonPayload(prefix, rawPayload)
+  if prefix ~= PREFIX then
+    return
+  end
+  local fields = parseBridgePayload(rawPayload)
+  if not fields or not fields.type then
+    return
+  end
+  if fields.type == "STONE_OPEN" then
+    openStoneFrame()
+    return
+  end
+  if fields.type == "STONE_RESULT" then
+    handleStoneResult(fields)
+    return
+  end
+end
+
+hooksecurefunc("PickupContainerItem", function(bag, slot)
+  if stoneSuppressPickup or not stoneFrame or not stoneFrame:IsShown() then
+    return
+  end
+  stonePendingPickup = {
+    loc = "BAG",
+    bag = bag,
+    slot = slot,
+  }
+end)
+
+hooksecurefunc("PickupInventoryItem", function(slot)
+  if stoneSuppressPickup or not stoneFrame or not stoneFrame:IsShown() then
+    return
+  end
+  stonePendingPickup = {
+    loc = "EQUIP",
+    slot = slot - 1,
+    clientSlot = slot,
+  }
+end)
 
 local function extractTowmMessage(message)
   local text = trim(message)
@@ -303,6 +580,10 @@ local function handleCombatLog(...)
 end
 
 bridge:SetScript("OnEvent", function(self, event, ...)
+  if event == "CHAT_MSG_ADDON" then
+    handleAddonPayload(...)
+    return
+  end
   if event == "PLAYER_LOGIN" then
     ensureChannel()
     ensureUserChannel()
@@ -368,6 +649,7 @@ bridge:RegisterEvent("CHAT_MSG_GUILD")
 bridge:RegisterEvent("CHAT_MSG_OFFICER")
 bridge:RegisterEvent("CHAT_MSG_WHISPER")
 bridge:RegisterEvent("CHAT_MSG_CHANNEL")
+bridge:RegisterEvent("CHAT_MSG_ADDON")
 
 ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL_NOTICE", filterChannelNoise)
 ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL_NOTICE_USER", filterChannelNoise)
@@ -387,6 +669,10 @@ SlashCmdList["WMBRIDGE"] = function(msg)
     end
     return
   end
+  if command == "stone" then
+    openStoneFrame()
+    return
+  end
   if string.sub(command, 1, 5) == "towm " then
     local text = string.gsub(string.sub(raw, 6), "^%s+", "")
     ensureChannel()
@@ -397,7 +683,7 @@ SlashCmdList["WMBRIDGE"] = function(msg)
     end
     return
   end
-  DEFAULT_CHAT_FRAME:AddMessage("WMBridge commands: /wmbridge test. Chat trigger: towm <message>")
+  DEFAULT_CHAT_FRAME:AddMessage("WMBridge commands: /wmbridge test, /wmbridge stone. Chat trigger: towm <message>")
 end
 
 SLASH_TOWM1 = "/towm"
