@@ -47,6 +47,30 @@ WmSpells.BoneboundServant.DamagePerIntellectPct = 8
 WmSpells.BoneboundServant.DamagePerShadowPowerPct = 16
 
 #
+# WM Fast Mode
+# Faster, more explosive local progression for scoped WM characters only.
+# - higher-level kill XP gains +25% per victim level above the player, uncapped
+# - max mana scales mana/energy/rage/runic-power income
+# - offensive stat overflow converts into outgoing damage
+# - defensive stat overflow converts into damage reduction and max health
+#
+WmSpells.FastMode.Enable = 1
+WmSpells.FastMode.ResourceTickMs = 1000
+WmSpells.FastMode.ManaResourceFactorPer1000Mana = 0.10
+WmSpells.FastMode.ManaResourceFactorMax = 6.0
+WmSpells.FastMode.ManaPerSecondPct = 1.0
+WmSpells.FastMode.EnergyPerSecond = 12
+WmSpells.FastMode.RagePerSecond = 40
+WmSpells.FastMode.RunicPowerPerSecond = 12
+WmSpells.FastMode.HigherLevelKillXpBonusPerLevelPct = 25.0
+WmSpells.FastMode.OverflowOffenseDamagePerPointPct = 0.50
+WmSpells.FastMode.OverflowOffenseDamageMaxPct = 150.0
+WmSpells.FastMode.OverflowDefenseReductionPerPointPct = 0.50
+WmSpells.FastMode.OverflowDefenseReductionMaxPct = 75.0
+WmSpells.FastMode.OverflowHealthPerPointPct = 0.35
+WmSpells.FastMode.OverflowHealthMaxPct = 100.0
+
+#
 # Bonebound Alpha v3 abilities are DB behavior-config driven on shell 940001:
 # - visible Rend-marker bleed with WM-owned attack-power-scaled damage
 # - Alpha/Echo physical cleave pulses

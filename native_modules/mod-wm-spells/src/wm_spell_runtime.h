@@ -50,6 +50,21 @@ namespace WmSpells
         uint32 boneboundDamagePerLevelPct = 125;
         uint32 boneboundDamagePerIntellectPct = 8;
         uint32 boneboundDamagePerShadowPowerPct = 16;
+        bool fastModeEnabled = true;
+        uint32 fastResourceTickMs = 1000;
+        float fastManaResourceFactorPer1000Mana = 0.10f;
+        float fastManaResourceFactorMax = 6.0f;
+        float fastManaPerSecondPct = 1.0f;
+        uint32 fastEnergyPerSecond = 12;
+        uint32 fastRagePerSecond = 40;
+        uint32 fastRunicPowerPerSecond = 12;
+        float fastHigherLevelKillXpBonusPerLevelPct = 25.0f;
+        float fastOverflowOffenseDamagePerPointPct = 0.50f;
+        float fastOverflowOffenseDamageMaxPct = 150.0f;
+        float fastOverflowDefenseReductionPerPointPct = 0.50f;
+        float fastOverflowDefenseReductionMaxPct = 75.0f;
+        float fastOverflowHealthPerPointPct = 0.35f;
+        float fastOverflowHealthMaxPct = 100.0f;
     };
 
     struct BehaviorExecutionResult
@@ -374,6 +389,13 @@ namespace WmSpells
     BehaviorExecutionResult DescribeBoneboundEchoStatus(Player* player);
     void UpdateTrackedCompanions(uint32 diff);
     void MaintainBoneboundSummons(Player* player);
+    void TickFastResourceIncome(Player* player, uint32 diff);
+    void HandleFastModeGiveXP(Player* player, uint32& amount, Unit* victim, uint8 xpSource);
+    void HandleFastModeMaxHealth(Player* player, float& value);
+    void HandleFastModeMeleeDamage(Unit* attacker, Unit* victim, uint32& damage);
+    void HandleFastModeSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* spellInfo);
+    void HandleFastModePeriodicDamage(Unit* attacker, Unit* victim, uint32& damage, SpellInfo const* spellInfo);
+    void ForgetFastMode(Player* player);
     void ForgetBoneboundCompanions(Player* player);
     void ReapplyBoneboundOverlay(Pet* pet);
     void HandleBoneboundMeleeDamage(Unit* attacker, Unit* victim, uint32& damage);

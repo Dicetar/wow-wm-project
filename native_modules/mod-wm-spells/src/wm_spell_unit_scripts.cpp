@@ -28,6 +28,7 @@ public:
         WmSpells::HandleBrougLightnessMeleeDamage(attacker, target, damage);
         WmSpells::HandleBrougEmptyCourtMeleeDamage(attacker, target, damage);
         WmSpells::HandleBrougGuardMeleeDamage(attacker, target, damage);
+        WmSpells::HandleFastModeMeleeDamage(attacker, target, damage);
     }
 
     void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo) override
@@ -36,11 +37,13 @@ public:
         WmSpells::HandleBrougLightnessSpellDamage(attacker, target, damage, spellInfo);
         WmSpells::HandleBrougEmptyCourtSpellDamage(attacker, target, damage, spellInfo);
         WmSpells::HandleBrougGuardSpellDamage(attacker, target, damage, spellInfo);
+        WmSpells::HandleFastModeSpellDamage(attacker, target, damage, spellInfo);
     }
 
     void ModifyPeriodicDamageAurasTick(Unit* target, Unit* attacker, uint32& damage, SpellInfo const* spellInfo) override
     {
         WmSpells::HandleBrougGuardPeriodicDamage(attacker, target, damage, spellInfo);
+        WmSpells::HandleFastModePeriodicDamage(attacker, target, damage, spellInfo);
     }
 
     void OnAuraApply(Unit* unit, Aura* aura) override

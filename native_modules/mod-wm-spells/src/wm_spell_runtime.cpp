@@ -130,6 +130,7 @@ namespace
     std::unordered_map<uint32, bool> gBoneboundEchoHuntModeByPlayer;
     std::unordered_map<uint32, float> gBoneboundEchoHuntRadiusByPlayer;
     std::unordered_map<uint32, uint32> gBoneboundEchoCountAuraByPlayer;
+    std::unordered_map<uint32, uint32> gFastResourceElapsedMsByPlayer;
 
     struct LanathelStanceRuntimeState
     {
@@ -5722,6 +5723,63 @@ namespace WmSpells
         gConfig.boneboundDamagePerLevelPct = sConfigMgr->GetOption<uint32>("WmSpells.BoneboundServant.DamagePerLevelPct", 125u);
         gConfig.boneboundDamagePerIntellectPct = sConfigMgr->GetOption<uint32>("WmSpells.BoneboundServant.DamagePerIntellectPct", 8u);
         gConfig.boneboundDamagePerShadowPowerPct = sConfigMgr->GetOption<uint32>("WmSpells.BoneboundServant.DamagePerShadowPowerPct", 16u);
+        gConfig.fastModeEnabled = sConfigMgr->GetOption<bool>("WmSpells.FastMode.Enable", true);
+        gConfig.fastResourceTickMs = std::clamp<uint32>(
+            sConfigMgr->GetOption<uint32>("WmSpells.FastMode.ResourceTickMs", 1000u),
+            100u,
+            10000u);
+        gConfig.fastManaResourceFactorPer1000Mana = std::clamp<float>(
+            sConfigMgr->GetOption<float>("WmSpells.FastMode.ManaResourceFactorPer1000Mana", 0.10f),
+            0.0f,
+            5.0f);
+        gConfig.fastManaResourceFactorMax = std::clamp<float>(
+            sConfigMgr->GetOption<float>("WmSpells.FastMode.ManaResourceFactorMax", 6.0f),
+            1.0f,
+            25.0f);
+        gConfig.fastManaPerSecondPct = std::clamp<float>(
+            sConfigMgr->GetOption<float>("WmSpells.FastMode.ManaPerSecondPct", 1.0f),
+            0.0f,
+            25.0f);
+        gConfig.fastEnergyPerSecond = std::clamp<uint32>(
+            sConfigMgr->GetOption<uint32>("WmSpells.FastMode.EnergyPerSecond", 12u),
+            0u,
+            100u);
+        gConfig.fastRagePerSecond = std::clamp<uint32>(
+            sConfigMgr->GetOption<uint32>("WmSpells.FastMode.RagePerSecond", 40u),
+            0u,
+            1000u);
+        gConfig.fastRunicPowerPerSecond = std::clamp<uint32>(
+            sConfigMgr->GetOption<uint32>("WmSpells.FastMode.RunicPowerPerSecond", 12u),
+            0u,
+            1000u);
+        gConfig.fastHigherLevelKillXpBonusPerLevelPct = std::clamp<float>(
+            sConfigMgr->GetOption<float>("WmSpells.FastMode.HigherLevelKillXpBonusPerLevelPct", 25.0f),
+            0.0f,
+            1000.0f);
+        gConfig.fastOverflowOffenseDamagePerPointPct = std::clamp<float>(
+            sConfigMgr->GetOption<float>("WmSpells.FastMode.OverflowOffenseDamagePerPointPct", 0.50f),
+            0.0f,
+            10.0f);
+        gConfig.fastOverflowOffenseDamageMaxPct = std::clamp<float>(
+            sConfigMgr->GetOption<float>("WmSpells.FastMode.OverflowOffenseDamageMaxPct", 150.0f),
+            0.0f,
+            1000.0f);
+        gConfig.fastOverflowDefenseReductionPerPointPct = std::clamp<float>(
+            sConfigMgr->GetOption<float>("WmSpells.FastMode.OverflowDefenseReductionPerPointPct", 0.50f),
+            0.0f,
+            10.0f);
+        gConfig.fastOverflowDefenseReductionMaxPct = std::clamp<float>(
+            sConfigMgr->GetOption<float>("WmSpells.FastMode.OverflowDefenseReductionMaxPct", 75.0f),
+            0.0f,
+            95.0f);
+        gConfig.fastOverflowHealthPerPointPct = std::clamp<float>(
+            sConfigMgr->GetOption<float>("WmSpells.FastMode.OverflowHealthPerPointPct", 0.35f),
+            0.0f,
+            10.0f);
+        gConfig.fastOverflowHealthMaxPct = std::clamp<float>(
+            sConfigMgr->GetOption<float>("WmSpells.FastMode.OverflowHealthMaxPct", 100.0f),
+            0.0f,
+            1000.0f);
     }
 
     bool IsPlayerAllowed(Player* player)
@@ -5730,6 +5788,265 @@ namespace WmSpells
             && gConfig.enabled
             && !gConfig.playerGuidAllowList.empty()
             && gConfig.playerGuidAllowList.find(static_cast<uint32>(player->GetGUID().GetCounter())) != gConfig.playerGuidAllowList.end();
+    }
+
+    void ForgetFastMode(Player* player)
+    {
+        if (!player)
+            return;
+
+        gFastResourceElapsedMsByPlayer.erase(static_cast<uint32>(player->GetGUID().GetCounter()));
+    }
+
+    float FastPositiveOverflow(float value, float softCap)
+    {
+        return value > softCap ? value - softCap : 0.0f;
+    }
+
+    float FastMaxSpellCritPct(Player* player)
+    {
+        if (!player)
+            return 0.0f;
+
+        float maxCrit = 0.0f;
+        for (uint32 school = SPELL_SCHOOL_HOLY; school < MAX_SPELL_SCHOOL; ++school)
+            maxCrit = std::max(maxCrit, player->GetFloatValue(PLAYER_SPELL_CRIT_PERCENTAGE1 + school));
+        return maxCrit;
+    }
+
+    float FastOffenseOverflowScore(Player* player)
+    {
+        if (!player || !gConfig.fastModeEnabled || !IsPlayerAllowed(player))
+            return 0.0f;
+
+        float meleeCrit = std::max(
+            player->GetFloatValue(PLAYER_CRIT_PERCENTAGE),
+            player->GetFloatValue(PLAYER_OFFHAND_CRIT_PERCENTAGE));
+        float rangedCrit = player->GetFloatValue(PLAYER_RANGED_CRIT_PERCENTAGE);
+        float spellCrit = FastMaxSpellCritPct(player);
+        float meleeHit = player->GetRatingBonusValue(CR_HIT_MELEE);
+        float rangedHit = player->GetRatingBonusValue(CR_HIT_RANGED);
+        float spellHit = player->GetRatingBonusValue(CR_HIT_SPELL);
+        float expertise = player->GetRatingBonusValue(CR_EXPERTISE);
+        float haste = std::max(
+            player->GetRatingBonusValue(CR_HASTE_MELEE),
+            std::max(
+                player->GetRatingBonusValue(CR_HASTE_RANGED),
+                player->GetRatingBonusValue(CR_HASTE_SPELL)));
+        float armorPen = player->GetRatingBonusValue(CR_ARMOR_PENETRATION);
+
+        float score = 0.0f;
+        score += FastPositiveOverflow(std::max(meleeCrit, std::max(rangedCrit, spellCrit)), 100.0f);
+        score += FastPositiveOverflow(std::max(meleeHit, rangedHit), 8.0f) * 2.0f;
+        score += FastPositiveOverflow(spellHit, 17.0f) * 2.0f;
+        score += FastPositiveOverflow(expertise, 26.0f) * 1.5f;
+        score += FastPositiveOverflow(haste, 100.0f) * 0.75f;
+        score += FastPositiveOverflow(armorPen, 100.0f) * 0.50f;
+        return std::max(0.0f, score);
+    }
+
+    float FastDefenseOverflowScore(Player* player)
+    {
+        if (!player || !gConfig.fastModeEnabled || !IsPlayerAllowed(player))
+            return 0.0f;
+
+        float defenseRating = player->GetRatingBonusValue(CR_DEFENSE_SKILL);
+        float dodge = player->GetFloatValue(PLAYER_DODGE_PERCENTAGE);
+        float parry = player->GetFloatValue(PLAYER_PARRY_PERCENTAGE);
+        float block = player->GetFloatValue(PLAYER_BLOCK_PERCENTAGE);
+        float resilience = std::max(
+            player->GetRatingBonusValue(CR_CRIT_TAKEN_MELEE),
+            std::max(
+                player->GetRatingBonusValue(CR_CRIT_TAKEN_RANGED),
+                player->GetRatingBonusValue(CR_CRIT_TAKEN_SPELL)));
+
+        float score = 0.0f;
+        score += FastPositiveOverflow(defenseRating, 140.0f) * 0.25f;
+        score += FastPositiveOverflow(dodge, 75.0f);
+        score += FastPositiveOverflow(parry, 75.0f);
+        score += FastPositiveOverflow(block, 75.0f);
+        score += FastPositiveOverflow(resilience, 33.0f) * 0.75f;
+        return std::max(0.0f, score);
+    }
+
+    float FastOffenseDamageBonusPct(Player* player)
+    {
+        return std::clamp(
+            FastOffenseOverflowScore(player) * gConfig.fastOverflowOffenseDamagePerPointPct,
+            0.0f,
+            gConfig.fastOverflowOffenseDamageMaxPct);
+    }
+
+    float FastDefenseReductionPct(Player* player)
+    {
+        return std::clamp(
+            FastDefenseOverflowScore(player) * gConfig.fastOverflowDefenseReductionPerPointPct,
+            0.0f,
+            gConfig.fastOverflowDefenseReductionMaxPct);
+    }
+
+    float FastDefenseHealthBonusPct(Player* player)
+    {
+        return std::clamp(
+            FastDefenseOverflowScore(player) * gConfig.fastOverflowHealthPerPointPct,
+            0.0f,
+            gConfig.fastOverflowHealthMaxPct);
+    }
+
+    Player* FastPlayerForUnit(Unit* unit)
+    {
+        return unit ? unit->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
+    }
+
+    uint32 FastScaleOutgoingDamage(Player* player, uint32 damage)
+    {
+        float bonusPct = FastOffenseDamageBonusPct(player);
+        if (damage == 0 || bonusPct <= 0.0f)
+            return damage;
+
+        long double scaled = static_cast<long double>(damage) * (1.0L + static_cast<long double>(bonusPct) / 100.0L);
+        return static_cast<uint32>(std::min<long double>(scaled, static_cast<long double>(std::numeric_limits<uint32>::max())));
+    }
+
+    uint32 FastReduceIncomingDamage(Player* player, uint32 damage)
+    {
+        float reductionPct = FastDefenseReductionPct(player);
+        if (damage == 0 || reductionPct <= 0.0f)
+            return damage;
+
+        long double scaled = static_cast<long double>(damage) * (1.0L - static_cast<long double>(reductionPct) / 100.0L);
+        return static_cast<uint32>(std::max<long double>(0.0L, scaled));
+    }
+
+    void FastApplyDamageModifiers(Unit* attacker, Unit* victim, uint32& damage)
+    {
+        if (damage == 0 || !gConfig.fastModeEnabled)
+            return;
+
+        Player* attackingPlayer = FastPlayerForUnit(attacker);
+        if (attackingPlayer && IsPlayerAllowed(attackingPlayer))
+            damage = FastScaleOutgoingDamage(attackingPlayer, damage);
+
+        Player* victimPlayer = victim ? victim->ToPlayer() : nullptr;
+        if (victimPlayer && IsPlayerAllowed(victimPlayer))
+            damage = FastReduceIncomingDamage(victimPlayer, damage);
+    }
+
+    float FastManaResourceFactor(Player* player)
+    {
+        if (!player)
+            return 1.0f;
+
+        uint32 const maxMana = player->GetMaxPower(POWER_MANA);
+        float bonus = (static_cast<float>(maxMana) / 1000.0f) * gConfig.fastManaResourceFactorPer1000Mana;
+        return std::clamp(1.0f + bonus, 1.0f, gConfig.fastManaResourceFactorMax);
+    }
+
+    void FastRestorePower(Player* player, Powers power, long double rawAmount)
+    {
+        if (!player || rawAmount <= 0.0L)
+            return;
+
+        uint32 const maxPower = player->GetMaxPower(power);
+        if (maxPower == 0)
+            return;
+
+        uint32 const currentPower = player->GetPower(power);
+        if (currentPower >= maxPower)
+            return;
+
+        uint64 amount = static_cast<uint64>(std::llround(rawAmount));
+        if (amount == 0)
+            return;
+
+        uint32 missing = maxPower - currentPower;
+        uint32 gain = static_cast<uint32>(std::min<uint64>(amount, missing));
+        if (gain > 0)
+            player->ModifyPower(power, static_cast<int32>(std::min<uint32>(gain, static_cast<uint32>(std::numeric_limits<int32>::max()))));
+    }
+
+    void TickFastResourceIncome(Player* player, uint32 diff)
+    {
+        if (!player || !gConfig.fastModeEnabled || !IsPlayerAllowed(player) || !player->IsAlive())
+        {
+            ForgetFastMode(player);
+            return;
+        }
+
+        uint32 const playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+        uint32& elapsedMs = gFastResourceElapsedMsByPlayer[playerGuid];
+        elapsedMs += diff;
+        uint32 const tickCount = elapsedMs / gConfig.fastResourceTickMs;
+        if (tickCount == 0)
+            return;
+
+        elapsedMs %= gConfig.fastResourceTickMs;
+        long double seconds = static_cast<long double>(tickCount)
+            * static_cast<long double>(gConfig.fastResourceTickMs)
+            / 1000.0L;
+        long double factor = static_cast<long double>(FastManaResourceFactor(player));
+
+        if (gConfig.fastManaPerSecondPct > 0.0f && player->GetMaxPower(POWER_MANA) > 0)
+        {
+            long double manaPerSecond = static_cast<long double>(player->GetMaxPower(POWER_MANA))
+                * static_cast<long double>(gConfig.fastManaPerSecondPct)
+                / 100.0L;
+            FastRestorePower(player, POWER_MANA, manaPerSecond * seconds * factor);
+        }
+        FastRestorePower(player, POWER_ENERGY, static_cast<long double>(gConfig.fastEnergyPerSecond) * seconds * factor);
+        FastRestorePower(player, POWER_RAGE, static_cast<long double>(gConfig.fastRagePerSecond) * seconds * factor);
+        FastRestorePower(player, POWER_RUNIC_POWER, static_cast<long double>(gConfig.fastRunicPowerPerSecond) * seconds * factor);
+    }
+
+    void HandleFastModeGiveXP(Player* player, uint32& amount, Unit* victim, uint8 xpSource)
+    {
+        if (!player || !victim || amount == 0 || !gConfig.fastModeEnabled || !IsPlayerAllowed(player))
+            return;
+        if (xpSource != XPSOURCE_KILL)
+            return;
+        if (sConfigMgr->GetOption<float>("WM.Overclock.HigherLevelKillXPBonusPerLevel", 0.0f) > 0.0f)
+            return;
+
+        int32 levelDiff = static_cast<int32>(victim->GetLevel()) - static_cast<int32>(player->GetLevel());
+        if (levelDiff <= 0 || gConfig.fastHigherLevelKillXpBonusPerLevelPct <= 0.0f)
+            return;
+
+        long double multiplier = 1.0L
+            + (static_cast<long double>(levelDiff) * static_cast<long double>(gConfig.fastHigherLevelKillXpBonusPerLevelPct) / 100.0L);
+        long double scaled = static_cast<long double>(amount) * multiplier;
+        amount = static_cast<uint32>(std::min<long double>(scaled, static_cast<long double>(std::numeric_limits<uint32>::max())));
+    }
+
+    void HandleFastModeMaxHealth(Player* player, float& value)
+    {
+        if (!player || value <= 0.0f || !gConfig.fastModeEnabled || !IsPlayerAllowed(player))
+            return;
+
+        float bonusPct = FastDefenseHealthBonusPct(player);
+        if (bonusPct <= 0.0f)
+            return;
+
+        value *= 1.0f + (bonusPct / 100.0f);
+    }
+
+    void HandleFastModeMeleeDamage(Unit* attacker, Unit* victim, uint32& damage)
+    {
+        FastApplyDamageModifiers(attacker, victim, damage);
+    }
+
+    void HandleFastModeSpellDamage(Unit* attacker, Unit* victim, int32& damage, SpellInfo const* /*spellInfo*/)
+    {
+        if (damage <= 0)
+            return;
+
+        uint32 unsignedDamage = static_cast<uint32>(damage);
+        FastApplyDamageModifiers(attacker, victim, unsignedDamage);
+        damage = static_cast<int32>(std::min<uint32>(unsignedDamage, static_cast<uint32>(std::numeric_limits<int32>::max())));
+    }
+
+    void HandleFastModePeriodicDamage(Unit* attacker, Unit* victim, uint32& damage, SpellInfo const* /*spellInfo*/)
+    {
+        FastApplyDamageModifiers(attacker, victim, damage);
     }
 
     bool IsBoneboundShellSpell(Player* player, uint32 spellId)

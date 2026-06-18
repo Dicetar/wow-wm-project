@@ -204,6 +204,7 @@ public:
         if (!player)
             return;
 
+        WmSpells::TickFastResourceIncome(player, diff);
         WmSpells::TickBrougGuard(player, diff);
         WmSpells::TickBrougLightness(player, diff);
         WmSpells::TickBrougEmptyCourt(player, diff);
@@ -234,6 +235,7 @@ public:
 
         uint32 ownerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
         gBoneboundMaintenanceTimers.erase(ownerGuid);
+        WmSpells::ForgetFastMode(player);
         WmSpells::ForgetBoneboundCompanions(player);
         WmSpells::ForgetIntellectBlockPassive(player);
         WmSpells::ForgetBrougGuard(player);
@@ -317,6 +319,16 @@ public:
     {
         WmSpells::HandleBrougEmptyCourtCreatureKill(killer, killed);
         WmSpells::HandleBrougLightnessCreatureKill(killer, killed);
+    }
+
+    void OnPlayerGiveXP(Player* player, uint32& amount, Unit* victim, uint8 xpSource) override
+    {
+        WmSpells::HandleFastModeGiveXP(player, amount, victim, xpSource);
+    }
+
+    void OnPlayerAfterUpdateMaxHealth(Player* player, float& value) override
+    {
+        WmSpells::HandleFastModeMaxHealth(player, value);
     }
 
 };
