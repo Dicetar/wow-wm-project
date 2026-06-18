@@ -130,10 +130,8 @@ public:
         {
             return true;
         }
-
         if (!WmBridge::IsPlayerAllowed(player))
         {
-            SendPlayerMessage(player, "Energy Surge Potion is inactive for this character.");
             return true;
         }
 

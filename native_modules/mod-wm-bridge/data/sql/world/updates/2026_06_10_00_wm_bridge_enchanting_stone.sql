@@ -1,30 +1,28 @@
--- WM Energy Surge Potion.
--- Server truth: item 910014 is a global right-click potion. Native ItemScript
--- applies visible WM aura 946606 and the PlayerScript restores +10 energy/sec
--- only while that aura is present.
--- Client/server DBC truth for aura 946606 is generated from
--- control/runtime/spell_shell_bank.json.
+-- WM Enchanting Stone.
+-- Server truth: item 910015 is a right-click consumable whose ItemScript opens
+-- the WMBridge addon upgrade slot. Successful upgrades multiply gear stats by
+-- 2^upgrade level; the item is consumed on every attempt.
 
-SET @wm_energy_surge_potion_item_entry := 910014;
-SET @wm_energy_surge_aura_spell_id := 946606;
-SET @wm_energy_surge_base_item_entry := 33448; -- Runic Mana Potion, used for a known-good potion row/appearance.
+SET @wm_enchanting_stone_item_entry := 910015;
+SET @wm_enchanting_stone_base_item_entry := 34057; -- Abyss Crystal, used for a known-good shard/crystal row.
 
-DROP TEMPORARY TABLE IF EXISTS wm_tmp_energy_surge_potion;
-CREATE TEMPORARY TABLE wm_tmp_energy_surge_potion LIKE item_template;
+DROP TEMPORARY TABLE IF EXISTS wm_tmp_enchanting_stone;
+CREATE TEMPORARY TABLE wm_tmp_enchanting_stone LIKE item_template;
 
-INSERT INTO wm_tmp_energy_surge_potion
+INSERT INTO wm_tmp_enchanting_stone
 SELECT *
 FROM item_template
-WHERE entry = @wm_energy_surge_base_item_entry
+WHERE entry = @wm_enchanting_stone_base_item_entry
 LIMIT 1;
 
-UPDATE wm_tmp_energy_surge_potion
+UPDATE wm_tmp_enchanting_stone
 SET
-    entry = @wm_energy_surge_potion_item_entry,
+    entry = @wm_enchanting_stone_item_entry,
     class = 0,
-    subclass = 1,
-    name = 'Energy Surge Potion',
-    Quality = 2,
+    subclass = 4,
+    name = 'Enchanting Stone',
+    displayid = 56465,
+    Quality = 3,
     Flags = 0,
     FlagsExtra = 0,
     BuyCount = 1,
@@ -83,11 +81,11 @@ SET
     delay = 1000,
     ammo_type = 0,
     RangedModRange = 0,
-    spellid_1 = @wm_energy_surge_aura_spell_id,
+    spellid_1 = 8096,
     spelltrigger_1 = 0,
     spellcharges_1 = -1,
     spellppmRate_1 = 0,
-    spellcooldown_1 = 60000,
+    spellcooldown_1 = -1,
     spellcategory_1 = 0,
     spellcategorycooldown_1 = -1,
     spellid_2 = 0,
@@ -119,7 +117,7 @@ SET
     spellcategory_5 = 0,
     spellcategorycooldown_5 = -1,
     bonding = 0,
-    description = 'Drink to gain Energy Surge for 2 hours, restoring 10 additional energy every second while the buff remains active.',
+    description = 'Right-click to open an upgrade slot. Drop a weapon or armor item into the slot and press Upgrade. The stone is consumed on each attempt.',
     PageText = 0,
     LanguageID = 0,
     PageMaterial = 0,
@@ -147,7 +145,7 @@ SET
     duration = 0,
     ItemLimitCategory = 0,
     HolidayId = 0,
-    ScriptName = 'wm_energy_surge_potion',
+    ScriptName = 'wm_enchanting_stone',
     DisenchantID = 0,
     FoodType = 0,
     minMoneyLoot = 0,
@@ -155,18 +153,45 @@ SET
     flagsCustom = 0,
     VerifiedBuild = 0;
 
-DELETE FROM item_template WHERE entry = @wm_energy_surge_potion_item_entry;
+DELETE FROM item_template WHERE entry = @wm_enchanting_stone_item_entry;
 INSERT INTO item_template
 SELECT *
-FROM wm_tmp_energy_surge_potion;
+FROM wm_tmp_enchanting_stone;
 
-DROP TEMPORARY TABLE IF EXISTS wm_tmp_energy_surge_potion;
+DROP TEMPORARY TABLE IF EXISTS wm_tmp_enchanting_stone;
+
+DELETE FROM creature_loot_template
+WHERE Item = @wm_enchanting_stone_item_entry;
+
+INSERT INTO creature_loot_template
+    (Entry, Item, Reference, Chance, QuestRequired, LootMode, GroupId, MinCount, MaxCount, Comment)
+SELECT
+    boss.lootid,
+    @wm_enchanting_stone_item_entry,
+    0,
+    CASE WHEN boss.is_final_boss = 1 THEN 100 ELSE 35 END,
+    0,
+    1,
+    0,
+    1,
+    1,
+    CONCAT(boss.boss_name, ' - WM Enchanting Stone')
+FROM (
+    SELECT
+        ct.lootid,
+        MIN(ct.name) AS boss_name,
+        MAX(CASE WHEN ie.lastEncounterDungeon > 0 THEN 1 ELSE 0 END) AS is_final_boss
+    FROM instance_encounters ie
+    INNER JOIN creature_template ct ON ct.entry = ie.creditEntry
+    WHERE ie.creditType = 0
+        AND ct.lootid > 0
+    GROUP BY ct.lootid
+) boss;
 
 INSERT INTO wm_reserved_slot
     (EntityType, ReservedID, SlotStatus, ArcKey, CharacterGUID, SourceQuestID, NotesJSON)
 VALUES
-    ('item', @wm_energy_surge_potion_item_entry, 'active', 'wm_content:item:energy-surge-potion', NULL, NULL, '["wm_energy_surge_potion","base_item_entry:33448","native_script:wm_energy_surge_potion","visible_aura:946606","energy_per_second:10","duration_ms:7200000","global_all_characters","bind:none"]'),
-    ('spell', @wm_energy_surge_aura_spell_id, 'active', 'wm_content:spell:energy-surge-potion-aura', NULL, NULL, '["shell_spell","energy_surge_potion_v1","visible_aura","energy_per_second:10","duration_ms:7200000","global_all_characters"]')
+    ('item', @wm_enchanting_stone_item_entry, 'active', 'wm_content:item:enchanting-stone', NULL, NULL, '["wm_enchanting_stone","base_item_entry:34057","native_script:wm_enchanting_stone","addon_gui:slot_upgrade_cancel","max_upgrade:+8","stat_multiplier:2^level","boss_drop:35","final_boss_drop:100","global_all_characters","bind:none"]')
 ON DUPLICATE KEY UPDATE
     SlotStatus = VALUES(SlotStatus),
     ArcKey = VALUES(ArcKey),

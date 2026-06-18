@@ -564,12 +564,6 @@ public:
             return true;
         }
 
-        if (!WmBridge::IsPlayerAllowed(player))
-        {
-            SendPlayerMessage(player, "WM enchant vellum is inactive for this character.");
-            return true;
-        }
-
         std::vector<EquipmentSlotLabel> slots = EligibleEquippedSlots(player);
         ClearGossipMenuFor(player);
         if (slots.empty())
@@ -593,13 +587,6 @@ public:
         ClearGossipMenuFor(player);
         if (sender != GOSSIP_SENDER_MAIN || action == RANDOM_ENCHANT_GOSSIP_ACTION_CANCEL)
         {
-            CloseGossipMenuFor(player);
-            return;
-        }
-
-        if (!WmBridge::IsPlayerAllowed(player))
-        {
-            SendPlayerMessage(player, "WM enchant vellum is inactive for this character.");
             CloseGossipMenuFor(player);
             return;
         }

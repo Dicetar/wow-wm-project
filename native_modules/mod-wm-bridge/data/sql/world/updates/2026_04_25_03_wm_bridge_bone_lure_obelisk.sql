@@ -119,7 +119,7 @@ SET
     spellcooldown_5 = -1,
     spellcategory_5 = 0,
     spellcategorycooldown_5 = -1,
-    bonding = 1,
+    bonding = 0,
     description = 'Throw to deploy a Bone Lure Obelisk for 30 sec. It repeatedly taunts non-boss enemies within 200 yards, has your maximum health, and takes 75% reduced damage.',
     PageText = 0,
     LanguageID = 0,
@@ -233,8 +233,8 @@ VALUES (@wm_bone_lure_creature_entry, 1, 1, 0, 1, 0, 0, 0);
 INSERT INTO wm_reserved_slot
     (EntityType, ReservedID, SlotStatus, ArcKey, CharacterGUID, SourceQuestID, NotesJSON)
 VALUES
-    ('item', @wm_bone_lure_item_entry, 'active', 'wm_content:item:bone-lure-charm', 5406, NULL, '["wm_bone_lure_charm","base_item_entry:41119","native_script:wm_bone_lure_charm","deploys_creature:920102"]'),
-    ('creature_template', @wm_bone_lure_creature_entry, 'active', 'wm_content:creature:bone-lure-obelisk', 5406, NULL, '["wm_bone_lure_obelisk","base_creature_entry:3579","display_id:16135","native_script:wm_bone_lure_obelisk"]')
+    ('item', @wm_bone_lure_item_entry, 'active', 'wm_content:item:bone-lure-charm', NULL, NULL, '["wm_bone_lure_charm","base_item_entry:41119","native_script:wm_bone_lure_charm","deploys_creature:920102","global_all_characters","bind:none"]'),
+    ('creature_template', @wm_bone_lure_creature_entry, 'active', 'wm_content:creature:bone-lure-obelisk', NULL, NULL, '["wm_bone_lure_obelisk","base_creature_entry:3579","display_id:16135","native_script:wm_bone_lure_obelisk","global_all_characters"]')
 ON DUPLICATE KEY UPDATE
     SlotStatus = VALUES(SlotStatus),
     ArcKey = VALUES(ArcKey),

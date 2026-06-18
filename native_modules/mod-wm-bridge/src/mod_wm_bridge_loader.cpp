@@ -5,6 +5,7 @@ void AddSC_mod_wm_bridge_unit_script();
 void AddSC_mod_wm_bridge_random_enchant_item();
 void AddSC_mod_wm_bridge_bone_lure_item();
 void AddSC_mod_wm_bridge_energy_potion();
+void AddSC_mod_wm_bridge_enchanting_stone();
 
 void Addmod_wm_bridgeScripts()
 {
@@ -15,4 +16,5 @@ void Addmod_wm_bridgeScripts()
     AddSC_mod_wm_bridge_random_enchant_item();
     AddSC_mod_wm_bridge_bone_lure_item();
     AddSC_mod_wm_bridge_energy_potion();
+    AddSC_mod_wm_bridge_enchanting_stone();
 }

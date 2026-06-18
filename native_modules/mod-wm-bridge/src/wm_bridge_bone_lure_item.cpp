@@ -301,11 +301,6 @@ private:
     void PulseTaunt()
     {
         Player* owner = GetOwnerPlayer();
-        if (owner && !WmBridge::IsPlayerAllowed(owner))
-        {
-            return;
-        }
-
         std::list<WorldObject*> nearbyObjects;
         Acore::AllWorldObjectsInRange check(me, BONE_LURE_TAUNT_RADIUS);
         Acore::WorldObjectListSearcher<Acore::AllWorldObjectsInRange> searcher(me, nearbyObjects, check);
@@ -391,10 +386,8 @@ public:
         {
             return true;
         }
-
         if (!WmBridge::IsPlayerAllowed(player))
         {
-            SendPlayerMessage(player, "Bone lure is inactive for this character.");
             return true;
         }
 

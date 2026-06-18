@@ -112,7 +112,7 @@ SET
     spellcooldown_5 = -1,
     spellcategory_5 = 0,
     spellcategorycooldown_5 = -1,
-    bonding = 1,
+    bonding = 0,
     description = 'Right-click to choose an equipped weapon or armor item and apply unstable random enchants. Existing enchants have a chance to survive. Rare rolls can reach the highest tier.',
     PageText = 0,
     LanguageID = 0,
@@ -159,7 +159,7 @@ DROP TEMPORARY TABLE IF EXISTS wm_tmp_random_enchant_consumable;
 INSERT INTO wm_reserved_slot
     (EntityType, ReservedID, SlotStatus, ArcKey, CharacterGUID, SourceQuestID, NotesJSON)
 VALUES
-    ('item', 910007, 'active', 'wm_content:item:unstable-enchanting-vellum', 5406, NULL, '["wm_random_enchant_consumable","base_item_entry:955","native_script:wm_random_enchant_consumable"]')
+    ('item', 910007, 'active', 'wm_content:item:unstable-enchanting-vellum', NULL, NULL, '["wm_random_enchant_consumable","base_item_entry:955","native_script:wm_random_enchant_consumable","global_all_characters","bind:none"]')
 ON DUPLICATE KEY UPDATE
     SlotStatus = VALUES(SlotStatus),
     ArcKey = VALUES(ArcKey),
