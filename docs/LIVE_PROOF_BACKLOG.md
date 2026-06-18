@@ -60,7 +60,7 @@ Status: `PARTIAL`
 Prerequisite state:
 
 - BridgeLab is running.
-- `python -m wm.doctor --summary` reports DB/SOAP reachable and either a
+- `python -m wm.doctor --profile bridgelab --summary` reports DB/SOAP reachable and either a
   scoped native bridge config or an actionable `UNKNOWN` config detail.
 - A target character is online.
 - Marker aura `946602` (`WM Watcher Beacon`) is available, or the operator has
@@ -71,7 +71,7 @@ Command sequence:
 ```powershell
 start-bridge-lab-all.bat
 $env:WM_WORLD_DB_PORT="33307"; $env:WM_CHAR_DB_PORT="33307"; $env:WM_SOAP_PORT="7879"
-python -m wm.doctor --summary
+python -m wm.doctor --profile bridgelab --summary
 python -m wm.panel --host 127.0.0.1 --port 8765 --live-slice
 ```
 
@@ -497,7 +497,7 @@ passes. Operator action gates everything.
 ```powershell
 start-bridge-lab-all.bat
 $env:WM_WORLD_DB_PORT="33307"; $env:WM_CHAR_DB_PORT="33307"; $env:WM_SOAP_PORT="7879"
-python -m wm.doctor --summary   # must be green on 33307/7879 before continuing
+python -m wm.doctor --profile bridgelab --summary   # must be green on 33307/7879 before continuing
 ```
 Gate: world_db + char_db + soap all `WORKING`. If not, stop and fix readiness first.
 

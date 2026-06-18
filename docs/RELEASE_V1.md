@@ -106,7 +106,7 @@ READY; `shell_audit` BROKEN; a publish that doesn't appear correctly in-client.
 WM_WORLD_DB_PORT=33307 WM_CHAR_DB_PORT=33307 WM_SOAP_PORT=7879
 
 # readiness
-… python -m wm.doctor --summary            # must be 8/8 before any live claim
+... python -m wm.doctor --profile bridgelab --summary  # must be 8/8 before any live claim
 # restart worldserver (loads new Spell.dbc); confirm pid stays alive + SOAP back
 scripts/bridge_lab/Restart-BridgeLabWorldServer.ps1
 # operator panel (live)
@@ -116,9 +116,9 @@ scripts/bridge_lab/Restart-BridgeLabWorldServer.ps1
 DB: `127.0.0.1:33307`, `acore`/`acore`. LM Studio: `http://localhost:1234`,
 model `qwen3-coder-30b-a3b-instruct`.
 
-Default `wm.doctor --summary` uses generic local ports (`3306` / `7878`) and may
-correctly report `NOT READY` when BridgeLab is running on lab ports. Use the
-explicit BridgeLab env above for live operator claims. See
+Default `wm.doctor --summary` follows local `WM_*` values and may correctly
+report `NOT READY` when pointed at generic local ports. Use
+`--profile bridgelab` for live operator claims on this workstation. See
 `docs/BRIDGELAB_OPERATOR_ENV.md`.
 
 ## 7. Sign-off

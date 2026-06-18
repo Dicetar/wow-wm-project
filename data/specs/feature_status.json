@@ -18,19 +18,19 @@
       "repo_status": "WORKING",
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
-      "scope": "One-command readiness: DB/SOAP/bridge/policy/registry.",
-      "last_verified": "2026-05-17",
-      "evidence_ref": "tests/test_doctor.py"
+      "scope": "One-command readiness: DB/SOAP/bridge/policy/registry; BridgeLab profile reports 8/8 working.",
+      "last_verified": "2026-06-11",
+      "evidence_ref": "python -m wm.doctor --profile bridgelab --summary"
     },
     {
       "feature_key": "platform.wm_panel",
       "layer": "platform",
       "repo_status": "WORKING",
-      "runtime_status": "PARTIAL",
+      "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
-      "scope": "Read-only operator dashboard composing health/contracts/IDs.",
-      "last_verified": "2026-05-17",
-      "evidence_ref": "tests/test_panel.py"
+      "scope": "Operator dashboard composing health/contracts/IDs/proofs; panel summary route is healthy. Gameplay proof still depends on fresh watcher/autoplay evidence.",
+      "last_verified": "2026-06-11",
+      "evidence_ref": "python -m wm.panel summary --json"
     },
     {
       "feature_key": "platform.native_payload_contracts",
@@ -38,9 +38,9 @@
       "repo_status": "WORKING",
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
-      "scope": "Enforced pre-flight payload validation; 57/99 kinds contracted.",
-      "last_verified": "2026-05-17",
-      "evidence_ref": "tests/test_native_payload_contract.py"
+      "scope": "Enforced pre-flight payload validation; 63/100 action kinds contracted. Remaining implemented-without-contract kinds are context/debug helpers.",
+      "last_verified": "2026-06-11",
+      "evidence_ref": "python -m wm.sources.native_bridge.contracts_cli --json"
     },
     {
       "feature_key": "platform.llm_smoke",
@@ -88,55 +88,55 @@
       "feature_key": "living.nemesis",
       "layer": "living",
       "repo_status": "WORKING",
-      "runtime_status": "PARTIAL",
+      "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "Dry-run scaffold; 5/6 native verbs lab-gated (Batch 1).",
-      "last_verified": "2026-05-17",
+      "scope": "Live-ready catalog/runtime scaffold; gameplay loop still needs fresh in-client proof and failure/cleanup evidence.",
+      "last_verified": "2026-06-11",
       "evidence_ref": "tests/test_living_nemesis.py"
     },
     {
       "feature_key": "living.rumor",
       "layer": "living",
       "repo_status": "WORKING",
-      "runtime_status": "PARTIAL",
+      "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "live_ready scaffold (announce-only); needs live proof.",
-      "last_verified": "2026-05-17",
+      "scope": "Live-ready catalog/runtime scaffold; announce-style gameplay still needs fresh in-client proof.",
+      "last_verified": "2026-06-11",
       "evidence_ref": "tests/test_living_rumor.py"
     },
     {
       "feature_key": "living.legend",
       "layer": "living",
       "repo_status": "WORKING",
-      "runtime_status": "PARTIAL",
+      "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "Dry-run scaffold; title/mail Batch-2 lab-gated.",
-      "last_verified": "2026-05-17",
+      "scope": "Live-ready catalog/runtime scaffold; title/mail-style gameplay still needs fresh in-client proof.",
+      "last_verified": "2026-06-11",
       "evidence_ref": "tests/test_living_legend.py"
     },
     {
       "feature_key": "living.patron",
       "layer": "living",
       "repo_status": "WORKING",
-      "runtime_status": "PARTIAL",
+      "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "Dry-run scaffold; wm_counter_set Batch-3 lab-gated.",
-      "last_verified": "2026-05-17",
+      "scope": "Live-ready catalog/runtime scaffold; patron commitment gameplay still needs fresh in-client proof.",
+      "last_verified": "2026-06-11",
       "evidence_ref": "tests/test_living_patron.py"
     },
     {
       "feature_key": "living.oath",
       "layer": "living",
       "repo_status": "WORKING",
-      "runtime_status": "PARTIAL",
+      "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "Dry-run scaffold; wm_counter_*/quest_fail Batch-3 lab-gated.",
-      "last_verified": "2026-05-17",
+      "scope": "Live-ready catalog/runtime scaffold; oath consequence gameplay still needs fresh in-client proof.",
+      "last_verified": "2026-06-11",
       "evidence_ref": "tests/test_living_oath.py"
     },
     {
@@ -146,8 +146,8 @@
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "scope": "ADR-0005 first-class wild-feature registry; collective dry-run + CI validate; single-sources the GUI.",
-      "last_verified": "2026-05-18",
-      "evidence_ref": "tests/test_living_catalog.py"
+      "last_verified": "2026-06-11",
+      "evidence_ref": "python -m wm.living.catalog --validate --json"
     },
     {
       "feature_key": "living.journal_trigger",
@@ -175,12 +175,24 @@
       "feature_key": "autoplay.conversational_action_loop",
       "layer": "autoplay",
       "repo_status": "WORKING",
-      "runtime_status": "PARTIAL",
+      "runtime_status": "WORKING",
       "gameplay_status": "PARTIAL",
       "requires_live_proof": true,
-      "scope": "Chat model emits typed intent -> deterministic compile to ControlProposal -> dry-run/apply/audit, gated by per-verb modes (off/confirm/auto); confirm in-chat (yes/no) or via panel inbox. Needs in-client walk.",
-      "last_verified": "2026-05-29",
-      "evidence_ref": "tests/test_autoplay.py"
+      "scope": "Chat model emits typed intent -> deterministic compile to ControlProposal -> dry-run/apply/audit. Autoplay, LLM, and watcher are running; fresh chat_action in-client proof is still required.",
+      "last_verified": "2026-06-11",
+      "evidence_ref": "python -m wm.autoplay status --summary"
+    },
+    {
+      "feature_key": "platform.runtime_status",
+      "layer": "platform",
+      "repo_status": "WORKING",
+      "runtime_status": "WORKING",
+      "gameplay_status": "UNKNOWN",
+      "requires_live_proof": true,
+      "scope": "DB/Auth/World/Watcher/Panel/Autoplay are running; runtime_startup proof service checks pass, with packet status manual_required until operator-visible live confirmation is complete. Windows process scan still uses limited fallback.",
+      "last_verified": "2026-06-12",
+      "last_live_proof": "proof-20260612113900858342",
+      "evidence_ref": ".wm-bootstrap/state/observability/proofs/proof-20260612113900858342.json"
     },
     {
       "feature_key": "release.ci",
@@ -188,9 +200,9 @@
       "repo_status": "WORKING",
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
-      "scope": "GitHub Actions runs the DB-free unit suite on push.",
-      "last_verified": "2026-05-17",
-      "evidence_ref": ".github/workflows/ci.yml"
+      "scope": "GitHub Actions runs the DB-free unit suite on push; local full test suite passed on 2026-06-12.",
+      "last_verified": "2026-06-12",
+      "evidence_ref": "python -m pytest -q (1197 passed)"
     }
   ]
 }

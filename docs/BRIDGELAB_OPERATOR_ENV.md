@@ -7,14 +7,14 @@ $env:WM_WORLD_DB_PORT = "33307"
 $env:WM_CHAR_DB_PORT = "33307"
 $env:WM_SOAP_PORT = "7879"
 
-python -m wm.doctor --summary
+python -m wm.doctor --profile bridgelab --summary
 python -m wm.panel serve --live-slice
 ```
 
-Default `wm.doctor --summary` targets generic local ports (`3306` and `7878`).
-That default may be useful for another local stack, but it is not the BridgeLab
-proof profile. A live BridgeLab claim should use the explicit env above and
-should report all doctor checks as `WORKING` before applying proposals.
+Default `wm.doctor --summary` follows local `WM_*` environment values, which may
+target generic local ports (`3306` and `7878`). A live BridgeLab claim should use
+`--profile bridgelab` and should report all doctor checks as `WORKING` before
+applying proposals.
 
 Current BridgeLab endpoints:
 

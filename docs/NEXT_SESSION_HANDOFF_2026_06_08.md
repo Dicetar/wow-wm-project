@@ -51,7 +51,7 @@ Autonomy policy:
 
 Latest local facts from this handoff session:
 
-- `git status --short`: clean before this handoff document was created.
+- `git status --short`: intentionally dirty after the 2026-06-10 local continuation; changes cover BridgeLab doctor profile wiring, proof evidence freshness, runtime timestamp normalization, proof checklist detail, and test runtime-marker isolation.
 - Latest commits:
   - `bce5fd7 Add live proof evidence checks`
   - `fd416ff Add runtime heartbeats and live proof checklist`
@@ -59,13 +59,16 @@ Latest local facts from this handoff session:
   - `f97904c Build WM runtime status and proof foundation`
 - Full test suite after the latest implementation:
   - `python -m pytest -q`
-  - Result: `1172 passed, 31 warnings`
+  - Result: `1178 passed, 31 warnings`
 - Status validation:
   - `python -m wm.status --validate`
   - Result: `OK`
 - Skill validation:
   - `python scripts\validate_agent_skills.py`
   - Result: `OK: validated skills under .agents/skills`
+- BridgeLab doctor:
+  - `python -m wm.doctor --profile bridgelab --summary`
+  - Result: `OK: 0 FAIL, 0 UNKNOWN, 8 checks`
 - Panel summary from `python -m wm.panel summary --json`:
   - `living.catalog`: `PARTIAL`, `1/5 features live-ready`
   - `journal.projector`: `WORKING`
@@ -81,7 +84,9 @@ Latest local facts from this handoff session:
 Runtime status at handoff:
 
 - `python -m wm.runtime status --json` returns `ok=true`.
-- Current services are down: DB/Auth/World/Watcher/Panel/Autoplay all report `not_running`.
+- As of `2026-06-10T01:06Z`, DB/Auth/World/Watcher/Panel/Autoplay each report one logical `running` instance.
+- Autoplay is running for player `5408`; readiness and LLM health are true, selected model is `qwen3-vl-8b-instruct`, lanes are `chat`.
+- Panel was restarted after the local proof/runtime edits; `POST /api/wm/proofs/run` now serves the current proof code and returns `evidence_window` details.
 - Python runtime marker state exists under `.wm-bootstrap/state/runtime/`.
 - Some old stopped markers are present from tests/manual runs; they are not active and not stale.
 - Windows process scan has a known warning:
@@ -307,6 +312,7 @@ Ready in repo/test sense:
 
 - Launcher command builders and duplicate/stale guard logic.
 - Runtime marker schema and status merging.
+- Runtime status normalizes PowerShell `/Date(...)` process timestamps to UTC ISO before proof freshness checks.
 - Panel runtime/proof/timeline/incidents APIs.
 - Proof checklist UI on the simple panel dashboard.
 - Proof records with runtime summary, blockers, next actions, evidence checks, evidence refs, and manual evidence notes.
@@ -317,12 +323,13 @@ Ready in repo/test sense:
 - Conversation memory extraction/persistence path tests.
 - Scene composition validation and cleanup requirement.
 - Scene run cleanup status recording.
-- Autoplay evidence checks for proof packets.
-- Test suite green at `1172 passed`.
+- Autoplay evidence checks for proof packets, including post-runtime-start freshness windows.
+- Test suite green at `1178 passed`.
 
 Ready in live/operator sense:
 
-- Not enough should be claimed yet. Runtime startup, chat action, ambient, memory, and scene all still need a current in-client proof run after starting the actual stack.
+- `runtime_startup` currently passes from the running local stack.
+- Not enough should be claimed yet for in-game autonomy. `chat_action`, `ambient`, `memory`, and `scene` still need current in-client evidence after the active runtime start.
 
 ## What Is Not Ready
 
@@ -374,11 +381,21 @@ Important behavior:
 
 - `runtime_startup` can pass automatically from runtime status.
 - Live proof kinds remain `manual_required` until their expected evidence appears.
+- Live evidence is only accepted at or after the latest required service `started_at`; old journal/status artifacts must not make a fresh proof pass.
+- Proof records include `evidence_window.since` and pending evidence details so the panel can show exactly what is missing.
 - Evidence-based live proof kinds can now pass when the relevant journal/status artifacts exist:
   - `chat_action`: chat + intent/deed/pending/issue + verification/blocker explanation
   - `ambient`: ambient narration journal
   - `memory`: conversation memory + later chat
   - `scene`: scene run + cleanup status
+
+Current proof status from direct CLI runs:
+
+- `runtime_startup`: `passed` at `2026-06-10T01:05:59Z` via panel API.
+- `chat_action`: `manual_required` at `2026-06-10T01:05:09Z` via panel API, evidence since `2026-06-09T17:26:23Z`.
+- `ambient`: `manual_required` at `2026-06-10T01:06:00Z` via panel API, evidence since `2026-06-09T17:26:23Z`.
+- `memory`: `manual_required` at `2026-06-10T01:06:01Z` via panel API, evidence since `2026-06-09T17:26:20Z`.
+- `scene`: `manual_required` at `2026-06-10T01:06:01Z` via panel API, evidence since `2026-06-09T17:26:23Z`.
 
 Do not mark a feature `WORKING` solely because unit tests pass. In-client proof is the standard for autonomous-live claims.
 
@@ -625,7 +642,7 @@ Useful panel/runtime probes:
 ```powershell
 python -m wm.panel summary --json
 python -m wm.autoplay status --summary
-python -m wm.doctor --summary
+python -m wm.doctor --profile bridgelab --summary
 ```
 
 Proof API examples:
