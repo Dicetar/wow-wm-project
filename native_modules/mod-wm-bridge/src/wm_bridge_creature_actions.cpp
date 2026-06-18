@@ -8,11 +8,14 @@
 #include "Cell.h"
 #include "CellImpl.h"
 #include "Creature.h"
+#include "CreatureAI.h"
 #include "DBCStores.h"
 #include "GameObject.h"
 #include "GridNotifiers.h"
 #include "Item.h"
 #include "ItemTemplate.h"
+#include "MapMgr.h"
+#include "MotionMaster.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
@@ -32,6 +35,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <exception>
 #include <iomanip>
 #include <initializer_list>
@@ -189,6 +193,149 @@ namespace
 
         errorText = "unsupported_target";
         return nullptr;
+    }
+
+    bool ResolveOwnedLiveCreature(
+        uint64 requestId,
+        uint32 playerGuid,
+        std::string const& actionKind,
+        std::string const& payloadJson,
+        Player*& player,
+        OwnedCreatureRef& ref,
+        Creature*& creature)
+    {
+        player = nullptr;
+        creature = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return false;
+        }
+
+        std::string errorText;
+        if (!LoadOwnedCreatureRef(playerGuid, payloadJson, ref, errorText))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, errorText), errorText);
+            return false;
+        }
+
+        creature = ResolveOwnedCreature(player, ref);
+        if (!creature)
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_live", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}), "creature_not_live");
+            return false;
+        }
+
+        return true;
+    }
+
+    bool ExtractCreatureText(std::string const& payloadJson, std::string& text)
+    {
+        text = ExtractJsonStringField(payloadJson, "text");
+        if (text.empty())
+        {
+            text = ExtractJsonStringField(payloadJson, "message");
+        }
+        if (text.empty())
+        {
+            return false;
+        }
+        if (text.size() > 255)
+        {
+            text.resize(255);
+        }
+        return true;
+    }
+
+    bool TryResolveReactState(std::string const& payloadJson, ReactStates& state)
+    {
+        uint32 value = 0;
+        if (TryExtractAnyUInt32Field(payloadJson, {"react_state", "reactState"}, value))
+        {
+            if (value > static_cast<uint32>(REACT_AGGRESSIVE))
+            {
+                return false;
+            }
+
+            state = static_cast<ReactStates>(value);
+            return true;
+        }
+
+        std::string token = NormalizedJsonToken(ExtractJsonStringField(payloadJson, "react_state"));
+        if (token.empty())
+        {
+            token = NormalizedJsonToken(ExtractJsonStringField(payloadJson, "reactState"));
+        }
+
+        if (token == "passive")
+        {
+            state = REACT_PASSIVE;
+            return true;
+        }
+        if (token == "defensive" || token == "neutral")
+        {
+            state = REACT_DEFENSIVE;
+            return true;
+        }
+        if (token == "aggressive" || token == "agressive")
+        {
+            state = REACT_AGGRESSIVE;
+            return true;
+        }
+
+        return false;
+    }
+
+    bool StartCreatureAttack(
+        uint64 requestId,
+        uint32 playerGuid,
+        std::string const& actionKind,
+        OwnedCreatureRef const& ref,
+        Creature* creature,
+        Unit* target)
+    {
+        if (!target)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "target_not_found"), "target_not_found");
+            return true;
+        }
+        if (target == creature)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_attack_target"), "invalid_attack_target");
+            return true;
+        }
+        if (!creature->IsAlive())
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_alive", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}), "creature_not_alive");
+            return true;
+        }
+        if (!target->IsAlive())
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "target_not_alive", {{"target_guid", target->GetGUID().ToString()}}), "target_not_alive");
+            return true;
+        }
+
+        creature->SetReactState(REACT_AGGRESSIVE);
+        creature->AddThreat(target, 1.0f);
+        if (CreatureAI* ai = creature->AI())
+        {
+            ai->AttackStart(target);
+        }
+        else if (creature->Attack(target, true))
+        {
+            creature->GetMotionMaster()->MoveChase(target);
+        }
+
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                "creature_attack_started",
+                {{"arc_key", ref.arcKey}, {"target_guid", target->GetGUID().ToString()}},
+                {{"object_id", static_cast<long long>(ref.objectId)}, {"player_guid", playerGuid}}));
+        return true;
     }
 
     void MarkOwnedCreatureDespawned(OwnedCreatureRef const& ref, std::string const& reason)
@@ -598,6 +745,296 @@ namespace
                 {{"scale", scale}}));
         return true;
     }
+
+    bool ExecuteCreatureSetName(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+
+        std::string name = ExtractJsonStringField(payloadJson, "name");
+        if (name.empty())
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_name"), "missing_name");
+            return true;
+        }
+        if (name.size() > 64)
+        {
+            name.resize(64);
+        }
+
+        bool nameChanged = creature->GetName() != name;
+        creature->SetName(name);
+        if (nameChanged)
+        {
+            creature->UpdateObjectVisibility();
+        }
+
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_name_set", {{"arc_key", ref.arcKey}, {"name", name}}, {{"object_id", static_cast<long long>(ref.objectId)}}));
+        return true;
+    }
+
+    bool ExecuteCreatureSetFaction(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+
+        uint32 factionId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"faction_id", "factionId"}, factionId) || factionId == 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_faction_id"), "missing_faction_id");
+            return true;
+        }
+        if (!sFactionTemplateStore.LookupEntry(factionId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_faction", {}, {{"faction_id", factionId}}), "invalid_faction");
+            return true;
+        }
+
+        creature->SetFaction(factionId);
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_faction_set", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}, {"faction_id", factionId}}));
+        return true;
+    }
+
+    bool ExecuteCreatureSetHealthPct(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+
+        uint32 healthPercent = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"health_percent", "healthPercent"}, healthPercent) || healthPercent == 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_health_percent"), "missing_health_percent");
+            return true;
+        }
+
+        healthPercent = std::clamp<uint32>(healthPercent, 1, 100);
+        uint32 health = std::max<uint32>(1, creature->CountPctFromMaxHealth(static_cast<int32>(healthPercent)));
+        creature->SetHealth(health);
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_health_pct_set", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}, {"health_percent", healthPercent}, {"health", health}}));
+        return true;
+    }
+
+    bool ExecuteCreatureSetReactState(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+
+        ReactStates state = REACT_DEFENSIVE;
+        if (!TryResolveReactState(payloadJson, state))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_react_state"), "invalid_react_state");
+            return true;
+        }
+
+        creature->SetReactState(state);
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_react_state_set", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}, {"react_state", static_cast<long long>(state)}}));
+        return true;
+    }
+
+    bool ExecuteCreatureYell(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+
+        std::string text;
+        if (!ExtractCreatureText(payloadJson, text))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_text"), "missing_text");
+            return true;
+        }
+
+        creature->Yell(text, LANG_UNIVERSAL, player);
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_yelled", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}));
+        return true;
+    }
+
+    bool ExecuteCreatureWhisperPlayer(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+
+        std::string text;
+        if (!ExtractCreatureText(payloadJson, text))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_text"), "missing_text");
+            return true;
+        }
+
+        creature->Whisper(text, LANG_UNIVERSAL, player);
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_whispered", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}));
+        return true;
+    }
+
+    bool ExecuteCreatureMoveTo(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+        if (!TryExtractAnyFloatField(payloadJson, {"x"}, x) ||
+            !TryExtractAnyFloatField(payloadJson, {"y"}, y) ||
+            !TryExtractAnyFloatField(payloadJson, {"z"}, z))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_coordinates"), "missing_coordinates");
+            return true;
+        }
+
+        float orientation = creature->GetOrientation();
+        TryExtractAnyFloatField(payloadJson, {"o", "orientation"}, orientation);
+        orientation = Position::NormalizeOrientation(orientation);
+        if (!MapMgr::IsValidMapCoord(player->GetMapId(), x, y, z, orientation))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_coordinates"), "invalid_coordinates");
+            return true;
+        }
+        if (!creature->IsAlive())
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_alive", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}), "creature_not_alive");
+            return true;
+        }
+
+        bool run = true;
+        TryExtractAnyBoolField(payloadJson, {"run"}, run);
+        creature->StopMoving();
+        creature->GetMotionMaster()->MovePoint(0, x, y, z, run ? FORCED_MOVEMENT_RUN : FORCED_MOVEMENT_WALK, 0.0f, orientation);
+
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                "creature_moving_to_point",
+                {{"arc_key", ref.arcKey}},
+                {{"object_id", static_cast<long long>(ref.objectId)}},
+                {{"x", x}, {"y", y}, {"z", z}}));
+        return true;
+    }
+
+    bool ExecuteCreatureFollowPlayer(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+        if (!creature->IsAlive())
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "creature_not_alive", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}), "creature_not_alive");
+            return true;
+        }
+
+        float followDistance = 2.5f;
+        float followAngle = 0.0f;
+        TryExtractAnyFloatField(payloadJson, {"follow_distance", "followDistance"}, followDistance);
+        TryExtractAnyFloatField(payloadJson, {"follow_angle", "followAngle"}, followAngle);
+        followDistance = std::clamp<float>(followDistance, 0.5f, 30.0f);
+
+        creature->StopMoving();
+        creature->GetMotionMaster()->MoveFollow(player, followDistance, followAngle);
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                "creature_following_player",
+                {{"arc_key", ref.arcKey}},
+                {{"object_id", static_cast<long long>(ref.objectId)}},
+                {{"follow_distance", followDistance}, {"follow_angle", followAngle}}));
+        return true;
+    }
+
+    bool ExecuteCreatureStopMovement(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+
+        creature->StopMoving();
+        creature->GetMotionMaster()->MoveIdle();
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "creature_movement_stopped", {{"arc_key", ref.arcKey}}, {{"object_id", static_cast<long long>(ref.objectId)}}));
+        return true;
+    }
+
+    bool ExecuteCreatureAttackPlayer(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+
+        return StartCreatureAttack(requestId, playerGuid, actionKind, ref, creature, player);
+    }
+
+    bool ExecuteCreatureAttackTarget(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        OwnedCreatureRef ref;
+        Creature* creature = nullptr;
+        if (!ResolveOwnedLiveCreature(requestId, playerGuid, actionKind, payloadJson, player, ref, creature))
+        {
+            return true;
+        }
+
+        std::string targetError;
+        Unit* target = ResolveCreatureCastTarget(player, creature, payloadJson, targetError);
+        if (!target)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, targetError), targetError);
+            return true;
+        }
+
+        return StartCreatureAttack(requestId, playerGuid, actionKind, ref, creature, target);
+    }
 }
 
 namespace WmBridge
@@ -611,5 +1048,16 @@ namespace WmBridge
         registry.Register("creature_cast_spell", &ExecuteCreatureCastSpell);
         registry.Register("creature_set_display_id", &ExecuteCreatureSetDisplayId);
         registry.Register("creature_set_scale", &ExecuteCreatureSetScale);
+        registry.Register("creature_set_name", &ExecuteCreatureSetName);
+        registry.Register("creature_set_faction", &ExecuteCreatureSetFaction);
+        registry.Register("creature_set_health_pct", &ExecuteCreatureSetHealthPct);
+        registry.Register("creature_set_react_state", &ExecuteCreatureSetReactState);
+        registry.Register("creature_yell", &ExecuteCreatureYell);
+        registry.Register("creature_whisper_player", &ExecuteCreatureWhisperPlayer);
+        registry.Register("creature_move_to", &ExecuteCreatureMoveTo);
+        registry.Register("creature_follow_player", &ExecuteCreatureFollowPlayer);
+        registry.Register("creature_stop_movement", &ExecuteCreatureStopMovement);
+        registry.Register("creature_attack_player", &ExecuteCreatureAttackPlayer);
+        registry.Register("creature_attack_target", &ExecuteCreatureAttackTarget);
     }
 }

@@ -13,6 +13,7 @@
 #include "GridNotifiers.h"
 #include "Item.h"
 #include "ItemTemplate.h"
+#include "Mail.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
@@ -439,6 +440,142 @@ namespace
         CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "spell_unlearned"));
         return true;
     }
+
+    bool ExecutePlayerAddTitle(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        uint32 titleId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"title_id", "titleId"}, titleId) || titleId == 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_title_id"), "missing_title_id");
+            return true;
+        }
+
+        CharTitlesEntry const* title = sCharTitlesStore.LookupEntry(titleId);
+        if (!title)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_title", {}, {{"title_id", titleId}}), "invalid_title");
+            return true;
+        }
+
+        if (!player->HasTitle(title))
+        {
+            player->SetTitle(title);
+            player->SaveToDB(false, false);
+        }
+
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "title_added", {}, {{"title_id", titleId}, {"player_guid", playerGuid}}));
+        return true;
+    }
+
+    bool ExecutePlayerRemoveTitle(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        uint32 titleId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"title_id", "titleId"}, titleId) || titleId == 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_title_id"), "missing_title_id");
+            return true;
+        }
+
+        CharTitlesEntry const* title = sCharTitlesStore.LookupEntry(titleId);
+        if (!title)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_title", {}, {{"title_id", titleId}}), "invalid_title");
+            return true;
+        }
+
+        if (player->HasTitle(title))
+        {
+            player->SetTitle(title, true);
+            player->SaveToDB(false, false);
+        }
+
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "title_removed", {}, {{"title_id", titleId}, {"player_guid", playerGuid}}));
+        return true;
+    }
+
+    bool ExecutePlayerSendMail(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        std::string subject = ExtractJsonStringField(payloadJson, "subject");
+        std::string body = ExtractJsonStringField(payloadJson, "body");
+        if (subject.empty())
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_subject"), "missing_subject");
+            return true;
+        }
+        if (body.empty())
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_body"), "missing_body");
+            return true;
+        }
+        if (subject.size() > 255)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "subject_too_long"), "subject_too_long");
+            return true;
+        }
+        if (body.size() > 8000)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "body_too_long"), "body_too_long");
+            return true;
+        }
+
+        uint32 moneyCopper = 0;
+        TryExtractAnyUInt32Field(payloadJson, {"money_copper", "moneyCopper", "money"}, moneyCopper);
+
+        uint32 senderEntry = 0;
+        TryExtractAnyUInt32Field(payloadJson, {"sender_entry", "senderEntry"}, senderEntry);
+        if (senderEntry != 0 && !sObjectMgr->GetCreatureTemplate(senderEntry))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_sender_entry", {}, {{"sender_entry", senderEntry}}), "invalid_sender_entry");
+            return true;
+        }
+
+        MailDraft draft(subject, body);
+        if (moneyCopper > 0)
+        {
+            draft.AddMoney(moneyCopper);
+        }
+
+        MailSender sender = senderEntry != 0
+            ? MailSender(MAIL_CREATURE, senderEntry)
+            : MailSender(MAIL_NORMAL, 0, MAIL_STATIONERY_GM);
+        CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+        draft.SendMailTo(trans, MailReceiver(player, player->GetGUID().GetCounter()), sender, MAIL_CHECK_MASK_HAS_BODY);
+        CharacterDatabase.CommitTransaction(trans);
+
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                "mail_sent",
+                {},
+                {
+                    {"player_guid", playerGuid},
+                    {"money_copper", moneyCopper},
+                    {"sender_entry", senderEntry},
+                }));
+        return true;
+    }
 }
 
 namespace WmBridge
@@ -453,5 +590,8 @@ namespace WmBridge
         registry.Register("player_cast_spell", &ExecutePlayerCastSpell);
         registry.Register("player_learn_spell", &ExecutePlayerLearnSpell);
         registry.Register("player_unlearn_spell", &ExecutePlayerUnlearnSpell);
+        registry.Register("player_add_title", &ExecutePlayerAddTitle);
+        registry.Register("player_remove_title", &ExecutePlayerRemoveTitle);
+        registry.Register("player_send_mail", &ExecutePlayerSendMail);
     }
 }

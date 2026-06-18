@@ -143,6 +143,116 @@ class NativeBridgeActionTests(unittest.TestCase):
                 self.assertTrue(action.implemented)
                 self.assertFalse(action.default_enabled)
 
+    def test_priority_1_nemesis_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
+        priority_actions = {
+            "creature_set_name",
+            "creature_set_faction",
+            "creature_set_health_pct",
+            "creature_set_react_state",
+            "creature_yell",
+            "creature_whisper_player",
+            "creature_attack_player",
+            "creature_attack_target",
+        }
+
+        for action_kind in priority_actions:
+            with self.subTest(action_kind=action_kind):
+                action = NATIVE_ACTION_KIND_BY_ID[action_kind]
+                self.assertTrue(action.implemented)
+                self.assertFalse(action.default_enabled)
+
+        self.assertFalse(NATIVE_ACTION_KIND_BY_ID["creature_set_subname"].implemented)
+
+    def test_priority_2_reward_punctuation_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
+        priority_actions = {
+            "player_add_title",
+            "player_remove_title",
+            "player_play_sound",
+            "player_send_mail",
+        }
+
+        for action_kind in priority_actions:
+            with self.subTest(action_kind=action_kind):
+                action = NATIVE_ACTION_KIND_BY_ID[action_kind]
+                self.assertTrue(action.implemented)
+                self.assertFalse(action.default_enabled)
+
+        self.assertFalse(NATIVE_ACTION_KIND_BY_ID["player_send_mail_with_items"].implemented)
+
+    def test_priority_3_counter_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
+        priority_actions = {
+            "wm_counter_set",
+            "wm_counter_increment",
+            "wm_counter_clear",
+            "quest_complete",
+            "quest_fail",
+        }
+
+        for action_kind in priority_actions:
+            with self.subTest(action_kind=action_kind):
+                action = NATIVE_ACTION_KIND_BY_ID[action_kind]
+                self.assertTrue(action.implemented)
+                self.assertFalse(action.default_enabled)
+
+        self.assertFalse(NATIVE_ACTION_KIND_BY_ID["quest_complete_objective"].implemented)
+        self.assertFalse(NATIVE_ACTION_KIND_BY_ID["quest_reward"].implemented)
+
+    def test_priority_4_companion_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
+        priority_actions = {
+            "companion_spawn",
+            "companion_despawn",
+            "companion_set_state",
+            "companion_follow",
+            "companion_wait",
+            "companion_move_to",
+            "companion_say",
+            "companion_whisper",
+            "companion_emote",
+        }
+
+        for action_kind in priority_actions:
+            with self.subTest(action_kind=action_kind):
+                action = NATIVE_ACTION_KIND_BY_ID[action_kind]
+                self.assertTrue(action.implemented)
+                self.assertFalse(action.default_enabled)
+
+        self.assertFalse(NATIVE_ACTION_KIND_BY_ID["companion_set_gossip"].implemented)
+
+    def test_priority_5_creature_motion_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
+        priority_actions = {
+            "creature_move_to",
+            "creature_follow_player",
+            "creature_stop_movement",
+        }
+
+        for action_kind in priority_actions:
+            with self.subTest(action_kind=action_kind):
+                action = NATIVE_ACTION_KIND_BY_ID[action_kind]
+                self.assertTrue(action.implemented)
+                self.assertFalse(action.default_enabled)
+
+    def test_priority_5_gameobject_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
+        priority_actions = {
+            "gameobject_spawn",
+            "gameobject_despawn",
+            "gameobject_set_state",
+        }
+
+        for action_kind in priority_actions:
+            with self.subTest(action_kind=action_kind):
+                action = NATIVE_ACTION_KIND_BY_ID[action_kind]
+                self.assertTrue(action.implemented)
+                self.assertFalse(action.default_enabled)
+
+    def test_priority_6_close_gossip_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
+        action = NATIVE_ACTION_KIND_BY_ID["player_close_gossip"]
+
+        self.assertTrue(action.implemented)
+        self.assertFalse(action.default_enabled)
+        self.assertFalse(NATIVE_ACTION_KIND_BY_ID["player_show_menu"].implemented)
+        self.assertFalse(NATIVE_ACTION_KIND_BY_ID["gossip_override_set"].implemented)
+        self.assertFalse(NATIVE_ACTION_KIND_BY_ID["npc_text_override_set"].implemented)
+
     def test_cleanup_primitive_catalog_is_implemented_but_policy_disabled_by_default(self) -> None:
         action = NATIVE_ACTION_KIND_BY_ID["player_remove_item"]
 
@@ -619,6 +729,157 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("creature->SetDisplayId(displayId)", cpp)
         self.assertIn("creature->SetObjectScale(scale)", cpp)
         self.assertIn("std::clamp<float>(scale, 0.10f, 5.0f)", cpp)
+
+    def test_priority_1_nemesis_cpp_uses_owned_creature_guard_and_registers_handlers(self) -> None:
+        cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_creature_actions.cpp").read_text(encoding="utf-8")
+
+        for action_kind, execute_fn in (
+            ("creature_set_name", "ExecuteCreatureSetName"),
+            ("creature_set_faction", "ExecuteCreatureSetFaction"),
+            ("creature_set_health_pct", "ExecuteCreatureSetHealthPct"),
+            ("creature_set_react_state", "ExecuteCreatureSetReactState"),
+            ("creature_yell", "ExecuteCreatureYell"),
+            ("creature_whisper_player", "ExecuteCreatureWhisperPlayer"),
+            ("creature_attack_player", "ExecuteCreatureAttackPlayer"),
+            ("creature_attack_target", "ExecuteCreatureAttackTarget"),
+        ):
+            with self.subTest(action_kind=action_kind):
+                self.assertIn(f'registry.Register("{action_kind}", &{execute_fn})', cpp)
+
+        self.assertIn("ResolveOwnedLiveCreature", cpp)
+        self.assertIn("OwnerPlayerGUID = {}", cpp)
+        self.assertIn("creature->UpdateObjectVisibility()", cpp)
+        self.assertIn("sFactionTemplateStore.LookupEntry(factionId)", cpp)
+        self.assertIn("creature->SetReactState(state)", cpp)
+        self.assertIn("creature->Yell(text, LANG_UNIVERSAL, player)", cpp)
+        self.assertIn("creature->Whisper(text, LANG_UNIVERSAL, player)", cpp)
+        self.assertIn("ai->AttackStart(target)", cpp)
+
+    def test_priority_2_reward_punctuation_cpp_registers_handlers(self) -> None:
+        src = Path("native_modules/mod-wm-bridge/src")
+        player = (src / "wm_bridge_player_actions.cpp").read_text(encoding="utf-8")
+        environment = (src / "wm_bridge_environment_actions.cpp").read_text(encoding="utf-8")
+
+        self.assertIn('registry.Register("player_add_title", &ExecutePlayerAddTitle)', player)
+        self.assertIn('registry.Register("player_remove_title", &ExecutePlayerRemoveTitle)', player)
+        self.assertIn("sCharTitlesStore.LookupEntry(titleId)", player)
+        self.assertIn("player->SetTitle(title)", player)
+        self.assertIn("player->SetTitle(title, true)", player)
+        self.assertIn("player->SaveToDB(false, false)", player)
+        self.assertIn('registry.Register("player_send_mail", &ExecutePlayerSendMail)', player)
+        self.assertIn("MailDraft draft(subject, body)", player)
+        self.assertIn("draft.AddMoney(moneyCopper)", player)
+        self.assertIn("MailSender(MAIL_CREATURE, senderEntry)", player)
+        self.assertIn("MailSender(MAIL_NORMAL, 0, MAIL_STATIONERY_GM)", player)
+        self.assertIn("draft.SendMailTo(trans, MailReceiver(player, player->GetGUID().GetCounter()), sender, MAIL_CHECK_MASK_HAS_BODY)", player)
+        self.assertIn("CharacterDatabase.CommitTransaction(trans)", player)
+
+        self.assertIn('registry.Register("player_play_sound", &ExecutePlayerPlaySound)', environment)
+        self.assertIn("sSoundEntriesStore.LookupEntry(soundId)", environment)
+        self.assertIn("WorldPacket data(SMSG_PLAY_SOUND, 4)", environment)
+        self.assertIn("player->SendDirectMessage(&data)", environment)
+
+    def test_priority_3_counter_cpp_uses_scoped_counter_table(self) -> None:
+        cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_quest_actions.cpp").read_text(encoding="utf-8")
+
+        self.assertIn('registry.Register("wm_counter_set", &ExecuteWmCounterSet)', cpp)
+        self.assertIn('registry.Register("wm_counter_increment", &ExecuteWmCounterIncrement)', cpp)
+        self.assertIn('registry.Register("wm_counter_clear", &ExecuteWmCounterClear)', cpp)
+        self.assertIn('registry.Register("quest_complete", &ExecuteQuestComplete)', cpp)
+        self.assertIn('registry.Register("quest_fail", &ExecuteQuestFail)', cpp)
+        self.assertIn("ResolveScopedOnlinePlayer", cpp)
+        self.assertIn("wm_bridge_counter", cpp)
+        self.assertIn(
+            "PRIMARY KEY (PlayerGUID, CounterKey)",
+            Path("native_modules/mod-wm-bridge/data/sql/world/base/wm_bridge_base.sql").read_text(encoding="utf-8"),
+        )
+        self.assertIn("CounterValue = CounterValue + VALUES(CounterValue)", cpp)
+        self.assertIn("DELETE FROM wm_bridge_counter", cpp)
+        self.assertIn("non_managed_quest_complete_denied", cpp)
+        self.assertIn("player->CompleteQuest(questId)", cpp)
+        self.assertIn("non_managed_quest_fail_denied", cpp)
+        self.assertIn("player->FailQuest(questId)", cpp)
+
+    def test_priority_4_companion_cpp_uses_companion_table_and_registers_handlers(self) -> None:
+        src = Path("native_modules/mod-wm-bridge/src")
+        cpp = (src / "wm_bridge_companion_actions.cpp").read_text(encoding="utf-8")
+        queue = (src / "wm_bridge_action_queue.cpp").read_text(encoding="utf-8")
+
+        for action_kind, execute_fn in (
+            ("companion_spawn", "ExecuteCompanionSpawn"),
+            ("companion_despawn", "ExecuteCompanionDespawn"),
+            ("companion_set_state", "ExecuteCompanionSetState"),
+            ("companion_follow", "ExecuteCompanionFollow"),
+            ("companion_wait", "ExecuteCompanionWait"),
+            ("companion_move_to", "ExecuteCompanionMoveTo"),
+            ("companion_say", "ExecuteCompanionSay"),
+            ("companion_whisper", "ExecuteCompanionWhisper"),
+            ("companion_emote", "ExecuteCompanionEmote"),
+        ):
+            with self.subTest(action_kind=action_kind):
+                self.assertIn(f'registry.Register("{action_kind}", &{execute_fn})', cpp)
+
+        self.assertIn("RegisterWmBridgeCompanionActions(r)", queue)
+        self.assertIn("wm_bridge_companion", cpp)
+        self.assertIn("ObjectType = 'companion'", cpp)
+        self.assertIn("TEMPSUMMON_TIMED_DESPAWN", cpp)
+        self.assertIn("companion->GetMotionMaster()->MoveFollow(player, followDistance, followAngle)", cpp)
+        self.assertIn("companion->GetMotionMaster()->MovePoint(0, x, y, z", cpp)
+        self.assertIn("companion->GetMotionMaster()->MoveIdle()", cpp)
+        self.assertIn("companion->Whisper(text, LANG_UNIVERSAL, player)", cpp)
+        self.assertIn("companion->TextEmote(text, player)", cpp)
+
+    def test_priority_5_creature_motion_cpp_uses_owned_creature_guard_and_registers_handlers(self) -> None:
+        cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_creature_actions.cpp").read_text(encoding="utf-8")
+
+        for action_kind, execute_fn in (
+            ("creature_move_to", "ExecuteCreatureMoveTo"),
+            ("creature_follow_player", "ExecuteCreatureFollowPlayer"),
+            ("creature_stop_movement", "ExecuteCreatureStopMovement"),
+        ):
+            with self.subTest(action_kind=action_kind):
+                self.assertIn(f'registry.Register("{action_kind}", &{execute_fn})', cpp)
+
+        self.assertIn("ResolveOwnedLiveCreature", cpp)
+        self.assertIn("MapMgr::IsValidMapCoord(player->GetMapId(), x, y, z, orientation)", cpp)
+        self.assertIn("creature->GetMotionMaster()->MovePoint(0, x, y, z", cpp)
+        self.assertIn("run ? FORCED_MOVEMENT_RUN : FORCED_MOVEMENT_WALK", cpp)
+        self.assertIn("creature->GetMotionMaster()->MoveFollow(player, followDistance, followAngle)", cpp)
+        self.assertIn("creature->GetMotionMaster()->MoveIdle()", cpp)
+        self.assertIn("std::clamp<float>(followDistance, 0.5f, 30.0f)", cpp)
+
+    def test_priority_5_gameobject_cpp_uses_owned_object_guard_and_registers_handlers(self) -> None:
+        src = Path("native_modules/mod-wm-bridge/src")
+        cpp = (src / "wm_bridge_gameobject_actions.cpp").read_text(encoding="utf-8")
+        queue = (src / "wm_bridge_action_queue.cpp").read_text(encoding="utf-8")
+
+        for action_kind, execute_fn in (
+            ("gameobject_spawn", "ExecuteGameObjectSpawn"),
+            ("gameobject_despawn", "ExecuteGameObjectDespawn"),
+            ("gameobject_set_state", "ExecuteGameObjectSetState"),
+        ):
+            with self.subTest(action_kind=action_kind):
+                self.assertIn(f'registry.Register("{action_kind}", &{execute_fn})', cpp)
+
+        self.assertIn("RegisterWmBridgeGameObjectActions(r)", queue)
+        self.assertIn("ObjectType = 'gameobject'", cpp)
+        self.assertIn("OwnerPlayerGUID = {}", cpp)
+        self.assertIn("sObjectMgr->GetGameObjectTemplate(entry)", cpp)
+        self.assertIn("player->SummonGameObject(", cpp)
+        self.assertIn("gameObject->SetRespawnTime(0)", cpp)
+        self.assertIn("gameObject->Delete()", cpp)
+        self.assertIn("gameObject->SetGoState(state)", cpp)
+        self.assertIn("GO_STATE_ACTIVE_ALTERNATIVE", cpp)
+
+    def test_priority_6_close_gossip_cpp_registers_handler(self) -> None:
+        src = Path("native_modules/mod-wm-bridge/src")
+        cpp = (src / "wm_bridge_gossip_actions.cpp").read_text(encoding="utf-8")
+        queue = (src / "wm_bridge_action_queue.cpp").read_text(encoding="utf-8")
+
+        self.assertIn('registry.Register("player_close_gossip", &ExecutePlayerCloseGossip)', cpp)
+        self.assertIn("RegisterWmBridgeGossipActions(r)", queue)
+        self.assertIn("ResolveScopedOnlinePlayer", cpp)
+        self.assertIn("CloseGossipMenuFor(player)", cpp)
 
     def test_quest_add_cpp_matches_gm_add_semantics(self) -> None:
         cpp = Path("native_modules/mod-wm-bridge/src/wm_bridge_quest_actions.cpp").read_text(encoding="utf-8")

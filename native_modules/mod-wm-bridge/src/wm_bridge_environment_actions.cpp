@@ -495,6 +495,38 @@ namespace
         CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "chat_message_sent"));
         return true;
     }
+
+    bool ExecutePlayerPlaySound(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+        if (!player->GetSession())
+        {
+            CompleteAction(requestId, "failed", actionKind, ActionResultJson("failed", actionKind, "player_not_online", {}, {{"player_guid", playerGuid}}), "player_not_online");
+            return true;
+        }
+
+        uint32 soundId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"sound_id", "soundId"}, soundId) || soundId == 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_sound_id"), "missing_sound_id");
+            return true;
+        }
+        if (!sSoundEntriesStore.LookupEntry(soundId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_sound", {}, {{"sound_id", soundId}}), "invalid_sound");
+            return true;
+        }
+
+        WorldPacket data(SMSG_PLAY_SOUND, 4);
+        data << uint32(soundId);
+        player->SendDirectMessage(&data);
+        CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "sound_played", {}, {{"sound_id", soundId}, {"player_guid", playerGuid}}));
+        return true;
+    }
 }
 
 namespace WmBridge
@@ -505,6 +537,7 @@ namespace WmBridge
         registry.Register("world_announce_to_player", &ExecuteWorldAnnounceToPlayer);
         registry.Register("player_chat_message", &ExecutePlayerChatMessage);
         registry.Register("player_set_display_id", &ExecutePlayerSetDisplayId);
+        registry.Register("player_play_sound", &ExecutePlayerPlaySound);
     }
 
     void RefreshPlayerPerception(uint32 diff)

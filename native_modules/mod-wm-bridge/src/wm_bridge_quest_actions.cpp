@@ -97,6 +97,165 @@ namespace
         WmBridge::EmitEvent(row);
     }
 
+    bool ResolveCounterKey(std::string const& payloadJson, std::string& counterKey, std::string& errorText)
+    {
+        counterKey = ExtractJsonStringField(payloadJson, "counter_key");
+        if (counterKey.empty())
+        {
+            counterKey = ExtractJsonStringField(payloadJson, "counterKey");
+        }
+        if (counterKey.empty())
+        {
+            errorText = "missing_counter_key";
+            return false;
+        }
+        if (counterKey.size() > 128)
+        {
+            errorText = "counter_key_too_long";
+            return false;
+        }
+
+        return true;
+    }
+
+    std::string ExtractArcKey(std::string const& payloadJson)
+    {
+        std::string arcKey = ExtractJsonStringField(payloadJson, "arc_key");
+        if (arcKey.empty())
+        {
+            arcKey = ExtractJsonStringField(payloadJson, "arcKey");
+        }
+        if (arcKey.size() > 128)
+        {
+            arcKey.resize(128);
+        }
+        return arcKey;
+    }
+
+    int32 ReadCounterValue(uint32 playerGuid, std::string const& counterKey)
+    {
+        QueryResult result = WorldDatabase.Query(
+            "SELECT CounterValue FROM wm_bridge_counter WHERE PlayerGUID = {} AND CounterKey = {} LIMIT 1",
+            playerGuid,
+            SqlString(counterKey));
+        return result ? result->Fetch()[0].Get<int32>() : 0;
+    }
+
+    bool ExecuteWmCounterSet(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        std::string counterKey;
+        std::string errorText;
+        if (!ResolveCounterKey(payloadJson, counterKey, errorText))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, errorText), errorText);
+            return true;
+        }
+
+        int32 value = 0;
+        if (!TryExtractAnyInt32Field(payloadJson, {"value", "counter_value", "counterValue"}, value))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_counter_value"), "missing_counter_value");
+            return true;
+        }
+
+        std::string arcKey = ExtractArcKey(payloadJson);
+        WorldDatabase.DirectExecute(
+            "INSERT INTO wm_bridge_counter (PlayerGUID, CounterKey, CounterValue, ArcKey, MetadataJSON) "
+            "VALUES ({}, {}, {}, {}, {}) "
+            "ON DUPLICATE KEY UPDATE CounterValue = VALUES(CounterValue), ArcKey = VALUES(ArcKey), MetadataJSON = VALUES(MetadataJSON), UpdatedAt = CURRENT_TIMESTAMP",
+            playerGuid,
+            SqlString(counterKey),
+            value,
+            arcKey.empty() ? "NULL" : SqlString(arcKey),
+            SqlString(payloadJson));
+
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson("done", actionKind, "counter_set", {{"counter_key", counterKey}, {"arc_key", arcKey}}, {{"player_guid", playerGuid}, {"value", value}}));
+        return true;
+    }
+
+    bool ExecuteWmCounterIncrement(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        std::string counterKey;
+        std::string errorText;
+        if (!ResolveCounterKey(payloadJson, counterKey, errorText))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, errorText), errorText);
+            return true;
+        }
+
+        int32 delta = 1;
+        TryExtractAnyInt32Field(payloadJson, {"delta", "value"}, delta);
+        if (delta == 0)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "zero_counter_delta"), "zero_counter_delta");
+            return true;
+        }
+
+        std::string arcKey = ExtractArcKey(payloadJson);
+        WorldDatabase.DirectExecute(
+            "INSERT INTO wm_bridge_counter (PlayerGUID, CounterKey, CounterValue, ArcKey, MetadataJSON) "
+            "VALUES ({}, {}, {}, {}, {}) "
+            "ON DUPLICATE KEY UPDATE CounterValue = CounterValue + VALUES(CounterValue), ArcKey = VALUES(ArcKey), MetadataJSON = VALUES(MetadataJSON), UpdatedAt = CURRENT_TIMESTAMP",
+            playerGuid,
+            SqlString(counterKey),
+            delta,
+            arcKey.empty() ? "NULL" : SqlString(arcKey),
+            SqlString(payloadJson));
+
+        int32 value = ReadCounterValue(playerGuid, counterKey);
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson("done", actionKind, "counter_incremented", {{"counter_key", counterKey}, {"arc_key", arcKey}}, {{"player_guid", playerGuid}, {"delta", delta}, {"value", value}}));
+        return true;
+    }
+
+    bool ExecuteWmCounterClear(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        std::string counterKey;
+        std::string errorText;
+        if (!ResolveCounterKey(payloadJson, counterKey, errorText))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, errorText), errorText);
+            return true;
+        }
+
+        WorldDatabase.DirectExecute(
+            "DELETE FROM wm_bridge_counter WHERE PlayerGUID = {} AND CounterKey = {}",
+            playerGuid,
+            SqlString(counterKey));
+
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson("done", actionKind, "counter_cleared", {{"counter_key", counterKey}}, {{"player_guid", playerGuid}}));
+        return true;
+    }
+
     bool ExecuteQuestRemove(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
     {
         Player* player = nullptr;
@@ -251,6 +410,135 @@ namespace
         CompleteAction(requestId, "done", actionKind, ResultJson("done", actionKind, "quest_added"));
         return true;
     }
+
+    bool ExecuteQuestComplete(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        uint32 questId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"quest_id", "questId", "entry"}, questId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_quest_id"), "missing_quest_id");
+            return true;
+        }
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_quest", {}, {{"quest_id", questId}}), "invalid_quest");
+            return true;
+        }
+
+        bool adminOverride = false;
+        TryExtractAnyBoolField(payloadJson, {"admin_override", "adminOverride"}, adminOverride);
+        if (!adminOverride)
+        {
+            QueryResult reservedQuest = WorldDatabase.Query(
+                "SELECT ReservedID FROM wm_reserved_slot WHERE EntityType = 'quest' AND ReservedID = {} LIMIT 1",
+                questId);
+            if (!reservedQuest)
+            {
+                CompleteAction(
+                    requestId,
+                    "rejected",
+                    actionKind,
+                    ActionResultJson("rejected", actionKind, "non_managed_quest_complete_denied", {}, {{"quest_id", questId}, {"player_guid", playerGuid}}),
+                    "non_managed_quest_complete_denied");
+                return true;
+            }
+        }
+
+        QuestStatus beforeStatus = player->GetQuestStatus(questId);
+        if (beforeStatus == QUEST_STATUS_NONE)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "quest_not_active", {}, {{"quest_id", questId}, {"player_guid", playerGuid}}), "quest_not_active");
+            return true;
+        }
+        if (beforeStatus == QUEST_STATUS_REWARDED)
+        {
+            CompleteAction(requestId, "done", actionKind, ActionResultJson("done", actionKind, "quest_already_rewarded", {}, {{"quest_id", questId}, {"player_guid", playerGuid}}));
+            return true;
+        }
+
+        player->CompleteQuest(questId);
+        QuestStatus afterStatus = player->GetQuestStatus(questId);
+        player->SaveToDB(false, false);
+
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                afterStatus == QUEST_STATUS_COMPLETE ? "quest_completed" : "quest_not_completed",
+                {},
+                {{"quest_id", questId}, {"player_guid", playerGuid}, {"before_status", static_cast<long long>(beforeStatus)}, {"after_status", static_cast<long long>(afterStatus)}}));
+        return true;
+    }
+
+    bool ExecuteQuestFail(uint64 requestId, uint32 playerGuid, std::string const& actionKind, std::string const& payloadJson)
+    {
+        Player* player = nullptr;
+        if (!ResolveScopedOnlinePlayer(requestId, playerGuid, actionKind, payloadJson, player))
+        {
+            return true;
+        }
+
+        uint32 questId = 0;
+        if (!TryExtractAnyUInt32Field(payloadJson, {"quest_id", "questId", "entry"}, questId))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "missing_quest_id"), "missing_quest_id");
+            return true;
+        }
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_quest", {}, {{"quest_id", questId}}), "invalid_quest");
+            return true;
+        }
+
+        bool adminOverride = false;
+        TryExtractAnyBoolField(payloadJson, {"admin_override", "adminOverride"}, adminOverride);
+        if (!adminOverride)
+        {
+            QueryResult reservedQuest = WorldDatabase.Query(
+                "SELECT ReservedID FROM wm_reserved_slot WHERE EntityType = 'quest' AND ReservedID = {} LIMIT 1",
+                questId);
+            if (!reservedQuest)
+            {
+                CompleteAction(
+                    requestId,
+                    "rejected",
+                    actionKind,
+                    ActionResultJson("rejected", actionKind, "non_managed_quest_fail_denied", {}, {{"quest_id", questId}, {"player_guid", playerGuid}}),
+                    "non_managed_quest_fail_denied");
+                return true;
+            }
+        }
+
+        QuestStatus beforeStatus = player->GetQuestStatus(questId);
+        player->FailQuest(questId);
+        QuestStatus afterStatus = player->GetQuestStatus(questId);
+        player->SaveToDB(false, false);
+
+        CompleteAction(
+            requestId,
+            "done",
+            actionKind,
+            ActionResultJson(
+                "done",
+                actionKind,
+                afterStatus == QUEST_STATUS_FAILED ? "quest_failed" : "quest_not_failed",
+                {},
+                {{"quest_id", questId}, {"player_guid", playerGuid}, {"before_status", static_cast<long long>(beforeStatus)}, {"after_status", static_cast<long long>(afterStatus)}}));
+        return true;
+    }
 }
 
 namespace WmBridge
@@ -259,5 +547,10 @@ namespace WmBridge
     {
         registry.Register("quest_add", &ExecuteQuestAdd);
         registry.Register("quest_remove", &ExecuteQuestRemove);
+        registry.Register("quest_complete", &ExecuteQuestComplete);
+        registry.Register("quest_fail", &ExecuteQuestFail);
+        registry.Register("wm_counter_set", &ExecuteWmCounterSet);
+        registry.Register("wm_counter_increment", &ExecuteWmCounterIncrement);
+        registry.Register("wm_counter_clear", &ExecuteWmCounterClear);
     }
 }
