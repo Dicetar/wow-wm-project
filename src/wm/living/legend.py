@@ -1,8 +1,9 @@
 """Local Legend — a zone remembers the player and marks them.
 
 Trigger: zone deed count crosses tiered thresholds. Decision: pick the tier
-(title + proclamation + rumor letter). Native: world_announce_to_player
-(implemented) + player_add_title + player_send_mail (Batch 2, lab-gated).
+(title + proclamation + rumor letter). Native: world_announce_to_player and
+player_add_title + player_send_mail are implemented, policy-gated, and still
+need live proof before WORKING status.
 Reward: a CharTitles title and a mailed letter, recorded as a journey
 reward_instance at install. Dry-run scaffold; never submits.
 """
@@ -126,7 +127,7 @@ def build_legend_plan(trigger: LegendTrigger, tier: LegendTier) -> tuple[LegendP
         reward_refs=[f"title:{tier.title_id}", f"zone_legend:{trigger.zone_name}:{tier.tier_name}"],
         native_readiness=_readiness(
             [s["native_action_kind"] for s in steps],
-            "announce implemented; title/mail are Batch-2 lab-gated.",
+            "announce/title/mail implemented; policy and live proof still gate WORKING status.",
         ),
     )
     return plan, issues

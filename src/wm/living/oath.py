@@ -2,8 +2,8 @@
 
 Trigger: player accepts an oath (a tracked constraint with a target). State:
 a hidden WM counter. Outcomes: kept -> reward ref; broken -> quest_fail +
-counter clear. Native: wm_counter_set/clear, quest_fail (Batch 3, lab-gated)
-+ world_announce_to_player (implemented). Dry-run scaffold; never submits.
+counter clear. Native: wm_counter_set/clear, quest_fail, and
+world_announce_to_player are implemented. Dry-run scaffold; never submits.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ def _readiness(kinds: list[str]) -> dict[str, Any]:
         "implemented": impl,
         "not_implemented": pending,
         "live_ready": not pending,
-        "note": "announce implemented; wm_counter_*/quest_fail are Batch-3 lab-gated.",
+        "note": "announce/counter/quest_fail implemented; live_ready follows the native action catalog.",
     }
 
 

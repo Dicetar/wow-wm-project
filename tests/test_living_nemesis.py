@@ -72,13 +72,13 @@ class NemesisPlanContractTests(unittest.TestCase):
         ):
             self.assertIn(expected, kinds)
 
-    def test_native_readiness_reports_pending_cpp_honestly(self) -> None:
+    def test_native_readiness_reports_live_scene_ready(self) -> None:
         plan, _ = build_nemesis_plan(_trigger(12))
         nr = plan.native_readiness
-        # creature_spawn is implemented today; the rest are lab-gated.
-        self.assertIn("creature_spawn", nr["implemented"])
-        self.assertIn("creature_set_name", nr["not_implemented"])
-        self.assertFalse(nr["live_ready"])
+        self.assertEqual(nr["not_implemented"], [])
+        self.assertTrue(nr["live_ready"])
+        for step in plan.scene_steps:
+            self.assertIn(step["native_action_kind"], nr["implemented"])
 
     def test_revenge_bounty_spec_shape(self) -> None:
         plan, _ = build_nemesis_plan(_trigger(11))

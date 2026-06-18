@@ -36,8 +36,10 @@ class LegendTests(unittest.TestCase):
         plan, _ = build_legend_plan(_t(80), LegendConfig().tiers[2])
         nr = plan.native_readiness
         self.assertIn("world_announce_to_player", nr["implemented"])
-        self.assertIn("player_add_title", nr["not_implemented"])
-        self.assertFalse(nr["live_ready"])
+        self.assertIn("player_add_title", nr["implemented"])
+        self.assertIn("player_send_mail", nr["implemented"])
+        self.assertEqual(nr["not_implemented"], [])
+        self.assertTrue(nr["live_ready"])
 
     def test_reward_refs_and_json(self) -> None:
         d = evaluate_legend(_t(40))

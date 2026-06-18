@@ -1,8 +1,8 @@
 """Patron / Favor — a WM-owned patron whose favor rises with completed WM work.
 
 Trigger: count of completed WM arcs/bounties. Decision: compute favor tier.
-Native: wm_counter_set (favor state, Batch 3, lab-gated) + world_announce_to_player
-(implemented). Reward: tiered reward refs (item/shell), allocated from fresh
+Native: wm_counter_set (favor state) + world_announce_to_player (implemented).
+Reward: tiered reward refs (item/shell), allocated from fresh
 reserved slots at install. Dry-run scaffold; never submits.
 """
 
@@ -84,7 +84,7 @@ def _readiness(kinds: list[str]) -> dict[str, Any]:
         "implemented": impl,
         "not_implemented": pending,
         "live_ready": not pending,
-        "note": "announce implemented; wm_counter_set is Batch-3 lab-gated.",
+        "note": "announce/counter implemented; live_ready follows the native action catalog.",
     }
 
 

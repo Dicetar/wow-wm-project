@@ -8,8 +8,7 @@ Reward: a one-target revenge bounty whose completion feeds an arc reward.
 
 This module is a scaffold: it produces a *validated plan* and never mutates.
 Every native step is checked against the enforced payload contracts, so the
-plan is provably well-formed even though several Batch-1 C++ bodies are still
-`not_implemented` (lab-gated, per docs/NATIVE_CAPABILITY_EXPANSION_V1.md).
+plan is provably well-formed before the executor submits the live scene.
 """
 
 from __future__ import annotations
@@ -93,7 +92,7 @@ def _native_readiness(step_kinds: list[str]) -> dict[str, Any]:
         "implemented": impl,
         "not_implemented": pending,
         "live_ready": not pending,
-        "note": "Scene is contract-valid; not_implemented verbs are lab-gated C++ work.",
+        "note": "Scene is contract-valid; live_ready follows the native action catalog.",
     }
 
 

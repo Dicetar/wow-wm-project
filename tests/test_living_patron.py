@@ -32,8 +32,9 @@ class PatronTests(unittest.TestCase):
             self.assertEqual(
                 validate_native_action_payload(action_kind=step["native_action_kind"], payload=step["payload"]), []
             )
-        self.assertIn("wm_counter_set", plan.native_readiness["not_implemented"])
-        self.assertFalse(plan.native_readiness["live_ready"])
+        self.assertIn("wm_counter_set", plan.native_readiness["implemented"])
+        self.assertEqual(plan.native_readiness["not_implemented"], [])
+        self.assertTrue(plan.native_readiness["live_ready"])
 
     def test_json(self) -> None:
         json.dumps(evaluate_patron(PatronTrigger(5406, "Jecia", 20)).to_dict())

@@ -43,6 +43,7 @@ class OathTests(unittest.TestCase):
         d = evaluate_oath(_t(phase="resolve", current_count=5, oath_quest_id=910500))
         self.assertEqual(d.plan.outcome, "broken")
         self.assertIn("quest_fail", [s["native_action_kind"] for s in d.plan.scene_steps])
+        self.assertTrue(d.plan.native_readiness["live_ready"])
         self.assertEqual(d.plan.reward_refs, [])
         _assert_contract_valid(d.plan)
 
