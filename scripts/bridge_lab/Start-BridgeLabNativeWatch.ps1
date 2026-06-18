@@ -106,7 +106,8 @@ $argumentsLiteral = @(
     "'--interval-seconds'",
     (Convert-ToPsLiteral ([string]$IntervalSeconds)),
     "'--batch-size'",
-    (Convert-ToPsLiteral ([string]$BatchSize))
+    (Convert-ToPsLiteral ([string]$BatchSize)),
+    "'--client-patch-on-close'"
 )
 if ($Mode -eq "apply") {
     $argumentsLiteral += "'--confirm-live-apply'"
@@ -212,6 +213,7 @@ $metadata = @{
     arm_from_end = [bool]$ArmFromEnd.IsPresent
     mark_existing_evaluated_on_arm = [bool]$MarkExistingEvaluatedOnArm.IsPresent
     print_idle = [bool]$PrintIdle.IsPresent
+    client_patch_on_close = $true
     reactive_auto_bounty_enabled = [bool]$EnableReactiveAutoBounty.IsPresent
     quest_grant_transport = $QuestGrantTransport
     stdout_log = $paths.Stdout
