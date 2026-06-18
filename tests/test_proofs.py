@@ -150,6 +150,74 @@ def test_chat_action_packet_passes_with_chat_deed_and_verification(tmp_path):
     }
 
 
+def test_chat_action_packet_ignores_evidence_before_runtime_window(tmp_path):
+    runtime = _live_runtime(tmp_path, started_at="2026-01-02T00:00:00Z")
+    store = AutoplayStateStore(tmp_path / ".wm-bootstrap" / "state" / "autoplay")
+    store.append_journal("chat", {"at": "2026-01-01T23:59:00Z", "player_guid": 5408, "message": "heal me"})
+    store.append_journal("deed", {
+        "at": "2026-01-01T23:59:30Z",
+        "player_guid": 5408,
+        "verb": "player_restore_health_power",
+        "verification": {"status": "verified", "ok": True},
+    })
+
+    record = run_proof_packet(
+        proof_kind="chat_action",
+        project_root=tmp_path,
+        player_guid=5408,
+        runtime_status=runtime,
+    )
+
+    assert record["status"] == "manual_required"
+    assert record["evidence_window"]["since"] == "2026-01-02T00:00:00Z"
+    assert {check["name"]: check["status"] for check in record["evidence_checks"]} == {
+        "journal:chat": "PENDING",
+        "journal:intent_or_deed": "PENDING",
+        "verification:latest": "PENDING",
+    }
+
+    store.append_journal("chat", {"at": "2026-01-02T00:00:01Z", "player_guid": 5408, "message": "heal me"})
+    store.append_journal("deed", {
+        "at": "2026-01-02T00:00:02Z",
+        "player_guid": 5408,
+        "verb": "player_restore_health_power",
+        "verification": {"status": "verified", "ok": True},
+    })
+
+    record = run_proof_packet(
+        proof_kind="chat_action",
+        project_root=tmp_path,
+        player_guid=5408,
+        runtime_status=runtime,
+    )
+
+    assert record["status"] == "passed"
+
+
+def test_chat_action_packet_requires_freshness_window_before_accepting_evidence(tmp_path):
+    runtime = _live_runtime(tmp_path, started_at=None)
+    store = AutoplayStateStore(tmp_path / ".wm-bootstrap" / "state" / "autoplay")
+    store.append_journal("chat", {"player_guid": 5408, "message": "heal me"})
+    store.append_journal("deed", {
+        "player_guid": 5408,
+        "verb": "player_restore_health_power",
+        "verification": {"status": "verified", "ok": True},
+    })
+
+    record = run_proof_packet(
+        proof_kind="chat_action",
+        project_root=tmp_path,
+        player_guid=5408,
+        runtime_status=runtime,
+    )
+
+    assert record["status"] == "manual_required"
+    assert record["evidence_window"]["since"] is None
+    assert record["evidence_window"]["basis"] == "unavailable"
+    assert all(check["status"] == "PENDING" for check in record["evidence_checks"])
+    assert all("Fresh evidence window is unavailable" in check["detail"] for check in record["evidence_checks"])
+
+
 def test_memory_packet_waits_for_later_chat_turn(tmp_path):
     runtime = _live_runtime(tmp_path)
     store = AutoplayStateStore(tmp_path / ".wm-bootstrap" / "state" / "autoplay")
@@ -186,6 +254,32 @@ def test_memory_packet_waits_for_later_chat_turn(tmp_path):
     assert record["status"] == "passed"
 
 
+def test_memory_packet_compares_later_chat_timestamps_by_instant(tmp_path):
+    runtime = _live_runtime(tmp_path, started_at="2025-12-31T21:00:00Z")
+    store = AutoplayStateStore(tmp_path / ".wm-bootstrap" / "state" / "autoplay")
+    store.append_journal("conversation_memory", {
+        "at": "2026-01-01T01:00:00+03:00",
+        "player_guid": 5408,
+        "ok": True,
+        "note": {"summary": "call player Ash"},
+    })
+    store.append_journal("chat", {
+        "at": "2025-12-31T22:30:00Z",
+        "player_guid": 5408,
+        "message": "what now?",
+        "reply": {"message": "Ash, follow the road."},
+    })
+
+    record = run_proof_packet(
+        proof_kind="memory",
+        project_root=tmp_path,
+        player_guid=5408,
+        runtime_status=runtime,
+    )
+
+    assert record["status"] == "passed"
+
+
 def test_scene_packet_passes_with_cleanup_evidence(tmp_path):
     runtime = _live_runtime(tmp_path)
     store = AutoplayStateStore(tmp_path / ".wm-bootstrap" / "state" / "autoplay")
@@ -209,15 +303,15 @@ def test_scene_packet_passes_with_cleanup_evidence(tmp_path):
     assert any(check["name"] == "scene:cleanup" and check["status"] == "PASS" for check in record["evidence_checks"])
 
 
-def _live_runtime(tmp_path):
+def _live_runtime(tmp_path, *, started_at: str | None = "2026-01-01T00:00:00Z"):
     processes = [
-        RuntimeProcess(pid=1, parent_pid=None, name="mysqld.exe", command_line=""),
-        RuntimeProcess(pid=2, parent_pid=None, name="mysqld.exe", command_line=""),
-        RuntimeProcess(pid=3, parent_pid=None, name="authserver.exe", command_line=""),
-        RuntimeProcess(pid=4, parent_pid=None, name="worldserver.exe", command_line=""),
-        RuntimeProcess(pid=5, parent_pid=None, name="python.exe", command_line="python -m wm.events.watch --adapter native_bridge"),
-        RuntimeProcess(pid=6, parent_pid=None, name="python.exe", command_line="python -m wm.panel serve"),
-        RuntimeProcess(pid=7, parent_pid=None, name="python.exe", command_line="python -m wm.autoplay run"),
+        RuntimeProcess(pid=1, parent_pid=None, name="mysqld.exe", command_line="", started_at=started_at),
+        RuntimeProcess(pid=2, parent_pid=None, name="mysqld.exe", command_line="", started_at=started_at),
+        RuntimeProcess(pid=3, parent_pid=None, name="authserver.exe", command_line="", started_at=started_at),
+        RuntimeProcess(pid=4, parent_pid=None, name="worldserver.exe", command_line="", started_at=started_at),
+        RuntimeProcess(pid=5, parent_pid=None, name="python.exe", command_line="python -m wm.events.watch --adapter native_bridge", started_at=started_at),
+        RuntimeProcess(pid=6, parent_pid=None, name="python.exe", command_line="python -m wm.panel serve", started_at=started_at),
+        RuntimeProcess(pid=7, parent_pid=None, name="python.exe", command_line="python -m wm.autoplay run", started_at=started_at),
     ]
     return collect_runtime_status(
         project_root=tmp_path,

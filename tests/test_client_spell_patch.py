@@ -57,7 +57,11 @@ RECORD_SIZE = FIELD_COUNT * 4
 RANGED_WEAPON_SUBCLASS_MASK = 0x0005000C
 
 
-def _write_test_spell_dbc(path: Path, spell_ids: list[int]) -> None:
+def _write_test_spell_dbc(
+    path: Path,
+    spell_ids: list[int],
+    field_overrides_by_spell_id: dict[int, dict[int, int]] | None = None,
+) -> None:
     string_block = b"\x00"
     records = bytearray()
     for spell_id in spell_ids:
@@ -85,6 +89,8 @@ def _write_test_spell_dbc(path: Path, spell_ids: list[int]) -> None:
             fields[EFFECT_BASE_POINTS_1_FIELD] = 1
             fields[EFFECT_APPLY_AURA_NAME_1_FIELD] = 42
             fields[EFFECT_MISC_VALUE_1_FIELD] = 90
+        for field_index, value in (field_overrides_by_spell_id or {}).get(spell_id, {}).items():
+            fields[field_index] = int(value)
         records.extend(struct.pack("<" + "I" * FIELD_COUNT, *fields))
     header = struct.pack("<4s4I", b"WDBC", len(spell_ids), FIELD_COUNT, RECORD_SIZE, len(string_block))
     path.write_bytes(header + bytes(records) + string_block)
@@ -176,6 +182,50 @@ def test_materialize_client_spell_dbc_uses_client_seed_and_named_text(tmp_path: 
     assert _string_at(string_block, fields[SPELL_NAME_START_FIELD]) == "Bonebound Alpha"
     assert "WM-controlled bleed" in _string_at(string_block, fields[SPELL_DESCRIPTION_START_FIELD])
     assert "WM-controlled bleed" in _string_at(string_block, fields[SPELL_TOOLTIP_START_FIELD])
+
+
+def test_materialize_client_spell_dbc_clears_native_class_static_cooldowns(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.dbc"
+    out_path = tmp_path / "out.dbc"
+    exorcism_spell_id = 48801
+    generic_spell_id = 33333
+    _write_test_spell_dbc(
+        source_path,
+        [*CLIENT_SEED_TEMPLATE_SOURCE_SPELL_IDS.values(), exorcism_spell_id, generic_spell_id],
+        field_overrides_by_spell_id={
+            exorcism_spell_id: {
+                SPELL_FAMILY_NAME_FIELD: 10,
+                RECOVERY_TIME_FIELD: 0,
+                CATEGORY_RECOVERY_TIME_FIELD: 15000,
+                START_RECOVERY_CATEGORY_FIELD: 133,
+                START_RECOVERY_TIME_FIELD: 1500,
+            },
+            generic_spell_id: {
+                SPELL_FAMILY_NAME_FIELD: 0,
+                RECOVERY_TIME_FIELD: 0,
+                CATEGORY_RECOVERY_TIME_FIELD: 15000,
+                START_RECOVERY_CATEGORY_FIELD: 133,
+                START_RECOVERY_TIME_FIELD: 1500,
+            },
+        },
+    )
+
+    materialize_client_spell_dbc(
+        source_dbc=source_path,
+        out=out_path,
+        include="named",
+        spell_ids=[940001],
+    )
+
+    exorcism_fields, _ = _record_fields(out_path, exorcism_spell_id)
+    assert exorcism_fields[RECOVERY_TIME_FIELD] == 0
+    assert exorcism_fields[CATEGORY_RECOVERY_TIME_FIELD] == 0
+    assert exorcism_fields[START_RECOVERY_CATEGORY_FIELD] == 133
+    assert exorcism_fields[START_RECOVERY_TIME_FIELD] == 1500
+
+    generic_fields, _ = _record_fields(out_path, generic_spell_id)
+    assert generic_fields[RECOVERY_TIME_FIELD] == 0
+    assert generic_fields[CATEGORY_RECOVERY_TIME_FIELD] == 15000
 
 
 def test_materialize_client_spell_dbc_applies_stasis_reagent_presentation(tmp_path: Path) -> None:

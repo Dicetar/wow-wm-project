@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import replace
 from datetime import datetime
@@ -60,6 +61,36 @@ class AutoplayRuntimeConfig:
     llm_base_url: str | None = None
 
 
+@contextmanager
+def _runtime_env_for_config(config: AutoplayRuntimeConfig):
+    bridge_lab_root = config.project_root.parent / "WM_BridgeLab"
+    bridge_config = bridge_lab_root / "run" / "configs" / "modules" / "mod_wm_bridge.conf"
+    updates = {
+        "WM_WORLD_DB_PORT": str(config.bridge_lab_mysql_port),
+        "WM_CHAR_DB_PORT": str(config.bridge_lab_mysql_port),
+        "WM_SOAP_PORT": str(config.soap_port),
+        "WM_BRIDGELAB_DIR": str(bridge_lab_root),
+        "WM_QUEST_GRANT_TRANSPORT": "auto",
+    }
+    if bridge_config.exists():
+        updates["WM_BRIDGE_CONFIG_PATH"] = str(bridge_config)
+    previous = {key: os.environ.get(key) for key in updates}
+    try:
+        os.environ.update(updates)
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _settings_from_config(config: AutoplayRuntimeConfig) -> Settings:
+    with _runtime_env_for_config(config):
+        return Settings.from_env()
+
+
 class AutoplayService:
     def __init__(
         self,
@@ -86,12 +117,12 @@ class AutoplayService:
 
         stop_requested = bool(command.get("stop_requested") or status.get("stop_requested"))
         paused = bool(command.get("paused") or status.get("paused"))
-        settings = Settings.from_env()
+        settings = _settings_from_config(config)
         readiness = self._readiness(settings)
         session = self._active_session(config=config)
         llm_enabled = bool(control_config.get("llm_enabled", True))
         llm = self._llm_health(control_config) if llm_enabled else _disabled_llm_status(control_config)
-        safe_window = self._safe_window(session=session)
+        safe_window = self._safe_window(settings=settings, session=session)
         generation_results: list[dict[str, Any]] = []
         apply_results: list[dict[str, Any]] = []
         if not stop_requested and not paused and llm_enabled:
@@ -506,7 +537,7 @@ class AutoplayService:
         control_config = _merged_control_config(config=config, status=status, command=command)
         if lane:
             control_config["llm_lanes"] = [str(lane)]
-        settings = Settings.from_env()
+        settings = _settings_from_config(config)
         readiness = self._readiness(settings)
         session = self._active_session(config=config)
         llm = self._llm_health(control_config)
@@ -551,7 +582,7 @@ class AutoplayService:
         command = self.store.load_command()
         status = self.store.load_status()
         control_config = _merged_control_config(config=config, status=status, command=command)
-        settings = Settings.from_env()
+        settings = _settings_from_config(config)
         readiness = self._readiness(settings)
         session = self._active_session(config=config)
         llm = self._llm_health(control_config)
@@ -1680,10 +1711,10 @@ class AutoplayService:
                 results.append({**base_result, "status": "parked", "apply": apply_payload, "issue": _compact_store_result(issue)})
         return results
 
-    def _safe_window(self, *, session: dict[str, Any] | None) -> SafeWindow:
+    def _safe_window(self, *, settings: Settings, session: dict[str, Any] | None) -> SafeWindow:
         return SafeWindow(
             client_running=_wow_client_running(),
-            scoped_player_online=_is_scoped_player_online(session),
+            scoped_player_online=_is_scoped_player_online(settings=settings, session=session),
         )
 
     def _start_watcher(self, config: AutoplayRuntimeConfig) -> None:
@@ -1945,6 +1976,8 @@ def drive_pending_runtime(
 
 def _config_to_dict(config: AutoplayRuntimeConfig) -> dict[str, Any]:
     return {
+        "bridge_lab_mysql_port": int(config.bridge_lab_mysql_port),
+        "soap_port": int(config.soap_port),
         "llm_enabled": bool(config.llm_enabled),
         "llm_chat_enabled": bool(config.llm_chat_enabled),
         "llm_lanes": list(config.llm_lanes),
@@ -2973,6 +3006,7 @@ def status_summary(status: dict[str, Any]) -> str:
     readiness = status.get("readiness") or {}
     llm = status.get("llm") or {}
     session = status.get("active_session") or {}
+    safe_window = status.get("safe_window") or {}
     counters = status.get("counters") or {}
     config = status.get("config") or {}
     return " ".join(
@@ -2981,6 +3015,8 @@ def status_summary(status: dict[str, Any]) -> str:
             f"running={str(bool(status.get('running'))).lower()}",
             f"paused={str(bool(status.get('paused'))).lower()}",
             f"player_guid={session.get('character_guid') or '(none)'}",
+            f"client_running={str(bool(safe_window.get('client_running'))).lower()}",
+            f"scoped_player_online={str(bool(safe_window.get('scoped_player_online'))).lower()}",
             f"readiness={str(bool(readiness.get('ok'))).lower()}",
             f"llm={str(bool(llm.get('ok'))).lower()}",
             f"model={llm.get('model') or config.get('llm_model') or '(none)'}",
@@ -3032,11 +3068,29 @@ def _wow_client_running() -> bool:
     return "wow.exe" in (completed.stdout or "").lower()
 
 
-def _is_scoped_player_online(session: dict[str, Any] | None) -> bool:
-    # DB-backed online checks are intentionally not hidden in this helper. The
-    # first safe default is "client process running means not a DBC-safe window";
-    # a future BridgeLab-specific implementation can add character.online reads.
-    return False if session is None else False
+def _is_scoped_player_online(*, settings: Settings, session: dict[str, Any] | None) -> bool:
+    guid = _int_or_none((session or {}).get("character_guid"))
+    if guid is None:
+        return False
+    try:
+        from wm.db.mysql_cli import MysqlCliClient
+
+        rows = MysqlCliClient().query(
+            host=settings.char_db_host,
+            port=settings.char_db_port,
+            user=settings.char_db_user,
+            password=settings.char_db_password,
+            database=settings.char_db_name,
+            sql=f"SELECT online FROM characters WHERE guid = {int(guid)} LIMIT 1",
+        )
+    except Exception:
+        return False
+    if not rows:
+        return False
+    try:
+        return int(rows[0].get("online") or 0) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _schema_from_proposal(proposal: Any) -> str:

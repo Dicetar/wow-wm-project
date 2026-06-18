@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from dataclasses import replace
 import json
 import sys
 from pathlib import Path
@@ -31,6 +32,10 @@ from wm.runtime_sync.soap import SoapRuntimeClient
 WORKING = "WORKING"
 UNKNOWN = "UNKNOWN"
 FAIL = "FAIL"
+PROFILE_ENV = "env"
+PROFILE_BRIDGELAB = "bridgelab"
+BRIDGELAB_DB_PORT = 33307
+BRIDGELAB_SOAP_PORT = 7879
 
 # WM-owned tables that bootstrap SQL is responsible for. Missing tables here is
 # the single most common "exists in DB but fails in-game" precondition the
@@ -60,6 +65,31 @@ class CheckResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "status": self.status, "detail": self.detail}
+
+
+def settings_for_profile(settings: Settings, profile: str = PROFILE_ENV) -> Settings:
+    normalized = (profile or PROFILE_ENV).strip().lower()
+    if normalized == PROFILE_ENV:
+        return settings
+    if normalized == PROFILE_BRIDGELAB:
+        return replace(
+            settings,
+            world_db_host="127.0.0.1",
+            world_db_port=BRIDGELAB_DB_PORT,
+            world_db_user="acore",
+            world_db_password="acore",
+            char_db_host="127.0.0.1",
+            char_db_port=BRIDGELAB_DB_PORT,
+            char_db_user="acore",
+            char_db_password="acore",
+            soap_enabled=True,
+            soap_host="127.0.0.1",
+            soap_port=BRIDGELAB_SOAP_PORT,
+            soap_user="soap",
+            soap_password="soap",
+            soap_path="/",
+        )
+    raise ValueError(f"unknown doctor profile: {profile}")
 
 
 def _db_check(
@@ -231,16 +261,29 @@ def _exit_code(results: list[CheckResult]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="wm doctor", description="Report WM live readiness in one command.")
+    parser.add_argument(
+        "--profile",
+        choices=[PROFILE_ENV, PROFILE_BRIDGELAB],
+        default=PROFILE_ENV,
+        help="settings profile to check; env preserves WM_* environment values, bridgelab uses launcher ports",
+    )
+    parser.add_argument(
+        "--bridgelab",
+        dest="profile",
+        action="store_const",
+        const=PROFILE_BRIDGELAB,
+        help="shortcut for --profile bridgelab",
+    )
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--summary", action="store_true", help="print one summary line per check")
     args = parser.parse_args(argv)
 
-    settings = Settings.from_env()
+    settings = settings_for_profile(Settings.from_env(), args.profile)
     results = run_doctor(settings)
     code = _exit_code(results)
 
     if args.json:
-        print(json.dumps({"ok": code == 0, "checks": [r.to_dict() for r in results]}, indent=2))
+        print(json.dumps({"ok": code == 0, "profile": args.profile, "checks": [r.to_dict() for r in results]}, indent=2))
         return code
 
     width = max(len(r.name) for r in results)

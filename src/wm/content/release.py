@@ -259,11 +259,11 @@ _SCENE_ALLOWED_ACTION_KINDS = {
     "creature_cast_spell",
     "creature_set_display_id",
     "creature_set_scale",
+    "gameobject_spawn",
+    "gameobject_despawn",
+    "gameobject_set_state",
 }
 _SCENE_UNSUPPORTED_MESSAGES = {
-    "gameobject_spawn": "Gameobject scene releases are blocked until native gameobject_spawn is implemented and live-proven.",
-    "gameobject_despawn": "Gameobject scene releases are blocked until native gameobject_despawn is implemented and live-proven.",
-    "gameobject_set_state": "Gameobject scene releases are blocked until native gameobject_set_state is implemented and live-proven.",
     "zone_set_weather": "Real weather releases are blocked until zone_set_weather is implemented and live-proven; use visible aura/announcement/actor fallback scenes for now.",
     "zone_clear_weather_override": "Real weather releases are blocked until zone_clear_weather_override is implemented and live-proven.",
 }
@@ -1065,7 +1065,7 @@ def _release_plan_notes(raw: dict[str, Any]) -> list[str]:
     if schema_version == ITEM_MANAGED_POWER_SCHEMA:
         notes.append("Hidden item effects must be gated by the visible aura/tooltip state described in the spec.")
     if schema_version == SCENE_NATIVE_SEQUENCE_SCHEMA:
-        notes.append("Gameobject and real weather actions remain blocked until native executors are implemented and live-proven.")
+        notes.append("Real weather actions remain blocked until native executors are implemented and live-proven.")
     if schema_version == STORY_ARC_SCHEMA:
         notes.append("Forks require journey branch records; do not rely only on quest-template linking.")
     return notes
@@ -1787,21 +1787,31 @@ def _validate_scene_native_sequence(raw: dict[str, Any], *, issues: list[Release
                 issues=issues,
             )
 
-    has_spawn = "creature_spawn" in action_kinds
-    has_despawn = "creature_despawn" in action_kinds
-    if has_spawn:
+    cleanup_pairs = (
+        ("creature_spawn", "creature_despawn", "creatures"),
+        ("gameobject_spawn", "gameobject_despawn", "gameobjects"),
+    )
+    missing_cleanup = [
+        despawn_kind
+        for spawn_kind, despawn_kind, _label in cleanup_pairs
+        if spawn_kind in action_kinds and despawn_kind not in action_kinds
+    ]
+    has_owned_spawn = any(spawn_kind in action_kinds for spawn_kind, _despawn_kind, _label in cleanup_pairs)
+    if has_owned_spawn:
         if cleanup.get("required") is not True:
             issues.append(
                 ReleaseIssue(
                     path="cleanup.required",
-                    message="Scenes that spawn WM-owned creatures must set cleanup.required=true.",
+                    message="Scenes that spawn WM-owned objects must set cleanup.required=true.",
                 )
             )
-        if not has_despawn:
+        if missing_cleanup:
             issues.append(
                 ReleaseIssue(
                     path="cleanup.steps",
-                    message="Scenes that spawn WM-owned creatures must include a creature_despawn step.",
+                    message="Scenes that spawn WM-owned objects must include matching cleanup despawn steps: "
+                    + ", ".join(missing_cleanup)
+                    + ".",
                 )
             )
         if "expires_seconds" in cleanup:
@@ -1941,6 +1951,15 @@ def _validate_scene_payload_contract(
             _require_positive_int(payload, "display_id", path=f"{path}.display_id", issues=issues)
         elif action_kind == "creature_set_scale":
             _validate_positive_number(payload.get("scale"), path=f"{path}.scale", issues=issues)
+    elif action_kind == "gameobject_spawn":
+        _require_positive_int(payload, "gameobject_entry", path=f"{path}.gameobject_entry", issues=issues)
+        _require_non_empty_string(payload, "arc_key", path=f"{path}.arc_key", issues=issues)
+        if "duration_ms" in payload:
+            _require_positive_int(payload, "duration_ms", path=f"{path}.duration_ms", issues=issues)
+    elif action_kind in {"gameobject_despawn", "gameobject_set_state"}:
+        _require_non_empty_string(payload, "arc_key", path=f"{path}.arc_key", issues=issues)
+        if action_kind == "gameobject_set_state":
+            _require_non_empty_string(payload, "state", path=f"{path}.state", issues=issues)
 
 
 def _collect_forbidden_key_issues(value: Any, *, path: str, issues: list[ReleaseIssue]) -> None:

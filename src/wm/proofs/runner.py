@@ -184,7 +184,14 @@ def run_proof_packet(
         checks.append({"name": "player_guid", "status": "FAIL", "detail": "player_guid is required for this live proof"})
         blockers.append("player_guid is required for this live proof")
 
-    evidence_checks = _evidence_checks(packet=packet, project_root=root, store=obs, player_guid=player_guid)
+    evidence_since = _evidence_since(packet=packet, runtime=runtime)
+    evidence_checks = _evidence_checks(
+        packet=packet,
+        project_root=root,
+        store=obs,
+        player_guid=player_guid,
+        evidence_since=evidence_since,
+    )
     evidence_refs = [
         ref
         for check in evidence_checks
@@ -211,6 +218,10 @@ def run_proof_packet(
         "next_actions": _next_actions(checks),
         "runtime_summary": runtime.get("summary", {}),
         "runtime_incidents": runtime.get("incidents", []),
+        "evidence_window": {
+            "since": evidence_since,
+            "basis": "latest_required_service_started_at" if evidence_since else "unavailable",
+        },
         "evidence_checks": evidence_checks,
         "evidence_refs": evidence_refs,
         "timeline_refs": {
@@ -257,25 +268,49 @@ def _runtime_checks(*, packet: ProofPacket, runtime: dict[str, Any]) -> list[dic
     return checks
 
 
+def _evidence_since(*, packet: ProofPacket, runtime: dict[str, Any]) -> str | None:
+    if packet.proof_kind not in {"chat_action", "ambient", "memory", "scene"}:
+        return None
+    services = runtime.get("services") if isinstance(runtime.get("services"), dict) else {}
+    starts: list[datetime] = []
+    for service_key in packet.required_services:
+        service = services.get(service_key) if isinstance(services.get(service_key), dict) else {}
+        if str(service.get("state") or "") != "running" or bool(service.get("stale")):
+            return None
+        started = _parse_iso_datetime(service.get("started_at"))
+        if started is None:
+            return None
+        starts.append(started)
+    if not starts:
+        return None
+    return _format_utc(max(starts))
+
+
 def _evidence_checks(
     *,
     packet: ProofPacket,
     project_root: Path,
     store: WmObservabilityStore,
     player_guid: int | None,
+    evidence_since: str | None = None,
 ) -> list[dict[str, Any]]:
     if packet.proof_kind not in {"chat_action", "ambient", "memory", "scene"}:
         return []
     journal = store.list_autoplay_journal(limit=200)
     autoplay_status = _load_autoplay_status(project_root)
     if packet.proof_kind == "chat_action":
-        return _chat_action_evidence(journal=journal, autoplay_status=autoplay_status, player_guid=player_guid)
+        return _chat_action_evidence(
+            journal=journal,
+            autoplay_status=autoplay_status,
+            player_guid=player_guid,
+            evidence_since=evidence_since,
+        )
     if packet.proof_kind == "ambient":
-        return _ambient_evidence(journal=journal, player_guid=player_guid)
+        return _ambient_evidence(journal=journal, player_guid=player_guid, evidence_since=evidence_since)
     if packet.proof_kind == "memory":
-        return _memory_evidence(journal=journal, player_guid=player_guid)
+        return _memory_evidence(journal=journal, player_guid=player_guid, evidence_since=evidence_since)
     if packet.proof_kind == "scene":
-        return _scene_evidence(journal=journal, player_guid=player_guid)
+        return _scene_evidence(journal=journal, player_guid=player_guid, evidence_since=evidence_since)
     return []
 
 
@@ -284,20 +319,27 @@ def _chat_action_evidence(
     journal: list[dict[str, Any]],
     autoplay_status: dict[str, Any],
     player_guid: int | None,
+    evidence_since: str | None,
 ) -> list[dict[str, Any]]:
-    chat = _latest_journal_entry(journal, {"chat"}, player_guid=player_guid)
+    chat = _latest_journal_entry(journal, {"chat"}, player_guid=player_guid, evidence_since=evidence_since)
     action = _latest_journal_entry(
         journal,
         {"deed", "pending_intent_set", "pending_intent_cleared"},
         player_guid=player_guid,
+        evidence_since=evidence_since,
     )
-    intent_issue = _latest_issue(autoplay_status, kinds={"intent"}, player_guid=player_guid)
-    verification = _latest_verification(autoplay_status, action)
+    intent_issue = _latest_issue(
+        autoplay_status,
+        kinds={"intent"},
+        player_guid=player_guid,
+        evidence_since=evidence_since,
+    )
+    verification = _latest_verification(autoplay_status, action, evidence_since=evidence_since)
     checks = [
         _evidence_check(
             "journal:chat",
             "PASS" if chat else "PENDING",
-            "chat turn recorded" if chat else "No autoplay chat journal entry found for this player.",
+            "chat turn recorded" if chat else _missing_detail("No autoplay chat journal entry found for this player.", evidence_since),
             chat,
         ),
         _evidence_check(
@@ -308,7 +350,7 @@ def _chat_action_evidence(
                 if action
                 else "intent blocker recorded"
                 if intent_issue
-                else "No deed, pending intent, cleared intent, or intent blocker found."
+                else _missing_detail("No deed, pending intent, cleared intent, or intent blocker found.", evidence_since)
             ),
             action,
             extra_refs=[_issue_ref(intent_issue)] if intent_issue else None,
@@ -334,16 +376,31 @@ def _chat_action_evidence(
         checks.append(_evidence_check(
             "verification:latest",
             "PENDING",
-            "No latest verification or recorded blocker explanation found yet.",
+            _missing_detail("No latest verification or recorded blocker explanation found yet.", evidence_since),
             None,
         ))
     return checks
 
 
-def _ambient_evidence(*, journal: list[dict[str, Any]], player_guid: int | None) -> list[dict[str, Any]]:
-    ambient = _latest_journal_entry(journal, {"ambient_narration"}, player_guid=player_guid)
+def _ambient_evidence(
+    *,
+    journal: list[dict[str, Any]],
+    player_guid: int | None,
+    evidence_since: str | None,
+) -> list[dict[str, Any]]:
+    ambient = _latest_journal_entry(
+        journal,
+        {"ambient_narration"},
+        player_guid=player_guid,
+        evidence_since=evidence_since,
+    )
     if ambient is None:
-        return [_evidence_check("journal:ambient_narration", "PENDING", "No ambient narration journal entry found.", None)]
+        return [_evidence_check(
+            "journal:ambient_narration",
+            "PENDING",
+            _missing_detail("No ambient narration journal entry found.", evidence_since),
+            None,
+        )]
     return [_evidence_check(
         "journal:ambient_narration",
         "PASS" if bool(ambient.get("ok")) else "FAIL",
@@ -352,17 +409,27 @@ def _ambient_evidence(*, journal: list[dict[str, Any]], player_guid: int | None)
     )]
 
 
-def _memory_evidence(*, journal: list[dict[str, Any]], player_guid: int | None) -> list[dict[str, Any]]:
-    memory = _latest_journal_entry(journal, {"conversation_memory"}, player_guid=player_guid)
+def _memory_evidence(
+    *,
+    journal: list[dict[str, Any]],
+    player_guid: int | None,
+    evidence_since: str | None,
+) -> list[dict[str, Any]]:
+    memory = _latest_journal_entry(
+        journal,
+        {"conversation_memory"},
+        player_guid=player_guid,
+        evidence_since=evidence_since,
+    )
     later_chat = None
     if memory is not None:
-        memory_at = str(memory.get("at") or "")
         later_chat = next(
             (
                 entry for entry in journal
                 if str(entry.get("kind") or "") == "chat"
                 and _matches_player(entry, player_guid)
-                and str(entry.get("at") or "") > memory_at
+                and _matches_window(entry, evidence_since)
+                and _entry_after(entry, memory)
             ),
             None,
         )
@@ -375,25 +442,32 @@ def _memory_evidence(*, journal: list[dict[str, Any]], player_guid: int | None) 
                 if memory and bool(memory.get("ok"))
                 else "conversation memory write failed"
                 if memory
-                else "No conversation memory journal entry found."
+                else _missing_detail("No conversation memory journal entry found.", evidence_since)
             ),
             memory,
         ),
         _evidence_check(
             "journal:later_chat",
             "PASS" if later_chat else "PENDING",
-            "later chat turn recorded after memory write" if later_chat else "No later chat turn found after the memory write.",
+            "later chat turn recorded after memory write"
+            if later_chat
+            else _missing_detail("No later chat turn found after the memory write.", evidence_since),
             later_chat,
         ),
     ]
 
 
-def _scene_evidence(*, journal: list[dict[str, Any]], player_guid: int | None) -> list[dict[str, Any]]:
-    scene = _latest_journal_entry(journal, {"scene_run"}, player_guid=player_guid)
+def _scene_evidence(
+    *,
+    journal: list[dict[str, Any]],
+    player_guid: int | None,
+    evidence_since: str | None,
+) -> list[dict[str, Any]]:
+    scene = _latest_journal_entry(journal, {"scene_run"}, player_guid=player_guid, evidence_since=evidence_since)
     if scene is None:
         return [
-            _evidence_check("journal:scene_run", "PENDING", "No scene_run journal entry found.", None),
-            _evidence_check("scene:cleanup", "PENDING", "No scene cleanup evidence found.", None),
+            _evidence_check("journal:scene_run", "PENDING", _missing_detail("No scene_run journal entry found.", evidence_since), None),
+            _evidence_check("scene:cleanup", "PENDING", _missing_detail("No scene cleanup evidence found.", evidence_since), None),
         ]
     cleanup = scene.get("cleanup_status") if isinstance(scene.get("cleanup_status"), dict) else {}
     cleanup_state = str(cleanup.get("status") or "unknown")
@@ -427,11 +501,13 @@ def _latest_journal_entry(
     kinds: set[str],
     *,
     player_guid: int | None,
+    evidence_since: str | None = None,
 ) -> dict[str, Any] | None:
     return next(
         (
             entry for entry in journal
             if str(entry.get("kind") or "") in kinds and _matches_player(entry, player_guid)
+            and _matches_window(entry, evidence_since)
         ),
         None,
     )
@@ -442,11 +518,14 @@ def _latest_issue(
     *,
     kinds: set[str],
     player_guid: int | None,
+    evidence_since: str | None = None,
 ) -> dict[str, Any] | None:
     for issue in autoplay_status.get("issues") or []:
         if not isinstance(issue, dict):
             continue
         if str(issue.get("kind") or "") not in kinds:
+            continue
+        if not _matches_window(issue, evidence_since):
             continue
         payload = issue.get("payload") if isinstance(issue.get("payload"), dict) else {}
         if player_guid is not None and payload.get("player_guid") not in (None, int(player_guid)):
@@ -455,9 +534,14 @@ def _latest_issue(
     return None
 
 
-def _latest_verification(autoplay_status: dict[str, Any], action_entry: dict[str, Any] | None) -> dict[str, Any] | None:
+def _latest_verification(
+    autoplay_status: dict[str, Any],
+    action_entry: dict[str, Any] | None,
+    *,
+    evidence_since: str | None = None,
+) -> dict[str, Any] | None:
     status_verification = autoplay_status.get("latest_verification")
-    if isinstance(status_verification, dict):
+    if isinstance(status_verification, dict) and _matches_window(status_verification, evidence_since):
         return status_verification
     if isinstance(action_entry, dict) and isinstance(action_entry.get("verification"), dict):
         return action_entry["verification"]
@@ -474,6 +558,68 @@ def _matches_player(entry: dict[str, Any], player_guid: int | None) -> bool:
         return int(raw) == int(player_guid)
     except (TypeError, ValueError):
         return False
+
+
+def _matches_window(entry: dict[str, Any], evidence_since: str | None) -> bool:
+    if not evidence_since:
+        return False
+    entry_at = _entry_datetime(entry)
+    since = _parse_iso_datetime(evidence_since)
+    if entry_at is None or since is None:
+        return False
+    return entry_at >= since
+
+
+def _entry_after(entry: dict[str, Any], previous: dict[str, Any]) -> bool:
+    entry_at = _entry_datetime(entry)
+    previous_at = _entry_datetime(previous)
+    if entry_at is None or previous_at is None:
+        return False
+    return entry_at > previous_at
+
+
+def _entry_datetime(entry: dict[str, Any]) -> datetime | None:
+    return _parse_iso_datetime(entry.get("at") or entry.get("created_at") or entry.get("updated_at"))
+
+
+def _missing_detail(detail: str, evidence_since: str | None) -> str:
+    if not evidence_since:
+        return f"{detail} Fresh evidence window is unavailable."
+    return f"{detail} Evidence must be at or after {evidence_since}."
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if not text or text.startswith("/Date("):
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    if "." in text:
+        prefix, suffix = text.split(".", 1)
+        plus_index = suffix.find("+")
+        minus_index = suffix.find("-")
+        tz_index = min([idx for idx in (plus_index, minus_index) if idx >= 0], default=-1)
+        if tz_index >= 0:
+            fraction = suffix[:tz_index]
+            tz = suffix[tz_index:]
+        else:
+            fraction = suffix
+            tz = ""
+        if len(fraction) > 6:
+            text = f"{prefix}.{fraction[:6]}{tz}"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_utc(value: datetime) -> str:
+    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _evidence_check(

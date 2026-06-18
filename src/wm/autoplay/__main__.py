@@ -72,6 +72,8 @@ def _build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--source-event-key")
     generate.add_argument("--state-root", type=Path, default=None)
     generate.add_argument("--project-root", type=Path, default=Path.cwd())
+    generate.add_argument("--lab-mysql-port", type=int, default=33307)
+    generate.add_argument("--soap-port", type=int, default=7879)
     generate.add_argument("--llm-model", default=None)
     generate.add_argument("--llm-base-url", default=None)
     generate.add_argument("--summary", action="store_true")
@@ -81,6 +83,8 @@ def _build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--message", required=True)
     chat.add_argument("--state-root", type=Path, default=None)
     chat.add_argument("--project-root", type=Path, default=Path.cwd())
+    chat.add_argument("--lab-mysql-port", type=int, default=33307)
+    chat.add_argument("--soap-port", type=int, default=7879)
     chat.add_argument("--llm-model", default=None)
     chat.add_argument("--llm-base-url", default=None)
     chat.add_argument("--summary", action="store_true")
@@ -125,6 +129,8 @@ def main(argv: list[str] | None = None) -> int:
         config = AutoplayRuntimeConfig(
             player_guid=args.player_guid,
             project_root=args.project_root.resolve(),
+            bridge_lab_mysql_port=args.lab_mysql_port,
+            soap_port=args.soap_port,
             start_watcher=False,
             llm_model=args.llm_model,
             llm_base_url=args.llm_base_url,
@@ -149,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         config = AutoplayRuntimeConfig(
             player_guid=args.player_guid,
             project_root=args.project_root.resolve(),
+            bridge_lab_mysql_port=args.lab_mysql_port,
+            soap_port=args.soap_port,
             start_watcher=False,
             llm_model=args.llm_model,
             llm_base_url=args.llm_base_url,

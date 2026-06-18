@@ -465,7 +465,14 @@ def _started_at(value: Any) -> str | None:
         return None
     text = str(value)
     if text.startswith("/Date("):
-        return text
+        payload = text.removeprefix("/Date(").removesuffix(")/")
+        sign_at = min((idx for idx in (payload.find("+", 1), payload.find("-", 1)) if idx >= 0), default=-1)
+        millis_text = payload[:sign_at] if sign_at >= 0 else payload
+        try:
+            millis = int(millis_text)
+        except ValueError:
+            return None
+        return datetime.fromtimestamp(millis / 1000, timezone.utc).isoformat().replace("+00:00", "Z")
     return text
 
 

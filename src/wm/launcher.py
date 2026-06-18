@@ -242,6 +242,7 @@ def build_watcher_command(config: LauncherConfig) -> LaunchCommand:
         1,
         "--confirm-live-apply",
         "--print-idle",
+        "--client-patch-on-close",
     ]
     if config.player_guid is not None:
         args[4:4] = ["--player-guid", config.player_guid]
@@ -1026,7 +1027,15 @@ class WmLauncherApp:
     def run_doctor(self) -> None:
         self._run_background(
             "doctor",
-            lambda: run_control_python(self.config, "-m", "wm.doctor", "--summary", timeout_seconds=30),
+            lambda: run_control_python(
+                self.config,
+                "-m",
+                "wm.doctor",
+                "--profile",
+                "bridgelab",
+                "--summary",
+                timeout_seconds=30,
+            ),
         )
 
     def refresh_status(self) -> None:

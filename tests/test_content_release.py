@@ -245,6 +245,30 @@ class ContentReleaseSpecTests(unittest.TestCase):
         self.assertIn("cleanup.required", _issue_paths(result))
         self.assertIn("cleanup.steps", _issue_paths(result))
 
+    def test_scene_release_requires_cleanup_for_owned_gameobject_spawn(self) -> None:
+        spec = _scene()
+        spec["steps"] = [
+            {
+                "step_key": "spawn",
+                "native_action_kind": "gameobject_spawn",
+                "payload": {
+                    "gameobject_entry": 185541,
+                    "arc_key": "scene:{scene_id}:{player_guid}:{run_key}",
+                    "duration_ms": 15000,
+                },
+                "risk_level": "medium",
+                "idempotency_suffix": "spawn",
+                "requires_live_proof": True,
+            }
+        ]
+        spec["cleanup"] = {"required": False}
+
+        result = validate_content_release_spec(spec)
+
+        self.assertFalse(result.ok)
+        self.assertIn("cleanup.required", _issue_paths(result))
+        self.assertIn("cleanup.steps", _issue_paths(result))
+
     def test_scene_release_rejects_weather_until_native_executor_exists(self) -> None:
         spec = _scene()
         spec["steps"] = [
@@ -281,9 +305,12 @@ class ContentReleaseSpecTests(unittest.TestCase):
         self.assertEqual(roster["schema_version"], "wm.scene_action_roster.v1")
         self.assertEqual(entries["creature_spawn"]["status"], "scene_ready")
         self.assertEqual(entries["world_announce_to_player"]["status"], "scene_ready")
+        self.assertEqual(entries["gameobject_spawn"]["status"], "scene_ready")
+        self.assertEqual(entries["gameobject_despawn"]["status"], "scene_ready")
+        self.assertEqual(entries["gameobject_set_state"]["status"], "scene_ready")
         self.assertEqual(entries["zone_set_weather"]["status"], "blocked_future")
-        self.assertEqual(entries["gameobject_spawn"]["status"], "blocked_future")
         self.assertEqual(entries["debug_ping"]["status"], "not_scene_release_allowed")
+        self.assertIn("gameobject_spawn | scene_ready", summary)
         self.assertIn("zone_set_weather | blocked_future", summary)
 
     def test_scene_release_compiles_to_control_scene(self) -> None:
@@ -327,7 +354,7 @@ class ContentReleaseSpecTests(unittest.TestCase):
         self.assertEqual(plan.status, "PLAN_READY")
         self.assertIn("python -m wm.content.release <scene-spec.json> --emit-control-scene", plan.commands)
         self.assertIn("live_proof | required", summary)
-        self.assertIn("Gameobject and real weather actions remain blocked", summary)
+        self.assertIn("Real weather actions remain blocked", summary)
 
     def test_item_power_release_requires_visible_state_and_native_hooks(self) -> None:
         spec = _item_power()

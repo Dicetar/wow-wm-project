@@ -53,6 +53,7 @@ def test_proof_timeline_incident_routes():
     status, proof = app.post("/api/wm/proofs/run", {"proof_kind": "chat_action", "player_guid": 5408})
     assert status == 200
     assert proof["ok"] is True
+    assert proof["proof"]["evidence_window"]["basis"] == "unavailable"
 
     status, proofs = app.get("/api/wm/proofs")
     assert status == 200

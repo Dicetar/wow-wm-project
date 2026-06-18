@@ -4,6 +4,18 @@ from wm.runtime.status import RuntimeProcess
 from wm.runtime.status import collect_runtime_status
 
 
+def test_runtime_process_normalizes_powershell_json_date():
+    process = RuntimeProcess.from_mapping({
+        "ProcessId": 1,
+        "ParentProcessId": None,
+        "Name": "worldserver.exe",
+        "CommandLine": "",
+        "CreationDate": "/Date(0+0300)/",
+    })
+
+    assert process.started_at == "1970-01-01T00:00:00Z"
+
+
 def test_runtime_status_collapses_parent_child_pairs(tmp_path):
     processes = [
         RuntimeProcess(

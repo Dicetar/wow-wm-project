@@ -554,6 +554,8 @@ class PanelApp:
             player_guid=int(guid),
             start_watcher=False,
             project_root=self.cwd,
+            bridge_lab_mysql_port=(int(body["lab_mysql_port"]) if body.get("lab_mysql_port") not in (None, "") else 33307),
+            soap_port=(int(body["soap_port"]) if body.get("soap_port") not in (None, "") else 7879),
             llm_model=(str(body["llm_model"]) if body.get("llm_model") not in (None, "") else None),
             llm_base_url=(str(body["llm_base_url"]) if body.get("llm_base_url") not in (None, "") else None),
             llm_lanes=tuple(body.get("llm_lanes") if isinstance(body.get("llm_lanes"), list) else [str(body.get("lane") or "scene")]),

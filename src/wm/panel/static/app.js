@@ -305,17 +305,20 @@ function renderProofChecklist(proofs) {
     const record = latest[kind] || {};
     const status = record.status || "not_run";
     const blocker = Array.isArray(record.blockers) && record.blockers.length ? record.blockers[0] : "";
-    const evidence = Array.isArray(record.evidence_checks)
-      ? record.evidence_checks.find((item) => item.status && item.status !== "PASS")
-      : null;
-    const when = record.created_at ? ` · ${record.created_at}` : "";
+    const evidenceChecks = Array.isArray(record.evidence_checks) ? record.evidence_checks : [];
+    const pendingEvidence = evidenceChecks.filter((item) => item.status && item.status !== "PASS");
+    const evidenceDetail = pendingEvidence.map((item) => item.detail).filter(Boolean).slice(0, 2).join(" / ");
+    const since = record.evidence_window?.since || "";
+    const windowLine = since ? `<div class="small proof-window">Evidence since ${escapeHtml(since)}</div>` : "";
+    const createdAtLine = record.created_at ? ` | ${record.created_at}` : "";
     return `
       <div class="card proof-card proof-${escapeHtml(status)}">
         <div class="card-head">
           <strong>${escapeHtml(packet.title || kind)}</strong>
           <span class="badge">${escapeHtml(status)}</span>
         </div>
-        <div class="small muted">${escapeHtml(blocker || evidence?.detail || record.summary || packet.summary || "")}${escapeHtml(when)}</div>
+        <div class="small muted">${escapeHtml(blocker || evidenceDetail || record.summary || packet.summary || "")}${escapeHtml(createdAtLine)}</div>
+        ${windowLine}
       </div>`;
   }).join("");
 }

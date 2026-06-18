@@ -352,6 +352,12 @@ legend {
   border-left: 4px solid var(--line);
 }
 
+.proof-window {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .proof-passed {
   border-left-color: var(--accent);
 }

@@ -50,6 +50,7 @@ def test_watcher_enables_reactive_auto_bounty_by_default(tmp_path: Path):
     rendered = build_watcher_command(_config(tmp_path)).as_text()
 
     assert 'set "WM_REACTIVE_AUTO_BOUNTY_ENABLED=1"' in rendered
+    assert "--client-patch-on-close" in rendered
 
 
 def test_watcher_can_disable_reactive_auto_bounty(tmp_path: Path):

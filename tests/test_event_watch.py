@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
 from wm.events.watch import _has_activity
 from wm.events.watch import main
+
+
+@contextmanager
+def _isolated_runtime_marker_root():
+    with TemporaryDirectory() as marker_root:
+        with patch.dict("os.environ", {"WM_RUNTIME_MARKER_ROOT": marker_root}):
+            yield
 
 
 class _ArmBacklogStore:
@@ -50,6 +59,7 @@ class EventWatchTests(unittest.TestCase):
         }
 
         with (
+            _isolated_runtime_marker_root(),
             patch("wm.events.watch.execute_event_spine", return_value=payload) as execute_mock,
             patch("wm.events.watch._emit_output") as emit_mock,
         ):
@@ -91,6 +101,7 @@ class EventWatchTests(unittest.TestCase):
         }
 
         with (
+            _isolated_runtime_marker_root(),
             patch("wm.events.watch.EventStore"),
             patch("wm.events.watch.MysqlCliClient"),
             patch("wm.events.watch.arm_combat_log_cursor") as arm_mock,
@@ -139,6 +150,7 @@ class EventWatchTests(unittest.TestCase):
         }
 
         with (
+            _isolated_runtime_marker_root(),
             patch("wm.events.watch.EventStore"),
             patch("wm.events.watch.MysqlCliClient"),
             patch("wm.events.watch.arm_addon_log_cursor") as arm_mock,
@@ -187,6 +199,7 @@ class EventWatchTests(unittest.TestCase):
         }
 
         with (
+            _isolated_runtime_marker_root(),
             patch("wm.events.watch.EventStore"),
             patch("wm.events.watch.MysqlCliClient"),
             patch("wm.events.watch.arm_native_bridge_cursor") as arm_mock,
@@ -236,6 +249,7 @@ class EventWatchTests(unittest.TestCase):
         store = _ArmBacklogStore()
 
         with (
+            _isolated_runtime_marker_root(),
             patch("wm.events.watch.EventStore", return_value=store),
             patch("wm.events.watch.MysqlCliClient"),
             patch("wm.events.watch.arm_native_bridge_cursor") as arm_mock,
@@ -268,7 +282,7 @@ class EventWatchTests(unittest.TestCase):
         self.assertEqual(store.mark_calls, [(5406, 42)])
 
     def test_watch_rejects_backlog_mark_without_arm_from_end(self) -> None:
-        with self.assertRaises(SystemExit) as ctx:
+        with _isolated_runtime_marker_root(), self.assertRaises(SystemExit) as ctx:
             main(
                 [
                     "--adapter",
@@ -305,6 +319,7 @@ class EventWatchTests(unittest.TestCase):
         }
 
         with (
+            _isolated_runtime_marker_root(),
             patch("wm.events.watch.execute_event_spine", return_value=payload),
             patch("wm.events.watch._emit_output") as emit_mock,
         ):
@@ -346,6 +361,7 @@ class EventWatchTests(unittest.TestCase):
         }
 
         with (
+            _isolated_runtime_marker_root(),
             patch("wm.events.watch.execute_event_spine", side_effect=[failure, payload]) as execute_mock,
             patch("wm.events.watch._emit_output") as emit_mock,
             patch("wm.events.watch._emit_watch_iteration_error") as error_mock,
@@ -389,9 +405,10 @@ def test_watch_loop_applies_client_patch_on_close(monkeypatch):
     import wm.spells.client_patch_apply as apply_mod
     monkeypatch.setattr(apply_mod, "apply_pending_client_patch",
                         lambda **k: applied.append(k) or {"applied": True})
-    rc = watch.main(["--adapter", "native_bridge", "--mode", "dry-run",
-                     "--client-patch-on-close", "--max-iterations", "2",
-                     "--interval-seconds", "0", "--player-guid", "5405"])
+    with _isolated_runtime_marker_root():
+        rc = watch.main(["--adapter", "native_bridge", "--mode", "dry-run",
+                         "--client-patch-on-close", "--max-iterations", "2",
+                         "--interval-seconds", "0", "--player-guid", "5405"])
     assert rc == 0
     assert applied  # fired on the running->closed edge
 

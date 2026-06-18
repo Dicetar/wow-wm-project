@@ -134,6 +134,7 @@ AURA_INTERRUPT_FLAGS_FIELD = 32
 CHANNEL_INTERRUPT_FLAGS_FIELD = 33
 DAMAGE_CLASS_FIELD = 213
 PREVENTION_TYPE_FIELD = 214
+WM_SHELL_SPELL_ID_START = 900000
 
 COMBAT_PROFICIENCY_SKILL_RACE_CLASS_ROWS: tuple[tuple[int, int, int, int, int, int, int, int], ...] = (
     (100055, 55, CLIENT_ALL_PLAYER_RACE_MASK, CLIENT_ROGUE_CLASS_MASK, CLIENT_SKILL_FLAG_WEAPON_OR_ARMOR, 0, 0, 0),
@@ -202,6 +203,8 @@ class ClientPatchPackageResult:
     payload_spell_dbc: str
     payload_skill_line_ability_dbc: str
     payload_skill_race_class_info_dbc: str
+    payload_wmbridge_addon_toc: str
+    payload_wmbridge_addon_lua: str
     package_out: str
     mpq_editor: str
     installed_to: str | None
@@ -209,6 +212,8 @@ class ClientPatchPackageResult:
     verify_extracted_spell_dbc: str
     verify_extracted_skill_line_ability_dbc: str
     verify_extracted_skill_race_class_info_dbc: str
+    verify_extracted_wmbridge_addon_toc: str
+    verify_extracted_wmbridge_addon_lua: str
     materialization: dict[str, object]
     skill_line_ability_materialization: dict[str, object]
     skill_race_class_info_materialization: dict[str, object]
@@ -235,6 +240,10 @@ def default_payload_skill_line_ability_dbc_path() -> Path:
 
 def default_payload_skill_race_class_info_dbc_path() -> Path:
     return default_state_dir().joinpath("payload", "DBFilesClient", "SkillRaceClassInfo.dbc")
+
+
+def default_wmbridge_addon_dir() -> Path:
+    return repo_root().joinpath("wow_addons", "WMBridge")
 
 
 def default_package_path() -> Path:
@@ -304,6 +313,8 @@ def materialize_client_spell_dbc(
 
     string_block = bytearray(dbc.string_block)
     working_records = [bytearray(record) for record in dbc.records]
+    for record in working_records:
+        _clear_native_class_spell_client_cooldown(record)
     working_index_by_id = dbc.id_to_index()
     appended_count = 0
     replaced_count = 0
@@ -523,6 +534,7 @@ def build_client_patch_package(
     source_skill_race_class_info_dbc: str | Path | None = None,
     payload_skill_line_ability_dbc: str | Path = default_payload_skill_line_ability_dbc_path(),
     payload_skill_race_class_info_dbc: str | Path = default_payload_skill_race_class_info_dbc_path(),
+    wmbridge_addon_dir: str | Path | None = None,
     include: str = "all",
     shell_bank_path: str | Path | None = None,
     spell_ids: list[int] | None = None,
@@ -568,6 +580,14 @@ def build_client_patch_package(
     if not mpq_editor_path.exists():
         raise FileNotFoundError(f"MPQEditor.exe not found: {mpq_editor_path}")
 
+    addon_dir = Path(wmbridge_addon_dir) if wmbridge_addon_dir is not None else default_wmbridge_addon_dir()
+    addon_toc = addon_dir.joinpath("WMBridge.toc")
+    addon_lua = addon_dir.joinpath("WMBridge.lua")
+    if not addon_toc.exists():
+        raise FileNotFoundError(f"WMBridge addon TOC not found: {addon_toc}")
+    if not addon_lua.exists():
+        raise FileNotFoundError(f"WMBridge addon Lua not found: {addon_lua}")
+
     work_dir = package_path.parent.joinpath("mpq-work")
     if work_dir.exists():
         shutil.rmtree(work_dir)
@@ -576,6 +596,10 @@ def build_client_patch_package(
     shutil.copy2(payload_spell_dbc, work_payload.joinpath("Spell.dbc"))
     shutil.copy2(payload_skill_line_ability_dbc, work_payload.joinpath("SkillLineAbility.dbc"))
     shutil.copy2(payload_skill_race_class_info_dbc, work_payload.joinpath("SkillRaceClassInfo.dbc"))
+    work_addon = work_dir.joinpath("Interface", "AddOns", "WMBridge")
+    work_addon.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(addon_toc, work_addon.joinpath("WMBridge.toc"))
+    shutil.copy2(addon_lua, work_addon.joinpath("WMBridge.lua"))
 
     work_package_name = package_path.name
     _run_mpq_editor(mpq_editor_path, ["new", work_package_name, "2048"], cwd=work_dir)
@@ -602,6 +626,28 @@ def build_client_patch_package(
             work_package_name,
             r"DBFilesClient\SkillRaceClassInfo.dbc",
             r"DBFilesClient\SkillRaceClassInfo.dbc",
+            "/c",
+        ],
+        cwd=work_dir,
+    )
+    _run_mpq_editor(
+        mpq_editor_path,
+        [
+            "add",
+            work_package_name,
+            r"Interface\AddOns\WMBridge\WMBridge.toc",
+            r"Interface\AddOns\WMBridge\WMBridge.toc",
+            "/c",
+        ],
+        cwd=work_dir,
+    )
+    _run_mpq_editor(
+        mpq_editor_path,
+        [
+            "add",
+            work_package_name,
+            r"Interface\AddOns\WMBridge\WMBridge.lua",
+            r"Interface\AddOns\WMBridge\WMBridge.lua",
             "/c",
         ],
         cwd=work_dir,
@@ -634,6 +680,22 @@ def build_client_patch_package(
     verify_skill_race_class_info_dbc = verify_dir.joinpath("DBFilesClient", "SkillRaceClassInfo.dbc")
     if not verify_skill_race_class_info_dbc.exists():
         raise RuntimeError("MPQ verification failed: DBFilesClient\\SkillRaceClassInfo.dbc was not extractable.")
+    _run_mpq_editor(
+        mpq_editor_path,
+        ["extract", work_package_name, r"Interface\AddOns\WMBridge\WMBridge.toc", str(verify_dir), "/fp"],
+        cwd=work_dir,
+    )
+    verify_wmbridge_addon_toc = verify_dir.joinpath("Interface", "AddOns", "WMBridge", "WMBridge.toc")
+    if not verify_wmbridge_addon_toc.exists():
+        raise RuntimeError("MPQ verification failed: Interface\\AddOns\\WMBridge\\WMBridge.toc was not extractable.")
+    _run_mpq_editor(
+        mpq_editor_path,
+        ["extract", work_package_name, r"Interface\AddOns\WMBridge\WMBridge.lua", str(verify_dir), "/fp"],
+        cwd=work_dir,
+    )
+    verify_wmbridge_addon_lua = verify_dir.joinpath("Interface", "AddOns", "WMBridge", "WMBridge.lua")
+    if not verify_wmbridge_addon_lua.exists():
+        raise RuntimeError("MPQ verification failed: Interface\\AddOns\\WMBridge\\WMBridge.lua was not extractable.")
 
     shutil.copy2(work_dir.joinpath(work_package_name), package_path)
     installed_to: str | None = None
@@ -648,6 +710,8 @@ def build_client_patch_package(
         payload_spell_dbc=str(Path(payload_spell_dbc)),
         payload_skill_line_ability_dbc=str(Path(payload_skill_line_ability_dbc)),
         payload_skill_race_class_info_dbc=str(Path(payload_skill_race_class_info_dbc)),
+        payload_wmbridge_addon_toc=str(addon_toc),
+        payload_wmbridge_addon_lua=str(addon_lua),
         package_out=str(package_path),
         mpq_editor=str(mpq_editor_path),
         installed_to=installed_to,
@@ -655,6 +719,8 @@ def build_client_patch_package(
         verify_extracted_spell_dbc=str(verify_spell_dbc),
         verify_extracted_skill_line_ability_dbc=str(verify_skill_line_ability_dbc),
         verify_extracted_skill_race_class_info_dbc=str(verify_skill_race_class_info_dbc),
+        verify_extracted_wmbridge_addon_toc=str(verify_wmbridge_addon_toc),
+        verify_extracted_wmbridge_addon_lua=str(verify_wmbridge_addon_lua),
         materialization=materialization.to_dict(),
         skill_line_ability_materialization=skill_line_ability_materialization.to_dict(),
         skill_race_class_info_materialization=skill_race_class_info_materialization.to_dict(),
@@ -685,6 +751,20 @@ def _field(record: bytes | bytearray, field_index: int) -> int:
 def _set_field(record: bytearray, field_index: int, value: int) -> None:
     start = int(field_index) * 4
     record[start : start + 4] = int(value).to_bytes(4, "little", signed=False)
+
+
+def _clear_native_class_spell_client_cooldown(record: bytearray) -> bool:
+    spell_id = _field(record, 0)
+    if spell_id >= WM_SHELL_SPELL_ID_START:
+        return False
+    if _field(record, SPELL_FAMILY_NAME_FIELD) == 0:
+        return False
+    if _field(record, RECOVERY_TIME_FIELD) == 0 and _field(record, CATEGORY_RECOVERY_TIME_FIELD) == 0:
+        return False
+
+    _set_field(record, RECOVERY_TIME_FIELD, 0)
+    _set_field(record, CATEGORY_RECOVERY_TIME_FIELD, 0)
+    return True
 
 
 def _set_signed_field(record: bytearray, field_index: int, value: int) -> None:
@@ -913,6 +993,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--payload-skill-race-class-info-dbc",
         default=str(default_payload_skill_race_class_info_dbc_path()),
     )
+    build_parser.add_argument("--wmbridge-addon-dir", default=str(default_wmbridge_addon_dir()))
     build_parser.add_argument("--mpq-editor", default=str(default_mpq_editor_path()))
     build_parser.add_argument("--shell-bank", default=None)
     build_parser.add_argument("--include", choices=["named", "all"], default="all")
@@ -950,6 +1031,7 @@ def main() -> int:
         source_skill_race_class_info_dbc=args.source_skill_race_class_info_dbc,
         payload_skill_line_ability_dbc=args.payload_skill_line_ability_dbc,
         payload_skill_race_class_info_dbc=args.payload_skill_race_class_info_dbc,
+        wmbridge_addon_dir=args.wmbridge_addon_dir,
         mpq_editor=args.mpq_editor,
         include=args.include,
         shell_bank_path=args.shell_bank,

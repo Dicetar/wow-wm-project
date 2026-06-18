@@ -4,10 +4,11 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliError
-from wm.doctor import FAIL, UNKNOWN, WORKING, run_doctor
+from wm.doctor import CheckResult, FAIL, UNKNOWN, WORKING, main, run_doctor, settings_for_profile
 
 
 class _FakeDb:
@@ -103,6 +104,46 @@ class DoctorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             results = run_doctor(_settings(Path(d)), db_client=_FakeDb(world_tables=[], char_tables=[]))
             json.dumps([r.to_dict() for r in results])
+
+    def test_bridgelab_profile_uses_launcher_ports_and_credentials(self) -> None:
+        s = Settings(
+            world_db_port=3306,
+            world_db_user="root",
+            world_db_password="custom",
+            char_db_port=3306,
+            char_db_user="root",
+            char_db_password="custom",
+            soap_enabled=False,
+            soap_port=7878,
+        )
+
+        profiled = settings_for_profile(s, "bridgelab")
+
+        self.assertEqual(profiled.world_db_port, 33307)
+        self.assertEqual(profiled.char_db_port, 33307)
+        self.assertEqual(profiled.world_db_user, "acore")
+        self.assertEqual(profiled.char_db_user, "acore")
+        self.assertTrue(profiled.soap_enabled)
+        self.assertEqual(profiled.soap_port, 7879)
+        self.assertEqual(s.world_db_port, 3306)
+
+    def test_cli_bridgelab_shortcut_profiles_settings_before_running_checks(self) -> None:
+        seen: dict[str, Settings] = {}
+
+        def fake_run(settings: Settings):
+            seen["settings"] = settings
+            return [CheckResult("world_db", WORKING, "ok")]
+
+        with (
+            patch("wm.doctor.Settings.from_env", return_value=Settings(world_db_port=3306, soap_port=7878)),
+            patch("wm.doctor.run_doctor", side_effect=fake_run),
+        ):
+            code = main(["--bridgelab", "--summary"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(seen["settings"].world_db_port, 33307)
+        self.assertEqual(seen["settings"].soap_port, 7879)
+        self.assertTrue(seen["settings"].soap_enabled)
 
     def test_native_bridge_uses_explicit_config_path(self) -> None:
         with tempfile.TemporaryDirectory() as d:

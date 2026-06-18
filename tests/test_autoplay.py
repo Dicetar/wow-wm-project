@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -157,6 +158,45 @@ def test_policy_blocks_unsafe_risk_and_stages_dbc_until_safe_window():
     )
     assert staged.status == "maintenance_pending"
     assert staged.maintenance_reasons == ["dbc_safe_window_required"]
+
+
+def test_safe_window_reads_scoped_player_online_from_char_db():
+    class FakeMysql:
+        def query(self, **kwargs):
+            assert kwargs["database"] == "acore_characters"
+            assert kwargs["port"] == 33307
+            assert "WHERE guid = 5408" in kwargs["sql"]
+            return [{"online": "1"}]
+
+    service = AutoplayService()
+
+    with patch("wm.db.mysql_cli.MysqlCliClient", return_value=FakeMysql()):
+        with patch("wm.autoplay.service._wow_client_running", return_value=True):
+            safe_window = service._safe_window(
+                settings=Settings(char_db_port=33307),
+                session={"character_guid": 5408},
+            )
+
+    assert safe_window.client_running is True
+    assert safe_window.scoped_player_online is True
+
+
+def test_safe_window_treats_missing_player_as_offline():
+    class FakeMysql:
+        def query(self, **kwargs):
+            return []
+
+    service = AutoplayService()
+
+    with patch("wm.db.mysql_cli.MysqlCliClient", return_value=FakeMysql()):
+        with patch("wm.autoplay.service._wow_client_running", return_value=False):
+            safe_window = service._safe_window(
+                settings=Settings(char_db_port=33307),
+                session={"character_guid": 5408},
+            )
+
+    assert safe_window.client_running is False
+    assert safe_window.scoped_player_online is False
 
 
 def test_policy_blocks_stale_source_events():
@@ -958,6 +998,45 @@ def test_autoplay_service_chat_replies_through_native_action(tmp_path: Path):
     assert proposal.action.payload["payload"]["message"] == "The road bends east."
 
 
+def test_autoplay_chat_uses_runtime_config_ports_for_readiness(tmp_path: Path):
+    store = AutoplayStateStore(tmp_path / "autoplay")
+    panel = PanelState(tmp_path / "panel")
+    panel.ensure()
+    coordinator = FakeControlCoordinator()
+    seen: dict[str, int] = {}
+
+    def doctor(settings: Settings):
+        seen["world_db_port"] = settings.world_db_port
+        seen["char_db_port"] = settings.char_db_port
+        seen["soap_port"] = settings.soap_port
+        return [FakeDoctorCheck("world_db", "WORKING", "ok")]
+
+    service = AutoplayService(store=store, panel_state=panel, doctor_fn=doctor)
+
+    with patch.dict(os.environ, {"WM_WORLD_DB_PORT": "3306", "WM_CHAR_DB_PORT": "3306", "WM_SOAP_PORT": "7878"}):
+        with patch.object(service, "_llm_health", return_value={"ok": True, "model": "local-model"}):
+            with patch.object(service, "_chat_world_context", return_value={"speaker": {"guid": 5408, "name": "Astel"}}):
+                with patch.object(service, "_chat_reply", return_value={"message": "The road bends east.", "raw_content": "{}"}):
+                    with patch.object(service, "_control_coordinator", return_value=coordinator):
+                        result = service.chat_once(
+                            config=AutoplayRuntimeConfig(
+                                player_guid=5408,
+                                project_root=tmp_path,
+                                start_watcher=False,
+                                bridge_lab_mysql_port=33307,
+                                soap_port=7879,
+                            ),
+                            message="What now?",
+                        )
+
+        assert os.environ["WM_WORLD_DB_PORT"] == "3306"
+        assert os.environ["WM_CHAR_DB_PORT"] == "3306"
+        assert os.environ["WM_SOAP_PORT"] == "7878"
+
+    assert result["ok"] is True
+    assert seen == {"world_db_port": 33307, "char_db_port": 33307, "soap_port": 7879}
+
+
 def test_autoplay_service_forget_context_chat_resets_epoch_without_model(tmp_path: Path):
     store = AutoplayStateStore(tmp_path / "autoplay")
     panel = PanelState(tmp_path / "panel")
@@ -1432,6 +1511,7 @@ def test_run_forever_uses_panel_model_when_no_cli_model(tmp_path: Path):
 
     code = service.run_forever(
         config=AutoplayRuntimeConfig(
+            project_root=tmp_path,
             player_guid=5408,
             start_watcher=False,
             llm_enabled=False,
@@ -1468,6 +1548,7 @@ def test_status_summary_includes_selected_model():
         "running": True,
         "paused": False,
         "active_session": {"character_guid": 5408},
+        "safe_window": {"client_running": True, "scoped_player_online": False},
         "readiness": {"ok": True},
         "llm": {"ok": True, "model": "visible-model"},
         "config": {"llm_enabled": True, "llm_chat_enabled": True, "llm_lanes": ["chat"]},
@@ -1475,6 +1556,8 @@ def test_status_summary_includes_selected_model():
     })
 
     assert "model=visible-model" in summary
+    assert "client_running=true" in summary
+    assert "scoped_player_online=false" in summary
 
 
 from wm.autoplay.intent import (
