@@ -53,8 +53,9 @@ prevent both.
 - **Phase 4:** complete. Contract reporting now separates five debug/freeform
   kinds from 31 forward-declared product kinds; real implemented contract gaps
   remain zero.
-- **Phase 8:** in progress. `_chat_text.py`, `_chat_context.py`, and `_compact.py`
-  were extracted in separate test-guarded commits. `service.py` is now 2912
+- **Phase 8:** in progress. `_chat_text.py`, `_chat_context.py`, `_compact.py`,
+  and `_publish_payloads.py` were extracted in separate test-guarded commits.
+  `service.py` is now 2783
   lines (down from 3218); runtime-plan, publish-payload, and scene-helper slices
   remain.
 - **Current clean gate:** `1205 passed, 31 warnings`; status, skill, and native
@@ -172,7 +173,7 @@ path, P1 = reinforces critical path, P2 = after P0/P1 green.
 | **5** | Bounty full-loop + ADR-0004 | BLOCKED | Needs running server + client | **P0** |
 | **6** | Memory/subject/context live proof | PENDING | Depends on Phase 1 | P1 |
 | **7** | Living world lanes (gameplay) | PENDING | Catalog-ready, gameplay UNKNOWN | P2 |
-| **8** | autoplay/service.py decomposition (2912 lines) | **IN PROGRESS** | Three pure-helper modules extracted; target remains under 2400 | P2 |
+| **8** | autoplay/service.py decomposition (2783 lines) | **IN PROGRESS** | Four pure-helper modules extracted; target remains under 2400 | P2 |
 
 **Critical path:** 0e → 1 → 5. Nothing in 2/3/4/6/7/8 should be prioritized
 over getting 1 and 5 proven, *except* that 2/4/8 can be advanced headlessly
@@ -396,7 +397,7 @@ On success: relabel `perception.bounty_full_loop` and
 `content.arc_reward_factory` to gameplay `WORKING` in `feature_status.json`.
 
 ### 7.6 Phase 8 — autoplay/service.py decomposition (headless, P2)
-`src/wm/autoplay/service.py` started at **3218 lines** and is currently **2912
+`src/wm/autoplay/service.py` started at **3218 lines** and is currently **2783
 lines**. The `AutoplayService` class
 (94–1224) touches `self`/settings/state — leave it. Below it are ~70
 **module-level pure functions** that are safe to extract into siblings:
