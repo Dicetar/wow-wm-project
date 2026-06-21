@@ -1,0 +1,47 @@
+{
+  "schema_version": "wm.proofs.replay.v1",
+  "name": "chat-action-memory-example",
+  "verb_modes": {
+    "player_restore_health_power": "auto"
+  },
+  "events": [
+    {
+      "id": "remember-title",
+      "player_guid": 5408,
+      "message": "Call me captain.",
+      "remember": [
+        "preferred_title"
+      ],
+      "llm_response": {
+        "act": false,
+        "verb": "",
+        "args": {},
+        "reason": "conversation",
+        "reply": "Understood."
+      }
+    },
+    {
+      "id": "restore-health",
+      "player_guid": 5408,
+      "message": "Restore my health.",
+      "llm_response": {
+        "act": true,
+        "verb": "player_restore_health_power",
+        "args": {
+          "health_percent": 100
+        },
+        "reason": "clear player request",
+        "reply": "At once, captain.",
+        "memory_refs": [
+          "preferred_title"
+        ]
+      },
+      "expected": {
+        "action_kind": "player_restore_health_power",
+        "memory_refs": [
+          "preferred_title"
+        ]
+      }
+    }
+  ]
+}

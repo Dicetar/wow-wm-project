@@ -7,6 +7,7 @@ from typing import Any
 
 from wm.proofs.runner import list_proof_packets
 from wm.proofs.runner import run_proof_packet
+from wm.proofs.replay import replay_file
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -20,6 +21,10 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--player-guid", type=int)
     run.add_argument("--mode", choices=["dry-run", "record"], default="dry-run")
     run.add_argument("--json", action="store_true")
+    replay = sub.add_parser("replay", help="Evaluate a recorded event stream offline.")
+    replay.add_argument("recording", type=Path)
+    replay.add_argument("--project-root", type=Path, default=Path.cwd())
+    replay.add_argument("--json", action="store_true")
     return parser
 
 
@@ -45,6 +50,14 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _print_record(record)
         return 0 if record.get("status") in {"passed", "manual_required", "planned"} else 1
+    if args.command == "replay":
+        result = replay_file(path=args.recording, project_root=args.project_root)
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True))
+        else:
+            scores = " ".join(f"{key}={value:.4f}" for key, value in result["scores"].items())
+            print(f"passed={str(bool(result['passed'])).lower()} events={result['counts']['events']} {scores}")
+        return 0 if result["passed"] else 1
     return 2
 
 
