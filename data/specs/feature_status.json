@@ -178,9 +178,10 @@
       "runtime_status": "WORKING",
       "gameplay_status": "PARTIAL",
       "requires_live_proof": true,
-      "scope": "Chat model emits typed intent -> deterministic compile to ControlProposal -> dry-run/apply/audit. Autoplay, LLM, and watcher are running; fresh chat_action in-client proof is still required.",
-      "last_verified": "2026-06-11",
-      "evidence_ref": "python -m wm.autoplay status --summary"
+      "scope": "Fresh runtime-window proofs pass for typed chat action, durable memory reuse, and a typed temporary scene with cleanup. Gameplay remains PARTIAL until a fresh notable event proves ambient narration and cooldown behavior.",
+      "last_verified": "2026-06-21",
+      "last_live_proof": "proof-20260621122742753010",
+      "evidence_ref": ".wm-bootstrap/state/observability/proofs/proof-20260621122742753010.json"
     },
     {
       "feature_key": "platform.runtime_status",
@@ -189,10 +190,10 @@
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "DB/Auth/World/Watcher/Panel/Autoplay are running; runtime_startup proof service checks pass, with packet status manual_required until operator-visible live confirmation is complete. Windows process scan still uses limited fallback.",
-      "last_verified": "2026-06-12",
-      "last_live_proof": "proof-20260612113900858342",
-      "evidence_ref": ".wm-bootstrap/state/observability/proofs/proof-20260612113900858342.json"
+      "scope": "DB/Auth/World/Watcher/Panel/Autoplay each reported one healthy logical instance in the fresh Phase 1 window; runtime_startup packet passed.",
+      "last_verified": "2026-06-21",
+      "last_live_proof": "proof-20260621121720815893",
+      "evidence_ref": ".wm-bootstrap/state/observability/proofs/proof-20260621121720815893.json"
     },
     {
       "feature_key": "release.ci",

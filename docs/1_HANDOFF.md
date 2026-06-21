@@ -32,6 +32,35 @@ never been proven in-client) and **scope drift** (a fresh model "helpfully"
 rewriting architecture that is already correct). §7 exists specifically to
 prevent both.
 
+### 0.1 Execution update (2026-06-21/22)
+
+- **Phase 0:** complete. The handoff rename and Phase 2 implementation were
+  committed separately; the working tree returned clean.
+- **Phase 0e:** complete. BridgeLab rebuilt with 0 errors (one existing
+  duplicate-loader warning), staged successfully, and native request `1139`
+  returned `{"message":"pong","ok":true}` for player 5406.
+- **Phase 1:** partial. Runtime startup, chat action, memory, and scene packets
+  passed in one live service window. Ambient remains `manual_required`: no
+  notable native event occurred after the latest autoplay `started_at`, and
+  policy correctly rejected attempts to force quest mutation. Do not promote
+  the full loop until a fresh area entry/quest completion produces one
+  successful ambient narration and cooldown evidence.
+- **Phase 2:** complete at repo level. `python -m wm.proofs replay <file>` uses
+  deterministic LM/coordinator fakes while exercising the real intent compiler
+  and control validator. The example scores 1.0 for responsiveness, safety,
+  memory reuse, action correctness, and non-spam. Concurrent autoplay state
+  writes now use unique temporary files with Windows retry handling.
+- **Current clean gate:** `1203 passed, 31 warnings`; status, skill, and native
+  contract validation all pass.
+
+Live proof records:
+
+- runtime: `proof-20260621121720815893`
+- chat action: `proof-20260621122742753010`
+- memory: `proof-20260621122838667946`
+- scene: `proof-20260621123611194788`
+- ambient pending: `proof-20260621124240910679`
+
 ---
 
 ## 1. Verified current state (re-verify on first action)
@@ -128,9 +157,9 @@ path, P1 = reinforces critical path, P2 = after P0/P1 green.
 | Phase | Goal | Status | Block reason | Priority |
 |------|------|--------|--------------|----------|
 | **0** | Stabilize dirty tree | **DONE** (8 commits, 1197 green) | — | — |
-| **0e** | Rebuild BridgeLab native modules | PENDING | Needs operator + build toolchain (C++ changed in 3 commits) | P0 |
-| **1** | Repeatable live-proof session | BLOCKED | Needs running server + logged-in client | **P0** |
-| **2** | Replay/eval harness + marker reliability | PENDING (headless-doable) | None — pure code | P1 |
+| **0e** | Rebuild BridgeLab native modules | **DONE** | Native request 1139 returned `pong` | — |
+| **1** | Repeatable live-proof session | **PARTIAL** | Runtime/chat/memory/scene pass; fresh ambient event still required | **P0** |
+| **2** | Replay/eval harness + marker reliability | **DONE** | Offline CLI, scoring, fakes, and concurrent state-write hardening complete | — |
 | **3** | Conversational action loop productization | PENDING | Depends on Phase 1 proof | P1 |
 | **4** | Native contract consolidation | **PARTIAL DONE** | context_snapshot_request closed; debug/product split remains | P1 |
 | **5** | Bounty full-loop + ADR-0004 | BLOCKED | Needs running server + client | **P0** |
@@ -434,7 +463,7 @@ applied), memory reuse, action correctness, non-spam. Wire as
 
 The recovery is **done** when:
 - [x] Tree is stable and committed (Phase 0 — DONE)
-- [ ] BridgeLab native rebuilt and `debug_ping` → `pong` (Phase 0e)
+- [x] BridgeLab native rebuilt and `debug_ping` → `pong` (Phase 0e)
 - [ ] Phase 1 six-proof loop repeatable from a cold launcher start
 - [ ] Bounty full-loop closed in one clean window (Phase 5 Part A)
 - [ ] One compiler-generated quest accepted/turned-in/rewarded in-client (ADR-0004)
