@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import time
 from typing import Any
+from uuid import uuid4
 
 
 DEFAULT_AUTOPLAY_ROOT = Path(".wm-bootstrap/state/autoplay")
@@ -369,9 +371,19 @@ class AutoplayStateStore:
     @staticmethod
     def write_json(path: Path, payload: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-        tmp.replace(path)
+        tmp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+        try:
+            tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+            for attempt in range(20):
+                try:
+                    tmp.replace(path)
+                    break
+                except PermissionError:
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.01 * (attempt + 1))
+        finally:
+            tmp.unlink(missing_ok=True)
 
 
 def _deep_update(base: dict[str, Any], updates: dict[str, Any]) -> None:
