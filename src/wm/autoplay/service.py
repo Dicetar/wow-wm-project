@@ -25,6 +25,13 @@ from wm.autoplay._chat_text import _guard_chat_reply
 from wm.autoplay._chat_text import _is_forget_context_command
 from wm.autoplay._chat_text import _sanitize_chat_reply
 from wm.autoplay._chat_text import _split_chat_message
+from wm.autoplay._chat_context import _chat_identity_facts
+from wm.autoplay._chat_context import _deterministic_chat_fact_reply
+from wm.autoplay._chat_context import _first_text
+from wm.autoplay._chat_context import _looks_like_memory_statement
+from wm.autoplay._chat_context import _looks_like_scene_request
+from wm.autoplay._chat_context import _remembered_facts
+from wm.autoplay._chat_context import _voice_world_digest
 from wm.autoplay.llm import AutoplayLlmAdapter
 from wm.autoplay.llm import schema_for_lane
 from wm.autoplay.policy import AutoplayPolicy
@@ -2562,140 +2569,6 @@ def _chat_action_proposal(*, player_guid: int, message: str, source_message: str
             "metadata": {"source_message": str(source_message)[:1000], "lane": "chat"},
         }
     )
-
-
-def _chat_identity_facts(context: dict[str, Any], *, player_guid: int) -> dict[str, Any]:
-    speaker = context.get("speaker") if isinstance(context.get("speaker"), dict) else {}
-    database = context.get("database") if isinstance(context.get("database"), dict) else {}
-    character_row = database.get("character_row") if isinstance(database.get("character_row"), dict) else {}
-    live = context.get("live_location") if isinstance(context.get("live_location"), dict) else {}
-    name = _first_text(speaker.get("name"), character_row.get("name"))
-    position = None
-    if live.get("x") is not None and live.get("y") is not None:
-        position = {"x": live.get("x"), "y": live.get("y"), "z": live.get("z"), "o": live.get("o")}
-    location_source = live.get("source") or ("stale_characters_row" if character_row else "unknown")
-    return {
-        "player_guid": int(player_guid),
-        "speaker_name": name,
-        "character_name": name,
-        "level": _first_text(character_row.get("level")),
-        "race": _first_text(character_row.get("race")),
-        "class": _first_text(character_row.get("class")),
-        "online": _first_text(character_row.get("online")),
-        # Live presence wins; the characters-row map/zone are a stale last-saved fallback.
-        "map": _first_text(live.get("map_id"), speaker.get("map_id"), character_row.get("map")),
-        "zone": _first_text(live.get("zone_id"), speaker.get("zone_id"), character_row.get("zone")),
-        "area": _first_text(live.get("area_id"), speaker.get("area_id")),
-        "zone_name": _first_text(live.get("zone_name")),
-        "area_name": _first_text(live.get("area_name")),
-        "position": position,
-        "location_source": location_source,
-        "location_fresh": bool(live.get("fresh")),
-        "remembered": _remembered_facts(context),
-    }
-
-
-def _remembered_facts(context: dict[str, Any], *, limit: int = 8) -> list[dict[str, Any]]:
-    """Compact 'what WM remembers about you' list from persisted steering notes."""
-    pack = context.get("session_context_pack") if isinstance(context.get("session_context_pack"), dict) else {}
-    notes = pack.get("conversation_steering")
-    if not isinstance(notes, list):
-        return []
-    facts: list[dict[str, Any]] = []
-    for note in notes:
-        if not isinstance(note, dict):
-            continue
-        body = _first_text(note.get("body"))
-        if not body:
-            continue
-        if note.get("is_active") is False:
-            continue
-        facts.append({"kind": _first_text(note.get("steering_kind")) or "player_preference", "body": body})
-    return facts[:limit]  # notes arrive priority-ordered from the context pack
-
-
-# Cheap cues that a message states something durable about the player. Used to
-# avoid spending an LLM call on every chat turn just to (almost always) find
-# nothing worth remembering. Over-triggering only costs one extra call; the
-# schema extractor still makes the real keep/skip decision.
-_MEMORY_CUES = (
-    "remember", "don't forget", "dont forget", "keep in mind", "note that", "for the record",
-    "i prefer", "i like", "i love", "i hate", "i dislike", "i enjoy", "i fear", "afraid of",
-    "call me", "my name is", "from now on", "my favorite", "my favourite", "i want you to know",
-)
-
-
-def _looks_like_memory_statement(message: str) -> bool:
-    text = str(message).strip().lower()
-    if not text:
-        return False
-    return any(cue in text for cue in _MEMORY_CUES)
-
-
-# Cheap cues that a message asks WM to stage a multi-step scene (vs. a single
-# action). The scene composer still decides whether it is truly a scene; this
-# just avoids spending an extra LLM call on ordinary chat.
-_SCENE_CUES = (
-    "stage", "scene", "summon", "orchestrate", "set up", "set the stage",
-    "have it", "have them", "and then", "make a", "perform", "act out", "play out",
-    "ambush", "honor guard", "escort", "ritual", "ceremony",
-)
-
-
-def _looks_like_scene_request(message: str) -> bool:
-    text = str(message).strip().lower()
-    if not text:
-        return False
-    return any(cue in text for cue in _SCENE_CUES)
-
-
-def _voice_world_digest(context: dict[str, Any]) -> dict[str, Any]:
-    """A tiny world snapshot for the RP voice: location, ambient counts, a little
-    recent chat. The heavy sections (full event lists, online roster, quests,
-    session pack, verb manifest) are intentionally left out to keep prefill small.
-    """
-    if not isinstance(context, dict):
-        return {}
-    live = context.get("live_location") if isinstance(context.get("live_location"), dict) else {}
-    perception = context.get("perception") if isinstance(context.get("perception"), dict) else {}
-    events = context.get("events") if isinstance(context.get("events"), dict) else {}
-    recent_chat = events.get("recent_wm_chat") if isinstance(events.get("recent_wm_chat"), list) else []
-    return {
-        "live_location": {
-            key: live.get(key)
-            for key in ("source", "fresh", "zone_id", "area_id", "zone_name", "area_name", "in_combat")
-        },
-        "perception": {
-            "source": perception.get("source"),
-            "creature_count": perception.get("creature_count"),
-            "gameobject_count": perception.get("gameobject_count"),
-        },
-        "recent_wm_chat": recent_chat[:3],
-    }
-
-
-def _deterministic_chat_fact_reply(message: str, *, identity: dict[str, Any]) -> str | None:
-    lowered = str(message).strip().lower()
-    if not lowered:
-        return None
-    asks_name = (
-        "my name" in lowered
-        or "character name" in lowered
-        or lowered in {"who am i", "who am i?", "what am i called", "what am i called?"}
-    )
-    if asks_name and identity.get("character_name"):
-        return str(identity["character_name"])
-    asks_guid = "my guid" in lowered or "player guid" in lowered or "character guid" in lowered
-    if asks_guid and identity.get("player_guid") is not None:
-        return str(identity["player_guid"])
-    return None
-
-
-def _first_text(*values: Any) -> str | None:
-    for value in values:
-        if value not in (None, ""):
-            return str(value)
-    return None
 
 
 def _ingest_recent_native_bridge_chat(*, client: Any, settings: Settings, store: Any, limit: int = 100) -> None:
