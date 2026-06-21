@@ -50,7 +50,14 @@ prevent both.
   and control validator. The example scores 1.0 for responsiveness, safety,
   memory reuse, action correctness, and non-spam. Concurrent autoplay state
   writes now use unique temporary files with Windows retry handling.
-- **Current clean gate:** `1203 passed, 31 warnings`; status, skill, and native
+- **Phase 4:** complete. Contract reporting now separates five debug/freeform
+  kinds from 31 forward-declared product kinds; real implemented contract gaps
+  remain zero.
+- **Phase 8:** in progress. `_chat_text.py`, `_chat_context.py`, and `_compact.py`
+  were extracted in separate test-guarded commits. `service.py` is now 2912
+  lines (down from 3218); runtime-plan, publish-payload, and scene-helper slices
+  remain.
+- **Current clean gate:** `1205 passed, 31 warnings`; status, skill, and native
   contract validation all pass.
 
 Live proof records:
@@ -161,11 +168,11 @@ path, P1 = reinforces critical path, P2 = after P0/P1 green.
 | **1** | Repeatable live-proof session | **PARTIAL** | Runtime/chat/memory/scene pass; fresh ambient event still required | **P0** |
 | **2** | Replay/eval harness + marker reliability | **DONE** | Offline CLI, scoring, fakes, and concurrent state-write hardening complete | — |
 | **3** | Conversational action loop productization | PENDING | Depends on Phase 1 proof | P1 |
-| **4** | Native contract consolidation | **PARTIAL DONE** | context_snapshot_request closed; debug/product split remains | P1 |
+| **4** | Native contract consolidation | **DONE** | context snapshot contract and debug/product report split complete | — |
 | **5** | Bounty full-loop + ADR-0004 | BLOCKED | Needs running server + client | **P0** |
 | **6** | Memory/subject/context live proof | PENDING | Depends on Phase 1 | P1 |
 | **7** | Living world lanes (gameplay) | PENDING | Catalog-ready, gameplay UNKNOWN | P2 |
-| **8** | autoplay/service.py decomposition (3218 lines) | PENDING (headless-doable) | None — test-guarded refactor | P2 |
+| **8** | autoplay/service.py decomposition (2912 lines) | **IN PROGRESS** | Three pure-helper modules extracted; target remains under 2400 | P2 |
 
 **Critical path:** 0e → 1 → 5. Nothing in 2/3/4/6/7/8 should be prioritized
 over getting 1 and 5 proven, *except* that 2/4/8 can be advanced headlessly
@@ -366,12 +373,10 @@ Follow `docs/NEXT_SESSION_HANDOFF_2026_06_08.md` "Next Session Working Order":
 
 **Do not mark a feature LIVE_WORKING without the matching proof packet.**
 
-### 7.4 Phase 4 — Contract consolidation (headless, P1, partial done)
-**DONE:** `context_snapshot_request` contract (commit pending — see §1.2).
-**REMAINING (low priority):** add debug/product split to `contracts_cli`
-output so the 5 debug kinds are clearly separated from the 31
-forward-declared product kinds. **Do NOT add contracts for the 31
-`impl=False` kinds** (§6.3).
+### 7.4 Phase 4 — Contract consolidation (headless, DONE)
+`context_snapshot_request` is contracted and `contracts_cli` reports the five
+debug/freeform kinds separately from the 31 forward-declared product kinds.
+The 31 `impl=False` kinds intentionally remain without contracts (§6.3).
 
 ### 7.5 Phase 5 — Bounty full-loop + ADR-0004 (operator, P0)
 Two proofs, same clean BridgeLab window:
@@ -391,7 +396,8 @@ On success: relabel `perception.bounty_full_loop` and
 `content.arc_reward_factory` to gameplay `WORKING` in `feature_status.json`.
 
 ### 7.6 Phase 8 — autoplay/service.py decomposition (headless, P2)
-`src/wm/autoplay/service.py` is **3218 lines**. The `AutoplayService` class
+`src/wm/autoplay/service.py` started at **3218 lines** and is currently **2912
+lines**. The `AutoplayService` class
 (94–1224) touches `self`/settings/state — leave it. Below it are ~70
 **module-level pure functions** that are safe to extract into siblings:
 - `_publish_payloads.py` (lines ~2280–2518: quest/item/spell payload builders)
