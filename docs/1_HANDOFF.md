@@ -57,13 +57,14 @@ prevent both.
   `_scene_helpers.py` now hold the extracted helpers. `service.py` is 2367
   lines (down from 3218), with compatibility imports preserving callers.
 - **Launcher reliability:** BridgeLab MySQL startup now polls `mysqladmin ping`
-  instead of assuming a fixed five-second startup. A clean stack started with
-  runtime proof `proof-20260622141938712548`, and native request `1169`
-  returned `pong`.
+  instead of assuming a fixed five-second startup. The all-in-one launcher also
+  waits for world port 8095 and SOAP port 7879 before starting watchers or
+  reporting success. A clean stack started with runtime proof
+  `proof-20260622141938712548`, and native request `1169` returned `pong`.
 - **Current live blocker:** player 5406 is offline. LM Studio service recovery
   restored port 1234 and loaded `qwen3-vl-8b-instruct`; DB/auth/world/watcher,
   panel, autoplay, and LLM health are ready for the next operator window.
-- **Current clean gate:** `1206 passed, 31 warnings`; status, skill, and native
+- **Current clean gate:** `1207 passed, 31 warnings`; status, skill, and native
   contract validation all pass.
 
 Live proof records:
