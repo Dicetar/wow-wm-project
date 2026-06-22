@@ -115,9 +115,17 @@ WILD_FEATURES: tuple[WildFeature, ...] = (
 
 
 def build_wild_feature_catalog() -> dict[str, Any]:
+    from wm.status.feature_status import load_feature_status
+
+    gameplay_by_key = {
+        item.feature_key: item.gameplay_status
+        for item in load_feature_status().entries
+    }
     entries = []
     for f in WILD_FEATURES:
         pending = [v for v in f.verbs if not NATIVE_ACTION_KIND_BY_ID[v].implemented]
+        catalog_ready = not pending
+        gameplay_status = gameplay_by_key.get(f.key, "UNKNOWN")
         entries.append(
             {
                 "key": f.key,
@@ -126,7 +134,11 @@ def build_wild_feature_catalog() -> dict[str, Any]:
                 "batch": f.batch,
                 "verbs": f.verbs,
                 "not_implemented": pending,
-                "live_ready": not pending,
+                "catalog_ready": catalog_ready,
+                "gameplay_status": gameplay_status,
+                # Backward-compatible field, now intentionally means proven
+                # gameplay rather than merely having registered executors.
+                "live_ready": catalog_ready and gameplay_status == "WORKING",
                 "extras": f.extras,
                 "test_ref": f.test_ref,
             }
@@ -134,6 +146,7 @@ def build_wild_feature_catalog() -> dict[str, Any]:
     return {
         "schema_version": "wm.wild_feature_catalog.v1",
         "count": len(entries),
+        "catalog_ready_count": sum(1 for e in entries if e["catalog_ready"]),
         "live_ready_count": sum(1 for e in entries if e["live_ready"]),
         "entries": entries,
     }
@@ -204,12 +217,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(cat, indent=2))
         return 0
-    print(f"Wild Feature Catalog ({cat['schema_version']})  {cat['live_ready_count']}/{cat['count']} live-ready\n")
+    print(
+        f"Wild Feature Catalog ({cat['schema_version']})  "
+        f"{cat['catalog_ready_count']}/{cat['count']} catalog-ready; "
+        f"{cat['live_ready_count']}/{cat['count']} gameplay-proven\n"
+    )
     for e in cat["entries"]:
-        flag = "LIVE" if e["live_ready"] else "GATED"
+        flag = "LIVE" if e["live_ready"] else "READY" if e["catalog_ready"] else "GATED"
         print(f"  [{flag:<5}] {e['key']:<16} {e['batch']}")
         print(f"          {e['summary']}")
         print(f"          archetype: {e['archetype']}")
+        print(f"          gameplay: {e['gameplay_status']}")
         if e["not_implemented"]:
             print(f"          pending C++: {', '.join(e['not_implemented'])}")
     return 0

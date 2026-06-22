@@ -1497,6 +1497,22 @@ class AutoplayService:
             cue = high[0]
         else:
             if _cooldown_active(status.get("latest_ambient"), seconds=cooldown):
+                cue = candidates[0]
+                # A cooldown decision is proof-relevant and the eligible event
+                # must not become delayed narration after the window expires.
+                self.store.mark_event_seen(cue.source_event_key)
+                self.store.append_journal(
+                    "ambient_suppressed",
+                    {
+                        "player_guid": guid,
+                        "reason": "cooldown_active",
+                        "cooldown_seconds": cooldown,
+                        "kind": cue.kind,
+                        "descriptor": cue.descriptor,
+                        "source_event_key": cue.source_event_key,
+                        "ambient_anchor_at": (status.get("latest_ambient") or {}).get("at"),
+                    },
+                )
                 return None
             cue = candidates[0]
         # Claim the moment before generating so a slow/failed call cannot re-fire it.

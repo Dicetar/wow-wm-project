@@ -317,6 +317,18 @@ def _default_entries() -> list[CommandEntry]:
             for action in ("pin", "suppress", "forget")
         ],
         CommandEntry(
+            id="living.run",
+            label="Run Living Lane",
+            category="living",
+            kind="mutation",
+            dry_run_argv=_py("wm.living.runtime", "--input-json", "{input_json}", "--mode", "dry-run", "--summary"),
+            apply_argv=_py("wm.living.runtime", "--input-json", "{input_json}", "--mode", "apply", "--summary"),
+            mutating=True,
+            dry_run_required=True,
+            confirmation="type_job_id",
+            description="Execute a typed living-world lane against the fresh marker-selected WM Session target.",
+        ),
+        CommandEntry(
             id="candidates.release_pack",
             label="Build Release Candidates",
             category="content",

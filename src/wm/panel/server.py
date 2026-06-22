@@ -892,10 +892,17 @@ class PanelApp:
             return {
                 "ok": not issues and validation.ok,
                 "live_ready_count": cat["live_ready_count"],
+                "catalog_ready_count": cat["catalog_ready_count"],
                 "total_count": cat["count"],
                 "issues": [*issues, *validation.issues],
                 "entries": [
-                    {"key": e["key"], "live_ready": e["live_ready"], "batch": e["batch"]}
+                    {
+                        "key": e["key"],
+                        "catalog_ready": e["catalog_ready"],
+                        "live_ready": e["live_ready"],
+                        "gameplay_status": e["gameplay_status"],
+                        "batch": e["batch"],
+                    }
                     for e in cat["entries"]
                 ],
                 "feature_status": {

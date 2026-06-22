@@ -57,15 +57,16 @@ def build_panel() -> PanelReport:
         from wm.living.catalog import build_wild_feature_catalog
         cat = build_wild_feature_catalog()
         total = cat["count"]
+        ready = cat["catalog_ready_count"]
         live = cat["live_ready_count"]
         report.living_readiness = {
             e["key"]: e["live_ready"] for e in cat["entries"]
         }
-        status = WORKING if live == total else PARTIAL
+        status = WORKING if ready == total else PARTIAL
         report.health.append(HealthCheck(
             name="living.catalog",
             status=status,
-            detail=f"{live}/{total} features live-ready",
+            detail=f"{ready}/{total} catalog-ready; {live}/{total} gameplay-proven",
         ))
     except Exception as exc:
         report.health.append(HealthCheck(name="living.catalog", status=UNKNOWN, detail=str(exc)))

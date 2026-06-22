@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from wm.proofs.runner import list_proof_packets
 from wm.proofs.runner import run_proof_packet
 from wm.autoplay.state import AutoplayStateStore
@@ -37,6 +39,24 @@ def test_living_lane_packet_requires_lane_and_outcome(tmp_path):
         "lane": "rumor",
         "outcome": "cleanup",
     }
+
+
+def test_living_lane_packet_passes_only_with_matching_scoped_audit(tmp_path):
+    runtime = _live_runtime(tmp_path)
+    state = tmp_path / ".wm-bootstrap" / "state" / "living" / "5408.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(json.dumps({"audit": [{"at": "2026-01-01T00:06:00Z", "lane": "rumor", "operation": "trigger", "status": "active"}]}), encoding="utf-8")
+    record = run_proof_packet(
+        proof_kind="living_lane",
+        project_root=tmp_path,
+        player_guid=5408,
+        runtime_status=runtime,
+        living_lane="rumor",
+        living_outcome="success",
+        target_provenance={"source": "marker", "player_guid": 5408, "marker_spell_id": 946602, "selected_at": "2026-01-01T00:05:00Z"},
+    )
+    assert record["status"] == "passed"
+    assert record["evidence_checks"][0]["status"] == "PASS"
 
 
 def test_runtime_startup_packet_passes_when_required_services_running(tmp_path):
@@ -158,6 +178,10 @@ def test_ambient_packet_passes_with_journal_evidence(tmp_path):
         "ambient_narration",
         {"player_guid": 5408, "kind": "area_entry", "ok": True, "line": "The air changes."},
     )
+    store.append_journal(
+        "ambient_suppressed",
+        {"player_guid": 5408, "reason": "cooldown_active", "source_event_key": "area-2"},
+    )
 
     record = run_proof_packet(
         proof_kind="ambient",
@@ -169,7 +193,7 @@ def test_ambient_packet_passes_with_journal_evidence(tmp_path):
     assert entry["kind"] == "ambient_narration"
     assert entry["payload_kind"] == "area_entry"
     assert record["status"] == "passed"
-    assert record["evidence_refs"][0]["kind"] == "ambient_narration"
+    assert {ref["kind"] for ref in record["evidence_refs"]} >= {"ambient_narration", "ambient_suppressed"}
 
 
 def test_chat_action_packet_passes_with_chat_deed_and_verification(tmp_path):

@@ -107,7 +107,7 @@ def build_nemesis_plan(trigger: NemesisTrigger, config: NemesisConfig | None = N
     steps: list[dict[str, Any]] = [
         {
             "native_action_kind": "creature_spawn",
-            "payload": {"creature_entry": trigger.subject_entry, "arc_key": arc_key, "follow_player": False},
+            "payload": {"creature_entry": trigger.subject_entry, "arc_key": arc_key, "follow_player": False, "duration_ms": 60000},
             "expected_effect": "WM-owned nemesis base creature spawned near the player",
         },
         {

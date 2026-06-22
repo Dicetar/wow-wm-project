@@ -29,6 +29,7 @@ CATALOG: dict[str, list[tuple[str, str]]] = {
         ("living.legend", "Local Legend scaffold (title/letter, Batch-2 gated)"),
         ("living.patron", "Patron/Favor scaffold (favor tiers, Batch-3 gated)"),
         ("living.oath", "Oath/Contract scaffold (kept/broken outcomes, Batch-3 gated)"),
+        ("living.runtime", "Marker-scoped, job-gated living lane execution"),
     ],
     "control": [
         ("control.inspect", "Inspect what an event can trigger"),

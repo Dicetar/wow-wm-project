@@ -59,6 +59,11 @@ class NemesisPlanContractTests(unittest.TestCase):
         for step in plan.scene_steps:
             self.assertEqual(step["payload"].get("arc_key"), plan.arc_key)
 
+    def test_spawn_is_bounded_for_timeout_cleanup(self) -> None:
+        plan, _ = build_nemesis_plan(_trigger(12))
+        spawn = next(step for step in plan.scene_steps if step["native_action_kind"] == "creature_spawn")
+        self.assertEqual(spawn["payload"]["duration_ms"], 60000)
+
     def test_scene_uses_batch1_verbs(self) -> None:
         plan, _ = build_nemesis_plan(_trigger(12))
         kinds = [s["native_action_kind"] for s in plan.scene_steps]

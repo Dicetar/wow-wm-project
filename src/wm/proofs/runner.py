@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 from typing import Any
 
@@ -228,6 +229,8 @@ def run_proof_packet(
         store=obs,
         player_guid=player_guid,
         evidence_since=evidence_since,
+        living_lane=(living or {}).get("lane"),
+        living_outcome=(living or {}).get("outcome"),
     )
     evidence_refs = [
         ref
@@ -314,7 +317,7 @@ def _runtime_checks(*, packet: ProofPacket, runtime: dict[str, Any]) -> list[dic
 
 
 def _evidence_since(*, packet: ProofPacket, runtime: dict[str, Any]) -> str | None:
-    if packet.proof_kind not in {"chat_action", "ambient", "memory", "scene"}:
+    if packet.proof_kind not in {"chat_action", "ambient", "memory", "scene", "living_lane"}:
         return None
     services = runtime.get("services") if isinstance(runtime.get("services"), dict) else {}
     starts: list[datetime] = []
@@ -338,7 +341,17 @@ def _evidence_checks(
     store: WmObservabilityStore,
     player_guid: int | None,
     evidence_since: str | None = None,
+    living_lane: str | None = None,
+    living_outcome: str | None = None,
 ) -> list[dict[str, Any]]:
+    if packet.proof_kind == "living_lane":
+        return _living_evidence(
+            project_root=project_root,
+            player_guid=player_guid,
+            lane=living_lane,
+            outcome=living_outcome,
+            evidence_since=evidence_since,
+        )
     if packet.proof_kind not in {"chat_action", "ambient", "memory", "scene"}:
         return []
     journal = store.list_autoplay_journal(limit=200)
@@ -357,6 +370,44 @@ def _evidence_checks(
     if packet.proof_kind == "scene":
         return _scene_evidence(journal=journal, player_guid=player_guid, evidence_since=evidence_since)
     return []
+
+
+def _living_evidence(
+    *,
+    project_root: Path,
+    player_guid: int | None,
+    lane: str | None,
+    outcome: str | None,
+    evidence_since: str | None,
+) -> list[dict[str, Any]]:
+    if not player_guid or not lane or not outcome:
+        return []
+    path = project_root / ".wm-bootstrap" / "state" / "living" / f"{int(player_guid)}.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = {}
+    expected_statuses = {
+        "success": {"active"},
+        "failure": {"failed"},
+        "cleanup": {"cleanup", "suppress", "revoke"},
+    }[outcome]
+    record = next(
+        (
+            item for item in reversed(list(raw.get("audit") or []))
+            if isinstance(item, dict)
+            and str(item.get("lane") or "") == lane
+            and str(item.get("status") or "") in expected_statuses
+            and _matches_window(item, evidence_since)
+        ),
+        None,
+    )
+    return [_evidence_check(
+        f"living:{lane}:{outcome}",
+        "PASS" if record else "PENDING",
+        "scoped living lane audit found in marker evidence window" if record else _missing_detail("No matching scoped living lane audit found.", evidence_since),
+        record,
+    )]
 
 
 def _chat_action_evidence(
@@ -446,12 +497,26 @@ def _ambient_evidence(
             _missing_detail("No ambient narration journal entry found.", evidence_since),
             None,
         )]
-    return [_evidence_check(
-        "journal:ambient_narration",
-        "PASS" if bool(ambient.get("ok")) else "FAIL",
-        "ambient narration spoken" if bool(ambient.get("ok")) else "ambient narration attempted but did not apply",
-        ambient,
-    )]
+    suppressed = _latest_journal_entry(
+        journal,
+        {"ambient_suppressed"},
+        player_guid=player_guid,
+        evidence_since=evidence_since,
+    )
+    return [
+        _evidence_check(
+            "journal:ambient_narration",
+            "PASS" if bool(ambient.get("ok")) else "FAIL",
+            "ambient narration spoken" if bool(ambient.get("ok")) else "ambient narration attempted but did not apply",
+            ambient,
+        ),
+        _evidence_check(
+            "journal:ambient_cooldown_suppression",
+            "PASS" if suppressed is not None else "PENDING",
+            "second eligible ambient event suppressed during cooldown" if suppressed else _missing_detail("No ambient cooldown-suppression journal entry found.", evidence_since),
+            suppressed,
+        ),
+    ]
 
 
 def _memory_evidence(

@@ -22,14 +22,17 @@ class WildCatalogTests(unittest.TestCase):
     def test_validate_clean(self) -> None:
         self.assertEqual(validate_wild_catalog(), [])
 
-    def test_catalog_shape_and_live_ready_honest(self) -> None:
+    def test_catalog_distinguishes_executor_readiness_from_live_proof(self) -> None:
         cat = build_wild_feature_catalog()
         self.assertEqual(cat["count"], len(WILD_FEATURES))
         by = {e["key"]: e for e in cat["entries"]}
-        self.assertTrue(by["living.rumor"]["live_ready"])  # announce-only
-        self.assertTrue(by["living.nemesis"]["live_ready"])  # Batch 1 nemesis scene verbs implemented
-        self.assertTrue(by["living.patron"]["live_ready"])  # counter + announce implemented
-        self.assertTrue(by["living.oath"]["live_ready"])  # counter + quest_fail + announce implemented
+        self.assertTrue(by["living.rumor"]["catalog_ready"])
+        self.assertTrue(by["living.nemesis"]["catalog_ready"])
+        self.assertTrue(by["living.patron"]["catalog_ready"])
+        self.assertTrue(by["living.oath"]["catalog_ready"])
+        self.assertTrue(all(not entry["live_ready"] for entry in by.values()))
+        self.assertTrue(all(entry["gameplay_status"] == "UNKNOWN" for entry in by.values()))
+        self.assertEqual(cat["catalog_ready_count"], len(WILD_FEATURES))
         self.assertEqual(cat["live_ready_count"], sum(1 for e in cat["entries"] if e["live_ready"]))
 
     def test_dry_run_all_every_plan_contract_clean(self) -> None:

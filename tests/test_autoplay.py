@@ -431,6 +431,11 @@ def test_ambient_narration_respects_cooldown(tmp_path: Path):
         record = service._drive_ambient_narration(**_ambient_args(status=status))
     assert record is None
     narrate.assert_not_called()
+    journal = [service.store.read_json(path) for path in service.store.root.joinpath("journal").glob("*.json")]
+    suppressed = next(item for item in journal if item["kind"] == "ambient_suppressed")
+    assert suppressed["reason"] == "cooldown_active"
+    assert suppressed["source_event_key"] == "quest-7"
+    assert "quest-7" in service.store.load_seen_event_keys()
 
 
 def test_ambient_death_bypasses_cooldown(tmp_path: Path):

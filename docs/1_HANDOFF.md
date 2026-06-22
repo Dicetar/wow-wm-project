@@ -66,6 +66,16 @@ prevent both.
   watcher/autoplay or running live proofs.
 - **Current clean gate:** `1218 passed, 31 warnings`; status, skill, and native
   contract validation all pass.
+- **2026-06-23 marker/living milestone:** proof execution now resolves the
+  marker-selected WM Session, rejects conflicting GUIDs, and records marker
+  provenance. The living catalog distinguishes executor readiness from
+  gameplay proof. `living.run` is a dry-run-first, job-confirmed command that
+  accepts no fixture target, requires a fresh online `946602` marker session,
+  executes typed lane actions, enforces multi-actor cleanup, and records
+  scoped WM state only after successful apply. Ambient cooldown suppression
+  is now journaled and required by the ambient proof packet.
+- **Current clean gate after that milestone:** `1225 passed, 31 warnings`;
+  status, skill, native-contract, living-catalog, and diff validation pass.
 
 Live proof records:
 
@@ -86,11 +96,11 @@ the commands in §6 before trusting them** — they are cheap and definitive.
 |------|-------|---------------|
 | Branch | `main` | `git branch --show-current` |
 | Last stabilization commit | `e57e026 docs: sync handoff...` | `git log --oneline -1` |
-| Test suite | **1197 passed, 31 warnings** | `python -m pytest -q` |
+| Test suite | **1225 passed, 31 warnings** | `python -m pytest -q` |
 | Status validation | `OK` | `python -m wm.status --validate` |
 | Native contracts | **64 contracted, 0 implemented-without-contract** | `python -m wm.sources.native_bridge.contracts_cli` |
 | Native action surface | 100 kinds, 60 `implemented=True`, 1:1 with C++ registry | §5 cross-check |
-| Dirty tree | **1 file** (uncommitted `context_snapshot_request` contract) | `git status --porcelain` |
+| Dirty tree | Re-check; milestone changes are committed phase-by-phase | `git status --porcelain` |
 | Live services | **All `not_running`** (cold machine; DB/Auth/World/Watcher/Panel/Autoplay) | `python -m wm.runtime status --json` |
 
 ### 1.1 The 8 stabilization commits (Phase 0)
@@ -238,7 +248,7 @@ are reliable; `db`/`auth`/`world` still rely on name-matching (known gap).
 ### 5.1 Validation gate — run before AND after every change
 ```bash
 cd D:/WOW/wm-project
-python -m pytest -q                              # target: 1197 passed
+python -m pytest -q                              # target: 1225 passed
 python -m wm.status --validate                   # target: OK
 python scripts/validate_agent_skills.py          # target: OK
 ```

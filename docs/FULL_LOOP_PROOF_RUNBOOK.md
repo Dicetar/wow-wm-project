@@ -162,6 +162,31 @@ move ADR-0004 to `ACCEPTED`, and update `docs/ROADMAP.md`,
 `docs/WM_PLATFORM_HANDOFF.md`, and `docs/ARC_REWARD_FACTORY_V1.md` to cite the compiler
 path (not hand-clone). Add the B3 regression test from ADR-0004 action item 4.
 
+## Marker-scoped living lane execution
+
+Living lane jobs use the panel job API/command catalog entry `living.run`.
+The job payload contains lane inputs but does not choose the target. The CLI
+injects the active WM Session target and rejects the run unless that session
+comes from a fresh, online canonical marker event (`946602`). An optional
+`player_guid` in the payload is only a conflict assertion; it cannot override
+the session target.
+
+Required sequence for every lane outcome:
+
+1. Reapply `946602`, run marker scan and `scope-latest`, and bootstrap the WM
+   Session from that marker candidate.
+2. Submit `living.run` as a dry-run job with a JSON payload containing `lane`,
+   `operation`, and lane-specific facts.
+3. Inspect every typed action and cleanup step, then confirm apply by typing
+   the generated job ID.
+4. Capture a `living_lane` proof packet with the same lane and one of
+   `success`, `failure`, or `cleanup`.
+
+`scene_director` payloads must spawn at least two distinct WM-owned actors,
+give every spawn a `duration_ms` from 1 through 120000, and explicitly despawn
+every actor. Successful applies write `.wm-bootstrap/state/living/<guid>.json`;
+failed or dry-run execution does not advance lane state.
+
 ## After the window
 
 - Record both PIDs, request ids, event ids, and any burned/retired ids in the relevant
