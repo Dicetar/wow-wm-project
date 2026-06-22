@@ -63,7 +63,17 @@ class JobRunner:
             job["issues"].append({"path": "command_id", "message": str(exc), "severity": "error"})
             self.state.save_job(job)
             return job
-        job = self._new_job(command_id=command_id, params=params or {}, payload=payload)
+        resolved_params = dict(params or {})
+        if entry.marker_target_required:
+            try:
+                resolved_params = self._resolve_marker_target(resolved_params)
+            except ValueError as exc:
+                job = self._new_job(command_id=command_id, params=resolved_params, payload=payload)
+                job["state"] = "INVALID"
+                job["issues"].append({"path": "params.player_guid", "message": str(exc), "severity": "error"})
+                self.state.save_job(job)
+                return job
+        job = self._new_job(command_id=command_id, params=resolved_params, payload=payload)
         try:
             argv = entry.argv_for(mode="dry-run", params=job["params"], paths=self._job_paths(job))
         except Exception as exc:
@@ -78,6 +88,18 @@ class JobRunner:
         job["updated_at"] = utc_now_iso()
         self.state.save_job(job)
         return job
+
+    def _resolve_marker_target(self, params: dict[str, Any]) -> dict[str, Any]:
+        session = self.state.load_session() or {}
+        if session.get("source") != "marker" or int(session.get("marker_spell_id") or 0) != 946602:
+            raise ValueError("a canonical marker-selected WM Session is required")
+        guid = session.get("character_guid")
+        if guid in (None, ""):
+            raise ValueError("the active marker-selected WM Session has no character GUID")
+        explicit = params.get("player_guid")
+        if explicit not in (None, "") and int(explicit) != int(guid):
+            raise ValueError("explicit player_guid conflicts with the active marker-selected WM Session")
+        return {**params, "player_guid": int(guid)}
 
     def run_apply(self, *, job_id: str, confirmation: str | None = None) -> dict[str, Any]:
         job = self.state.load_job(job_id)

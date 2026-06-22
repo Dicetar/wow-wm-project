@@ -74,7 +74,9 @@ prevent both.
   executes typed lane actions, enforces multi-actor cleanup, and records
   scoped WM state only after successful apply. Ambient cooldown suppression
   is now journaled and required by the ambient proof packet.
-- **Current clean gate after that milestone:** `1225 passed, 31 warnings`;
+- Context, memory, and native-queue panel jobs now inject the active canonical
+  marker-session GUID and reject conflicting explicit GUIDs.
+- **Current clean gate after that milestone:** `1228 passed, 31 warnings`;
   status, skill, native-contract, living-catalog, and diff validation pass.
 
 Live proof records:
@@ -96,7 +98,7 @@ the commands in §6 before trusting them** — they are cheap and definitive.
 |------|-------|---------------|
 | Branch | `main` | `git branch --show-current` |
 | Last stabilization commit | `e57e026 docs: sync handoff...` | `git log --oneline -1` |
-| Test suite | **1225 passed, 31 warnings** | `python -m pytest -q` |
+| Test suite | **1228 passed, 31 warnings** | `python -m pytest -q` |
 | Status validation | `OK` | `python -m wm.status --validate` |
 | Native contracts | **64 contracted, 0 implemented-without-contract** | `python -m wm.sources.native_bridge.contracts_cli` |
 | Native action surface | 100 kinds, 60 `implemented=True`, 1:1 with C++ registry | §5 cross-check |
@@ -248,7 +250,7 @@ are reliable; `db`/`auth`/`world` still rely on name-matching (known gap).
 ### 5.1 Validation gate — run before AND after every change
 ```bash
 cd D:/WOW/wm-project
-python -m pytest -q                              # target: 1225 passed
+python -m pytest -q                              # target: 1228 passed
 python -m wm.status --validate                   # target: OK
 python scripts/validate_agent_skills.py          # target: OK
 ```

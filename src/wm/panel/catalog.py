@@ -39,6 +39,7 @@ class CommandEntry:
     confirmation: str | None = None
     parameters: tuple[ParameterSpec, ...] = field(default_factory=tuple)
     description: str = ""
+    marker_target_required: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -53,6 +54,7 @@ class CommandEntry:
             "parameters": [parameter.to_dict() for parameter in self.parameters],
             "description": self.description,
             "has_apply": bool(self.apply_argv),
+            "marker_target_required": self.marker_target_required,
         }
 
     def argv_for(self, *, mode: str, params: dict[str, Any], paths: dict[str, Path]) -> list[str]:
@@ -110,7 +112,7 @@ def _py(*parts: str) -> tuple[str, ...]:
 
 
 def _default_entries() -> list[CommandEntry]:
-    player = ParameterSpec("player_guid", type="integer", required=True, description="Scoped player GUID.")
+    player = ParameterSpec("player_guid", type="integer", required=False, description="Optional conflict assertion; target resolves from active marker session.")
     limit = ParameterSpec("limit", type="integer", default=20, description="Maximum rows to list.")
     marker_spell = ParameterSpec(
         "marker_spell_id",
@@ -173,6 +175,7 @@ def _default_entries() -> list[CommandEntry]:
             kind="read_only",
             dry_run_argv=_py("wm.sources.native_bridge.actions_cli", "inspect", "--player-guid", "{player_guid}", "--limit", "{limit}", "--summary"),
             parameters=(player, limit),
+            marker_target_required=True,
         ),
         CommandEntry(
             id="marker.scan",
@@ -288,6 +291,7 @@ def _default_entries() -> list[CommandEntry]:
                 player,
                 ParameterSpec("target_entry", type="integer", required=True, description="Creature template entry."),
             ),
+            marker_target_required=True,
             description="Build deterministic wm.context_pack.v1 from existing context/journal systems.",
         ),
         CommandEntry(
@@ -297,6 +301,7 @@ def _default_entries() -> list[CommandEntry]:
             kind="read_only",
             dry_run_argv=_py("wm.character.memory", "inspect", "--player-guid", "{player_guid}", "--summary"),
             parameters=(player,),
+            marker_target_required=True,
         ),
         *[
             CommandEntry(
@@ -316,6 +321,7 @@ def _default_entries() -> list[CommandEntry]:
                 dry_run_required=True,
                 confirmation="type_job_id",
                 parameters=(player, steering_key),
+                marker_target_required=True,
                 description=f"{action.title()} one memory through an audited, scoped character-state update.",
             )
             for action in ("pin", "suppress", "forget")

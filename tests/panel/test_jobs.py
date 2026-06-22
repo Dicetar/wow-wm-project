@@ -9,11 +9,49 @@ from unittest.mock import patch
 
 from wm.panel.catalog import CommandCatalog
 from wm.panel.catalog import CommandEntry
+from wm.panel.catalog import ParameterSpec
 from wm.panel.jobs import JobRunner
 from wm.panel.state import PanelState
 
 
 class PanelJobRunnerTests(unittest.TestCase):
+    def test_marker_target_job_injects_session_guid_and_rejects_conflict(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            state = PanelState(root)
+            state.save_session({"source": "marker", "marker_spell_id": 946602, "character_guid": 3838})
+            entry = CommandEntry(
+                id="test.marker",
+                label="Marker",
+                category="test",
+                kind="read_only",
+                dry_run_argv=(sys.executable, "-c", "print('{player_guid}')"),
+                parameters=(ParameterSpec("player_guid", type="integer"),),
+                marker_target_required=True,
+            )
+            runner = JobRunner(state=state, catalog=CommandCatalog([entry]), cwd=Path.cwd())
+            injected = runner.run_dry_run(command_id="test.marker")
+            self.assertEqual(injected["params"]["player_guid"], 3838)
+            self.assertEqual(injected["state"], "DRY_RUN_PASSED")
+            conflict = runner.run_dry_run(command_id="test.marker", params={"player_guid": 5406})
+            self.assertEqual(conflict["state"], "INVALID")
+            self.assertIn("conflicts", conflict["issues"][0]["message"])
+
+    def test_marker_target_job_requires_canonical_session(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            entry = CommandEntry(
+                id="test.marker",
+                label="Marker",
+                category="test",
+                kind="read_only",
+                dry_run_argv=(sys.executable, "-c", "print('x')"),
+                marker_target_required=True,
+            )
+            runner = JobRunner(state=PanelState(Path(temp)), catalog=CommandCatalog([entry]), cwd=Path.cwd())
+            result = runner.run_dry_run(command_id="test.marker")
+            self.assertEqual(result["state"], "INVALID")
+            self.assertIn("canonical marker-selected", result["issues"][0]["message"])
+
     def test_mutating_job_requires_dry_run_and_matching_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             runner = _runner(Path(temp))
