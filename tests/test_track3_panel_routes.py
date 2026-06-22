@@ -47,7 +47,11 @@ def test_runtime_status_route():
     assert "services" in body
 
 
-def test_proof_timeline_incident_routes():
+def test_proof_timeline_incident_routes(monkeypatch):
+    monkeypatch.setattr(
+        "wm.proofs.runner.collect_runtime_status",
+        lambda **_kwargs: {"summary": {}, "services": {}, "incidents": []},
+    )
     app = _make_app()
 
     status, proof = app.post("/api/wm/proofs/run", {"proof_kind": "chat_action", "player_guid": 5408})

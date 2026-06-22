@@ -219,6 +219,41 @@ function Start-LabServerProcess {
     Write-Host "bridge_lab_$($Name)_started=true pid=$($process.Id) exe=$ExecutablePath"
 }
 
+function Wait-LabTcpPortReady {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Port,
+        [Parameter(Mandatory = $true)]
+        [string]$Label,
+        [int]$TimeoutSeconds = 120
+    )
+
+    if ($DryRun.IsPresent) {
+        Write-Host "dry_run_wait_tcp=$Label port=$Port timeout_seconds=$TimeoutSeconds"
+        return
+    }
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $client = [System.Net.Sockets.TcpClient]::new()
+        try {
+            $pending = $client.BeginConnect("127.0.0.1", $Port, $null, $null)
+            if ($pending.AsyncWaitHandle.WaitOne(500)) {
+                $client.EndConnect($pending)
+                Write-Host "bridge_lab_$($Label)_ready=true port=$Port"
+                return
+            }
+        } catch {
+            # The service is still initializing; retry until the bounded deadline.
+        } finally {
+            $client.Close()
+        }
+        Start-Sleep -Milliseconds 500
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "BridgeLab $Label did not listen on 127.0.0.1:$Port within $TimeoutSeconds seconds."
+}
+
 $ProjectRoot = Resolve-ExistingPath -Path $ProjectRoot -Label "Project root"
 $BridgeLabRoot = Resolve-ExistingPath -Path $BridgeLabRoot -Label "BridgeLab root"
 
@@ -330,6 +365,9 @@ if ($RestartWorldServer.IsPresent) {
         -WorkingDirectory $runDir `
         -ConfigPath "configs\worldserver.conf"
 }
+
+Wait-LabTcpPortReady -Port $WorldServerPort -Label "worldserver"
+Wait-LabTcpPortReady -Port $SoapPort -Label "soap"
 
 if ($Watcher -eq "auto-bounty") {
     $autoArgs = @(
