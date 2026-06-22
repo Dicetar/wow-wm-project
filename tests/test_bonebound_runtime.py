@@ -892,6 +892,19 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("CAST(6 AS UNSIGNED) AS `status`", sql)
         self.assertNotIn("DROP TABLE", sql.upper())
 
+    def test_bridge_lab_mysql_waits_for_query_readiness(self) -> None:
+        repo_root = self._repo_root()
+        launcher = repo_root.joinpath(
+            "scripts",
+            "bridge_lab",
+            "Start-BridgeLabMySql.ps1",
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("function Wait-LabMySqlReady", launcher)
+        self.assertIn('Join-Path $mysqlRoot "bin\\mysqladmin.exe"', launcher)
+        self.assertIn("Wait-LabMySqlReady -TimeoutSeconds 30", launcher)
+        self.assertNotIn("Start-Sleep -Seconds 5", launcher)
+
 
 if __name__ == "__main__":
     unittest.main()
