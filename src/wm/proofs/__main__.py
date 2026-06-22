@@ -20,6 +20,8 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--project-root", type=Path, default=Path.cwd())
     run.add_argument("--player-guid", type=int)
     run.add_argument("--mode", choices=["dry-run", "record"], default="dry-run")
+    run.add_argument("--living-lane", choices=["rumor", "patron", "oath", "nemesis", "legend", "scene_director"])
+    run.add_argument("--living-outcome", choices=["success", "failure", "cleanup"])
     run.add_argument("--json", action="store_true")
     replay = sub.add_parser("replay", help="Evaluate a recorded event stream offline.")
     replay.add_argument("recording", type=Path)
@@ -44,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
             project_root=args.project_root,
             player_guid=args.player_guid,
             mode=args.mode,
+            living_lane=args.living_lane,
+            living_outcome=args.living_outcome,
         )
         if args.json:
             print(json.dumps(record, indent=2, ensure_ascii=False, sort_keys=True))

@@ -1567,6 +1567,7 @@ from wm.autoplay.intent import (
     compile_intent,
     is_affirmation,
     is_negation,
+    intent_failure_message,
 )
 from wm.autoplay.tools import autoplay_tool_manifest
 from wm.autoplay.intent_extract import extract_chat_intent
@@ -1577,26 +1578,29 @@ from wm.autoplay.service import _chat_identity_facts
 
 def test_default_verb_modes_low_auto_medium_high_confirm():
     modes = default_verb_modes()
-    assert modes["player_restore_health_power"] == "auto"
-    assert modes["player_apply_aura"] == "confirm"
+    assert modes["world_announce_to_player"] == "auto"
+    assert modes["creature_spawn"] == "confirm"
+    assert "player_restore_health_power" not in modes
+    assert "player_apply_aura" not in modes
     assert "player_teleport" not in modes
 
 
-def test_resolve_verb_modes_applies_overrides_and_ignores_unimplemented():
-    resolved = resolve_verb_modes({"player_apply_aura": "auto", "player_teleport": "auto"})
-    assert resolved["player_apply_aura"] == "confirm"
+def test_resolve_verb_modes_applies_overrides_and_ignores_ungraduated():
+    resolved = resolve_verb_modes({"creature_spawn": "off", "player_apply_aura": "auto", "player_teleport": "auto"})
+    assert resolved["creature_spawn"] == "off"
+    assert "player_apply_aura" not in resolved
     assert "player_teleport" not in resolved
-    assert resolved["player_restore_health_power"] == "auto"
+    assert resolved["world_announce_to_player"] == "auto"
 
 
 def test_manifest_excludes_off_verbs_and_lists_modes():
-    modes = {"player_restore_health_power": "auto", "player_apply_aura": "off"}
+    modes = {"world_announce_to_player": "auto", "creature_spawn": "off"}
     manifest = autoplay_tool_manifest(modes=modes)
     verbs = {item["kind"]: item for item in manifest["native_actions"]}
-    assert "player_apply_aura" not in verbs
-    assert verbs["player_restore_health_power"]["mode"] == "auto"
-    assert verbs["player_restore_health_power"]["verification_strategy"] == "native_request_done"
-    assert verbs["player_restore_health_power"]["auto_apply_allowed"] is True
+    assert "creature_spawn" not in verbs
+    assert verbs["world_announce_to_player"]["mode"] == "auto"
+    assert verbs["world_announce_to_player"]["verification_strategy"] == "native_request_done"
+    assert verbs["world_announce_to_player"]["auto_apply_allowed"] is True
 
 
 def test_manifest_includes_payload_arg_contracts():
@@ -1765,14 +1769,21 @@ def test_compile_intent_rejects_missing_required_args():
 def test_compile_intent_builds_proposal_with_locked_guid():
     out = compile_intent(
         player_guid=5408,
-        verb="player_restore_health_power",
-        args={"health_percent": 100},
-        modes={"player_restore_health_power": "auto"},
+        verb="world_announce_to_player",
+        args={"message": "The road is clear."},
+        modes={"world_announce_to_player": "auto"},
     )
     assert not isinstance(out, IntentRejection)
     assert out.proposal.player.guid == 5408
     assert out.mode == "auto"
     assert out.risk == "low"
+
+
+def test_intent_failure_messages_hide_implementation_noise():
+    assert "conversation" in intent_failure_message(reason="verb not enabled: 'x'", verb="x")
+    assert "offline" in intent_failure_message(reason="player_not_online", verb="creature_say")
+    assert "cooling down" in intent_failure_message(reason="cooldown_active", verb="creature_say")
+    assert "safety policy" in intent_failure_message(reason="blocked by risk policy", verb="creature_spawn")
 
 
 def test_affirmation_and_negation():

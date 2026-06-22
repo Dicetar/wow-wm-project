@@ -891,7 +891,7 @@ class AutoplayService:
         intent: dict[str, Any],
         source_message: str,
     ) -> dict[str, Any]:
-        from wm.autoplay.intent import IntentRejection, compile_intent
+        from wm.autoplay.intent import IntentRejection, compile_intent, intent_failure_message
 
         verb = str(intent.get("verb") or "")
         intent_args = intent.get("args") if isinstance(intent.get("args"), dict) else {}
@@ -931,7 +931,9 @@ class AutoplayService:
                 "detail": compiled.reason,
                 "payload": {"intent": intent, "player_guid": int(player_guid)},
             })
-            return {"intent": "rejected", "reason": compiled.reason}
+            message = intent_failure_message(reason=compiled.reason, verb=verb)
+            self._speak(settings=settings, player_guid=player_guid, text=message, source_message=source_message)
+            return {"intent": "rejected", "reason": compiled.reason, "player_message": message}
         coordinator = self._control_coordinator(settings)
         dry = coordinator.execute(proposal=compiled.proposal, mode="dry-run", confirm_live_apply=False)
         if dry.status != "dry-run":
@@ -939,10 +941,9 @@ class AutoplayService:
                 "reason": "intent_dry_run_failed", "kind": "intent",
                 "detail": _result_to_dict(dry), "payload": {"verb": compiled.verb},
             })
-            self._speak(settings=settings, player_guid=player_guid,
-                        text=f"I cannot do that right now ({compiled.verb.replace('_', ' ')}).",
-                        source_message=source_message)
-            return {"intent": "dry_run_failed", "verb": compiled.verb}
+            message = intent_failure_message(reason=str(_result_to_dict(dry)), verb=compiled.verb)
+            self._speak(settings=settings, player_guid=player_guid, text=message, source_message=source_message)
+            return {"intent": "dry_run_failed", "verb": compiled.verb, "player_message": message}
         if compiled.mode == "auto":
             return self._apply_compiled(settings=settings, player_guid=player_guid,
                                         compiled=compiled, source_message=source_message)
@@ -1094,8 +1095,11 @@ class AutoplayService:
         counters = dict(counters_status.get("counters") or {})
         counters["auto_applied"] = int(counters.get("auto_applied") or 0) + (1 if ok else 0)
         self.store.update_status(counters=counters, latest_verification=verification)
-        msg = (f"Done - {compiled.verb.replace('_', ' ')}." if ok
-               else f"That did not take ({compiled.verb.replace('_', ' ')}).")
+        if ok:
+            msg = f"Done - {compiled.verb.replace('_', ' ')}."
+        else:
+            from wm.autoplay.intent import intent_failure_message
+            msg = intent_failure_message(reason=str(record), verb=compiled.verb)
         self._speak(settings=settings, player_guid=player_guid, text=msg, source_message=source_message)
         if not ok:
             self.store.add_issue({"reason": "intent_apply_failed", "kind": "intent", "detail": record})

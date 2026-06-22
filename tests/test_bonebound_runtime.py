@@ -892,6 +892,9 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("CAST(6 AS UNSIGNED) AS `status`", sql)
         self.assertNotIn("DROP TABLE", sql.upper())
 
+        self.assertIn('$characterStateSql = Join-Path $ProjectRoot "sql\\bootstrap\\wm_character_state.sql"', launcher)
+        self.assertIn("-SqlPath $characterStateSql", launcher)
+
     def test_bridge_lab_mysql_waits_for_query_readiness(self) -> None:
         repo_root = self._repo_root()
         launcher = repo_root.joinpath(

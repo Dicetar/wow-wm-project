@@ -269,6 +269,7 @@ $dllLock = Join-Path $BridgeLabRoot "state\runtime-dlls.lock.json"
 $mysqlExe = Join-Path $BridgeLabRoot "deps\mysql\bin\mysql.exe"
 $bridgeLabCompatibilitySql = Join-Path $ProjectRoot "sql\bootstrap\bridge_lab_ipp_character_quest_compat.sql"
 $bridgeLabAhBotMarketSql = Join-Path $ProjectRoot "sql\bootstrap\bridge_lab_ahbot_market.sql"
+$characterStateSql = Join-Path $ProjectRoot "sql\bootstrap\wm_character_state.sql"
 
 $startMySqlScript = Resolve-ExistingPath -Path (Join-Path $ProjectRoot "scripts\bridge_lab\Start-BridgeLabMySql.ps1") -Label "Start-BridgeLabMySql.ps1"
 $configureScript = Resolve-ExistingPath -Path (Join-Path $ProjectRoot "scripts\bridge_lab\Configure-BridgeLabRuntime.ps1") -Label "Configure-BridgeLabRuntime.ps1"
@@ -331,6 +332,12 @@ if (-not $SkipBridgeLabCompatibilitySql.IsPresent) {
         -Port $LabMySqlPort `
         -Database "acore_characters" `
         -SqlPath $bridgeLabCompatibilitySql
+
+    Invoke-BridgeLabMySqlFile `
+        -MySqlExe $mysqlExe `
+        -Port $LabMySqlPort `
+        -Database "acore_characters" `
+        -SqlPath $characterStateSql
 }
 
 if (-not $SkipBridgeLabAhBotMarketSql.IsPresent) {

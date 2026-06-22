@@ -17,6 +17,7 @@ def test_resolves_name_to_creature_entry():
     assert not isinstance(out, SpawnArgsError)
     assert out["creature_entry"] == 883
     assert out["resolved_from_name"] == "Deer"
+    assert out["duration_ms"] == 60000
     assert "position" not in out  # native verb spawns near the player
 
 

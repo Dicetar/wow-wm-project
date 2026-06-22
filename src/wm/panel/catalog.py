@@ -120,6 +120,7 @@ def _default_entries() -> list[CommandEntry]:
     )
     since_seconds = ParameterSpec("since_seconds", type="integer", default=300, description="Recent marker scan window in seconds.")
     expires_seconds = ParameterSpec("expires_seconds", type="integer", default=900, description="Scoped player TTL in seconds.")
+    steering_key = ParameterSpec("steering_key", required=True, description="Conversation steering memory key.")
     return [
         CommandEntry(
             id="watcher.status",
@@ -285,6 +286,36 @@ def _default_entries() -> list[CommandEntry]:
             ),
             description="Build deterministic wm.context_pack.v1 from existing context/journal systems.",
         ),
+        CommandEntry(
+            id="memory.inspect",
+            label="Inspect Session Memory",
+            category="memory",
+            kind="read_only",
+            dry_run_argv=_py("wm.character.memory", "inspect", "--player-guid", "{player_guid}", "--summary"),
+            parameters=(player,),
+        ),
+        *[
+            CommandEntry(
+                id=f"memory.{action}",
+                label=f"{action.title()} Session Memory",
+                category="memory",
+                kind="mutation",
+                dry_run_argv=_py(
+                    "wm.character.memory", action, "--player-guid", "{player_guid}",
+                    "--steering-key", "{steering_key}", "--mode", "dry-run", "--summary",
+                ),
+                apply_argv=_py(
+                    "wm.character.memory", action, "--player-guid", "{player_guid}",
+                    "--steering-key", "{steering_key}", "--mode", "apply", "--summary",
+                ),
+                mutating=True,
+                dry_run_required=True,
+                confirmation="type_job_id",
+                parameters=(player, steering_key),
+                description=f"{action.title()} one memory through an audited, scoped character-state update.",
+            )
+            for action in ("pin", "suppress", "forget")
+        ],
         CommandEntry(
             id="candidates.release_pack",
             label="Build Release Candidates",

@@ -157,7 +157,26 @@ PACKETS: tuple[ProofPacket, ...] = (
             "Launcher status text does not collapse the problem into ambiguous running/stopping wording.",
         ),
     ),
+    ProofPacket(
+        proof_kind="living_lane",
+        title="Living World Lane",
+        summary="Record one lane-specific success, failure, or cleanup/suppression proof.",
+        required_services=("db", "auth", "world", "watcher", "autoplay"),
+        requires_player=True,
+        steps=(
+            "Select one living lane and one proof outcome.",
+            "Exercise the bounded lane behavior against the active marked target.",
+            "Attach native, DB, audit, and client-visible evidence.",
+        ),
+        acceptance=(
+            "Lane and outcome are explicit.",
+            "Evidence belongs to the active marker-selected target and current runtime window.",
+        ),
+    ),
 )
+
+LIVING_LANES = {"rumor", "patron", "oath", "nemesis", "legend", "scene_director"}
+LIVING_OUTCOMES = {"success", "failure", "cleanup"}
 
 
 def list_proof_packets() -> list[dict[str, Any]]:
@@ -173,6 +192,9 @@ def run_proof_packet(
     store: WmObservabilityStore | None = None,
     runtime_status: dict[str, Any] | None = None,
     manual_evidence: list[str] | None = None,
+    target_provenance: dict[str, Any] | None = None,
+    living_lane: str | None = None,
+    living_outcome: str | None = None,
 ) -> dict[str, Any]:
     packet = _packet_by_kind(proof_kind)
     root = Path(project_root).resolve()
@@ -183,8 +205,23 @@ def run_proof_packet(
     if packet.requires_player and not player_guid:
         checks.append({"name": "player_guid", "status": "FAIL", "detail": "player_guid is required for this live proof"})
         blockers.append("player_guid is required for this live proof")
+    living = None
+    if packet.proof_kind == "living_lane":
+        lane = str(living_lane or "")
+        outcome = str(living_outcome or "")
+        if lane not in LIVING_LANES:
+            checks.append({"name": "living:lane", "status": "FAIL", "detail": "a supported living lane is required"})
+            blockers.append("a supported living lane is required")
+        if outcome not in LIVING_OUTCOMES:
+            checks.append({"name": "living:outcome", "status": "FAIL", "detail": "outcome must be success, failure, or cleanup"})
+            blockers.append("outcome must be success, failure, or cleanup")
+        if lane in LIVING_LANES and outcome in LIVING_OUTCOMES:
+            living = {"schema_version": "wm.proof.living.v1", "lane": lane, "outcome": outcome}
 
     evidence_since = _evidence_since(packet=packet, runtime=runtime)
+    target = _normalize_target_provenance(target_provenance, player_guid=player_guid)
+    if target is not None:
+        evidence_since = _latest_timestamp(evidence_since, target.get("selected_at"))
     evidence_checks = _evidence_checks(
         packet=packet,
         project_root=root,
@@ -208,6 +245,8 @@ def run_proof_packet(
         "mode": str(mode or "dry-run"),
         "status": status,
         "player_guid": player_guid,
+        "target_provenance": target,
+        "living": living,
         "created_at": utc_now_iso(),
         "project_root": str(root),
         "steps": list(packet.steps),
@@ -220,7 +259,13 @@ def run_proof_packet(
         "runtime_incidents": runtime.get("incidents", []),
         "evidence_window": {
             "since": evidence_since,
-            "basis": "latest_required_service_started_at" if evidence_since else "unavailable",
+            "basis": (
+                "latest_runtime_or_target_selection"
+                if evidence_since and target is not None
+                else "latest_required_service_started_at"
+                if evidence_since
+                else "unavailable"
+            ),
         },
         "evidence_checks": evidence_checks,
         "evidence_refs": evidence_refs,
@@ -620,6 +665,40 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
 
 def _format_utc(value: datetime) -> str:
     return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _latest_timestamp(first: Any, second: Any) -> str | None:
+    values = [_parse_iso_datetime(first), _parse_iso_datetime(second)]
+    parsed = [value for value in values if value is not None]
+    return _format_utc(max(parsed)) if parsed else None
+
+
+def _normalize_target_provenance(
+    raw: dict[str, Any] | None,
+    *,
+    player_guid: int | None,
+) -> dict[str, Any] | None:
+    if not isinstance(raw, dict) or not raw:
+        return None
+    selected_guid = raw.get("player_guid") or raw.get("character_guid")
+    if selected_guid in (None, ""):
+        raise ValueError("target provenance requires player_guid")
+    selected_guid = int(selected_guid)
+    if player_guid is not None and selected_guid != int(player_guid):
+        raise ValueError("target provenance player_guid does not match proof player_guid")
+    return {
+        "schema_version": "wm.proof.target.v1",
+        "source": str(raw.get("source") or "marker"),
+        "player_guid": selected_guid,
+        "player_name": raw.get("player_name") or raw.get("character_name"),
+        "marker_spell_id": int(raw.get("marker_spell_id") or 946602),
+        "bridge_event_id": _optional_int(raw.get("bridge_event_id")),
+        "selected_at": str(raw.get("selected_at") or "") or None,
+    }
+
+
+def _optional_int(value: Any) -> int | None:
+    return None if value in (None, "") else int(value)
 
 
 def _evidence_check(

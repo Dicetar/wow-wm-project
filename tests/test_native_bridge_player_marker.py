@@ -74,6 +74,26 @@ class NativeBridgePlayerMarkerTests(unittest.TestCase):
         self.assertIn("PlayerGUID, Profile, Enabled, Reason, ExpiresAt", client.scope_sql[0])
         self.assertIn("9001", client.scope_sql[0])
 
+    def test_scope_latest_player_marker_rejects_offline_candidate(self) -> None:
+        client = _FakeClient()
+        original_query = client.query
+
+        def query(**kwargs):  # type: ignore[no-untyped-def]
+            rows = original_query(**kwargs)
+            if "FROM characters" in kwargs["sql"]:
+                rows[0]["online"] = "0"
+            return rows
+
+        client.query = query  # type: ignore[method-assign]
+        result = scope_latest_player_marker(
+            client=client,  # type: ignore[arg-type]
+            settings=Settings(world_db_name="acore_world", char_db_name="acore_characters"),
+        )
+
+        self.assertFalse(result["scoped"])
+        self.assertEqual(result["reason"], "no_online_marker_candidate")
+        self.assertFalse(client.scope_sql)
+
 
 if __name__ == "__main__":
     unittest.main()

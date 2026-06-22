@@ -61,10 +61,10 @@ prevent both.
   waits for world port 8095 and SOAP port 7879 before starting watchers or
   reporting success. A clean stack started with runtime proof
   `proof-20260622141938712548`, and native request `1169` returned `pong`.
-- **Current live blocker:** player 5406 is offline. LM Studio service recovery
-  restored port 1234 and loaded `qwen3-vl-8b-instruct`; DB/auth/world/watcher,
-  panel, autoplay, and LLM health are ready for the next operator window.
-- **Current clean gate:** `1207 passed, 31 warnings`; status, skill, and native
+- **Current live blocker:** no online character has supplied a fresh `946602`
+  marker event. Resolve the newest online marker candidate before scoping
+  watcher/autoplay or running live proofs.
+- **Current clean gate:** `1218 passed, 31 warnings`; status, skill, and native
   contract validation all pass.
 
 Live proof records:
@@ -363,7 +363,7 @@ the running `worldserver.exe` is stale.
 .\incremental-bridge-lab.bat        # or stage-bridge-lab-runtime.bat
 .\start-bridge-lab-server.bat       # restart worldserver
 # verify:
-python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --action-kind debug_ping --idempotency-key rebuild-ping-1 --wait --summary
+python -m wm.sources.native_bridge.actions_cli submit --player-guid $targetGuid --action-kind debug_ping --idempotency-key rebuild-ping-1 --wait --summary
 ```
 Acceptance: native `debug_ping` returns `pong`.
 
@@ -371,7 +371,8 @@ Acceptance: native `debug_ping` returns `pong`.
 Follow `docs/NEXT_SESSION_HANDOFF_2026_06_08.md` "Next Session Working Order":
 1. Launcher: `Stop All WM` → `Start Core` → Panel/Watcher/Autoplay.
 2. `POST /api/wm/proofs/run {"proof_kind":"runtime_startup","mode":"dry-run"}` → `passed`.
-3. Log in scoped player (5406 Jecia / 5405 Broug — use `WM_BRIDGELAB_PLAYER_GUID`).
+3. Apply/reapply marker `946602`, scope the newest online candidate, and use
+   that resolved GUID for watcher/autoplay and every proof command.
 4. Prove `chat_action` (WM chat → in-game reply → autoplay journal `chat`/`deed`).
 5. Prove `ambient` (one notable event → one WM line → cooldown holds).
 6. Prove `memory` (durable preference → later reuse in separate prompt).
@@ -417,7 +418,7 @@ lines**. The `AutoplayService` class
 
 **Result:** these functions form a dependency web on shared helpers
 (`_stable_key`, `_int_or_none`, `_first_text`, `utc_now_iso`). The extraction
-removed 851 lines from `service.py`; focused tests and the full 1205-test gate
+removed 851 lines from `service.py`; focused tests and the current full gate
 remain green.
 
 ### 7.7 Phase 2 — Replay/eval harness (headless, P1)
@@ -432,17 +433,12 @@ applied), memory reuse, action correctness, non-spam. Wire as
 
 ## 8. Open questions for the operator (answer before final v1 decisions)
 
-1. **Canonical proof character?** Docs cite 5406 (Jecia), 5405 (Broug), 5408 (Astel).
-   Pick one; pin via `WM_BRIDGELAB_PLAYER_GUID`, never hardcode in generic code.
-2. **v1 definition of done?** Is it the 6-proof session loop (Phase 1), or
-   bounty-full-loop + ADR-0004 (Phase 5), or both? A single explicit exit
-   criterion focuses the next sprint.
-3. **Repack parity target?** README disclaims byte-for-byte parity. Is v1
+1. **Repack parity target?** README disclaims byte-for-byte parity. Is v1
    "latest-source rebuild + WM" a clean break, or must custom/repack content
    be re-ported?
-4. **DB/Auth/World service-owned markers?** Remaining launcher-reliability gap.
+2. **DB/Auth/World service-owned markers?** Remaining launcher-reliability gap.
    Acceptable for v1 to keep name-matching for those three?
-5. **`wm_brain` DB ownership?** In `.env.example`, referenced little. Is it
+3. **`wm_brain` DB ownership?** In `.env.example`, referenced little. Is it
    the future home of journal/memory (currently `acore_characters.wm_*`)?
 
 ---

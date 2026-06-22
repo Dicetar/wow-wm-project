@@ -201,9 +201,9 @@
       "repo_status": "WORKING",
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
-      "scope": "GitHub Actions runs the DB-free unit suite on push; local full test suite passed after Phase 4 completion and three Phase 8 extractions.",
-      "last_verified": "2026-06-22",
-      "evidence_ref": "python -m pytest -q (1205 passed)"
+      "scope": "GitHub Actions runs the DB-free unit suite on push; local full test suite includes marker-target proof provenance, gated memory controls, conversational verb graduation, and living-lane proof metadata.",
+      "last_verified": "2026-06-23",
+      "evidence_ref": "python -m pytest -q (1218 passed)"
     }
   ]
 }

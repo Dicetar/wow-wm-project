@@ -16,7 +16,7 @@ def _recording() -> dict:
     return {
         "schema_version": "wm.proofs.replay.v1",
         "name": "chat-action-memory",
-        "verb_modes": {"player_restore_health_power": "auto"},
+        "verb_modes": {"world_announce_to_player": "auto"},
         "events": [
             {
                 "id": "remember-1",
@@ -26,19 +26,19 @@ def _recording() -> dict:
                 "llm_response": {"act": False, "verb": "", "args": {}, "reason": "chat", "reply": "Understood."},
             },
             {
-                "id": "heal-1",
+                "id": "announce-1",
                 "player_guid": 5408,
-                "message": "Restore my health.",
+                "message": "Announce that the road is clear.",
                 "llm_response": {
                     "act": True,
-                    "verb": "player_restore_health_power",
-                    "args": {"health_percent": 100},
+                    "verb": "world_announce_to_player",
+                    "args": {"message": "The road is clear."},
                     "reason": "clear request",
                     "reply": "At once, captain.",
                     "memory_refs": ["preferred_title"],
                 },
                 "expected": {
-                    "action_kind": "player_restore_health_power",
+                    "action_kind": "world_announce_to_player",
                     "memory_refs": ["preferred_title"],
                 },
             },

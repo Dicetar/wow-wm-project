@@ -60,14 +60,14 @@ def test_rejects_non_scene_verb():
     assert "scene-safe" in out.reason
 
 
-def test_rejects_spawn_without_cleanup():
+def test_spawn_without_explicit_cleanup_gets_bounded_duration():
     steps = [
         {"native_action_kind": "creature_spawn", "payload": {"creature_name": "guard", "arc_key": "x"}},
         {"native_action_kind": "creature_say", "payload": {"arc_key": "x", "text": "hi"}},
     ]
     out = validate_scene_steps(steps, resolver=FakeResolver())
-    assert isinstance(out, SceneComposeError)
-    assert "cleanup" in out.reason
+    assert not isinstance(out, SceneComposeError)
+    assert out[0]["payload"]["duration_ms"] == 60000
 
 
 def test_temporary_spawn_satisfies_cleanup():

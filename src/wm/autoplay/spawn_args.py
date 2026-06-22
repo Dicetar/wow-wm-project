@@ -90,4 +90,5 @@ def prepare_creature_spawn_args(
             payload[key] = args[key]
     if resolved_name is not None:
         payload["resolved_from_name"] = resolved_name
+    payload.setdefault("duration_ms", 60000)
     return payload

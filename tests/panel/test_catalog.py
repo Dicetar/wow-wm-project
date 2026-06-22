@@ -16,6 +16,10 @@ class PanelCommandCatalogTests(unittest.TestCase):
         self.assertIn("content.release.plan", command_ids)
         self.assertIn("control.apply", command_ids)
         self.assertIn("workbench.publish_item", command_ids)
+        self.assertIn("memory.inspect", command_ids)
+        self.assertIn("memory.pin", command_ids)
+        self.assertIn("memory.suppress", command_ids)
+        self.assertIn("memory.forget", command_ids)
 
     def test_mutating_commands_require_dry_run_and_confirmation(self) -> None:
         for entry in CommandCatalog().entries:

@@ -245,6 +245,7 @@ class WmSessionEndpointTests(unittest.TestCase):
                 "player_guid": 5411,
                 "character_name": "MarkerUser",
                 "spell_id": 946602,
+                "character_online": True,
             }]
 
         app = _make_app(factory=factory, marker_discoverer=marker_discoverer)
@@ -256,6 +257,32 @@ class WmSessionEndpointTests(unittest.TestCase):
         self.assertEqual(body["session"]["source"], "marker")
         self.assertEqual(body["session"]["bridge_event_id"], 77)
         self.assertEqual(body["session"]["character_name"], "MarkerUser")
+
+    def test_wm_proof_uses_marker_session_and_rejects_mismatched_guid(self) -> None:
+        def factory(*, character_guid: int) -> _FakeRuntime:
+            return _FakeRuntime(character_guid=character_guid)
+
+        def marker_discoverer(**_kwargs):
+            return [{
+                "bridge_event_id": 91,
+                "player_guid": 5411,
+                "character_name": "MarkerUser",
+                "spell_id": 946602,
+                "character_online": True,
+            }]
+
+        app = _make_app(factory=factory, marker_discoverer=marker_discoverer)
+        code, _ = app.post("/api/wm/session/bootstrap", {})
+        self.assertEqual(code, 200)
+
+        code, body = app.post("/api/wm/proofs/run", {"proof_kind": "failure"})
+        self.assertEqual(code, 200, body)
+        self.assertEqual(body["proof"]["player_guid"], 5411)
+        self.assertEqual(body["proof"]["target_provenance"]["bridge_event_id"], 91)
+
+        code, body = app.post("/api/wm/proofs/run", {"proof_kind": "failure", "player_guid": 5406})
+        self.assertEqual(code, 409, body)
+        self.assertFalse(body["ok"])
 
     def test_wm_marker_scan_returns_candidates(self) -> None:
         seen: dict[str, int] = {}
@@ -273,6 +300,22 @@ class WmSessionEndpointTests(unittest.TestCase):
         self.assertEqual(body["count"], 1)
         self.assertEqual(body["candidates"][0]["player_guid"], 5412)
         self.assertEqual(seen, {"since_seconds": 120, "limit": 3, "marker_spell_id": 946602})
+
+    def test_wm_session_memory_uses_active_target(self) -> None:
+        state = PanelState(Path(tempfile.mkdtemp()))
+        state.save_session({"character_guid": 5411, "source": "marker"})
+        seen: list[int] = []
+        app = PanelApp(
+            state=state,
+            memory_reader=lambda guid: seen.append(guid) or [{"SteeringKey": "preferred_name", "IsActive": 1}],
+        )
+
+        code, body = app.get("/api/wm/session/memory")
+
+        self.assertEqual(code, 200, body)
+        self.assertTrue(body["ok"])
+        self.assertEqual(seen, [5411])
+        self.assertEqual(body["memories"][0]["SteeringKey"], "preferred_name")
 
     def test_wm_proofs_route_includes_checklist_and_latest(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:

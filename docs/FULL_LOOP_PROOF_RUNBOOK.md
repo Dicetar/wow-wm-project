@@ -17,7 +17,9 @@ window. Run this top-to-bottom in one window. Each phase has an explicit PASS ga
 STOP rule. Do not tweak and retry blindly: after 3 failed fresh-ID attempts on the same
 phase, stop and write the structural root cause (existing three-failure rule).
 
-Player is `5406` / Jecia. BridgeLab MySQL is `127.0.0.1:33307`. Substitute as needed.
+The player is whichever online character most recently received marker aura
+`946602` (`WM Watcher Beacon`). Never substitute a fixture GUID. BridgeLab
+MySQL is `127.0.0.1:33307`.
 
 ## 0. Clean-window preconditions
 
@@ -33,20 +35,27 @@ $env:WM_WORLD_DB_HOST='127.0.0.1'; $env:WM_WORLD_DB_PORT='33307'
 $env:WM_CHAR_DB_HOST='127.0.0.1';  $env:WM_CHAR_DB_PORT='33307'
 python -m pytest -q
 .\start-bridge-lab-all.bat
+
+# Apply/reapply 946602 in-client while temporary wildcard observation is active.
+python -m wm.sources.native_bridge.configure --allow-all --reload-via-soap --summary
+python -m wm.sources.native_bridge.player_marker scope-latest --spell-id 946602 --since-seconds 300 --summary
+python -m wm.sources.native_bridge.configure --clear --reload-via-soap --summary
+$targetGuid = <player_guid reported by scope-latest>
+$targetName = <player_name reported by scope-latest>
 ```
 
 Checklist:
 
 - [ ] `pytest -q` green.
 - [ ] BridgeLab authserver + worldserver running; note both PIDs.
-- [ ] No stale `reactive_bounty:*` rules for `5406`
-      (`python -m wm.reactive.auto_bounty --player-guid 5406 --deactivate-existing-bounty-rules --summary`).
-- [ ] No leftover active/rewarded copy of the test quest on `5406`.
+- [ ] No stale `reactive_bounty:*` rules for `$targetGuid`
+      (`python -m wm.reactive.auto_bounty --player-guid $targetGuid --deactivate-existing-bounty-rules --summary`).
+- [ ] No leftover active/rewarded copy of the test quest on `$targetGuid`.
 - [ ] Native bridge answers:
-      `python -m wm.sources.native_bridge.actions_cli submit --player-guid 5406 --action-kind debug_ping --idempotency-key "proof:ping:$(Get-Date -Format yyyyMMddHHmmss)" --wait --summary`
+      `python -m wm.sources.native_bridge.actions_cli submit --player-guid $targetGuid --action-kind debug_ping --idempotency-key "proof:ping:$(Get-Date -Format yyyyMMddHHmmss)" --wait --summary`
       reaches `done`.
 - [ ] Watcher armed from end:
-      `.\start-bridge-lab-watch.bat -PlayerGuid 5406 -Mode apply -ArmFromEnd -MarkExistingEvaluatedOnArm`
+      `.\start-bridge-lab-watch.bat -PlayerGuid $targetGuid -Mode apply -ArmFromEnd -MarkExistingEvaluatedOnArm`
 - [ ] Test character logged in fresh **after** the watcher armed.
 
 ## Part A — Native bounty full loop (P0-A)
@@ -55,10 +64,10 @@ Checklist:
 
 ```powershell
 python -m wm.reactive.install_bounty --list-templates --summary
-python -m wm.reactive.install_bounty --template-key <key> --player-guid 5406 --mode apply --summary
+python -m wm.reactive.install_bounty --template-key <key> --player-guid $targetGuid --mode apply --summary
 ```
 
-**PASS:** command reports a fresh reserved quest slot staged, rule installed for `5406`.
+**PASS:** command reports a fresh reserved quest slot staged, rule installed for `$targetGuid`.
 Record the quest id and rule key.
 **STOP if:** the slot is not fresh, or the rule key collides with a stale rule — clean and restart Part A.
 
@@ -67,11 +76,11 @@ Record the quest id and rule key.
 In-client: kill the bounty subject the required number of times within the window.
 
 ```powershell
-python -m wm.control.audit --player-guid 5406 --summary
+python -m wm.control.audit --player-guid $targetGuid --summary
 ```
 
 **PASS:** audit shows `quest_grant` proposal -> native `quest_add` request `done` ->
-`quest/granted` bridge event -> `quest_granted` WM event. SOAP `.quest status <id> Jecia`
+`quest/granted` bridge event -> `quest_granted` WM event. SOAP `.quest status <id> $targetName`
 is `Incomplete`.
 **STOP if:** no native request, or request not `done`. Capture the request id/status; do
 not re-trigger more than 3 times.
@@ -80,7 +89,7 @@ not re-trigger more than 3 times.
 
 In-client: finish the kill objective.
 
-**PASS:** SOAP `.quest status <id> Jecia` is `Complete`; `character_queststatus`
+**PASS:** SOAP `.quest status <id> $targetName` is `Complete`; `character_queststatus`
 shows the objective satisfied after `.saveall`.
 
 ### A4. Reward (turn in)
@@ -88,7 +97,7 @@ shows the objective satisfied after `.saveall`.
 In-client: turn the quest in to the turn-in NPC.
 
 **PASS:** reward panel shows the intended reward; reward item/money/XP delivered;
-`quest/rewarded` bridge event recorded; WM post-reward cooldown row written for `5406`.
+`quest/rewarded` bridge event recorded; WM post-reward cooldown row written for `$targetGuid`.
 **STOP if:** reward panel is wrong/empty — this is the same class of failure ADR-0004
 addresses. Record exact missing/wrong fields. Do not mutate the same visible quest id.
 
@@ -115,7 +124,7 @@ Only start Part B if Part A passed (a clean reactive loop is a precondition).
 ### B1. Dry-run the factory scenario
 
 ```powershell
-python -m wm.arcs.factory --scenario-json control\examples\arcs\<scenario>.json --mode dry-run --player-guid 5406 --summary
+python -m wm.arcs.factory --scenario-json control\examples\arcs\marker_target_compiler_reward_panel_v1.json --mode dry-run --player-guid $targetGuid --summary
 ```
 
 **PASS:** dry-run ok, fresh reserved quest slot selected, no freeform mutation fields,
@@ -124,7 +133,7 @@ journey plan validates. **Do not** substitute a hand-cloned quest row anywhere i
 ### B2. Apply (compiler output is the artifact)
 
 ```powershell
-python -m wm.arcs.factory --scenario-json control\examples\arcs\<scenario>.json --mode apply --player-guid 5406 --runtime-sync auto --summary
+python -m wm.arcs.factory --scenario-json control\examples\arcs\marker_target_compiler_reward_panel_v1.json --mode apply --player-guid $targetGuid --runtime-sync auto --summary
 ```
 
 **PASS:** quest published to the fresh id from compiler-generated SQL; runtime reload
@@ -143,7 +152,7 @@ rerun B. Never hand-clone to "make the proof pass."
 ### B4. Verify + lock the result
 
 ```powershell
-python -m wm.arcs.factory --scenario-json control\examples\arcs\<scenario>.json --mode verify --player-guid 5406 --summary
+python -m wm.arcs.factory --scenario-json control\examples\arcs\marker_target_compiler_reward_panel_v1.json --mode verify --player-guid $targetGuid --summary
 ```
 
 **PASS:** verify returns `WORKING`; reward visibility confirmed by screenshot.

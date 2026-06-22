@@ -57,6 +57,17 @@ CREATE TABLE IF NOT EXISTS wm_character_conversation_steering (
     KEY idx_wm_character_steering_active (CharacterGUID, IsActive, Priority)
 );
 
+CREATE TABLE IF NOT EXISTS wm_character_memory_action (
+    ActionID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    CharacterGUID INT NOT NULL,
+    SteeringKey VARCHAR(128) NOT NULL,
+    ActionKind VARCHAR(32) NOT NULL,
+    PreviousActive TINYINT NOT NULL,
+    PreviousPriority INT NOT NULL,
+    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_wm_character_memory_action (CharacterGUID, CreatedAt)
+);
+
 CREATE TABLE IF NOT EXISTS wm_character_prompt_queue (
     QueueID BIGINT AUTO_INCREMENT PRIMARY KEY,
     CharacterGUID INT NOT NULL,

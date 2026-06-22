@@ -16,6 +16,7 @@ from wm.targets.resolver import TargetProfile
 
 SCENARIO_PATH = Path("control/examples/arcs/jecia_lens_arc_v1.json")
 SHADOWMOON_SCENARIO_PATH = Path("control/examples/arcs/jecia_shadowmoon_lens_arc_v9.json")
+MARKER_SCENARIO_PATH = Path("control/examples/arcs/marker_target_compiler_reward_panel_v1.json")
 
 
 class FakePublishResult:
@@ -237,6 +238,13 @@ class ArcRewardFactoryScenarioTests(unittest.TestCase):
         self.assertEqual(scenario.reward["reward_item_mode"], "fixed")
         self.assertEqual(scenario.runtime_sync["item_commands"], [".reload item_template"])
         self.assertTrue(Path(scenario.reward["item_draft_path"]).is_absolute())
+
+    def test_marker_scenario_requires_runtime_player_override(self) -> None:
+        scenario = load_personal_arc_scenario(MARKER_SCENARIO_PATH, player_guid=7777)
+
+        self.assertEqual(scenario.player_guid, 7777)
+        self.assertEqual(scenario.arc_key, "marker_target_compiler_reward_panel_v1")
+        self.assertEqual(scenario.reward["reward_item_mode"], "fixed")
 
     def test_rejects_freeform_mutation_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -94,7 +94,17 @@ def scope_latest_player_marker(
             "candidates": [],
         }
 
-    selected = candidates[0]
+    online_candidates = [candidate for candidate in candidates if candidate.character_online is True]
+    if not online_candidates:
+        return {
+            "scoped": False,
+            "reason": "no_online_marker_candidate",
+            "spell_id": int(spell_id),
+            "since_seconds": int(since_seconds),
+            "candidates": [candidate.to_dict() for candidate in candidates],
+        }
+
+    selected = online_candidates[0]
     NativeBridgeActionClient(client=client, settings=settings).enable_player_scope(
         player_guid=selected.player_guid,
         profile=profile,

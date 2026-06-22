@@ -10,13 +10,21 @@ from wm.sources.native_bridge.payload_contract import validate_native_action_pay
 
 VERB_MODES = ("off", "confirm", "auto")
 _RISK_DEFAULT_MODE = {"low": "auto", "medium": "confirm", "high": "confirm"}
+GRADUATED_CONVERSATIONAL_VERBS = {
+    "player_chat_message",
+    "world_announce_to_player",
+    "creature_spawn",
+    "creature_despawn",
+    "creature_say",
+    "creature_emote",
+}
 
 
 def default_verb_modes() -> dict[str, str]:
     return {
         kind.kind: ("auto" if kind.auto_apply_allowed and kind.default_risk in {"low", "medium"} else "confirm")
         for kind in NATIVE_ACTION_KIND_BY_ID.values()
-        if kind.implemented and not kind.admin_only
+        if kind.kind in GRADUATED_CONVERSATIONAL_VERBS and kind.implemented and not kind.admin_only
     }
 
 
@@ -116,3 +124,19 @@ def is_affirmation(message: str) -> bool:
 
 def is_negation(message: str) -> bool:
     return _norm(message) in _NEGATE
+
+
+def intent_failure_message(*, reason: str, verb: str = "") -> str:
+    detail = str(reason or "").lower()
+    action = str(verb or "that action").replace("_", " ")
+    if "not enabled" in detail or "not implemented" in detail:
+        return f"I cannot use {action} through conversation."
+    if "offline" in detail or "player_not_online" in detail:
+        return "I cannot reach your character while it is offline."
+    if "cooldown" in detail:
+        return "That action is cooling down. Try again shortly."
+    if "risk" in detail or "unsafe" in detail or "policy" in detail or "blocked" in detail:
+        return "That action is blocked by WM safety policy."
+    if "required" in detail or "invalid" in detail or "payload" in detail:
+        return "I need clearer details before I can do that."
+    return f"I cannot complete {action} right now."

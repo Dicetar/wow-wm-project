@@ -45,6 +45,7 @@ class PanelApp:
         marker_discoverer: MarkerDiscoverer | None = None,
         character_reader: Callable[[int], Any] | None = None,
         autoplay_store: Any | None = None,
+        memory_reader: Callable[[int], list[dict[str, Any]]] | None = None,
     ) -> None:
         self.state = state or PanelState()
         self.state.ensure()
@@ -62,6 +63,7 @@ class PanelApp:
         self._marker_discoverer = marker_discoverer
         self._character_reader = character_reader
         self._autoplay_store = autoplay_store
+        self._memory_reader = memory_reader
 
     def get(self, raw_path: str) -> tuple[int, Any]:
         parsed_url = urlparse(raw_path)
@@ -144,6 +146,8 @@ class PanelApp:
             )
         if path == "/api/wm/session/overview":
             return self._wm_session_overview()
+        if path == "/api/wm/session/memory":
+            return self._session_memory()
         if path == "/api/wm/session/status":
             return self._session_status()
         if path == "/api/wm/inbox":
@@ -186,6 +190,18 @@ class PanelApp:
             "issues_count": len(rt.issues.list_open()),
             "applied_log_size": len(rt.applied_log),
         }
+
+    def _session_memory(self) -> tuple[int, Any]:
+        session = self.state.load_session() or {}
+        guid = session.get("character_guid")
+        if guid in (None, ""):
+            return 404, {"ok": False, "error": "WM session not bootstrapped"}
+        reader = self._memory_reader or _default_memory_reader
+        try:
+            memories = reader(int(guid))
+        except Exception as exc:
+            return 200, {"ok": False, "player_guid": int(guid), "memories": [], "error": str(exc)}
+        return 200, {"ok": True, "player_guid": int(guid), "memories": memories}
 
     def _session_pending(self) -> tuple[int, Any]:
         if (err := self._require_session()) is not None:
@@ -444,7 +460,7 @@ class PanelApp:
         if path == "/api/wm/autoplay/generate":
             return self._autoplay_generate(body)
         if path == "/api/wm/proofs/run":
-            return 200, self._proof_run(body)
+            return self._proof_run(body)
         if path == "/api/wm/autoplay/intent/approve":
             return self._autoplay_intent_approve(body)
         if path == "/api/wm/autoplay/intent/reject":
@@ -505,13 +521,22 @@ class PanelApp:
         status = store.configure(updates)
         return {"ok": True, "autoplay": status}
 
-    def _proof_run(self, body: dict[str, Any]) -> dict[str, Any]:
+    def _proof_run(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         from wm.proofs.runner import run_proof_packet
 
         kind = str(body.get("proof_kind") or body.get("kind") or "runtime_startup")
         mode = str(body.get("mode") or "dry-run")
         guid = body.get("player_guid") or body.get("character_guid")
-        player_guid = int(guid) if guid not in (None, "") else None
+        session = self.state.load_session() or {}
+        session_guid = session.get("character_guid")
+        if guid not in (None, "") and session_guid not in (None, "") and int(guid) != int(session_guid):
+            return 409, {
+                "ok": False,
+                "error": "proof player_guid conflicts with the active WM Session target",
+                "active_player_guid": int(session_guid),
+            }
+        player_guid = int(guid) if guid not in (None, "") else int(session_guid) if session_guid not in (None, "") else None
+        target_provenance = session if str(session.get("source") or "") == "marker" else None
         proof = run_proof_packet(
             proof_kind=kind,
             project_root=self.cwd,
@@ -519,8 +544,11 @@ class PanelApp:
             player_guid=player_guid,
             store=self._observability_store(),
             manual_evidence=_manual_evidence_from_body(body),
+            target_provenance=target_provenance,
+            living_lane=str(body.get("living_lane") or "") or None,
+            living_outcome=str(body.get("living_outcome") or "") or None,
         )
-        return {"ok": True, "proof": proof}
+        return 200, {"ok": True, "proof": proof}
 
     def _sync_autoplay_llm_settings(self, *, settings: dict[str, Any], source_body: dict[str, Any]) -> dict[str, Any] | None:
         """Keep the running autoplay model in step with panel LLM settings.
@@ -732,8 +760,10 @@ class PanelApp:
                 limit=10,
                 marker_spell_id=marker_spell_id,
             ))
-            if candidates:
-                return _session_from_marker_candidate(candidates[0], marker_spell_id=marker_spell_id)
+            online_candidates = [candidate for candidate in candidates if candidate.get("character_online") is True]
+            if online_candidates:
+                return _session_from_marker_candidate(online_candidates[0], marker_spell_id=marker_spell_id)
+            return {}
 
         discoverer = self._slice_discoverer or _default_slice_discoverer
         guid = discoverer()
@@ -1196,6 +1226,13 @@ def _default_character_reader(player_guid: int) -> Any:
     from wm.config import Settings
     from wm.db.mysql_cli import MysqlCliClient
     return load_character_state(client=MysqlCliClient(), settings=Settings.from_env(), character_guid=int(player_guid))
+
+
+def _default_memory_reader(player_guid: int) -> list[dict[str, Any]]:
+    from wm.character.memory import load_memory_entries
+    from wm.config import Settings
+    from wm.db.mysql_cli import MysqlCliClient
+    return load_memory_entries(client=MysqlCliClient(), settings=Settings.from_env(), player_guid=int(player_guid))
 
 
 def _session_from_marker_candidate(candidate: dict[str, Any], *, marker_spell_id: int) -> dict[str, Any]:

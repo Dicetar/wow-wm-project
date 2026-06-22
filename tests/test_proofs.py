@@ -10,7 +10,33 @@ from wm.runtime.status import RuntimeProcess
 def test_list_proof_packets_includes_core_live_packets():
     kinds = {packet["proof_kind"] for packet in list_proof_packets()}
 
-    assert {"runtime_startup", "chat_action", "scene", "ambient", "memory", "content", "rollback", "failure"} <= kinds
+    assert {"runtime_startup", "chat_action", "scene", "ambient", "memory", "content", "rollback", "failure", "living_lane"} <= kinds
+
+
+def test_living_lane_packet_requires_lane_and_outcome(tmp_path):
+    runtime = _live_runtime(tmp_path)
+    missing = run_proof_packet(
+        proof_kind="living_lane",
+        project_root=tmp_path,
+        player_guid=5408,
+        runtime_status=runtime,
+    )
+    assert missing["status"] == "failed"
+
+    record = run_proof_packet(
+        proof_kind="living_lane",
+        project_root=tmp_path,
+        player_guid=5408,
+        runtime_status=runtime,
+        living_lane="rumor",
+        living_outcome="cleanup",
+    )
+    assert record["status"] == "manual_required"
+    assert record["living"] == {
+        "schema_version": "wm.proof.living.v1",
+        "lane": "rumor",
+        "outcome": "cleanup",
+    }
 
 
 def test_runtime_startup_packet_passes_when_required_services_running(tmp_path):
@@ -97,6 +123,32 @@ def test_proof_packet_records_manual_evidence(tmp_path):
 
     assert record["manual_evidence"] == ["SOAP disabled for failure proof"]
     assert record["evidence"] == ["SOAP disabled for failure proof"]
+
+
+def test_proof_packet_records_marker_target_and_uses_selection_freshness(tmp_path):
+    runtime = _live_runtime(tmp_path, started_at="2026-01-01T00:00:00Z")
+
+    record = run_proof_packet(
+        proof_kind="ambient",
+        project_root=tmp_path,
+        player_guid=5411,
+        runtime_status=runtime,
+        target_provenance={
+            "source": "marker",
+            "player_guid": 5411,
+            "player_name": "MarkerUser",
+            "marker_spell_id": 946602,
+            "bridge_event_id": 77,
+            "selected_at": "2026-01-01T00:05:00Z",
+        },
+    )
+
+    assert record["target_provenance"]["schema_version"] == "wm.proof.target.v1"
+    assert record["target_provenance"]["bridge_event_id"] == 77
+    assert record["evidence_window"] == {
+        "since": "2026-01-01T00:05:00Z",
+        "basis": "latest_runtime_or_target_selection",
+    }
 
 
 def test_ambient_packet_passes_with_journal_evidence(tmp_path):

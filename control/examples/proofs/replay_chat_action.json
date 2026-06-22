@@ -2,7 +2,7 @@
   "schema_version": "wm.proofs.replay.v1",
   "name": "chat-action-memory-example",
   "verb_modes": {
-    "player_restore_health_power": "auto"
+    "world_announce_to_player": "auto"
   },
   "events": [
     {
@@ -21,14 +21,14 @@
       }
     },
     {
-      "id": "restore-health",
+      "id": "announce-road",
       "player_guid": 5408,
-      "message": "Restore my health.",
+      "message": "Announce that the road is clear.",
       "llm_response": {
         "act": true,
-        "verb": "player_restore_health_power",
+        "verb": "world_announce_to_player",
         "args": {
-          "health_percent": 100
+          "message": "The road is clear."
         },
         "reason": "clear player request",
         "reply": "At once, captain.",
@@ -37,7 +37,7 @@
         ]
       },
       "expected": {
-        "action_kind": "player_restore_health_power",
+        "action_kind": "world_announce_to_player",
         "memory_refs": [
           "preferred_title"
         ]
