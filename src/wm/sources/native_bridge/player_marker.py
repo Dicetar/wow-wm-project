@@ -206,6 +206,7 @@ def _build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--since-seconds", type=int, default=300)
     scan.add_argument("--limit", type=int, default=20)
     scan.add_argument("--summary", action="store_true")
+    scan.add_argument("--db-profile", choices=("env", "bridgelab"), default="env")
 
     scope = subparsers.add_parser("scope-latest", help="Scope the latest player that applied the marker aura.")
     scope.add_argument("--spell-id", type=int, default=DEFAULT_MARKER_SPELL_ID)
@@ -214,13 +215,14 @@ def _build_parser() -> argparse.ArgumentParser:
     scope.add_argument("--reason", default="WM player marker aura discovery")
     scope.add_argument("--expires-seconds", type=int)
     scope.add_argument("--summary", action="store_true")
+    scope.add_argument("--db-profile", choices=("env", "bridgelab"), default="env")
 
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
-    settings = Settings.from_env()
+    settings = _settings_for_db_profile(Settings.from_env(), args.db_profile)
     client = MysqlCliClient()
 
     if args.command == "scan":
@@ -255,6 +257,16 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
     return 0
+
+
+def _settings_for_db_profile(settings: Settings, profile: str) -> Settings:
+    if profile == "env":
+        return settings
+    if profile == "bridgelab":
+        from wm.doctor import settings_for_profile
+
+        return settings_for_profile(settings, "bridgelab")
+    raise ValueError(f"unknown marker DB profile: {profile}")
 
 
 def _print_summary(command: str, payload: dict[str, Any]) -> None:

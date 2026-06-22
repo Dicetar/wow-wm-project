@@ -3,6 +3,7 @@ import unittest
 from wm.config import Settings
 from wm.sources.native_bridge.player_marker import scan_recent_player_markers
 from wm.sources.native_bridge.player_marker import scope_latest_player_marker
+from wm.sources.native_bridge.player_marker import _settings_for_db_profile
 
 
 class _FakeClient:
@@ -38,6 +39,12 @@ class _FakeClient:
 
 
 class NativeBridgePlayerMarkerTests(unittest.TestCase):
+    def test_bridgelab_profile_uses_repo_lab_ports(self) -> None:
+        settings = _settings_for_db_profile(Settings(), "bridgelab")
+        self.assertEqual(settings.world_db_port, 33307)
+        self.assertEqual(settings.char_db_port, 33307)
+        self.assertEqual(settings.world_db_user, "acore")
+
     def test_scan_recent_player_markers_uses_aura_spell_subject_and_attaches_character(self) -> None:
         client = _FakeClient()
 
