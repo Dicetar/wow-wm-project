@@ -20,11 +20,10 @@ early-stage project and must not be treated as one. A previous session did a
 full recovery analysis, then executed Phase 0 (tree stabilization) and the
 first slice of Phase 4 (contract gap closure). The remaining work is:
 
-- **Headless-doable (no game client needed):** Phase 4 remainder, Phase 8
-  (autoplay decomposition), Phase 2 (replay harness code).
+- **Headless work completed:** Phase 2 (replay harness), Phase 4 (contract
+  consolidation), and Phase 8 (autoplay decomposition).
 - **Operator-gated (needs a human at the WoW client + running server):**
-  Phase 1 (live-proof loop), Phase 5 (bounty full-loop + ADR-0004), Phase 0e
-  (BridgeLab native rebuild).
+  Phase 1 (live-proof loop) and Phase 5 (bounty full-loop + ADR-0004).
 
 The single biggest risk to this project is **not missing engineering — it is
 status inflation** (claiming a feature works because tests pass when it has
@@ -53,11 +52,10 @@ prevent both.
 - **Phase 4:** complete. Contract reporting now separates five debug/freeform
   kinds from 31 forward-declared product kinds; real implemented contract gaps
   remain zero.
-- **Phase 8:** in progress. `_chat_text.py`, `_chat_context.py`, `_compact.py`,
-  and `_publish_payloads.py` were extracted in separate test-guarded commits.
-  `service.py` is now 2783
-  lines (down from 3218); runtime-plan, publish-payload, and scene-helper slices
-  remain.
+- **Phase 8:** complete. `_chat_text.py`, `_chat_context.py`, `_compact.py`,
+  `_publish_payloads.py`, `_runtime_plan.py`, `_runtime_status.py`, and
+  `_scene_helpers.py` now hold the extracted helpers. `service.py` is 2367
+  lines (down from 3218), with compatibility imports preserving callers.
 - **Current clean gate:** `1205 passed, 31 warnings`; status, skill, and native
   contract validation all pass.
 
@@ -173,7 +171,7 @@ path, P1 = reinforces critical path, P2 = after P0/P1 green.
 | **5** | Bounty full-loop + ADR-0004 | BLOCKED | Needs running server + client | **P0** |
 | **6** | Memory/subject/context live proof | PENDING | Depends on Phase 1 | P1 |
 | **7** | Living world lanes (gameplay) | PENDING | Catalog-ready, gameplay UNKNOWN | P2 |
-| **8** | autoplay/service.py decomposition (2783 lines) | **IN PROGRESS** | Four pure-helper modules extracted; target remains under 2400 | P2 |
+| **8** | autoplay/service.py decomposition (2367 lines) | **DONE** | Seven helper modules extracted; full gate green | - |
 
 **Critical path:** 0e → 1 → 5. Nothing in 2/3/4/6/7/8 should be prioritized
 over getting 1 and 5 proven, *except* that 2/4/8 can be advanced headlessly
@@ -397,7 +395,7 @@ On success: relabel `perception.bounty_full_loop` and
 `content.arc_reward_factory` to gameplay `WORKING` in `feature_status.json`.
 
 ### 7.6 Phase 8 — autoplay/service.py decomposition (headless, P2)
-`src/wm/autoplay/service.py` started at **3218 lines** and is currently **2783
+`src/wm/autoplay/service.py` started at **3218 lines** and is currently **2367
 lines**. The `AutoplayService` class
 (94–1224) touches `self`/settings/state — leave it. Below it are ~70
 **module-level pure functions** that are safe to extract into siblings:
@@ -405,13 +403,14 @@ lines**. The `AutoplayService` class
 - `_chat_text.py` (~2519–2655: sanitize/split/guard/fallback/commands)
 - `_chat_context.py` (~2657–2783: identity/remembered-facts/digest)
 - `_runtime_plan.py` (~2217–2279: work/publish/rollback/idempotency helpers)
+- `_runtime_status.py` (status summary and process/player readiness helpers)
 - `_compact.py` (~2150–2216, 2851+, 2954–3003: reducers + parse helpers)
 - `_scene_helpers.py` (~2863–2939, 3164–3192: proposals/cleanup/risk)
 
-**Rule:** these functions form a dependency web on shared helpers
-(`_stable_key`, `_int_or_none`, `_first_text`, `utc_now_iso`). Trace every
-shared helper before extracting. Run `tests/test_autoplay*.py` after each
-extraction. Target: ~800 lines out of `service.py`, all 1197 tests still green.
+**Result:** these functions form a dependency web on shared helpers
+(`_stable_key`, `_int_or_none`, `_first_text`, `utc_now_iso`). The extraction
+removed 851 lines from `service.py`; focused tests and the full 1205-test gate
+remain green.
 
 ### 7.7 Phase 2 — Replay/eval harness (headless, P1)
 Offline evaluation only — must NOT change live behavior. Add under
@@ -475,7 +474,7 @@ The recovery is **done** when:
 - [ ] Bounty full-loop closed in one clean window (Phase 5 Part A)
 - [ ] One compiler-generated quest accepted/turned-in/rewarded in-client (ADR-0004)
 - [ ] `feature_status.json` gameplay statuses reflect the above proofs
-- [ ] `autoplay/service.py` under ~2400 lines with tests still green (Phase 8)
+- [x] `autoplay/service.py` under ~2400 lines with tests still green (Phase 8)
 
 Until the first three unchecked boxes are real, **broad feature expansion
 stays paused**. This is the project's own discipline, and it is correct.
