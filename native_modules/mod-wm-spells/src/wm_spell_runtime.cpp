@@ -35,6 +35,7 @@
 #include <optional>
 #include <regex>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -330,6 +331,7 @@ namespace
     std::unordered_map<uint32, uint32> gBoneboundPriestDpsCooldownByCaster;
     std::unordered_map<uint32, uint32> gBoneboundPriestDispelCooldownByCaster;
     std::unordered_map<uint32, uint32> gBoneboundPriestMassDispelCooldownByCaster;
+    std::unordered_set<uint64> gCombatProficiencySpellKnownPersistent;
     std::unordered_map<uint32, BoneboundPriestDpsCastState> gBoneboundPriestDpsCastByCaster;
     std::unordered_map<uint32, BoneboundEchoSeekTargetState> gBoneboundEchoSeekTargetByCaster;
     std::unordered_map<uint32, uint32> gBoneboundWarriorEchoesSincePriestByPlayer;
@@ -5544,7 +5546,29 @@ namespace
             return;
 
         if (!player->HasSpell(grant.spellId))
-            player->learnSpell(grant.spellId, false);
+        {
+            uint32 playerGuid = static_cast<uint32>(player->GetGUID().GetCounter());
+            uint64 persistentKey = (static_cast<uint64>(playerGuid) << 32) | grant.spellId;
+            bool persistentRowKnown = gCombatProficiencySpellKnownPersistent.find(persistentKey) != gCombatProficiencySpellKnownPersistent.end();
+            if (!persistentRowKnown)
+            {
+                persistentRowKnown = CharacterDatabase.Query(
+                    "SELECT 1 FROM character_spell WHERE guid = {} AND spell = {} LIMIT 1",
+                    playerGuid,
+                    grant.spellId) != nullptr;
+                if (persistentRowKnown)
+                    gCombatProficiencySpellKnownPersistent.insert(persistentKey);
+            }
+
+            // learnSpell marks a new row for persistence. Calling it while a
+            // primary-key row already exists causes CHAR_INS_CHAR_SPELL to
+            // report a duplicate during Player::SaveSpells.
+            if (!persistentRowKnown)
+            {
+                player->learnSpell(grant.spellId, false);
+                gCombatProficiencySpellKnownPersistent.insert(persistentKey);
+            }
+        }
 
         uint16 targetMax = ResolveCombatProficiencySkillMax(player, grant);
         uint16 currentValue = player->HasSkill(grant.skillId) ? player->GetPureSkillValue(grant.skillId) : 0;

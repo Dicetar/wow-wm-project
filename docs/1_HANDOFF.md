@@ -78,6 +78,12 @@ prevent both.
   marker-session GUID and reject conflicting explicit GUIDs.
 - **Current clean gate after that milestone:** `1228 passed, 31 warnings`;
   status, skill, native-contract, living-catalog, and diff validation pass.
+- **Duplicate `character_spell` fix (2026-06-23):** combat-proficiency
+  maintenance now checks persistent `character_spell` truth before calling
+  `learnSpell`, preventing duplicate `(guid, spell)` inserts such as
+  `3838-202`. BridgeLab incremental native build passes with 0 warnings and
+  0 errors. The binary is intentionally not deployed while canonical marker
+  discovery is active; deploy only with explicitly resolved marker scope.
 
 Live proof records:
 
