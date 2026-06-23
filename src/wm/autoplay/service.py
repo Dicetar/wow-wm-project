@@ -872,6 +872,14 @@ class AutoplayService:
             return None
         if is_negation(message):
             self.store.clear_pending_intent(player_guid, reason="player_declined")
+            self._audit_intent(
+                player_guid=player_guid,
+                verb=str(pending.get("verb") or "action"),
+                outcome="declined",
+                source_message=message,
+                reason="player_declined",
+                mode=str(pending.get("mode") or "confirm"),
+            )
             self._speak(settings=settings, player_guid=player_guid,
                         text="Understood, I will hold off.", source_message=message)
             return {"intent": "declined", "verb": pending.get("verb")}
@@ -907,6 +915,14 @@ class AutoplayService:
                 intent_args, resolver=get_default_creature_name_resolver()
             )
             if isinstance(prepared, SpawnArgsError):
+                self._audit_intent(
+                    player_guid=player_guid,
+                    verb=verb,
+                    outcome="rejected",
+                    source_message=source_message,
+                    reason=prepared.reason,
+                    intent=intent,
+                )
                 self.store.add_issue({
                     "reason": "spawn_args_unresolved", "kind": "intent",
                     "detail": prepared.reason,
@@ -926,6 +942,14 @@ class AutoplayService:
             reason=str(intent.get("reason") or ""),
         )
         if isinstance(compiled, IntentRejection):
+            self._audit_intent(
+                player_guid=player_guid,
+                verb=verb,
+                outcome="rejected",
+                source_message=source_message,
+                reason=compiled.reason,
+                intent=intent,
+            )
             self.store.add_issue({
                 "reason": "intent_rejected", "kind": "intent",
                 "detail": compiled.reason,
@@ -937,6 +961,15 @@ class AutoplayService:
         coordinator = self._control_coordinator(settings)
         dry = coordinator.execute(proposal=compiled.proposal, mode="dry-run", confirm_live_apply=False)
         if dry.status != "dry-run":
+            self._audit_intent(
+                player_guid=player_guid,
+                verb=compiled.verb,
+                outcome="dry_run_failed",
+                source_message=source_message,
+                reason=str(_result_to_dict(dry)),
+                mode=compiled.mode,
+                risk=compiled.risk,
+            )
             self.store.add_issue({
                 "reason": "intent_dry_run_failed", "kind": "intent",
                 "detail": _result_to_dict(dry), "payload": {"verb": compiled.verb},
@@ -951,13 +984,50 @@ class AutoplayService:
         self.store.set_pending_intent(player_guid, {
             "verb": compiled.verb,
             "risk": compiled.risk,
+            "mode": compiled.mode,
             "summary": intent.get("reason") or compiled.verb,
             "proposal": compiled.proposal.model_dump(mode="json"),
         }, ttl_seconds=120)
+        self._audit_intent(
+            player_guid=player_guid,
+            verb=compiled.verb,
+            outcome="pending_confirmation",
+            source_message=source_message,
+            reason=str(intent.get("reason") or compiled.verb),
+            mode=compiled.mode,
+            risk=compiled.risk,
+        )
         self._speak(settings=settings, player_guid=player_guid,
                     text=f"I can {compiled.verb.replace('_', ' ')} - say yes to confirm.",
                     source_message=source_message)
         return {"intent": "pending", "verb": compiled.verb}
+
+    def _audit_intent(
+        self,
+        *,
+        player_guid: int,
+        verb: str,
+        outcome: str,
+        source_message: str,
+        reason: str | None = None,
+        mode: str | None = None,
+        risk: str | None = None,
+        intent: dict[str, Any] | None = None,
+        verification: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        record = {
+            "schema_version": "wm.autoplay.intent_audit.v1",
+            "player_guid": int(player_guid),
+            "verb": str(verb or "action"),
+            "outcome": str(outcome),
+            "source_message": str(source_message or "")[:500],
+            "reason": str(reason or "")[:500],
+            "mode": mode,
+            "risk": risk,
+            "intent": _compact_intent(intent),
+            "verification": verification,
+        }
+        return self.store.append_journal("intent_audit", record)
 
     def _capture_conversation_memory(
         self,
@@ -1091,6 +1161,16 @@ class AutoplayService:
         }
         self.store.append_journal("deed", record)
         ok = bool(verification.get("ok"))
+        self._audit_intent(
+            player_guid=player_guid,
+            verb=compiled.verb,
+            outcome="applied" if ok else "apply_failed",
+            source_message=source_message,
+            reason="" if ok else str(record),
+            mode=compiled.mode,
+            risk=compiled.risk,
+            verification=verification,
+        )
         counters_status = self.store.load_status()
         counters = dict(counters_status.get("counters") or {})
         counters["auto_applied"] = int(counters.get("auto_applied") or 0) + (1 if ok else 0)
@@ -2263,6 +2343,17 @@ def _compact_opportunity_for_llm(opportunity: dict[str, Any]) -> dict[str, Any]:
     source_event = opportunity.get("source_event") if isinstance(opportunity.get("source_event"), dict) else {}
     compact["source_event"] = _compact_event(source_event)
     return compact
+
+
+def _compact_intent(intent: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(intent, dict):
+        return None
+    args = intent.get("args") if isinstance(intent.get("args"), dict) else {}
+    return {
+        "verb": str(intent.get("verb") or "")[:128],
+        "reason": str(intent.get("reason") or "")[:300],
+        "args_keys": sorted(str(key) for key in args.keys())[:20],
+    }
 
 
 def _first_present(mapping: dict[str, Any], *keys: str, default: Any = None) -> Any:

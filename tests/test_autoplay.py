@@ -645,6 +645,9 @@ def test_handle_intent_spawn_resolves_name_to_entry(tmp_path: Path):
     payload = pending["proposal"]["action"]["payload"]["payload"]
     assert payload["creature_entry"] == 883
     assert payload["resolved_from_name"] == "deer"
+    audits = [service.store.read_json(path) for path in service.store.root.joinpath("journal").glob("*-intent_audit.json")]
+    assert audits[-1]["outcome"] == "pending_confirmation"
+    assert audits[-1]["verb"] == "creature_spawn"
 
 
 def test_handle_intent_spawn_unresolved_name_rejected(tmp_path: Path):
@@ -665,6 +668,10 @@ def test_handle_intent_spawn_unresolved_name_rejected(tmp_path: Path):
         )
     assert result["intent"] == "rejected"
     assert "frobnicator" in result["reason"]
+    audits = [service.store.read_json(path) for path in service.store.root.joinpath("journal").glob("*-intent_audit.json")]
+    assert audits[-1]["outcome"] == "rejected"
+    assert audits[-1]["verb"] == "creature_spawn"
+    assert audits[-1]["intent"]["args_keys"] == ["creature_name"]
 
 
 def test_persist_conversation_memory_builds_valid_plan(tmp_path: Path):
