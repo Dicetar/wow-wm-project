@@ -74,7 +74,22 @@ Continuation verification on 2026-06-12:
 - `acore_characters.characters` reports GUID 5408 (`Astel`) as `online=0`, so `chat_action` cannot pass until the WoW client logs in that character.
 - `python -m pytest -q`: 1197 passed.
 
-Important current caveat: the worktree has many modified and untracked files. The roadmap below assumes those changes are intentional in-progress work and should be stabilized rather than reverted.
+Current marker-targeting update on 2026-06-24:
+
+- The active gameplay target is no longer a named fixture character. Operational
+  proof work must resolve whichever online character most recently receives
+  canonical marker aura `946602` (`WM Watcher Beacon`).
+- Current marker scan is blocked: `python -m wm.sources.native_bridge.player_marker scan --spell-id 946602 --since-seconds 86400 --limit 20 --db-profile bridgelab --summary`
+  reports `count=0`.
+- BridgeLab doctor is otherwise healthy: `python -m wm.doctor --profile bridgelab --summary`
+  reports 8/8 checks working, with temporary wildcard observation still active
+  for marker discovery.
+- Current repo gate: `python -m pytest -q` reports `1238 passed, 31 warnings`;
+  status, skills, native contracts, living catalog, and diff validation pass.
+- The worktree is clean. Continue by reapplying aura `946602` to the intended
+  online client character, then run marker scan and `scope-latest`.
+
+Important current caveat: gameplay status must not be promoted from tests alone. Live phases remain blocked until a fresh online marker-selected target exists.
 
 ## 4. Main Gap
 
