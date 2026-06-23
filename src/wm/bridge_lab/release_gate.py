@@ -43,7 +43,7 @@ class ReleaseGatePlan:
         }
 
 
-def build_release_gate_plan(*, arc_key: str, player_guid: int = 5405, include_native_build: bool = True) -> ReleaseGatePlan:
+def build_release_gate_plan(*, arc_key: str, player_guid: int, include_native_build: bool = True) -> ReleaseGatePlan:
     if arc_key not in {BROUG_LIGHTNESS_ARC_KEY, BROUG_EMPTY_COURT_ARC_KEY, "broug_all_current"}:
         return ReleaseGatePlan(
             arc_key=arc_key,
@@ -220,7 +220,7 @@ def render_summary(plan: ReleaseGatePlan) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build or apply a BridgeLab release gate for player-facing arc content.")
     parser.add_argument("--arc", required=True)
-    parser.add_argument("--player-guid", type=int, default=5405)
+    parser.add_argument("--player-guid", type=int, required=True)
     parser.add_argument("--skip-native-build", action="store_true")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--summary", action="store_true")

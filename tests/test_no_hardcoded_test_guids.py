@@ -6,9 +6,6 @@ _FORBIDDEN = ("5405", "5406", "5408")
 _ALLOWLIST = {
     "src/wm/spells/broug_empty_court.py",
     "src/wm/spells/broug_lightness.py",
-    "src/wm/live/proof_packet.py",
-    "src/wm/bridge_lab/release_gate.py",
-    "src/wm/content/preflight.py",
 }
 
 

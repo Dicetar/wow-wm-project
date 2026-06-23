@@ -16,8 +16,8 @@ from wm.spells.shell_bank import default_shell_bank_path
 
 class BrougArcToolingTests(unittest.TestCase):
     def test_preflight_accepts_current_broug_arcs(self) -> None:
-        lightness = preflight_arc(arc_key=BROUG_LIGHTNESS_ARC_KEY)
-        empty_court = preflight_arc(arc_key=BROUG_EMPTY_COURT_ARC_KEY)
+        lightness = preflight_arc(arc_key=BROUG_LIGHTNESS_ARC_KEY, player_guid=5405)
+        empty_court = preflight_arc(arc_key=BROUG_EMPTY_COURT_ARC_KEY, player_guid=5405)
 
         self.assertEqual(lightness.status, "WORKING")
         self.assertEqual(empty_court.status, "WORKING")
@@ -40,7 +40,7 @@ class BrougArcToolingTests(unittest.TestCase):
         self.assertEqual(len(entries), 16)
 
     def test_preflight_rejects_unknown_arc(self) -> None:
-        report = preflight_arc(arc_key="unknown_arc")
+        report = preflight_arc(arc_key="unknown_arc", player_guid=5405)
 
         self.assertEqual(report.status, "UNKNOWN")
         self.assertEqual(report.issues[0].code, "unknown_arc")
@@ -69,7 +69,7 @@ class BrougArcToolingTests(unittest.TestCase):
         self.assertIn("self_cast_range_not_self", issues)
 
     def test_release_gate_plans_all_current_broug_checks_before_mutations(self) -> None:
-        plan = build_release_gate_plan(arc_key="broug_all_current", include_native_build=False)
+        plan = build_release_gate_plan(arc_key="broug_all_current", player_guid=5405, include_native_build=False)
 
         self.assertEqual(plan.status, "WORKING")
         keys = [step.key for step in plan.steps]
@@ -80,8 +80,8 @@ class BrougArcToolingTests(unittest.TestCase):
         self.assertIn(r"D:\WOW\WM_BridgeLab\deps\mysql\bin\mysql.exe", plan.steps[keys.index("world_sql_apply")].command[0])
 
     def test_live_proof_packets_name_player_actions_and_counters(self) -> None:
-        lightness = build_proof_packet(arc_key=BROUG_LIGHTNESS_ARC_KEY)
-        empty_court = build_proof_packet(arc_key=BROUG_EMPTY_COURT_ARC_KEY)
+        lightness = build_proof_packet(arc_key=BROUG_LIGHTNESS_ARC_KEY, player_guid=5405)
+        empty_court = build_proof_packet(arc_key=BROUG_EMPTY_COURT_ARC_KEY, player_guid=5405)
 
         self.assertEqual(lightness.status, "WORKING")
         self.assertEqual(empty_court.status, "WORKING")

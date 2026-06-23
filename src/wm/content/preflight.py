@@ -77,7 +77,7 @@ class ContentPreflightReport:
 def preflight_arc(
     *,
     arc_key: str,
-    player_guid: int = 5405,
+    player_guid: int,
     live_db: bool = False,
     client: MysqlCliClient | None = None,
     settings: Settings | None = None,
@@ -376,7 +376,7 @@ def render_summary(report: ContentPreflightReport) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Preflight player-facing WM content before BridgeLab deploy.")
     parser.add_argument("--arc", required=True)
-    parser.add_argument("--player-guid", type=int, default=5405)
+    parser.add_argument("--player-guid", type=int, required=True)
     parser.add_argument("--live-db", action="store_true")
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args(argv)

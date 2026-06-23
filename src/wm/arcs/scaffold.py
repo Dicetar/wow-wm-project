@@ -52,10 +52,10 @@ def build_scaffold_plan(*, arc_key: str, module_key: str | None = None) -> ArcSc
             ArcScaffoldFile(f"tests/test_{module_name}.py", "focused static and helper tests"),
         ],
         required_gates=[
-            "python -m wm.content.preflight --arc <arc_key> --summary",
+            "python -m wm.content.preflight --arc <arc_key> --player-guid <explicit_player_guid> --summary",
             "python -m wm.spells.shell_audit --spell-id <shell_id> --summary",
-            "python -m wm.live.proof_packet --arc <arc_key> --summary",
-            "python -m wm.bridge_lab.release_gate --arc <arc_key> --summary",
+            "python -m wm.live.proof_packet --arc <arc_key> --player-guid <explicit_player_guid> --summary",
+            "python -m wm.bridge_lab.release_gate --arc <arc_key> --player-guid <explicit_player_guid> --summary",
         ],
     )
 

@@ -39,7 +39,7 @@ class ProofPacket:
         }
 
 
-def build_proof_packet(*, arc_key: str, player_guid: int = 5405) -> ProofPacket:
+def build_proof_packet(*, arc_key: str, player_guid: int) -> ProofPacket:
     if arc_key == BROUG_LIGHTNESS_ARC_KEY:
         return ProofPacket(
             arc_key=arc_key,
@@ -53,7 +53,7 @@ def build_proof_packet(*, arc_key: str, player_guid: int = 5405) -> ProofPacket:
             ],
             counters=["wm_broug_lightness_counter:cloud_step_strike", "wm_broug_lightness_counter:silent_meridian_kill"],
             operator_checks=[
-                "Verify `character_spell` contains 946202 and 946803 for player 5405.",
+                f"Verify `character_spell` contains 946202 and 946803 for player {int(player_guid)}.",
                 "Verify `wm_spell_grant` has active rows for quests 910182 and 910183.",
                 "Verify Vulnerable stacks are not consumed or modified by Cloud Step.",
             ],
@@ -99,7 +99,7 @@ def render_summary(packet: ProofPacket) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build a concrete live proof packet for a WM arc.")
     parser.add_argument("--arc", required=True)
-    parser.add_argument("--player-guid", type=int, default=5405)
+    parser.add_argument("--player-guid", type=int, required=True)
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args(argv)
 
