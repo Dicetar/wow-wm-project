@@ -124,16 +124,19 @@ Only start Part B if Part A passed (a clean reactive loop is a precondition).
 ### B1. Dry-run the factory scenario
 
 ```powershell
-python -m wm.arcs.factory --scenario-json control\examples\arcs\marker_target_compiler_reward_panel_v1.json --mode dry-run --player-guid $targetGuid --summary
+python -m wm.arcs.marker_scenario --player-guid $targetGuid --db-profile bridgelab --output-json .wm-bootstrap\state\arcs\marker_target_compiler_reward_panel_v1.json --summary
+python -m wm.arcs.factory --scenario-json .wm-bootstrap\state\arcs\marker_target_compiler_reward_panel_v1.json --mode dry-run --player-guid $targetGuid --summary
 ```
 
-**PASS:** dry-run ok, fresh reserved quest slot selected, no freeform mutation fields,
-journey plan validates. **Do not** substitute a hand-cloned quest row anywhere in B.
+**PASS:** scenario generation selects a target and questgiver from the marked
+character's runtime level/faction/zone facts; dry-run ok, fresh reserved quest
+slot selected, no freeform mutation fields, journey plan validates. **Do not**
+substitute a hand-cloned quest row anywhere in B.
 
 ### B2. Apply (compiler output is the artifact)
 
 ```powershell
-python -m wm.arcs.factory --scenario-json control\examples\arcs\marker_target_compiler_reward_panel_v1.json --mode apply --player-guid $targetGuid --runtime-sync auto --summary
+python -m wm.arcs.factory --scenario-json .wm-bootstrap\state\arcs\marker_target_compiler_reward_panel_v1.json --mode apply --player-guid $targetGuid --runtime-sync auto --summary
 ```
 
 **PASS:** quest published to the fresh id from compiler-generated SQL; runtime reload
@@ -152,7 +155,7 @@ rerun B. Never hand-clone to "make the proof pass."
 ### B4. Verify + lock the result
 
 ```powershell
-python -m wm.arcs.factory --scenario-json control\examples\arcs\marker_target_compiler_reward_panel_v1.json --mode verify --player-guid $targetGuid --summary
+python -m wm.arcs.factory --scenario-json .wm-bootstrap\state\arcs\marker_target_compiler_reward_panel_v1.json --mode verify --player-guid $targetGuid --summary
 ```
 
 **PASS:** verify returns `WORKING`; reward visibility confirmed by screenshot.

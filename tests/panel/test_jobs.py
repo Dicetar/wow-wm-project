@@ -112,6 +112,16 @@ class PanelCatalogTests(unittest.TestCase):
         self.assertIn("scan", entry.dry_run_argv)
         self.assertIn("scope-latest", entry.apply_argv)
 
+    def test_marker_arc_scenario_generation_requires_marker_target(self) -> None:
+        entry = CommandCatalog().get("arc.marker_scenario.generate")
+
+        self.assertFalse(entry.mutating)
+        self.assertTrue(entry.marker_target_required)
+        self.assertIn("wm.arcs.marker_scenario", entry.dry_run_argv)
+        self.assertIn("--player-guid", entry.dry_run_argv)
+        self.assertIn("--db-profile", entry.dry_run_argv)
+        self.assertIn("bridgelab", entry.dry_run_argv)
+
     def test_observe_all_commands_are_gated_through_existing_configure_cli(self) -> None:
         catalog = CommandCatalog()
 

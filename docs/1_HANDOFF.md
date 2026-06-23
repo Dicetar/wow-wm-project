@@ -90,6 +90,12 @@ prevent both.
   `3838-202`. BridgeLab incremental native build passes with 0 warnings and
   0 errors. The binary is intentionally not deployed while canonical marker
   discovery is active; deploy only with explicitly resolved marker scope.
+- **Phase 5 scenario generation safety (2026-06-23):** ADR-0004 proof no
+  longer relies on the static Defias/Guard Thomas marker example. Use
+  `python -m wm.arcs.marker_scenario --player-guid $targetGuid --db-profile bridgelab`
+  or the panel `arc.marker_scenario.generate` command to emit the Arc Factory
+  scenario from the marked character's live level/faction/zone facts, then feed
+  that generated JSON to `wm.arcs.factory`.
 
 Live proof records:
 
