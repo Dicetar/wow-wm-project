@@ -87,9 +87,11 @@ prevent both.
 - **Duplicate `character_spell` fix (2026-06-23):** combat-proficiency
   maintenance now checks persistent `character_spell` truth before calling
   `learnSpell`, preventing duplicate `(guid, spell)` inserts such as
-  `3838-202`. BridgeLab incremental native build passes with 0 warnings and
-  0 errors. The binary is intentionally not deployed while canonical marker
-  discovery is active; deploy only with explicitly resolved marker scope.
+  `3838-202`. BridgeLab incremental native build passed with 0 warnings and
+  0 errors, then deployed to BridgeLab worldserver pid `34464` with explicit
+  wildcard bridge discovery scope (`WmBridge.PlayerGuidAllowList="*"`) and an
+  empty spells fixture scope (`WmSpells.PlayerGuidAllowList=""`). Doctor passed
+  after SOAP/world-port readiness settled.
 - **Phase 5 scenario generation safety (2026-06-23):** ADR-0004 proof no
   longer relies on the static Defias/Guard Thomas marker example. Use
   `python -m wm.arcs.marker_scenario --player-guid $targetGuid --db-profile bridgelab`
