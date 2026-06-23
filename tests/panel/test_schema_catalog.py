@@ -71,6 +71,25 @@ class PanelSchemaCatalogTests(unittest.TestCase):
 
         self.assertTrue(result["ok"], result)
 
+    def test_player_guid_schema_fields_do_not_default_to_fixture_guid(self) -> None:
+        catalog = SchemaCatalog.load()
+
+        for entry in catalog.entries:
+            with self.subTest(schema=entry.id):
+                for path, node in _walk_schema(entry.schema):
+                    if path.endswith("player_guid") and isinstance(node, dict):
+                        self.assertNotEqual(node.get("default"), 5406)
+
+def _walk_schema(schema: dict, path: str = ""):
+    yield path, schema
+    properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+    for key, nested in properties.items():
+        if isinstance(nested, dict):
+            yield from _walk_schema(nested, f"{path}.{key}" if path else key)
+    items = schema.get("items")
+    if isinstance(items, dict):
+        yield from _walk_schema(items, f"{path}[]" if path else "[]")
+
 
 if __name__ == "__main__":
     unittest.main()

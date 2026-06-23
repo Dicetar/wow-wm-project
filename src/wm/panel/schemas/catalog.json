@@ -28,7 +28,7 @@
       "properties": {
         "schema_version": { "type": "string", "const": "wm.quest.release.repeatable_bounty.v1", "default": "wm.quest.release.repeatable_bounty.v1" },
         "quest_kind": { "type": "string", "const": "repeatable_bounty", "default": "repeatable_bounty" },
-        "player_guid": { "type": "integer", "default": 5406 },
+        "player_guid": { "type": "integer" },
         "slot_policy": {
           "type": "string",
           "enum": ["fresh_reserved_or_existing_active_repeatable", "fresh_reserved_required"],
@@ -127,7 +127,7 @@
       "properties": {
         "schema_version": { "type": "string", "const": "wm.quest.release.one_shot.v1", "default": "wm.quest.release.one_shot.v1" },
         "quest_kind": { "type": "string", "const": "one_shot", "default": "one_shot" },
-        "player_guid": { "type": "integer", "default": 5406 },
+        "player_guid": { "type": "integer" },
         "slot_policy": { "type": "string", "const": "fresh_reserved_required", "default": "fresh_reserved_required" },
         "repeatable": { "type": "boolean", "const": false, "default": false },
         "quest": {
@@ -228,7 +228,7 @@
       "properties": {
         "schema_version": { "type": "string", "const": "wm.quest.release.story_arc.v1", "default": "wm.quest.release.story_arc.v1" },
         "quest_kind": { "type": "string", "const": "story_arc", "default": "story_arc" },
-        "player_guid": { "type": "integer", "default": 5406 },
+        "player_guid": { "type": "integer" },
         "arc_key": { "type": "string", "minLength": 1 },
         "nodes": {
           "type": "array",
@@ -297,7 +297,7 @@
       "properties": {
         "schema_version": { "type": "string", "const": "wm.item.release.managed_power.v1", "default": "wm.item.release.managed_power.v1" },
         "content_kind": { "type": "string", "const": "item", "default": "item" },
-        "player_guid": { "type": "integer", "default": 5406 },
+        "player_guid": { "type": "integer" },
         "item_key": { "type": "string", "minLength": 1 },
         "item_entry": { "type": "integer", "minimum": 1, "maximum": 999999 },
         "slot_policy": {
@@ -494,7 +494,7 @@
       "properties": {
         "schema_version": { "type": "string", "const": "wm.spell.release.managed_spell.v1", "default": "wm.spell.release.managed_spell.v1" },
         "content_kind": { "type": "string", "const": "spell", "default": "spell" },
-        "player_guid": { "type": "integer", "default": 5406 },
+        "player_guid": { "type": "integer" },
         "spell_key": { "type": "string", "minLength": 1 },
         "spell_entry": { "type": "integer", "minimum": 1, "maximum": 999999, "default": 947000 },
         "slot_kind": {
@@ -597,7 +597,7 @@
       "properties": {
         "schema_version": { "type": "string", "const": "wm.ability.release.shell_power.v1", "default": "wm.ability.release.shell_power.v1" },
         "content_kind": { "type": "string", "const": "ability", "default": "ability" },
-        "player_guid": { "type": "integer", "default": 5406 },
+        "player_guid": { "type": "integer" },
         "ability_key": { "type": "string", "minLength": 1 },
         "ability_type": {
           "type": "string",
@@ -700,7 +700,7 @@
       "properties": {
         "schema_version": { "type": "string", "const": "wm.scene.release.native_sequence.v1", "default": "wm.scene.release.native_sequence.v1" },
         "content_kind": { "type": "string", "const": "scene", "default": "scene" },
-        "player_guid": { "type": "integer", "default": 5406 },
+        "player_guid": { "type": "integer" },
         "scene_key": { "type": "string", "minLength": 1 },
         "scene_type": { "type": "string", "enum": ["area_pressure", "creature_marker", "companion_intervention", "environment_effect", "arc_beat"], "ui:enumNames": ["Area pressure", "Creature marker", "Companion intervention", "Environment effect", "Arc beat"], "default": "creature_marker" },
         "slot_policy": { "type": "string", "enum": ["no_visible_id_required", "fresh_visible_ids_if_templates"], "ui:enumNames": ["No visible ID required", "Fresh visible IDs if templates"], "default": "no_visible_id_required" },

@@ -321,6 +321,8 @@ class ArcRewardFactoryServiceTests(unittest.TestCase):
         plan = journey_store.calls[0][0]
         self.assertEqual(plan["arc_states"][0]["arc_key"], "jecia_lens_turns_v1")
         self.assertEqual(plan["reward_instances"][0]["source_quest_id"], 910201)
+        self.assertIn("marker-selected player 5406", result.notes[1])
+        self.assertNotIn("until Jecia accepts", result.notes[1])
 
     def test_apply_stops_before_mutation_when_journey_not_ready(self) -> None:
         slot_allocator = FakeSlotAllocator()
@@ -359,6 +361,8 @@ class ArcRewardFactoryServiceTests(unittest.TestCase):
         assert result.verification is not None
         self.assertEqual(result.verification["source_quest_ids"], [910201])
         self.assertEqual(result.verification["quest_template_rows"][0]["RewardItem1"], "910006")
+        self.assertIn("marker-selected player 5406", result.notes[1])
+        self.assertNotIn("Jecia must", result.notes[1])
 
     def test_apply_is_idempotent_when_arc_reward_is_already_recorded(self) -> None:
         factory = _existing_factory()

@@ -452,7 +452,7 @@ class ArcRewardFactory:
             allocated_quest_id=quest_id,
             notes=[
                 f"Published personal arc quest {quest_id} in a fresh reserved slot and recorded the arc/reward in the character journey spine.",
-                "Outcome remains PARTIAL until Jecia accepts/completes the quest and the reward is visible in-game.",
+                f"Outcome remains PARTIAL until marker-selected player {scenario.player_guid} accepts/completes the quest and the reward is visible in-game.",
                 *scenario.notes,
             ],
             issues=issues,
@@ -475,7 +475,7 @@ class ArcRewardFactory:
             verification=verification,
             notes=[
                 "Verify checks character arc/reward records, managed quest slot rows, quest publish rows, and reward item rows.",
-                "Gameplay acceptance is still operator-observed: Jecia must see and complete the quest, then confirm reward visibility.",
+                f"Gameplay acceptance is still operator-observed: marker-selected player {scenario.player_guid} must see and complete the quest, then confirm reward visibility.",
             ],
             issues=issues,
         )
