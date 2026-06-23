@@ -201,7 +201,25 @@ class PanelApp:
             memories = reader(int(guid))
         except Exception as exc:
             return 200, {"ok": False, "player_guid": int(guid), "memories": [], "error": str(exc)}
-        return 200, {"ok": True, "player_guid": int(guid), "memories": memories}
+        try:
+            from wm.context.pack import build_memory_context_section
+
+            context = build_memory_context_section(list(memories))
+        except Exception as exc:
+            return 200, {
+                "ok": False,
+                "player_guid": int(guid),
+                "memories": memories,
+                "error": f"memory context normalization failed: {exc}",
+            }
+        return 200, {
+            "ok": True,
+            "player_guid": int(guid),
+            "memories": memories,
+            "active": context["active"],
+            "source_evidence": context["source_evidence"],
+            "exclusions": context["excluded"],
+        }
 
     def _session_pending(self) -> tuple[int, Any]:
         if (err := self._require_session()) is not None:

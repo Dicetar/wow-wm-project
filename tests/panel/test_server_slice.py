@@ -307,7 +307,28 @@ class WmSessionEndpointTests(unittest.TestCase):
         seen: list[int] = []
         app = PanelApp(
             state=state,
-            memory_reader=lambda guid: seen.append(guid) or [{"SteeringKey": "preferred_name", "IsActive": 1}],
+            memory_reader=lambda guid: seen.append(guid) or [
+                {
+                    "SteeringKey": "preferred_name",
+                    "SteeringKind": "preference",
+                    "Body": "Call me Starfall.",
+                    "Priority": 10,
+                    "Source": "player_chat",
+                    "IsActive": 1,
+                    "MetadataJSON": "{}",
+                    "UpdatedAt": "2026-06-24 10:00:00",
+                },
+                {
+                    "SteeringKey": "private_fact",
+                    "SteeringKind": "fact",
+                    "Body": "redacted",
+                    "Priority": 5,
+                    "Source": "player_chat",
+                    "IsActive": 0,
+                    "MetadataJSON": '{"forgotten": true}',
+                    "UpdatedAt": "2026-06-24 10:01:00",
+                },
+            ],
         )
 
         code, body = app.get("/api/wm/session/memory")
@@ -316,6 +337,10 @@ class WmSessionEndpointTests(unittest.TestCase):
         self.assertTrue(body["ok"])
         self.assertEqual(seen, [5411])
         self.assertEqual(body["memories"][0]["SteeringKey"], "preferred_name")
+        self.assertEqual(body["active"][0]["steering_key"], "preferred_name")
+        self.assertEqual(body["source_evidence"][0]["state"], "active")
+        self.assertEqual(body["exclusions"][0]["state"], "forgotten")
+        self.assertNotIn("redacted", str(body["exclusions"]))
 
     def test_wm_proofs_route_includes_checklist_and_latest(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:

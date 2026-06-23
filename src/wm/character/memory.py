@@ -47,6 +47,7 @@ def memory_action_sql(*, player_guid: int, steering_key: str, action: str) -> st
         f"WHERE CharacterGUID = {int(player_guid)} AND SteeringKey = '{key}'; "
         "UPDATE wm_character_conversation_steering "
         f"SET {update} WHERE CharacterGUID = {int(player_guid)} AND SteeringKey = '{key}'; "
+        "SELECT ROW_COUNT() AS affected_rows; "
         "COMMIT"
     )
 
@@ -77,7 +78,7 @@ def apply_memory_action(
         }
     if mode != "apply":
         raise ValueError("mode must be dry-run or apply")
-    client.query(
+    result_rows = client.query(
         host=settings.char_db_host,
         port=settings.char_db_port,
         user=settings.char_db_user,
@@ -85,12 +86,23 @@ def apply_memory_action(
         database=settings.char_db_name,
         sql=sql,
     )
+    affected = _first_int(result_rows, "affected_rows")
+    if affected != 1:
+        return {
+            "ok": False,
+            "status": "not_applied",
+            "player_guid": int(player_guid),
+            "steering_key": key,
+            "action": str(action).lower(),
+            "affected_rows": affected,
+        }
     return {
         "ok": True,
         "status": "applied",
         "player_guid": int(player_guid),
         "steering_key": key,
         "action": str(action).lower(),
+        "affected_rows": affected,
     }
 
 
@@ -99,6 +111,15 @@ def _validated_key(value: str) -> str:
     if not _KEY_RE.fullmatch(key):
         raise ValueError("steering_key must contain only letters, digits, underscore, dot, colon, or hyphen")
     return key
+
+
+def _first_int(rows: list[dict[str, Any]], key: str) -> int:
+    if not rows:
+        return 0
+    raw = rows[0].get(key)
+    if raw is None:
+        return 0
+    return int(raw)
 
 
 def _parser() -> argparse.ArgumentParser:
