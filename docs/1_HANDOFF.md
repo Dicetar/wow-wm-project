@@ -98,6 +98,22 @@ prevent both.
   or the panel `arc.marker_scenario.generate` command to emit the Arc Factory
   scenario from the marked character's live level/faction/zone facts, then feed
   that generated JSON to `wm.arcs.factory`.
+- **Conversational intent audit hardening (2026-06-24):** the Phase 3
+  conversational action path now writes an `intent_audit` journal record for
+  rejected, pending, declined, dry-run-failed, applied, and apply-failed intent
+  outcomes. This is repo/runtime evidence only; gameplay remains gated on a
+  fresh marker-selected live target.
+- **Session memory controls/view hardening (2026-06-24):** memory pin/suppress/
+  forget applies now require exactly one affected row after the preview lookup.
+  `/api/wm/session/memory` returns active memory, source evidence, and
+  content-free suppression/forget exclusions for the active marker session.
+- **Living lane proof metadata (2026-06-24):** living lane execution now carries
+  explicit `outcome` metadata (`success`, `failure`, `cleanup`, `suppression`,
+  `revocation`) in response/state/audit records. Gameplay status remains
+  `UNKNOWN` until success/failure/cleanup packets are captured in-client.
+- **Current clean gate after latest repo hardening:** `1237 passed, 31
+  warnings`; status, skill, native-contract, living-catalog, and diff validation
+  pass.
 
 Live proof records:
 
@@ -118,7 +134,7 @@ the commands in §6 before trusting them** — they are cheap and definitive.
 |------|-------|---------------|
 | Branch | `main` | `git branch --show-current` |
 | Last stabilization commit | `e57e026 docs: sync handoff...` | `git log --oneline -1` |
-| Test suite | **1228 passed, 31 warnings** | `python -m pytest -q` |
+| Test suite | **1237 passed, 31 warnings** | `python -m pytest -q` |
 | Status validation | `OK` | `python -m wm.status --validate` |
 | Native contracts | **64 contracted, 0 implemented-without-contract** | `python -m wm.sources.native_bridge.contracts_cli` |
 | Native action surface | 100 kinds, 60 `implemented=True`, 1:1 with C++ registry | §5 cross-check |

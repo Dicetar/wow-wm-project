@@ -38,8 +38,8 @@
       "repo_status": "WORKING",
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
-      "scope": "Enforced pre-flight payload validation; 63/100 action kinds contracted. Remaining implemented-without-contract kinds are context/debug helpers.",
-      "last_verified": "2026-06-11",
+      "scope": "Enforced pre-flight payload validation; 64/100 action kinds contracted. Zero implemented actions lack contracts; debug/freeform and forward-declared product kinds are reported separately.",
+      "last_verified": "2026-06-24",
       "evidence_ref": "python -m wm.sources.native_bridge.contracts_cli --json"
     },
     {
@@ -91,9 +91,9 @@
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "Live-ready catalog/runtime scaffold; gameplay loop still needs fresh in-client proof and failure/cleanup evidence.",
-      "last_verified": "2026-06-11",
-      "evidence_ref": "tests/test_living_nemesis.py"
+      "scope": "Live-ready catalog/runtime scaffold; execution records lane outcome metadata for success/failure/cleanup. Gameplay loop still needs fresh in-client proof.",
+      "last_verified": "2026-06-24",
+      "evidence_ref": "tests/test_living_nemesis.py; tests/test_living_runtime.py"
     },
     {
       "feature_key": "living.rumor",
@@ -102,9 +102,9 @@
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "Live-ready catalog/runtime scaffold; announce-style gameplay still needs fresh in-client proof.",
-      "last_verified": "2026-06-11",
-      "evidence_ref": "tests/test_living_rumor.py"
+      "scope": "Live-ready catalog/runtime scaffold; execution records lane outcome metadata for success/failure/suppression. Announce-style gameplay still needs fresh in-client proof.",
+      "last_verified": "2026-06-24",
+      "evidence_ref": "tests/test_living_rumor.py; tests/test_living_runtime.py"
     },
     {
       "feature_key": "living.legend",
@@ -113,9 +113,9 @@
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "Live-ready catalog/runtime scaffold; title/mail-style gameplay still needs fresh in-client proof.",
-      "last_verified": "2026-06-11",
-      "evidence_ref": "tests/test_living_legend.py"
+      "scope": "Live-ready catalog/runtime scaffold; execution records lane outcome metadata. Title/mail-style gameplay still needs fresh in-client proof.",
+      "last_verified": "2026-06-24",
+      "evidence_ref": "tests/test_living_legend.py; tests/test_living_runtime.py"
     },
     {
       "feature_key": "living.patron",
@@ -124,9 +124,9 @@
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "Live-ready catalog/runtime scaffold; patron commitment gameplay still needs fresh in-client proof.",
-      "last_verified": "2026-06-11",
-      "evidence_ref": "tests/test_living_patron.py"
+      "scope": "Live-ready catalog/runtime scaffold; execution records lane outcome metadata for success/failure/revoke/suppress. Patron commitment gameplay still needs fresh in-client proof.",
+      "last_verified": "2026-06-24",
+      "evidence_ref": "tests/test_living_patron.py; tests/test_living_runtime.py"
     },
     {
       "feature_key": "living.oath",
@@ -135,9 +135,9 @@
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
       "requires_live_proof": true,
-      "scope": "Live-ready catalog/runtime scaffold; oath consequence gameplay still needs fresh in-client proof.",
-      "last_verified": "2026-06-11",
-      "evidence_ref": "tests/test_living_oath.py"
+      "scope": "Live-ready catalog/runtime scaffold; execution records lane outcome metadata for success/failure/revoke/suppress. Oath consequence gameplay still needs fresh in-client proof.",
+      "last_verified": "2026-06-24",
+      "evidence_ref": "tests/test_living_oath.py; tests/test_living_runtime.py"
     },
     {
       "feature_key": "living.wild_catalog",
@@ -178,8 +178,8 @@
       "runtime_status": "WORKING",
       "gameplay_status": "PARTIAL",
       "requires_live_proof": true,
-      "scope": "Fresh runtime-window proofs pass for typed chat action, durable memory reuse, and a typed temporary scene with cleanup. Gameplay remains PARTIAL until a fresh notable event proves ambient narration and cooldown behavior.",
-      "last_verified": "2026-06-21",
+      "scope": "Fresh runtime-window proofs pass for typed chat action, durable memory reuse, and a typed temporary scene with cleanup. Repo path now audits accepted/rejected/pending/dry-run/apply intent outcomes. Gameplay remains PARTIAL until a fresh notable event proves ambient narration and cooldown behavior.",
+      "last_verified": "2026-06-24",
       "last_live_proof": "proof-20260621122742753010",
       "evidence_ref": ".wm-bootstrap/state/observability/proofs/proof-20260621122742753010.json"
     },
@@ -201,9 +201,9 @@
       "repo_status": "WORKING",
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
-      "scope": "GitHub Actions runs the DB-free unit suite on push; local full test suite includes marker-target proof provenance, gated memory controls, conversational verb graduation, and living-lane proof metadata.",
-      "last_verified": "2026-06-23",
-      "evidence_ref": "python -m pytest -q (1218 passed)"
+      "scope": "GitHub Actions runs the DB-free unit suite on push; local full test suite includes marker-target proof provenance, gated memory controls, conversational verb graduation, memory evidence views, and living-lane proof metadata.",
+      "last_verified": "2026-06-24",
+      "evidence_ref": "python -m pytest -q (1237 passed)"
     }
   ]
 }
