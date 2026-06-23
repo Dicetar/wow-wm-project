@@ -928,10 +928,11 @@ class AutoplayService:
                     "detail": prepared.reason,
                     "payload": {"intent": intent, "player_guid": int(player_guid)},
                 })
+                message = intent_failure_message(reason=prepared.reason, verb=verb)
                 self._speak(settings=settings, player_guid=player_guid,
-                            text="I could not bring that creature forth just now.",
+                            text=message,
                             source_message=source_message)
-                return {"intent": "rejected", "reason": prepared.reason}
+                return {"intent": "rejected", "reason": prepared.reason, "player_message": message}
             intent_args = prepared
 
         compiled = compile_intent(
@@ -1183,7 +1184,7 @@ class AutoplayService:
         self._speak(settings=settings, player_guid=player_guid, text=msg, source_message=source_message)
         if not ok:
             self.store.add_issue({"reason": "intent_apply_failed", "kind": "intent", "detail": record})
-        return {"intent": "applied" if ok else "apply_failed", "verb": compiled.verb}
+        return {"intent": "applied" if ok else "apply_failed", "verb": compiled.verb, "player_message": msg}
 
     def _apply_pending(
         self,

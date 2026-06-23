@@ -658,7 +658,7 @@ def test_handle_intent_spawn_unresolved_name_rejected(tmp_path: Path):
             return None
 
     with patch("wm.targets.name_resolver.get_default_creature_name_resolver", return_value=FakeResolver()), \
-         patch.object(service, "_speak", return_value={"ok": True}):
+         patch.object(service, "_speak", return_value={"ok": True}) as speak:
         result = service._handle_intent(
             settings=Settings.from_env(),
             control_config={},
@@ -668,6 +668,8 @@ def test_handle_intent_spawn_unresolved_name_rejected(tmp_path: Path):
         )
     assert result["intent"] == "rejected"
     assert "frobnicator" in result["reason"]
+    assert result["player_message"] == "I cannot complete creature spawn right now."
+    assert speak.call_args.kwargs["text"] == result["player_message"]
     audits = [service.store.read_json(path) for path in service.store.root.joinpath("journal").glob("*-intent_audit.json")]
     assert audits[-1]["outcome"] == "rejected"
     assert audits[-1]["verb"] == "creature_spawn"
