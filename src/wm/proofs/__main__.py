@@ -21,7 +21,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--player-guid", type=int)
     run.add_argument("--mode", choices=["dry-run", "record"], default="dry-run")
     run.add_argument("--living-lane", choices=["rumor", "patron", "oath", "nemesis", "legend", "scene_director"])
-    run.add_argument("--living-outcome", choices=["success", "failure", "cleanup"])
+    run.add_argument("--living-outcome", choices=["success", "failure", "cleanup", "suppression", "revocation"])
     run.add_argument("--json", action="store_true")
     replay = sub.add_parser("replay", help="Evaluate a recorded event stream offline.")
     replay.add_argument("recording", type=Path)

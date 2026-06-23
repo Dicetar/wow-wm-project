@@ -177,7 +177,7 @@ PACKETS: tuple[ProofPacket, ...] = (
 )
 
 LIVING_LANES = {"rumor", "patron", "oath", "nemesis", "legend", "scene_director"}
-LIVING_OUTCOMES = {"success", "failure", "cleanup"}
+LIVING_OUTCOMES = {"success", "failure", "cleanup", "suppression", "revocation"}
 
 
 def list_proof_packets() -> list[dict[str, Any]]:
@@ -214,8 +214,8 @@ def run_proof_packet(
             checks.append({"name": "living:lane", "status": "FAIL", "detail": "a supported living lane is required"})
             blockers.append("a supported living lane is required")
         if outcome not in LIVING_OUTCOMES:
-            checks.append({"name": "living:outcome", "status": "FAIL", "detail": "outcome must be success, failure, or cleanup"})
-            blockers.append("outcome must be success, failure, or cleanup")
+            checks.append({"name": "living:outcome", "status": "FAIL", "detail": "outcome must be success, failure, cleanup, suppression, or revocation"})
+            blockers.append("outcome must be success, failure, cleanup, suppression, or revocation")
         if lane in LIVING_LANES and outcome in LIVING_OUTCOMES:
             living = {"schema_version": "wm.proof.living.v1", "lane": lane, "outcome": outcome}
 
@@ -387,17 +387,22 @@ def _living_evidence(
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         raw = {}
-    expected_statuses = {
-        "success": {"active"},
-        "failure": {"failed"},
-        "cleanup": {"cleanup", "suppress", "revoke"},
+    expected = {
+        "success": {"statuses": {"active"}, "outcomes": {"success"}},
+        "failure": {"statuses": {"failed"}, "outcomes": {"failure"}},
+        "cleanup": {"statuses": {"cleanup", "suppress", "revoke"}, "outcomes": {"cleanup", "suppression", "revocation"}},
+        "suppression": {"statuses": {"suppress"}, "outcomes": {"suppression"}},
+        "revocation": {"statuses": {"revoke"}, "outcomes": {"revocation"}},
     }[outcome]
     record = next(
         (
             item for item in reversed(list(raw.get("audit") or []))
             if isinstance(item, dict)
             and str(item.get("lane") or "") == lane
-            and str(item.get("status") or "") in expected_statuses
+            and (
+                str(item.get("outcome") or "") in expected["outcomes"]
+                or str(item.get("status") or "") in expected["statuses"]
+            )
             and _matches_window(item, evidence_since)
         ),
         None,

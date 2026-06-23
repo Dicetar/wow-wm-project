@@ -59,6 +59,45 @@ def test_living_lane_packet_passes_only_with_matching_scoped_audit(tmp_path):
     assert record["evidence_checks"][0]["status"] == "PASS"
 
 
+def test_living_lane_packet_accepts_suppression_and_revocation_outcomes(tmp_path):
+    runtime = _live_runtime(tmp_path)
+    state = tmp_path / ".wm-bootstrap" / "state" / "living" / "5408.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(
+        json.dumps(
+            {
+                "audit": [
+                    {"at": "2026-01-01T00:06:00Z", "lane": "rumor", "operation": "suppress", "status": "suppress", "outcome": "suppression"},
+                    {"at": "2026-01-01T00:07:00Z", "lane": "oath", "operation": "revoke", "status": "revoke", "outcome": "revocation"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    suppression = run_proof_packet(
+        proof_kind="living_lane",
+        project_root=tmp_path,
+        player_guid=5408,
+        runtime_status=runtime,
+        living_lane="rumor",
+        living_outcome="suppression",
+        target_provenance={"source": "marker", "player_guid": 5408, "marker_spell_id": 946602, "selected_at": "2026-01-01T00:05:00Z"},
+    )
+    revocation = run_proof_packet(
+        proof_kind="living_lane",
+        project_root=tmp_path,
+        player_guid=5408,
+        runtime_status=runtime,
+        living_lane="oath",
+        living_outcome="revocation",
+        target_provenance={"source": "marker", "player_guid": 5408, "marker_spell_id": 946602, "selected_at": "2026-01-01T00:05:00Z"},
+    )
+
+    assert suppression["status"] == "passed"
+    assert revocation["status"] == "passed"
+
+
 def test_runtime_startup_packet_passes_when_required_services_running(tmp_path):
     processes = [
         RuntimeProcess(pid=1, parent_pid=None, name="mysqld.exe", command_line=""),
