@@ -53,7 +53,7 @@ def enrich_pack_with_v2_sections(
     return pack
 
 
-def build_session_context_pack(*, player_guid: int) -> dict[str, Any]:
+def build_session_context_pack(*, player_guid: int, settings: Any = None, client: Any = None) -> dict[str, Any]:
     """Build a player-level context pack for autoplay when no target exists yet.
 
     Target-specific generation should continue to use `wm.context.builder`.
@@ -65,15 +65,17 @@ def build_session_context_pack(*, player_guid: int) -> dict[str, Any]:
     character_state = None
     recent_events: list[dict[str, Any]] = []
     native_context_snapshot = None
+    memory_context: dict[str, Any] = {"active": [], "source_evidence": [], "excluded": []}
     try:
+        from wm.character.memory import load_memory_entries
         from wm.config import Settings
         from wm.context.builder import DbCharacterStateLoader
         from wm.context.builder import LatestNativeContextSnapshotLoader
         from wm.db.mysql_cli import MysqlCliClient
         from wm.events.store import EventStore
 
-        settings = Settings.from_env()
-        client = MysqlCliClient()
+        settings = settings or Settings.from_env()
+        client = client or MysqlCliClient()
         try:
             bundle = DbCharacterStateLoader(client=client, settings=settings).load(character_guid=int(player_guid))
             character_state = asdict(bundle)
@@ -96,6 +98,12 @@ def build_session_context_pack(*, player_guid: int) -> dict[str, Any]:
             )
         except Exception as exc:
             notes.append(f"native_context_snapshot: {type(exc).__name__}: {exc}")
+        try:
+            memory_context = build_memory_context_section(
+                load_memory_entries(client=client, settings=settings, player_guid=int(player_guid))
+            )
+        except Exception as exc:
+            notes.append(f"memory_context: {type(exc).__name__}: {exc}")
     except Exception as exc:
         notes.append(f"live_context: {type(exc).__name__}: {exc}")
 
@@ -109,6 +117,9 @@ def build_session_context_pack(*, player_guid: int) -> dict[str, Any]:
         "character_state": character_state,
         "recent_events": recent_events,
         "native_context_snapshot": native_context_snapshot,
+        "memory": memory_context["active"],
+        "memory_source_evidence": memory_context["source_evidence"],
+        "memory_exclusions": memory_context["excluded"],
         "generation_input": {
             "player": {
                 "guid": int(player_guid),
@@ -116,9 +127,49 @@ def build_session_context_pack(*, player_guid: int) -> dict[str, Any]:
             },
             "recent_events": recent_events,
             "native_context_snapshot": native_context_snapshot,
+            "memory_source_evidence": memory_context["source_evidence"],
         },
         "notes": notes,
     }
+
+
+def build_memory_context_section(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Return active memory context plus content-free exclusion evidence.
+
+    Active notes may enter context with their body. Suppressed/forgotten rows
+    are represented only by key/state/source metadata so future prompts can
+    prove absence without leaking redacted content.
+    """
+    active: list[dict[str, Any]] = []
+    evidence: list[dict[str, Any]] = []
+    excluded: list[dict[str, Any]] = []
+    for row in rows:
+        steering_key = _text(row.get("SteeringKey"))
+        if not steering_key:
+            continue
+        is_active = _truthy(row.get("IsActive"))
+        body = _text(row.get("Body"))
+        metadata = _json_object(row.get("MetadataJSON"))
+        forgotten = bool(metadata.get("forgotten") is True)
+        base = {
+            "steering_key": steering_key,
+            "steering_kind": _text(row.get("SteeringKind")),
+            "source": _text(row.get("Source")),
+            "priority": _int_or_none(row.get("Priority")),
+            "updated_at": _text(row.get("UpdatedAt")),
+        }
+        if is_active and body and not forgotten:
+            active.append({**base, "body": body, "metadata": metadata})
+            evidence.append({**base, "state": "active", "has_body": True})
+            continue
+        excluded.append(
+            {
+                **base,
+                "state": "forgotten" if forgotten else "suppressed",
+                "has_body": False,
+            }
+        )
+    return {"active": active, "source_evidence": evidence, "excluded": excluded}
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -132,6 +183,42 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--summary", action="store_true")
     build.add_argument("--output-json", type=Path)
     return parser
+
+
+def _text(value: object) -> str | None:
+    if value in (None, "", "NULL"):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value in (None, "", "0", 0, "false", "False"):
+        return False
+    return True
+
+
+def _int_or_none(value: object) -> int | None:
+    if value in (None, "", "NULL"):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _json_object(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if value in (None, "", "NULL"):
+        return {}
+    try:
+        parsed = json.loads(str(value))
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def main(argv: list[str] | None = None) -> int:

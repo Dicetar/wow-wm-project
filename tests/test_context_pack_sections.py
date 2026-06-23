@@ -27,3 +27,56 @@ def test_pack_version_field():
     from wm.context.versions import CURRENT_PACK_VERSION
     assert isinstance(CURRENT_PACK_VERSION, str)
     assert CURRENT_PACK_VERSION.startswith("wm.context_pack.v")
+
+
+def test_memory_context_includes_only_active_body_and_content_free_exclusions():
+    from wm.context.pack import build_memory_context_section
+
+    section = build_memory_context_section([
+        {
+            "SteeringKey": "preference.name",
+            "SteeringKind": "preference",
+            "Body": "Call me Marker.",
+            "Priority": "100",
+            "Source": "player",
+            "IsActive": "1",
+            "MetadataJSON": '{"source_event_id": 5}',
+            "UpdatedAt": "2026-06-23 12:00:00",
+        },
+        {
+            "SteeringKey": "old.secret",
+            "SteeringKind": "preference",
+            "Body": "Do not leak this suppressed text.",
+            "Priority": "10",
+            "Source": "player",
+            "IsActive": "0",
+            "MetadataJSON": "{}",
+            "UpdatedAt": "2026-06-23 12:01:00",
+        },
+        {
+            "SteeringKey": "forgotten.fact",
+            "SteeringKind": "preference",
+            "Body": "",
+            "Priority": "10",
+            "Source": "player",
+            "IsActive": "0",
+            "MetadataJSON": '{"forgotten": true}',
+            "UpdatedAt": "2026-06-23 12:02:00",
+        },
+    ])
+
+    assert section["active"] == [
+        {
+            "steering_key": "preference.name",
+            "steering_kind": "preference",
+            "source": "player",
+            "priority": 100,
+            "updated_at": "2026-06-23 12:00:00",
+            "body": "Call me Marker.",
+            "metadata": {"source_event_id": 5},
+        }
+    ]
+    assert section["source_evidence"][0]["state"] == "active"
+    assert {entry["state"] for entry in section["excluded"]} == {"suppressed", "forgotten"}
+    assert all("body" not in entry for entry in section["excluded"])
+    assert "Do not leak" not in str(section)
