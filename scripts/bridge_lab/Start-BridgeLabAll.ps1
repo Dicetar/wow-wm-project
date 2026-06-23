@@ -1,14 +1,14 @@
 param(
     [string]$ProjectRoot = "D:\WOW\wm-project",
     [string]$BridgeLabRoot = "D:\WOW\WM_BridgeLab",
-    [int]$PlayerGuid = 5406,
+    [int]$PlayerGuid = 0,
     [string]$WmSpellsPlayerGuidAllowList = "",
     [int]$LabMySqlPort = 33307,
     [int]$WorldServerPort = 8095,
     [int]$SoapPort = 7879,
     [string]$DataDir = "D:\WOW\Azerothcore_WoTLK_Rebuild\run\data",
     [ValidateSet("auto-bounty", "native", "none")]
-    [string]$Watcher = "auto-bounty",
+    [string]$Watcher = "none",
     [switch]$RestartWorldServer,
     [switch]$ConfigureRuntime,
     [switch]$SkipConfigure,
@@ -279,11 +279,12 @@ $startNativeWatchScript = Resolve-ExistingPath -Path (Join-Path $ProjectRoot "sc
 $startAutoBountyScript = Resolve-ExistingPath -Path (Join-Path $ProjectRoot "scripts\bridge_lab\Start-BridgeLabAutoBounty.ps1") -Label "Start-BridgeLabAutoBounty.ps1"
 
 $effectiveWmSpellsAllowList = $WmSpellsPlayerGuidAllowList
-if ([string]::IsNullOrWhiteSpace($effectiveWmSpellsAllowList)) {
+if ([string]::IsNullOrWhiteSpace($effectiveWmSpellsAllowList) -and $PlayerGuid -gt 0) {
     $effectiveWmSpellsAllowList = [string]$PlayerGuid
-    if ($PlayerGuid -ne 5405) {
-        $effectiveWmSpellsAllowList = "$effectiveWmSpellsAllowList,5405"
-    }
+}
+
+if ($Watcher -ne "none" -and $PlayerGuid -le 0) {
+    throw "PlayerGuid is required when Watcher is '$Watcher'. Resolve it from the latest online 946602 marker session first."
 }
 
 Resolve-ExistingPath -Path $runDir -Label "BridgeLab run directory" | Out-Null

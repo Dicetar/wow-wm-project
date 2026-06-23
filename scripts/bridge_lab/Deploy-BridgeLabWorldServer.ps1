@@ -3,8 +3,8 @@ param(
     [string]$Configuration = "RelWithDebInfo",
     [int]$GracefulWaitSeconds = 20,
     [int]$ForceAfterSeconds = 5,
-    [string]$WmBridgePlayerGuidAllowList = "5406,5405",
-    [string]$WmSpellsPlayerGuidAllowList = "5406,5405"
+    [string]$WmBridgePlayerGuidAllowList = "",
+    [string]$WmSpellsPlayerGuidAllowList = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -76,6 +76,10 @@ $bridgeConfig = Join-Path $runRoot "configs\modules\mod_wm_bridge.conf"
 $spellsConfig = Join-Path $runRoot "configs\modules\mod_wm_spells.conf"
 $buildBridgeDist = Join-Path $WorkspaceRoot ("build\bin\" + $Configuration + "\configs\modules\mod_wm_bridge.conf.dist")
 $buildSpellsDist = Join-Path $WorkspaceRoot ("build\bin\" + $Configuration + "\configs\modules\mod_wm_spells.conf.dist")
+
+if ([string]::IsNullOrWhiteSpace($WmBridgePlayerGuidAllowList)) {
+    throw "WmBridgePlayerGuidAllowList is required. Use '*' only for the short marker-discovery window, or pass the resolved marker target GUID."
+}
 
 Ensure-ConfigFile -Path $bridgeConfig -FallbackDistPath $buildBridgeDist
 Ensure-ConfigFile -Path $spellsConfig -FallbackDistPath $buildSpellsDist

@@ -61,6 +61,12 @@ prevent both.
   waits for world port 8095 and SOAP port 7879 before starting watchers or
   reporting success. A clean stack started with runtime proof
   `proof-20260622141938712548`, and native request `1169` returned `pong`.
+- **Launcher target safety (2026-06-23):** BridgeLab deploy/configure helpers
+  no longer default `WmBridge`/`WmSpells` allowlists to fixture GUIDs. The
+  all-in-one launcher starts core services without a watcher by default; watcher
+  modes require an explicit `-PlayerGuid` resolved from the latest online
+  `946602` marker. Deploy refuses to run unless bridge scope is explicit (`*`
+  only for discovery, or the resolved marker GUID for proof).
 - **Current live blocker:** no online character has supplied a fresh `946602`
   marker event. Resolve the newest online marker candidate before scoping
   watcher/autoplay or running live proofs.
@@ -387,15 +393,18 @@ Acceptance: native `debug_ping` returns `pong`.
 
 ### 7.3 Phase 1 — Repeatable live-proof session (operator, P0)
 Follow `docs/NEXT_SESSION_HANDOFF_2026_06_08.md` "Next Session Working Order":
-1. Launcher: `Stop All WM` → `Start Core` → Panel/Watcher/Autoplay.
-2. `POST /api/wm/proofs/run {"proof_kind":"runtime_startup","mode":"dry-run"}` → `passed`.
-3. Apply/reapply marker `946602`, scope the newest online candidate, and use
-   that resolved GUID for watcher/autoplay and every proof command.
-4. Prove `chat_action` (WM chat → in-game reply → autoplay journal `chat`/`deed`).
-5. Prove `ambient` (one notable event → one WM line → cooldown holds).
-6. Prove `memory` (durable preference → later reuse in separate prompt).
-7. Prove `scene` (tiny spawn/say/despawn → `cleanup_status` recorded).
-8. Save proof packet IDs + update `data/specs/feature_status.json`.
+1. Launcher: `Stop All WM` → `Start Core` only. Do not start watcher/autoplay
+   before marker scoping.
+2. Temporarily enable wildcard bridge observation, apply/reapply marker
+   `946602`, scope the newest online candidate, then immediately set bridge
+   scope to the resolved target GUID.
+3. Start watcher/autoplay with the resolved marker GUID.
+4. `POST /api/wm/proofs/run {"proof_kind":"runtime_startup","mode":"dry-run"}` → `passed`.
+5. Prove `chat_action` (WM chat → in-game reply → autoplay journal `chat`/`deed`).
+6. Prove `ambient` (one notable event → one WM line → cooldown holds).
+7. Prove `memory` (durable preference → later reuse in separate prompt).
+8. Prove `scene` (tiny spawn/say/despawn → `cleanup_status` recorded).
+9. Save proof packet IDs + update `data/specs/feature_status.json`.
 
 **Do not mark a feature LIVE_WORKING without the matching proof packet.**
 

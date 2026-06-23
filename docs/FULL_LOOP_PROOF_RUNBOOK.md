@@ -39,9 +39,9 @@ python -m pytest -q
 # Apply/reapply 946602 in-client while temporary wildcard observation is active.
 python -m wm.sources.native_bridge.configure --allow-all --reload-via-soap --summary
 python -m wm.sources.native_bridge.player_marker scope-latest --spell-id 946602 --since-seconds 300 --summary
-python -m wm.sources.native_bridge.configure --clear --reload-via-soap --summary
 $targetGuid = <player_guid reported by scope-latest>
 $targetName = <player_name reported by scope-latest>
+python -m wm.sources.native_bridge.configure --player-guid $targetGuid --reload-via-soap --summary
 ```
 
 Checklist:

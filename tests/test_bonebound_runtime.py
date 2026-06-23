@@ -794,7 +794,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         self.assertIn("WmSpells::HandleNightWatchersLensSpellDamage(attacker, target, damage, spellInfo)", unit_script)
         self.assertIn("WmSpells::HandleNightWatchersLensDefenseExposure(", unit_script)
 
-    def test_bridge_lab_runtime_config_scopes_wm_spells_to_jecia(self) -> None:
+    def test_bridge_lab_runtime_config_has_no_fixture_allowlist_defaults(self) -> None:
         repo_root = self._repo_root()
         configure_script = repo_root.joinpath(
             "scripts",
@@ -808,8 +808,10 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         for script in (configure_script, deploy_script):
-            self.assertIn('[string]$WmBridgePlayerGuidAllowList = "5406,5405"', script)
-            self.assertIn('[string]$WmSpellsPlayerGuidAllowList = "5406,5405"', script)
+            self.assertNotIn('"5406,5405"', script)
+            self.assertNotIn('"5405,5406"', script)
+            self.assertIn('[string]$WmBridgePlayerGuidAllowList = ""', script)
+            self.assertIn('[string]$WmSpellsPlayerGuidAllowList = ""', script)
             self.assertIn(
                 'Set-ConfigValue -Path $bridgeConfig -Key "WmBridge.PlayerGuidAllowList" -Value """$WmBridgePlayerGuidAllowList"""',
                 script,
@@ -826,6 +828,7 @@ class BoneboundRuntimeStaticTests(unittest.TestCase):
                 'Set-ConfigValue -Path $spellsConfig -Key "WmSpells.PlayerGuidAllowList" -Value """"""',
                 script,
             )
+        self.assertIn("WmBridgePlayerGuidAllowList is required", deploy_script)
 
     def test_bridge_lab_runtime_config_sets_solo_5man_tuning(self) -> None:
         configure_script = self._repo_root().joinpath(

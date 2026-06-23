@@ -37,19 +37,29 @@ class SettingsStub:
 
 
 class BrougGuardTests(unittest.TestCase):
-    def test_bridge_lab_runtime_keeps_broug_in_wm_spells_allowlist(self) -> None:
+    def test_bridge_lab_runtime_does_not_default_to_fixture_allowlists(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         configure = repo_root.joinpath("scripts", "bridge_lab", "Configure-BridgeLabRuntime.ps1").read_text(
             encoding="utf-8"
         )
+        deploy = repo_root.joinpath("scripts", "bridge_lab", "Deploy-BridgeLabWorldServer.ps1").read_text(
+            encoding="utf-8"
+        )
         start = repo_root.joinpath("scripts", "bridge_lab", "Start-BridgeLabAll.ps1").read_text(encoding="utf-8")
 
-        self.assertIn('[string]$WmBridgePlayerGuidAllowList = "5406,5405"', configure)
-        self.assertIn('[string]$WmSpellsPlayerGuidAllowList = "5406,5405"', configure)
+        for script in (configure, deploy, start):
+            self.assertNotIn('"5406,5405"', script)
+            self.assertNotIn('"5405,5406"', script)
+        self.assertIn('[string]$WmBridgePlayerGuidAllowList = ""', configure)
+        self.assertIn('[string]$WmSpellsPlayerGuidAllowList = ""', configure)
+        self.assertIn('[string]$WmBridgePlayerGuidAllowList = ""', deploy)
+        self.assertIn('[string]$WmSpellsPlayerGuidAllowList = ""', deploy)
+        self.assertIn('WmBridgePlayerGuidAllowList is required', deploy)
+        self.assertIn('[int]$PlayerGuid = 0', start)
+        self.assertIn('[string]$Watcher = "none"', start)
         self.assertIn('[string]$WmSpellsPlayerGuidAllowList = ""', start)
         self.assertIn("$effectiveWmSpellsAllowList = $WmSpellsPlayerGuidAllowList", start)
-        self.assertIn('if ($PlayerGuid -ne 5405)', start)
-        self.assertIn('$effectiveWmSpellsAllowList = "$effectiveWmSpellsAllowList,5405"', start)
+        self.assertIn('if ($Watcher -ne "none" -and $PlayerGuid -le 0)', start)
         self.assertIn('"-WmBridgePlayerGuidAllowList", $effectiveWmSpellsAllowList', start)
         self.assertIn('"-WmSpellsPlayerGuidAllowList", $effectiveWmSpellsAllowList', start)
 

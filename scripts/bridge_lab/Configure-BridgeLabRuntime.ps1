@@ -4,8 +4,8 @@ param(
     [int]$WorldServerPort = 8095,
     [int]$SoapPort = 7879,
     [string]$DataDir = "D:\WOW\Azerothcore_WoTLK_Rebuild\run\data",
-    [string]$WmBridgePlayerGuidAllowList = "5406,5405",
-    [string]$WmSpellsPlayerGuidAllowList = "5406,5405",
+    [string]$WmBridgePlayerGuidAllowList = "",
+    [string]$WmSpellsPlayerGuidAllowList = "",
     [switch]$UpdatePlayerbotsDatabaseInfo
 )
 
