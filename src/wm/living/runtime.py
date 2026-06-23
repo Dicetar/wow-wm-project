@@ -42,7 +42,13 @@ class LivingStateStore:
         lane_state.update({"operation": operation, "updated_at": now, **details})
         lanes[lane] = lane_state
         audit = list(state.get("audit") or [])
-        audit.append({"at": now, "lane": lane, "operation": operation, "status": details.get("status")})
+        audit.append({
+            "at": now,
+            "lane": lane,
+            "operation": operation,
+            "status": details.get("status"),
+            "outcome": details.get("outcome"),
+        })
         state.update({"schema_version": "wm.living.state.v1", "player_guid": int(player_guid), "lanes": lanes, "audit": audit[-200:]})
         self.root.mkdir(parents=True, exist_ok=True)
         path = self.root / f"{int(player_guid)}.json"
@@ -51,10 +57,17 @@ class LivingStateStore:
         tmp.replace(path)
         return state
 
-    def audit(self, *, player_guid: int, lane: str, operation: str, status: str, run_key: str) -> dict[str, Any]:
+    def audit(self, *, player_guid: int, lane: str, operation: str, status: str, outcome: str, run_key: str) -> dict[str, Any]:
         state = self.load(player_guid)
         audit = list(state.get("audit") or [])
-        audit.append({"at": utc_now_iso(), "lane": lane, "operation": operation, "status": status, "run_key": run_key})
+        audit.append({
+            "at": utc_now_iso(),
+            "lane": lane,
+            "operation": operation,
+            "status": status,
+            "outcome": outcome,
+            "run_key": run_key,
+        })
         state["audit"] = audit[-200:]
         self.root.mkdir(parents=True, exist_ok=True)
         path = self.root / f"{int(player_guid)}.json"
@@ -153,10 +166,12 @@ def execute_lane(
         if result.status not in {"dry-run", "applied"}:
             break
     complete = len(results) == len(steps) and all(item.status in {"dry-run", "applied"} for item in results)
+    outcome = _lane_outcome(operation=operation, complete=complete)
     response = {
         "schema_version": "wm.living.execution.v1",
         "lane": lane,
         "operation": operation,
+        "outcome": outcome,
         "mode": mode,
         "status": "complete" if complete else "failed",
         "player_guid": int(session["character_guid"]),
@@ -171,11 +186,36 @@ def execute_lane(
             player_guid=int(session["character_guid"]),
             lane=lane,
             operation=operation,
-            details={"status": "active" if operation == "trigger" else operation, "run_key": run_key, "marker_spell_id": DEFAULT_MARKER_SPELL_ID, "bridge_event_id": session.get("bridge_event_id")},
+            details={
+                "status": "active" if operation == "trigger" else operation,
+                "outcome": outcome,
+                "run_key": run_key,
+                "marker_spell_id": DEFAULT_MARKER_SPELL_ID,
+                "bridge_event_id": session.get("bridge_event_id"),
+            },
         )
     elif mode == "apply":
-        store.audit(player_guid=int(session["character_guid"]), lane=lane, operation=operation, status="failed", run_key=run_key)
+        store.audit(
+            player_guid=int(session["character_guid"]),
+            lane=lane,
+            operation=operation,
+            status="failed",
+            outcome=outcome,
+            run_key=run_key,
+        )
     return response
+
+
+def _lane_outcome(*, operation: str, complete: bool) -> str:
+    if not complete:
+        return "failure"
+    if operation == "cleanup":
+        return "cleanup"
+    if operation == "suppress":
+        return "suppression"
+    if operation == "revoke":
+        return "revocation"
+    return "success"
 
 
 def _terminal_steps(lane: str, operation: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -273,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     from wm.config import Settings
     result = execute_lane(payload=payload, session=session, mode=args.mode, coordinator=build_live_coordinator(Settings.from_env()))
     if args.summary:
-        print(f"lane={result['lane']} operation={result['operation']} mode={result['mode']} status={result['status']} player_guid={result['player_guid']} steps={len(result['steps'])}")
+        print(f"lane={result['lane']} operation={result['operation']} outcome={result['outcome']} mode={result['mode']} status={result['status']} player_guid={result['player_guid']} steps={len(result['steps'])}")
     else:
         print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["status"] == "complete" else 1

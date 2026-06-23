@@ -77,13 +77,29 @@ def test_apply_records_scoped_state_only_after_all_steps_succeed(tmp_path: Path)
     payload = {"lane": "patron", "completed_wm_count": 4, "run_key": "unit"}
     result = execute_lane(payload=payload, session=_session(), mode="apply", coordinator=FakeCoordinator(), state_store=store)
     assert result["status"] == "complete"
+    assert result["outcome"] == "success"
     assert store.load(3838)["lanes"]["patron"]["status"] == "active"
+    assert store.load(3838)["lanes"]["patron"]["outcome"] == "success"
 
     failed_store = LivingStateStore(tmp_path / "failed")
     failed = execute_lane(payload=payload, session=_session(), mode="apply", coordinator=FakeCoordinator("failed"), state_store=failed_store)
     assert failed["status"] == "failed"
+    assert failed["outcome"] == "failure"
     assert failed_store.load(3838)["lanes"] == {}
     assert failed_store.load(3838)["audit"][-1]["status"] == "failed"
+    assert failed_store.load(3838)["audit"][-1]["outcome"] == "failure"
+
+
+def test_living_cleanup_operation_records_cleanup_outcome(tmp_path: Path):
+    store = LivingStateStore(tmp_path)
+    payload = {"lane": "nemesis", "operation": "cleanup", "subject_entry": 46, "run_key": "cleanup-unit"}
+
+    result = execute_lane(payload=payload, session=_session(), mode="apply", coordinator=FakeCoordinator(), state_store=store)
+
+    assert result["status"] == "complete"
+    assert result["outcome"] == "cleanup"
+    assert store.load(3838)["lanes"]["nemesis"]["operation"] == "cleanup"
+    assert store.load(3838)["lanes"]["nemesis"]["outcome"] == "cleanup"
 
 
 def test_living_panel_command_is_job_gated():
