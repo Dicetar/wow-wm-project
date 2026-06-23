@@ -183,7 +183,7 @@ Required sequence for every lane outcome:
 3. Inspect every typed action and cleanup step, then confirm apply by typing
    the generated job ID.
 4. Capture a `living_lane` proof packet with the same lane and one of
-   `success`, `failure`, or `cleanup`.
+   `success`, `failure`, `cleanup`, `suppression`, or `revocation`.
 
 `scene_director` payloads must spawn at least two distinct WM-owned actors,
 give every spawn a `duration_ms` from 1 through 120000, and explicitly despawn
