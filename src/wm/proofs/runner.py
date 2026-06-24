@@ -161,7 +161,7 @@ PACKETS: tuple[ProofPacket, ...] = (
     ProofPacket(
         proof_kind="living_lane",
         title="Living World Lane",
-        summary="Record one lane-specific success, failure, or cleanup/suppression proof.",
+        summary="Record one lane-specific success, failure, cleanup, suppression, or revocation proof.",
         required_services=("db", "auth", "world", "watcher", "autoplay"),
         requires_player=True,
         steps=(
