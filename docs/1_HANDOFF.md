@@ -116,11 +116,15 @@ prevent both.
   reject marker-target provenance unless it names the canonical marker spell
   `946602`, includes a bridge event id, includes a selection timestamp, and
   matches the proof player GUID.
+- **Panel marker job hardening (2026-06-25):** panel command jobs that require
+  the active marker target now reject stale, offline, bridge-event-less, or
+  conflicting marker sessions during dry-run and re-check the active marker
+  session again at apply time.
 - **Fixture-GUID cleanup (2026-06-24):** Arc Factory operational notes and panel
   schema defaults no longer name/prefill Jecia or GUID 5406. Legacy Broug
   release/preflight/proof helpers now require an explicit `--player-guid`;
   Broug remains a fixture in tests and Broug-specific content modules only.
-- **Current clean gate after latest repo hardening:** `1240 passed, 31
+- **Current clean gate after latest repo hardening:** `1242 passed, 31
   warnings`; status, skill, native-contract, living-catalog, and diff validation
   pass.
 
@@ -143,7 +147,7 @@ the commands in §6 before trusting them** — they are cheap and definitive.
 |------|-------|---------------|
 | Branch | `main` | `git branch --show-current` |
 | Last stabilization commit | `e57e026 docs: sync handoff...` | `git log --oneline -1` |
-| Test suite | **1240 passed, 31 warnings** | `python -m pytest -q` |
+| Test suite | **1242 passed, 31 warnings** | `python -m pytest -q` |
 | Status validation | `OK` | `python -m wm.status --validate` |
 | Native contracts | **64 contracted, 0 implemented-without-contract** | `python -m wm.sources.native_bridge.contracts_cli` |
 | Native action surface | 100 kinds, 60 `implemented=True`, 1:1 with C++ registry | §5 cross-check |
