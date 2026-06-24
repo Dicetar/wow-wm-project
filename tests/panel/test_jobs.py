@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import subprocess
 import sys
@@ -12,6 +13,7 @@ from wm.panel.catalog import CommandEntry
 from wm.panel.catalog import ParameterSpec
 from wm.panel.jobs import JobRunner
 from wm.panel.state import PanelState
+from wm.panel.state import utc_now_iso
 
 
 class PanelJobRunnerTests(unittest.TestCase):
@@ -19,7 +21,7 @@ class PanelJobRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             state = PanelState(root)
-            state.save_session({"source": "marker", "marker_spell_id": 946602, "character_guid": 3838})
+            state.save_session(_marker_session(3838))
             entry = CommandEntry(
                 id="test.marker",
                 label="Marker",
@@ -36,6 +38,60 @@ class PanelJobRunnerTests(unittest.TestCase):
             conflict = runner.run_dry_run(command_id="test.marker", params={"player_guid": 5406})
             self.assertEqual(conflict["state"], "INVALID")
             self.assertIn("conflicts", conflict["issues"][0]["message"])
+
+    def test_marker_target_job_rejects_stale_offline_or_incomplete_session(self) -> None:
+        entry = CommandEntry(
+            id="test.marker",
+            label="Marker",
+            category="test",
+            kind="read_only",
+            dry_run_argv=(sys.executable, "-c", "print('{player_guid}')"),
+            parameters=(ParameterSpec("player_guid", type="integer"),),
+            marker_target_required=True,
+        )
+
+        cases = [
+            (_marker_session(3838, online=False), "not confirmed online"),
+            (_marker_session(3838, bridge_event_id=None), "bridge event id"),
+            (_marker_session(3838, selected_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()), "stale"),
+        ]
+        for session, message in cases:
+            with self.subTest(message=message), tempfile.TemporaryDirectory() as temp:
+                state = PanelState(Path(temp))
+                state.save_session(session)
+                runner = JobRunner(state=state, catalog=CommandCatalog([entry]), cwd=Path.cwd())
+                result = runner.run_dry_run(command_id="test.marker")
+
+                self.assertEqual(result["state"], "INVALID")
+                self.assertIn(message, result["issues"][0]["message"])
+
+    def test_marker_target_apply_revalidates_active_session(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            state = PanelState(root)
+            state.save_session(_marker_session(3838))
+            entry = CommandEntry(
+                id="test.marker.mutate",
+                label="Marker Mutate",
+                category="test",
+                kind="mutation",
+                dry_run_argv=(sys.executable, "-c", "print('{player_guid}')"),
+                apply_argv=(sys.executable, "-c", "print('{player_guid}')"),
+                mutating=True,
+                dry_run_required=True,
+                confirmation="type_job_id",
+                parameters=(ParameterSpec("player_guid", type="integer"),),
+                marker_target_required=True,
+            )
+            runner = JobRunner(state=state, catalog=CommandCatalog([entry]), cwd=Path.cwd())
+            job = runner.run_dry_run(command_id="test.marker.mutate")
+            self.assertEqual(job["state"], "AWAITING_CONFIRM")
+
+            state.save_session(_marker_session(3838, online=False))
+            rejected = runner.run_apply(job_id=job["job_id"], confirmation=job["job_id"])
+
+            self.assertEqual(rejected["state"], "INVALID")
+            self.assertIn("not confirmed online", rejected["issues"][0]["message"])
 
     def test_marker_target_job_requires_canonical_session(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -157,6 +213,23 @@ def _runner(root: Path) -> JobRunner:
         ]
     )
     return JobRunner(state=PanelState(root), catalog=catalog, cwd=Path.cwd())
+
+
+def _marker_session(
+    guid: int,
+    *,
+    online: bool = True,
+    bridge_event_id: int | None = 77,
+    selected_at: str | None = None,
+) -> dict:
+    return {
+        "source": "marker",
+        "marker_spell_id": 946602,
+        "character_guid": int(guid),
+        "bridge_event_id": bridge_event_id,
+        "selected_at": selected_at or utc_now_iso(),
+        "marker": {"character_online": bool(online)},
+    }
 
 
 if __name__ == "__main__":

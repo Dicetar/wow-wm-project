@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import subprocess
@@ -11,6 +12,8 @@ from wm.panel.catalog import CommandEntry
 from wm.panel.state import PanelState
 from wm.panel.state import utc_now_iso
 
+
+MARKER_SESSION_MAX_AGE_SECONDS = 900
 
 JOB_STATES = {
     "DRAFT",
@@ -91,11 +94,7 @@ class JobRunner:
 
     def _resolve_marker_target(self, params: dict[str, Any]) -> dict[str, Any]:
         session = self.state.load_session() or {}
-        if session.get("source") != "marker" or int(session.get("marker_spell_id") or 0) != 946602:
-            raise ValueError("a canonical marker-selected WM Session is required")
-        guid = session.get("character_guid")
-        if guid in (None, ""):
-            raise ValueError("the active marker-selected WM Session has no character GUID")
+        guid = _validate_marker_session(session)
         explicit = params.get("player_guid")
         if explicit not in (None, "") and int(explicit) != int(guid):
             raise ValueError("explicit player_guid conflicts with the active marker-selected WM Session")
@@ -137,6 +136,15 @@ class JobRunner:
             job["updated_at"] = utc_now_iso()
             self.state.save_job(job)
             return job
+        if entry.marker_target_required:
+            try:
+                job["params"] = self._resolve_marker_target(dict(job.get("params") or {}))
+            except ValueError as exc:
+                job["issues"].append({"path": "params.player_guid", "message": str(exc), "severity": "error"})
+                job["state"] = "INVALID"
+                job["updated_at"] = utc_now_iso()
+                self.state.save_job(job)
+                return job
         try:
             argv = entry.argv_for(mode="apply", params=dict(job.get("params") or {}), paths=self._job_paths(job))
         except Exception as exc:
@@ -223,3 +231,33 @@ class JobRunner:
             "created_at": utc_now_iso(),
             "updated_at": utc_now_iso(),
         }
+
+
+def _validate_marker_session(session: dict[str, Any]) -> int:
+    if session.get("source") != "marker" or int(session.get("marker_spell_id") or 0) != 946602:
+        raise ValueError("a canonical marker-selected WM Session is required")
+    guid = session.get("character_guid")
+    if guid in (None, ""):
+        raise ValueError("the active marker-selected WM Session has no character GUID")
+    if session.get("bridge_event_id") in (None, ""):
+        raise ValueError("the active marker-selected WM Session has no bridge event id")
+    marker = session.get("marker") if isinstance(session.get("marker"), dict) else {}
+    if marker.get("character_online") is not True:
+        raise ValueError("the active marker-selected WM Session target is not confirmed online")
+    selected_at = _parse_utc(session.get("selected_at"))
+    if selected_at is None:
+        raise ValueError("the active marker-selected WM Session has no valid selection time")
+    age = (datetime.now(timezone.utc) - selected_at).total_seconds()
+    if age > MARKER_SESSION_MAX_AGE_SECONDS:
+        raise ValueError("the active marker-selected WM Session is stale")
+    return int(guid)
+
+
+def _parse_utc(value: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
