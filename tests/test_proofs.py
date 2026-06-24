@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 
 from wm.proofs.runner import list_proof_packets
 from wm.proofs.runner import run_proof_packet
@@ -53,7 +54,7 @@ def test_living_lane_packet_passes_only_with_matching_scoped_audit(tmp_path):
         runtime_status=runtime,
         living_lane="rumor",
         living_outcome="success",
-        target_provenance={"source": "marker", "player_guid": 5408, "marker_spell_id": 946602, "selected_at": "2026-01-01T00:05:00Z"},
+        target_provenance={"source": "marker", "player_guid": 5408, "marker_spell_id": 946602, "bridge_event_id": 11, "selected_at": "2026-01-01T00:05:00Z"},
     )
     assert record["status"] == "passed"
     assert record["evidence_checks"][0]["status"] == "PASS"
@@ -82,7 +83,7 @@ def test_living_lane_packet_accepts_suppression_and_revocation_outcomes(tmp_path
         runtime_status=runtime,
         living_lane="rumor",
         living_outcome="suppression",
-        target_provenance={"source": "marker", "player_guid": 5408, "marker_spell_id": 946602, "selected_at": "2026-01-01T00:05:00Z"},
+        target_provenance={"source": "marker", "player_guid": 5408, "marker_spell_id": 946602, "bridge_event_id": 12, "selected_at": "2026-01-01T00:05:00Z"},
     )
     revocation = run_proof_packet(
         proof_kind="living_lane",
@@ -91,7 +92,7 @@ def test_living_lane_packet_accepts_suppression_and_revocation_outcomes(tmp_path
         runtime_status=runtime,
         living_lane="oath",
         living_outcome="revocation",
-        target_provenance={"source": "marker", "player_guid": 5408, "marker_spell_id": 946602, "selected_at": "2026-01-01T00:05:00Z"},
+        target_provenance={"source": "marker", "player_guid": 5408, "marker_spell_id": 946602, "bridge_event_id": 13, "selected_at": "2026-01-01T00:05:00Z"},
     )
 
     assert suppression["status"] == "passed"
@@ -208,6 +209,32 @@ def test_proof_packet_records_marker_target_and_uses_selection_freshness(tmp_pat
         "since": "2026-01-01T00:05:00Z",
         "basis": "latest_runtime_or_target_selection",
     }
+
+
+def test_proof_packet_rejects_incomplete_or_noncanonical_target_provenance(tmp_path):
+    runtime = _live_runtime(tmp_path)
+    base = {
+        "source": "marker",
+        "player_guid": 5411,
+        "marker_spell_id": 946602,
+        "bridge_event_id": 77,
+        "selected_at": "2026-01-01T00:05:00Z",
+    }
+
+    for bad in (
+        {**base, "source": "manual"},
+        {**base, "marker_spell_id": 946500},
+        {**base, "bridge_event_id": None},
+        {**base, "selected_at": ""},
+    ):
+        with pytest.raises(ValueError):
+            run_proof_packet(
+                proof_kind="ambient",
+                project_root=tmp_path,
+                player_guid=5411,
+                runtime_status=runtime,
+                target_provenance=bad,
+            )
 
 
 def test_ambient_packet_passes_with_journal_evidence(tmp_path):

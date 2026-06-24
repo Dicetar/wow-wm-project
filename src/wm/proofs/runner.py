@@ -756,14 +756,26 @@ def _normalize_target_provenance(
     selected_guid = int(selected_guid)
     if player_guid is not None and selected_guid != int(player_guid):
         raise ValueError("target provenance player_guid does not match proof player_guid")
+    source = str(raw.get("source") or "marker")
+    if source != "marker":
+        raise ValueError("target provenance must come from a marker-selected WM Session")
+    marker_spell_id = int(raw.get("marker_spell_id") or 0)
+    if marker_spell_id != 946602:
+        raise ValueError("target provenance must use canonical marker spell 946602")
+    bridge_event_id = _optional_int(raw.get("bridge_event_id"))
+    if bridge_event_id is None:
+        raise ValueError("target provenance requires bridge_event_id")
+    selected_at = str(raw.get("selected_at") or "") or None
+    if not selected_at:
+        raise ValueError("target provenance requires selected_at")
     return {
         "schema_version": "wm.proof.target.v1",
-        "source": str(raw.get("source") or "marker"),
+        "source": source,
         "player_guid": selected_guid,
         "player_name": raw.get("player_name") or raw.get("character_name"),
-        "marker_spell_id": int(raw.get("marker_spell_id") or 946602),
-        "bridge_event_id": _optional_int(raw.get("bridge_event_id")),
-        "selected_at": str(raw.get("selected_at") or "") or None,
+        "marker_spell_id": marker_spell_id,
+        "bridge_event_id": bridge_event_id,
+        "selected_at": selected_at,
     }
 
 
