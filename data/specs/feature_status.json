@@ -201,9 +201,9 @@
       "repo_status": "WORKING",
       "runtime_status": "WORKING",
       "gameplay_status": "UNKNOWN",
-      "scope": "GitHub Actions runs the DB-free unit suite on push; local full test suite includes canonical marker-target proof provenance, fresh online marker job gating, gated memory controls, conversational verb graduation, memory evidence views, living-lane proof metadata/suppression outcomes, and fixture-GUID default rejection.",
+      "scope": "GitHub Actions runs the DB-free unit suite on push; local full test suite includes canonical marker-target proof provenance, structured panel proof provenance rejection, fresh online marker job gating, gated memory controls, conversational verb graduation, memory evidence views, living-lane proof metadata/suppression outcomes, and fixture-GUID default rejection.",
       "last_verified": "2026-06-25",
-      "evidence_ref": "python -m pytest -q (1242 passed)"
+      "evidence_ref": "python -m pytest -q (1244 passed)"
     }
   ]
 }

@@ -284,6 +284,33 @@ class WmSessionEndpointTests(unittest.TestCase):
         self.assertEqual(code, 409, body)
         self.assertFalse(body["ok"])
 
+    def test_wm_proof_rejects_invalid_guid_without_exception(self) -> None:
+        app = _make_app()
+
+        code, body = app.post("/api/wm/proofs/run", {"proof_kind": "failure", "player_guid": "not-a-guid"})
+
+        self.assertEqual(code, 400, body)
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["error"], "proof player_guid must be an integer")
+
+    def test_wm_proof_rejects_incomplete_marker_provenance_without_exception(self) -> None:
+        app = _make_app()
+        app.state.save_session(
+            {
+                "source": "marker",
+                "character_guid": 5411,
+                "character_name": "MarkerUser",
+                "marker_spell_id": 946602,
+            }
+        )
+
+        code, body = app.post("/api/wm/proofs/run", {"proof_kind": "failure"})
+
+        self.assertEqual(code, 400, body)
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["active_player_guid"], 5411)
+        self.assertEqual(body["error"], "target provenance requires bridge_event_id")
+
     def test_wm_marker_scan_returns_candidates(self) -> None:
         seen: dict[str, int] = {}
 

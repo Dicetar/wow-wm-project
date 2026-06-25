@@ -547,25 +547,40 @@ class PanelApp:
         guid = body.get("player_guid") or body.get("character_guid")
         session = self.state.load_session() or {}
         session_guid = session.get("character_guid")
-        if guid not in (None, "") and session_guid not in (None, "") and int(guid) != int(session_guid):
+        try:
+            explicit_guid = int(guid) if guid not in (None, "") else None
+            active_guid = int(session_guid) if session_guid not in (None, "") else None
+        except (TypeError, ValueError):
+            return 400, {
+                "ok": False,
+                "error": "proof player_guid must be an integer",
+            }
+        if explicit_guid is not None and active_guid is not None and explicit_guid != active_guid:
             return 409, {
                 "ok": False,
                 "error": "proof player_guid conflicts with the active WM Session target",
-                "active_player_guid": int(session_guid),
+                "active_player_guid": active_guid,
             }
-        player_guid = int(guid) if guid not in (None, "") else int(session_guid) if session_guid not in (None, "") else None
+        player_guid = explicit_guid if explicit_guid is not None else active_guid
         target_provenance = session if str(session.get("source") or "") == "marker" else None
-        proof = run_proof_packet(
-            proof_kind=kind,
-            project_root=self.cwd,
-            mode=mode,
-            player_guid=player_guid,
-            store=self._observability_store(),
-            manual_evidence=_manual_evidence_from_body(body),
-            target_provenance=target_provenance,
-            living_lane=str(body.get("living_lane") or "") or None,
-            living_outcome=str(body.get("living_outcome") or "") or None,
-        )
+        try:
+            proof = run_proof_packet(
+                proof_kind=kind,
+                project_root=self.cwd,
+                mode=mode,
+                player_guid=player_guid,
+                store=self._observability_store(),
+                manual_evidence=_manual_evidence_from_body(body),
+                target_provenance=target_provenance,
+                living_lane=str(body.get("living_lane") or "") or None,
+                living_outcome=str(body.get("living_outcome") or "") or None,
+            )
+        except ValueError as exc:
+            return 400, {
+                "ok": False,
+                "error": str(exc),
+                "active_player_guid": active_guid,
+            }
         return 200, {"ok": True, "proof": proof}
 
     def _sync_autoplay_llm_settings(self, *, settings: dict[str, Any], source_body: dict[str, Any]) -> dict[str, Any] | None:
