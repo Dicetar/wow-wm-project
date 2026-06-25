@@ -84,7 +84,7 @@ Current marker-targeting update on 2026-06-24:
 - BridgeLab doctor is otherwise healthy: `python -m wm.doctor --profile bridgelab --summary`
   reports 8/8 checks working, with temporary wildcard observation still active
   for marker discovery.
-- Current repo gate: `python -m pytest -q` reports `1244 passed, 31 warnings`;
+- Current repo gate: `python -m pytest -q` reports `1246 passed, 31 warnings`;
   status, skills, native contracts, living catalog, and diff validation pass.
 - The worktree is clean. Continue by reapplying aura `946602` to the intended
   online client character, then run marker scan and `scope-latest`.

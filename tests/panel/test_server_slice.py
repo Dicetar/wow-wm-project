@@ -258,6 +258,73 @@ class WmSessionEndpointTests(unittest.TestCase):
         self.assertEqual(body["session"]["bridge_event_id"], 77)
         self.assertEqual(body["session"]["character_name"], "MarkerUser")
 
+    def test_wm_session_bootstrap_rejects_invalid_marker_candidates(self) -> None:
+        def factory(*, character_guid: int) -> _FakeRuntime:
+            return _FakeRuntime(character_guid=character_guid)
+
+        def marker_discoverer(**_kwargs):
+            return [
+                {
+                    "bridge_event_id": 78,
+                    "player_guid": 5410,
+                    "character_name": "OfflineMarker",
+                    "spell_id": 946602,
+                    "character_online": False,
+                },
+                {
+                    "bridge_event_id": 79,
+                    "player_guid": 5411,
+                    "character_name": "WrongSpell",
+                    "spell_id": 946500,
+                    "character_online": True,
+                },
+                {
+                    "player_guid": 5412,
+                    "character_name": "NoEvent",
+                    "spell_id": 946602,
+                    "character_online": True,
+                },
+            ]
+
+        app = _make_app(factory=factory, marker_discoverer=marker_discoverer)
+
+        code, body = app.post("/api/wm/session/bootstrap", {})
+
+        self.assertEqual(code, 400, body)
+        self.assertFalse(body["ok"])
+        self.assertIn("none discoverable", body["error"])
+
+    def test_wm_session_bootstrap_selects_first_valid_marker_candidate(self) -> None:
+        def factory(*, character_guid: int) -> _FakeRuntime:
+            return _FakeRuntime(character_guid=character_guid)
+
+        def marker_discoverer(**_kwargs):
+            return [
+                {
+                    "bridge_event_id": 80,
+                    "player_guid": 5410,
+                    "character_name": "WrongSpell",
+                    "spell_id": 946500,
+                    "character_online": True,
+                },
+                {
+                    "bridge_event_id": 81,
+                    "player_guid": 5413,
+                    "character_name": "ValidMarker",
+                    "spell_id": 946602,
+                    "character_online": True,
+                },
+            ]
+
+        app = _make_app(factory=factory, marker_discoverer=marker_discoverer)
+
+        code, body = app.post("/api/wm/session/bootstrap", {})
+
+        self.assertEqual(code, 200, body)
+        self.assertEqual(body["character_guid"], 5413)
+        self.assertEqual(body["session"]["bridge_event_id"], 81)
+        self.assertEqual(body["session"]["character_name"], "ValidMarker")
+
     def test_wm_proof_uses_marker_session_and_rejects_mismatched_guid(self) -> None:
         def factory(*, character_guid: int) -> _FakeRuntime:
             return _FakeRuntime(character_guid=character_guid)

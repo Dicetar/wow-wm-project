@@ -120,6 +120,11 @@ prevent both.
   the active marker target now reject stale, offline, bridge-event-less, or
   conflicting marker sessions during dry-run and re-check the active marker
   session again at apply time.
+- **Panel marker bootstrap hardening (2026-06-25):** marker-based session
+  bootstrap now selects only candidates with a GUID, `character_online=true`,
+  exact canonical marker spell `946602`, and a positive bridge event id. Offline,
+  wrong-spell, and event-less candidates are ignored instead of becoming the
+  active WM Session.
 - **Panel proof API hardening (2026-06-25):** `/api/wm/proofs/run` now returns
   structured `400` responses for invalid proof GUID input or incomplete
   canonical marker provenance instead of leaking proof-runner exceptions.
@@ -127,7 +132,7 @@ prevent both.
   schema defaults no longer name/prefill Jecia or GUID 5406. Legacy Broug
   release/preflight/proof helpers now require an explicit `--player-guid`;
   Broug remains a fixture in tests and Broug-specific content modules only.
-- **Current clean gate after latest repo hardening:** `1244 passed, 31
+- **Current clean gate after latest repo hardening:** `1246 passed, 31
   warnings`; status, skill, native-contract, living-catalog, and diff validation
   pass.
 
@@ -150,7 +155,7 @@ the commands in §6 before trusting them** — they are cheap and definitive.
 |------|-------|---------------|
 | Branch | `main` | `git branch --show-current` |
 | Last stabilization commit | `e57e026 docs: sync handoff...` | `git log --oneline -1` |
-| Test suite | **1244 passed, 31 warnings** | `python -m pytest -q` |
+| Test suite | **1246 passed, 31 warnings** | `python -m pytest -q` |
 | Status validation | `OK` | `python -m wm.status --validate` |
 | Native contracts | **64 contracted, 0 implemented-without-contract** | `python -m wm.sources.native_bridge.contracts_cli` |
 | Native action surface | 100 kinds, 60 `implemented=True`, 1:1 with C++ registry | §5 cross-check |

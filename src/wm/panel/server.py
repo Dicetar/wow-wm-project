@@ -793,9 +793,13 @@ class PanelApp:
                 limit=10,
                 marker_spell_id=marker_spell_id,
             ))
-            online_candidates = [candidate for candidate in candidates if candidate.get("character_online") is True]
-            if online_candidates:
-                return _session_from_marker_candidate(online_candidates[0], marker_spell_id=marker_spell_id)
+            marker_candidates = [
+                candidate
+                for candidate in candidates
+                if _is_valid_marker_candidate(candidate, marker_spell_id=marker_spell_id)
+            ]
+            if marker_candidates:
+                return _session_from_marker_candidate(marker_candidates[0], marker_spell_id=marker_spell_id)
             return {}
 
         discoverer = self._slice_discoverer or _default_slice_discoverer
@@ -1289,6 +1293,25 @@ def _session_from_marker_candidate(candidate: dict[str, Any], *, marker_spell_id
         "selected_at": utc_now_iso(),
         "marker": candidate,
     }
+
+
+def _is_valid_marker_candidate(candidate: dict[str, Any], *, marker_spell_id: int) -> bool:
+    guid = candidate.get("character_guid") or candidate.get("player_guid")
+    if guid in (None, ""):
+        return False
+    if candidate.get("character_online") is not True:
+        return False
+    try:
+        spell_id = int(candidate.get("spell_id") or 0)
+    except (TypeError, ValueError):
+        return False
+    if spell_id != int(marker_spell_id):
+        return False
+    try:
+        bridge_event_id = int(candidate.get("bridge_event_id") or 0)
+    except (TypeError, ValueError):
+        return False
+    return bridge_event_id > 0
 
 
 def _git_status() -> dict[str, Any]:
