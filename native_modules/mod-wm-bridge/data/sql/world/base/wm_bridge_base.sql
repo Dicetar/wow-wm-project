@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS wm_bridge_action_request (
     PayloadJSON LONGTEXT NULL,
     Status VARCHAR(32) NOT NULL DEFAULT 'pending',
     ClaimedAt TIMESTAMP NULL DEFAULT NULL,
+    ClaimToken VARCHAR(36) NULL,
     ClaimExpiresAt TIMESTAMP NULL DEFAULT NULL,
     AttemptCount INT NOT NULL DEFAULT 0,
     MaxAttempts INT NOT NULL DEFAULT 3,

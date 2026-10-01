@@ -416,7 +416,7 @@ namespace WmBridge
             WorldDatabase.Execute(
                 "UPDATE wm_bridge_action_request "
                 "SET Status = {}, ClaimExpiresAt = NULL, ProcessedAt = NOW(), ResultJSON = {}, ErrorText = {}, UpdatedAt = CURRENT_TIMESTAMP "
-                "WHERE RequestID = {}",
+                "WHERE RequestID = {} AND Status IN ('claimed', 'uncertain')",
                 SqlString(status),
                 SqlString(resultJson),
                 errorText.empty() ? "NULL" : SqlString(errorText),

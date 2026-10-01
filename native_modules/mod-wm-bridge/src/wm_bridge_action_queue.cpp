@@ -72,14 +72,14 @@ namespace
     {
         WorldDatabase.Execute(
             "UPDATE wm_bridge_action_request "
-            "SET Status = 'pending', ClaimedAt = NULL, ClaimExpiresAt = NULL, ErrorText = 'claim_expired_requeued', UpdatedAt = CURRENT_TIMESTAMP "
-            "WHERE Status = 'claimed' AND ClaimExpiresAt IS NOT NULL AND ClaimExpiresAt <= NOW() AND AttemptCount < MaxAttempts");
+            "SET Status = 'pending', ClaimedAt = NULL, ClaimExpiresAt = NULL, ClaimToken = NULL, ErrorText = 'claim_expired_requeued', UpdatedAt = CURRENT_TIMESTAMP "
+            "WHERE Status = 'claimed' AND ClaimExpiresAt IS NOT NULL AND ClaimExpiresAt <= NOW() "
+            "AND AttemptCount < MaxAttempts AND ActionKind IN ('debug_ping', 'debug_echo', 'debug_fail')");
 
         WorldDatabase.Execute(
             "UPDATE wm_bridge_action_request "
-            "SET Status = 'failed', ProcessedAt = NOW(), ResultJSON = {}, ErrorText = 'claim_expired_max_attempts', UpdatedAt = CURRENT_TIMESTAMP "
-            "WHERE Status = 'claimed' AND ClaimExpiresAt IS NOT NULL AND ClaimExpiresAt <= NOW() AND AttemptCount >= MaxAttempts",
-            SqlString(ResultJson("failed", "action_queue", "claim_expired_max_attempts")));
+            "SET Status = 'uncertain', ClaimExpiresAt = NULL, ErrorText = 'claim_expired_outcome_unknown', UpdatedAt = CURRENT_TIMESTAMP "
+            "WHERE Status = 'claimed' AND ClaimExpiresAt IS NOT NULL AND ClaimExpiresAt <= NOW()");
     }
 
     void ExpireBlockedSequenceRows()
@@ -144,14 +144,31 @@ namespace WmBridge
         std::string riskLevel = fields[4].Get<std::string>();
         std::string createdBy = fields[5].Get<std::string>();
 
-        WorldDatabase.Execute(
+        QueryResult tokenResult = WorldDatabase.Query("SELECT UUID()");
+        if (!tokenResult)
+        {
+            return;
+        }
+        std::string claimToken = tokenResult->Fetch()[0].Get<std::string>();
+
+        WorldDatabase.DirectExecute(
             "UPDATE wm_bridge_action_request "
-            "SET Status = 'claimed', ClaimedAt = NOW(), "
+            "SET Status = 'claimed', ClaimedAt = NOW(), ClaimToken = {}, "
             "ClaimExpiresAt = DATE_ADD(NOW(), INTERVAL {} MICROSECOND), "
             "AttemptCount = AttemptCount + 1, UpdatedAt = CURRENT_TIMESTAMP "
             "WHERE RequestID = {} AND Status = 'pending'",
+            SqlString(claimToken),
             std::max<uint32>(config.actionPollIntervalMs * 3, 5000) * 1000,
             requestId);
+
+        QueryResult ownedClaim = WorldDatabase.Query(
+            "SELECT RequestID FROM wm_bridge_action_request "
+            "WHERE RequestID = {} AND Status = 'claimed' AND ClaimToken = {}",
+            requestId, SqlString(claimToken));
+        if (!ownedClaim)
+        {
+            return;
+        }
 
         ExecuteClaimedAction(requestId, playerGuid, actionKind, payloadJson, riskLevel, createdBy);
     }

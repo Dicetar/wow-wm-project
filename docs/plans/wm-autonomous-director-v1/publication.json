@@ -1,0 +1,178 @@
+{
+  "schema_version": "wm.planning_publication.v1",
+  "created_at": "2026-09-14",
+  "repo": "Dicetar/wow-wm-project",
+  "baseline_commit": "5a0ee41eb1fd9d9bd32db1fa7e0b780adf707122",
+  "spec": {
+    "url": "https://github.com/Dicetar/wow-wm-project/issues/5",
+    "number": 5,
+    "file": "SPEC.md"
+  },
+  "tickets": [
+    {
+      "order": 1,
+      "title": "WM: Restore a reproducible full-suite and DLL-guard baseline",
+      "file": "tickets/01.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/6",
+      "number": 6,
+      "id": 5447884061,
+      "blocked_by": []
+    },
+    {
+      "order": 2,
+      "title": "WM: Recover one WM request through restart and native completion",
+      "file": "tickets/02.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/7",
+      "number": 7,
+      "id": 5447884355,
+      "blocked_by": []
+    },
+    {
+      "order": 3,
+      "title": "WM: Report which requested capabilities can actually run",
+      "file": "tickets/03.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/8",
+      "number": 8,
+      "id": 5447884653,
+      "blocked_by": []
+    },
+    {
+      "order": 4,
+      "title": "WM: Manage persistent World and Character Author's Notes",
+      "file": "tickets/04.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/9",
+      "number": 9,
+      "id": 5447884949,
+      "blocked_by": []
+    },
+    {
+      "order": 5,
+      "title": "WM: Route natural-language requests and remember standing direction",
+      "file": "tickets/05.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/10",
+      "number": 10,
+      "id": 5447885233,
+      "blocked_by": [
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "order": 6,
+      "title": "WM: Base WM decisions on fresh environment evidence",
+      "file": "tickets/06.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/11",
+      "number": 11,
+      "id": 5447885531,
+      "blocked_by": []
+    },
+    {
+      "order": 7,
+      "title": "WM: Apply On Demand, Moderate, and Active initiative presets",
+      "file": "tickets/07.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/12",
+      "number": 12,
+      "id": 5447885826,
+      "blocked_by": [
+        7,
+        11
+      ]
+    },
+    {
+      "order": 8,
+      "title": "WM: File missing-mechanic development requests automatically",
+      "file": "tickets/08.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/13",
+      "number": 13,
+      "id": 5447888134,
+      "blocked_by": [
+        7,
+        8
+      ]
+    },
+    {
+      "order": 9,
+      "title": "WM: Generate and deliver a feasible quest from actual play",
+      "file": "tickets/09.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/14",
+      "number": 14,
+      "id": 5447888400,
+      "blocked_by": [
+        10,
+        12
+      ]
+    },
+    {
+      "order": 10,
+      "title": "WM: Compose functioning spells from reusable tested mechanics",
+      "file": "tickets/10.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/15",
+      "number": 15,
+      "id": 5447888693,
+      "blocked_by": [
+        10
+      ]
+    },
+    {
+      "order": 11,
+      "title": "WM: Finish generated-spell deployment and grant readiness",
+      "file": "tickets/11.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/16",
+      "number": 16,
+      "id": 5447889012,
+      "blocked_by": [
+        15
+      ]
+    },
+    {
+      "order": 12,
+      "title": "WM: Preview shared-world changes with dependency evidence",
+      "file": "tickets/12.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/17",
+      "number": 17,
+      "id": 5447889384,
+      "blocked_by": [
+        8,
+        11
+      ]
+    },
+    {
+      "order": 13,
+      "title": "WM: Run and restore a temporary world event without stranding quests",
+      "file": "tickets/13.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/18",
+      "number": 18,
+      "id": 5447889650,
+      "blocked_by": [
+        14,
+        17
+      ]
+    },
+    {
+      "order": 14,
+      "title": "WM: Apply lasting quest consequences with offline catch-up",
+      "file": "tickets/14.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/19",
+      "number": 19,
+      "id": 5447889927,
+      "blocked_by": [
+        18
+      ]
+    },
+    {
+      "order": 15,
+      "title": "WM: Prove the Autonomous Director release through full play sessions",
+      "file": "tickets/15.md",
+      "url": "https://github.com/Dicetar/wow-wm-project/issues/20",
+      "number": 20,
+      "id": 5447890203,
+      "blocked_by": [
+        6,
+        13,
+        16,
+        19
+      ]
+    }
+  ]
+}

@@ -21,6 +21,8 @@ Use these repo-local skills when the task matches:
 - `$wm-workflow` from `.agents/skills/wm-workflow/SKILL.md` for repo cleanup, docs, tests, workflow, handoff, and general code changes.
 - `$wm-live-bridge-lab` from `.agents/skills/wm-live-bridge-lab/SKILL.md` for BridgeLab, native watcher, live proof, player scope, and summon/pet lab work.
 - `$wm-content-release` from `.agents/skills/wm-content-release/SKILL.md` for quests, items, spells, shell abilities, arcs, scenes, context packs, candidate packs, and LLM proposal surfaces.
+- `$wm-skill-intake` from `.agents/skills/wm-skill-intake/SKILL.md` when adding external coding-agent skills to this repo.
+- `$wm-harness-task` from `.agents/skills/wm-harness-task/SKILL.md` for a bounded harness/director implementation ticket or local-agent handoff.
 
 Skill requirements: each skill must have a `SKILL.md` with YAML frontmatter containing only `name` and `description`, then concise Markdown instructions. Optional `agents/openai.yaml` may hold UI metadata. Do not add README/changelog-style clutter inside skills.
 
@@ -29,6 +31,20 @@ Validate repo-local skills with:
 ```powershell
 python scripts/validate_agent_skills.py
 ```
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues stores maps, tickets, and PRDs. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical labels are used. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context domain model uses root `CONTEXT.md` plus `docs/adr/`. See `docs/agents/domain.md`.
 
 ## Non-Negotiables
 

@@ -255,6 +255,8 @@ def _proof_status(
         notes.append(
             "native_action: context_snapshot_request reached done, but no newer wm_bridge_context_snapshot row was observed."
         )
+    elif action.status == "uncertain":
+        notes.append("native_action: claim expired; execution outcome is unknown and requires reconciliation.")
     elif action.status not in TERMINAL_ACTION_STATUSES:
         notes.append(f"native_action: request remained {action.status} before timeout.")
     return "PARTIAL"

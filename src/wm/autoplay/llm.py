@@ -113,6 +113,14 @@ class AutoplayLlmAdapter:
             )
         locked = lock_deterministic_facts(draft, deterministic_facts or {}, schema_version=schema_version)
         issues = screen_forbidden_content(locked)
+        request_payload = result.get("request") if isinstance(result.get("request"), dict) else {}
+        response_format = request_payload.get("response_format") or {}
+        if isinstance(response_format, dict) and response_format.get("type") in {"text", "json_object"}:
+            issues.append({
+                "path": "llm.response_format",
+                "message": "Unconstrained model output is draft-only; structured regeneration is required before live apply.",
+                "severity": "error",
+            })
         validation = self.schemas.validate(schema_version, locked)
         issues.extend(validation.get("issues") or [])
         ok = not any(str(issue.get("severity", "error")) == "error" for issue in issues)

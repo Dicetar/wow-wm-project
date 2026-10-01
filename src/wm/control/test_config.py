@@ -1,0 +1,1 @@
+print('Write successful')

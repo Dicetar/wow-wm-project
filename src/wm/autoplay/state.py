@@ -31,6 +31,8 @@ def default_status() -> dict[str, Any]:
         "config": {
             "llm_enabled": True,
             "llm_chat_enabled": True,
+            "durable_native_intent_enabled": False,
+            "durable_director_enabled": False,
             "llm_lanes": ["chat", "scene", "action"],
             "llm_event_age_seconds": 300,
             "llm_cooldown_seconds": 60,
@@ -374,14 +376,14 @@ class AutoplayStateStore:
         tmp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
         try:
             tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-            for attempt in range(20):
+            for attempt in range(50):
                 try:
                     tmp.replace(path)
                     break
                 except PermissionError:
-                    if attempt == 19:
+                    if attempt == 49:
                         raise
-                    time.sleep(0.01 * (attempt + 1))
+                    time.sleep(min(0.01 * (attempt + 1), 0.2))
         finally:
             tmp.unlink(missing_ok=True)
 
@@ -415,6 +417,13 @@ def _normalize_config_value(key: str, value: Any) -> Any:
             return [str(item).strip() for item in value if str(item).strip()]
     if key in {"llm_event_age_seconds", "llm_cooldown_seconds", "llm_events_per_tick", "llm_chat_context_epoch"}:
         return int(value)
-    if key in {"llm_enabled", "llm_chat_enabled"}:
+    if key == "durable_director_player_guid":
+        guid = int(value)
+        if guid <= 0:
+            raise ValueError("durable director player GUID must be positive")
+        return guid
+    if key in {"llm_enabled", "llm_chat_enabled", "durable_native_intent_enabled", "durable_director_enabled"}:
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
         return bool(value)
     return value

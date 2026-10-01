@@ -38,6 +38,7 @@ from wm.autoplay._compact import _compact_draft_record
 from wm.autoplay._compact import _compact_request
 from wm.autoplay._compact import _draft_source_event_at
 from wm.autoplay._compact import _int_or_none
+from wm.autoplay._compact import _memory_revision
 from wm.autoplay._compact import _parse_json_dict
 from wm.autoplay._compact import _parse_time
 from wm.autoplay._compact import _risk_from_payload
@@ -112,6 +113,9 @@ class AutoplayRuntimeConfig:
     llm_ambient_cooldown_seconds: int = 150
     llm_conversation_memory_enabled: bool = True
     llm_scene_director_enabled: bool = True
+    durable_native_intent_enabled: bool = False
+    durable_director_enabled: bool = False
+    durable_director_player_guid: int | None = None
     llm_model: str | None = None
     llm_base_url: str | None = None
 
@@ -506,8 +510,9 @@ class AutoplayService:
                         "reason": str(raw.get("reason") or "")[:300],
                     }
             if reply:
+                selected_intent = extracted_intent if control_config.get("durable_director_enabled") else (extracted_intent or intent)
                 return {"message": reply, "raw_content": content, "source": "llm",
-                        "model": settings.model, "intent": extracted_intent or intent}
+                        "model": settings.model, "intent": selected_intent}
             last_error = RuntimeError("LM Studio response message content was empty.")
         if last_error is not None:
             fallback = _fallback_chat_reply(str(last_error))
@@ -539,6 +544,8 @@ class AutoplayService:
         identity: dict[str, Any],
         manifest: dict[str, Any],
     ) -> dict[str, Any] | None:
+        if control_config.get("durable_director_enabled"):
+            return None
         if not control_config.get("llm_intent_enabled", True):
             return None
         try:
@@ -579,6 +586,28 @@ class AutoplayService:
                 "notes": [f"world_context_failed: {type(exc).__name__}: {exc}"],
             }
 
+    def _decide_director_chat(
+        self, *, control_config: dict[str, Any], player_guid: int,
+        message: str, world_context: dict[str, Any],
+    ) -> Any:
+        from wm.autoplay.decision import decide_request
+
+        settings = replace(self._llm_settings(control_config), schema_mode="json_schema", max_tokens=256)
+        context_pack = world_context.get("session_context_pack") or {}
+        evidence = {
+            "observed_at": utc_now_iso(),
+            "selected_character": _chat_identity_facts(world_context, player_guid=player_guid),
+            "player_request": message[:1000],
+            "world_facts": {
+                "live_location": world_context.get("live_location"),
+                "perception": world_context.get("perception"),
+            },
+            "obligations": (world_context.get("database") or {}).get("active_quests", [])[:20],
+            "author_notes": (context_pack.get("memory") or [])[:10],
+            "capabilities": ["quest", "world_announce_to_player"],
+        }
+        return decide_request(client=LmStudioClient(settings), evidence=evidence)
+
     def generate_once(
         self,
         *,
@@ -610,6 +639,7 @@ class AutoplayService:
                 return {"ok": False, "error": "event is not eligible for enabled lanes"}
             result = self._generate_for_opportunity(
                 control_config=control_config,
+                settings=settings,
                 readiness=readiness,
                 session=session,
                 llm=llm,
@@ -648,7 +678,9 @@ class AutoplayService:
         if not session or session.get("character_guid") in (None, ""):
             return {"ok": False, "error": "no_active_session"}
         player_guid = int(session["character_guid"])
-        resolved = self._resolve_pending_if_yes_no(
+        if control_config.get("durable_director_enabled") and int(control_config.get("durable_director_player_guid") or 0) != player_guid:
+            return {"ok": False, "error": "director_scope_mismatch"}
+        resolved = None if control_config.get("durable_director_enabled") else self._resolve_pending_if_yes_no(
             settings=settings, control_config=control_config, player_guid=player_guid, message=message)
         if resolved is not None:
             return {"ok": True, "pending_resolution": resolved}
@@ -698,7 +730,7 @@ class AutoplayService:
             world_context=world_context,
         )
         scene_result = None
-        if _looks_like_scene_request(message):
+        if not control_config.get("durable_director_enabled") and _looks_like_scene_request(message):
             scene_result = self._handle_scene_request(
                 settings=settings, control_config=control_config, player_guid=player_guid,
                 message=message, world_context=world_context)
@@ -746,7 +778,10 @@ class AutoplayService:
                 "payload": {"source_event": event_payload},
             })
             return {**base_result, "error": "missing_message", "issue": _compact_store_result(issue)}
-        resolved = self._resolve_pending_if_yes_no(
+        director_enabled = bool(control_config.get("durable_director_enabled"))
+        if director_enabled and int(control_config.get("durable_director_player_guid") or 0) != player_guid:
+            return {**base_result, "error": "director_scope_mismatch"}
+        resolved = None if director_enabled else self._resolve_pending_if_yes_no(
             settings=settings, control_config=control_config, player_guid=player_guid, message=message)
         if resolved is not None:
             return {**base_result, "ok": True, "lane": "chat", "source_event_key": source_key,
@@ -775,6 +810,16 @@ class AutoplayService:
             message=message,
             source_event=event_payload,
         )
+        decision = None
+        if director_enabled:
+            try:
+                decision = self._decide_director_chat(
+                    control_config=control_config, player_guid=player_guid,
+                    message=message, world_context=world_context,
+                )
+            except Exception as exc:
+                self.store.add_issue({"reason": "director_decision_unavailable", "kind": "decision",
+                                      "detail": str(exc)[:500], "payload": {"source_event_key": source_key}})
         try:
             reply = self._chat_reply(
                 control_config=control_config,
@@ -791,16 +836,47 @@ class AutoplayService:
                 world_context=world_context,
             )
             scene_result = None
-            if _looks_like_scene_request(message):
+            if not director_enabled and _looks_like_scene_request(message):
                 scene_result = self._handle_scene_request(
                     settings=settings, control_config=control_config, player_guid=player_guid,
                     message=message, world_context=world_context)
             if scene_result is not None:
                 result["scene_result"] = scene_result
-            elif reply.get("intent"):
+            elif decision is not None and decision.outcome == "propose_content":
+                opportunity = {
+                    "opportunity_id": f"director-quest-{source_key}", "stable_key": source_key,
+                    "source_event_key": source_key, "source_event_at": event_payload.get("occurred_at"),
+                    "source_event": event_payload, "lane": "quest",
+                    "schema_version": schema_for_lane("quest"), "player_guid": player_guid,
+                    "player_request": message[:1000], "risk": "low",
+                }
+                result["content_result"] = self._generate_for_opportunity(
+                    control_config=control_config, settings=settings, readiness={"ok": True},
+                    session={"character_guid": player_guid}, llm={"ok": True},
+                    opportunity=opportunity,
+                )
+            elif decision is not None and decision.outcome == "propose_action":
                 result["intent_result"] = self._handle_intent(
                     settings=settings, control_config=control_config, player_guid=player_guid,
-                    intent=reply["intent"], source_message=message)
+                    intent={"verb": decision.capability, "args": decision.args,
+                            "reason": decision.reason},
+                    source_message=message, source_event_key=source_key,
+                )
+            elif decision is not None and decision.outcome == "ask_clarification":
+                result["clarification"] = decision.question
+                self._speak(settings=settings, player_guid=player_guid,
+                            text=decision.question, source_message=message)
+            elif decision is not None and decision.outcome == "needs_capability":
+                result["development_task"] = self.store.add_maintenance({
+                    "reason": "awaiting_capability", "kind": "development_task",
+                    "payload": {"player_guid": player_guid, "source_event_key": source_key,
+                                "request": message[:1000], "capability": decision.capability,
+                                "reason": decision.reason},
+                })
+            elif not director_enabled and reply.get("intent"):
+                result["intent_result"] = self._handle_intent(
+                    settings=settings, control_config=control_config, player_guid=player_guid,
+                    intent=reply["intent"], source_message=message, source_event_key=source_key)
             self._capture_conversation_memory(
                 control_config=control_config, settings=settings, player_guid=player_guid,
                 message=message, world_context=world_context)
@@ -898,6 +974,7 @@ class AutoplayService:
         player_guid: int,
         intent: dict[str, Any],
         source_message: str,
+        source_event_key: str | None = None,
     ) -> dict[str, Any]:
         from wm.autoplay.intent import IntentRejection, compile_intent, intent_failure_message
 
@@ -941,6 +1018,7 @@ class AutoplayService:
             args=intent_args,
             modes=control_config.get("conversational_verb_modes"),
             reason=str(intent.get("reason") or ""),
+            origin_key=source_event_key,
         )
         if isinstance(compiled, IntentRejection):
             self._audit_intent(
@@ -979,6 +1057,18 @@ class AutoplayService:
             self._speak(settings=settings, player_guid=player_guid, text=message, source_message=source_message)
             return {"intent": "dry_run_failed", "verb": compiled.verb, "player_message": message}
         if compiled.mode == "auto":
+            if compiled.verb == "world_announce_to_player" and control_config.get("durable_director_enabled"):
+                if int(control_config.get("durable_director_player_guid") or 0) != int(player_guid):
+                    return {"intent": "unavailable", "verb": compiled.verb, "reason": "director_scope_mismatch"}
+                return self._apply_durable_director_intent(
+                    settings=settings, player_guid=player_guid, compiled=compiled,
+                    source_event_key=source_event_key, source_message=source_message, dry_run=dry,
+                )
+            if compiled.verb == "world_announce_to_player" and control_config.get("durable_native_intent_enabled"):
+                return self._apply_durable_native_intent(
+                    settings=settings, player_guid=player_guid, compiled=compiled,
+                    source_event_key=source_event_key, source_message=source_message,
+                )
             return self._apply_compiled(settings=settings, player_guid=player_guid,
                                         compiled=compiled, source_message=source_message)
         # confirm mode -> park pending, surfaced in chat + panel inbox (same record)
@@ -1066,6 +1156,7 @@ class AutoplayService:
 
     def _persist_conversation_memory(self, *, settings: Settings, player_guid: int, note: dict[str, Any]) -> None:
         from wm.character.journey import CharacterJourneyStore, JOURNEY_PLAN_SCHEMA_VERSION
+        from wm.character.memory import load_memory_entries
         from wm.db.mysql_cli import MysqlCliClient
 
         plan = {
@@ -1078,15 +1169,33 @@ class AutoplayService:
                 "source": note.get("source", "conversation"),
             }],
         }
-        applier = CharacterJourneyStore(client=MysqlCliClient(), settings=settings)
+        client = MysqlCliClient()
+        applier = CharacterJourneyStore(client=client, settings=settings)
         result = applier.apply_plan(plan=plan, mode="apply")
+        persisted = False
+        if result.ok:
+            rows = load_memory_entries(client=client, settings=settings, player_guid=int(player_guid))
+            persisted = any(
+                str(row.get("SteeringKey") or "") == str(note["steering_key"])
+                and str(row.get("Body") or "") == str(note["body"])
+                and str(row.get("IsActive") or "").lower() in {"1", "true"}
+                for row in rows
+            )
         self.store.append_journal("conversation_memory", {
             "at": utc_now_iso(),
             "player_guid": int(player_guid),
-            "note": note,
-            "ok": bool(getattr(result, "ok", False)),
-            "error": getattr(result, "error", None),
+            "steering_key": str(note["steering_key"]),
+            "steering_kind": str(note["steering_kind"]),
+            "ok": persisted,
+            "error": getattr(result, "error", None)
+            or ("not_active_after_upsert" if result.ok and not persisted else None),
         })
+        if result.ok and not persisted:
+            self.store.add_issue({
+                "reason": "conversation_memory_not_persisted",
+                "kind": "memory",
+                "steering_key": str(note["steering_key"]),
+            })
 
     def _dispatch_chat_parts(
         self,
@@ -1186,6 +1295,85 @@ class AutoplayService:
             self.store.add_issue({"reason": "intent_apply_failed", "kind": "intent", "detail": record})
         return {"intent": "applied" if ok else "apply_failed", "verb": compiled.verb, "player_message": msg}
 
+    def _apply_durable_native_intent(
+        self, *, settings: Settings, player_guid: int, compiled: Any,
+        source_event_key: str | None, source_message: str,
+    ) -> dict[str, Any]:
+        if not source_event_key:
+            return {"intent": "unavailable", "verb": compiled.verb, "reason": "durable_origin_required"}
+        from wm.autoplay.durable_native import DirectorLedger, run_durable_native_intent
+        from wm.db.mysql_cli import MysqlCliClient
+        from wm.sources.native_bridge.actions import NativeBridgeActionClient
+
+        origin_key = f"wm_chat:{int(player_guid)}:{source_event_key}"
+        native = NativeBridgeActionClient(client=MysqlCliClient(), settings=settings)
+        try:
+            result = run_durable_native_intent(
+                ledger=DirectorLedger(settings=settings), origin_key=origin_key,
+                player_guid=player_guid, verb=compiled.verb, proposal=compiled.proposal,
+                apply=lambda: self._control_coordinator(settings).execute(
+                    proposal=compiled.proposal, mode="apply", confirm_live_apply=True,
+                ),
+                lookup_native=lambda key: native.get_by_idempotency_key(idempotency_key=key),
+            )
+        except Exception as exc:
+            self.store.add_issue({
+                "reason": "durable_native_intent_unavailable", "kind": "intent",
+                "detail": str(exc)[:500], "payload": {"origin_key": origin_key},
+            })
+            return {"intent": "unavailable", "verb": compiled.verb, "reason": "durable_store_unavailable"}
+        state = result["state"]
+        self._audit_intent(
+            player_guid=player_guid, verb=compiled.verb, outcome=state,
+            source_message=source_message, mode=compiled.mode, risk=compiled.risk,
+            verification={"request_id": result["request_id"], "state": state},
+        )
+        return {"intent": "applied" if state == "verified" else state,
+                "verb": compiled.verb, "request_id": result["request_id"]}
+
+    def _apply_durable_director_intent(
+        self, *, settings: Settings, player_guid: int, compiled: Any,
+        source_event_key: str | None, source_message: str, dry_run: Any,
+    ) -> dict[str, Any]:
+        if not source_event_key:
+            return {"intent": "unavailable", "verb": compiled.verb, "reason": "durable_origin_required"}
+        from wm.autoplay.director_work import DirectorWorkLedger, FrozenWork
+
+        ledger = DirectorWorkLedger(settings=settings)
+        origin = f"wm_chat:{player_guid}:{source_event_key}"
+        artifact = FrozenWork.from_runtime({"kind": "control", "proposals": [compiled.proposal]})
+        work = None
+        try:
+            work = ledger.prepare(
+                origin_key=origin, player_guid=player_guid, lane="action", artifact=artifact,
+                preview=dry_run.to_dict(),
+                evidence={"source_event_key": source_event_key, "message": source_message[:1000]},
+            )
+            if work.state == "received":
+                work = ledger.authorize(
+                    work, policy={"ok": True, "verb": compiled.verb, "risk": compiled.risk,
+                                  "mode": compiled.mode, "scope": player_guid},
+                    mode="automatic", expires_seconds=120,
+                )
+            if work.state == "authorized":
+                work = ledger.claim(work)
+                try:
+                    results = _execute_runtime_work(
+                        runtime=work.artifact.thaw(), coordinator=self._control_coordinator(settings),
+                        mode="apply",
+                    )
+                    work = ledger.record_result(work, results=results)
+                except BaseException:
+                    ledger.mark_uncertain(work, reason="executor_outcome_unknown")
+                    raise
+        except Exception as exc:
+            self.store.add_issue({"reason": "director_intent_unavailable", "kind": "intent",
+                                  "detail": str(exc)[:500], "payload": {"origin_key": origin}})
+            return {"intent": "unavailable", "verb": compiled.verb,
+                    "reason": "director_effect_outcome_unknown" if work and work.state == "dispatching" else "director_store_unavailable"}
+        return {"intent": work.state, "verb": compiled.verb,
+                "request_id": work.request_id, "proof": "pending" if work.state == "applied" else work.state}
+
     def _apply_pending(
         self,
         *,
@@ -1213,9 +1401,11 @@ class AutoplayService:
             mode="confirm",
             risk=pending.get("risk", "medium"),
         )
-        self.store.clear_pending_intent(player_guid, reason="player_confirmed")
-        return self._apply_compiled(settings=settings, player_guid=player_guid,
-                                    compiled=compiled, source_message=source_message)
+        result = self._apply_compiled(settings=settings, player_guid=player_guid,
+                                      compiled=compiled, source_message=source_message)
+        if result.get("intent") == "applied":
+            self.store.clear_pending_intent(player_guid, reason="player_confirmed")
+        return result
 
     def _handle_scene_request(
         self,
@@ -1448,17 +1638,17 @@ class AutoplayService:
 
         results: list[dict[str, Any]] = []
         for opportunity in opportunities:
-            results.append(
-                self._generate_for_opportunity(
+            result = self._generate_for_opportunity(
                     control_config=control_config,
+                    settings=settings,
                     readiness=readiness,
                     session=session,
                     llm=llm,
                     opportunity=opportunity,
                 )
-            )
+            results.append(result)
             source_key = str((opportunity.get("source_event") or {}).get("source_event_key") or "")
-            if source_key:
+            if source_key and not result.get("retryable"):
                 self.store.mark_event_seen(source_key)
         return results
 
@@ -1466,6 +1656,7 @@ class AutoplayService:
         self,
         *,
         control_config: dict[str, Any],
+        settings: Settings,
         readiness: dict[str, Any],
         session: dict[str, Any] | None,
         llm: dict[str, Any],
@@ -1476,11 +1667,16 @@ class AutoplayService:
         player_guid = int((session or {}).get("character_guid") or opportunity.get("player_guid") or 0)
         schema_version = str(opportunity["schema_version"])
         adapter = self._llm_adapter(control_config)
+        session_pack = build_session_context_pack(player_guid=player_guid, settings=settings)
         context_pack = _compact_autoplay_context(
-            build_session_context_pack(player_guid=player_guid),
+            session_pack,
             opportunity=opportunity,
             player_guid=player_guid,
         )
+        context_notes = context_pack.get("context_notes") or []
+        memory_unavailable = any(str(note).startswith("memory_context:") for note in context_notes)
+        if context_pack.get("context_status") == "UNKNOWN" or not context_pack.get("character_state") or memory_unavailable:
+            return {"ok": False, "retryable": True, "lane": opportunity.get("lane"), "reason": "character_context_unavailable"}
         facts = _deterministic_facts(opportunity=opportunity, player_guid=player_guid, control_config=control_config)
         result = adapter.generate(
             schema_version=schema_version,
@@ -1510,18 +1706,24 @@ class AutoplayService:
             "issues": result.issues,
             "request": _compact_request(result.request),
             "raw_content": result.raw_content,
+            "memory_revision": _memory_revision(
+                active=session_pack.get("memory") or [],
+                evidence=session_pack.get("memory_source_evidence") or [],
+                excluded=session_pack.get("memory_exclusions") or [],
+            ),
         }
         if result.ok:
             saved = self.store.add_draft(record)
             self.panel_state.save_draft({**record, "validation": {"ok": True, "issues": []}})
             return {"ok": True, "draft_id": saved["draft_id"], "lane": opportunity.get("lane"), "schema_version": schema_version}
+        retryable = any(str(item.get("path") or "").startswith("llm") for item in result.issues)
         issue = self.store.add_issue({
             "reason": "llm_draft_invalid",
             "kind": str(opportunity.get("lane") or "llm"),
             "detail": "; ".join(str(item.get("message")) for item in result.issues[:3]) if result.issues else "unknown",
             "payload": record,
         })
-        return {"ok": False, "draft_id": draft_id, "lane": opportunity.get("lane"), "issue": _compact_store_result(issue)}
+        return {"ok": False, "retryable": retryable, "draft_id": draft_id, "lane": opportunity.get("lane"), "issue": _compact_store_result(issue)}
 
     def _drive_ambient_narration(
         self,
@@ -1704,7 +1906,6 @@ class AutoplayService:
         safe_window: SafeWindow,
         status: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        del control_config
         if not readiness.get("ok"):
             return []
         if not llm.get("ok"):
@@ -1730,8 +1931,28 @@ class AutoplayService:
             lane = str(record.get("lane") or "")
             schema_version = str(record.get("schema_version") or "")
             payload = record.get("parsed_json") if isinstance(record.get("parsed_json"), dict) else {}
+            director_scope = bool(control_config.get("durable_director_enabled")) and lane in {"quest", "action"}
+            feasibility: dict[str, Any] | None = None
+            if record.get("origin") == "autoplay_llm":
+                memory_blocker = self._draft_memory_blocker(
+                    record=record, settings=settings, player_guid=int(session["character_guid"]),
+                )
+                if memory_blocker:
+                    issue = self.store.add_issue({
+                        "reason": memory_blocker, "kind": lane, "payload": _compact_draft_record(record),
+                    })
+                    self.store.update_draft(draft_id, {
+                        "state": "PARKED",
+                        "issues": [*_as_list(record.get("issues")), _compact_store_result(issue)],
+                    })
+                    results.append({"draft_id": draft_id, "lane": lane, "status": "parked", "issue": _compact_store_result(issue)})
+                    continue
             try:
                 runtime = _runtime_work_from_draft(record=record, settings=settings)
+                if director_scope and lane == "quest":
+                    from wm.autoplay.quest_feasibility import assess_quest_plan
+
+                    feasibility = assess_quest_plan(plan=runtime["plan"], settings=settings)
             except Exception as exc:
                 issue = self.store.add_issue({
                     "reason": "runtime_compile_failed",
@@ -1831,6 +2052,67 @@ class AutoplayService:
                 results.append({**base_result, "status": "parked", "issue": _compact_store_result(issue)})
                 continue
 
+            if director_scope:
+                selected_guid = int(control_config.get("durable_director_player_guid") or 0)
+                runtime_guid = (
+                    int(runtime["plan"].player_guid) if runtime["kind"] == "plan"
+                    else int(runtime["proposals"][0].player.guid)
+                )
+                if selected_guid <= 0 or selected_guid != int(session["character_guid"]) or runtime_guid != selected_guid:
+                    issue = self.store.add_issue({"reason": "director_scope_mismatch", "kind": lane, "payload": dict(base_result)})
+                    self.store.update_draft(draft_id, {"state": "PARKED", "issues": [*_as_list(record.get("issues")), _compact_store_result(issue)]})
+                    results.append({**base_result, "status": "parked", "issue": _compact_store_result(issue)})
+                    continue
+                try:
+                    from wm.autoplay.director_work import DirectorWorkLedger, FrozenWork
+
+                    ledger = DirectorWorkLedger(settings=settings)
+                    artifact = FrozenWork.from_runtime(runtime)
+                    work = ledger.prepare(
+                        origin_key=f"autoplay:{lane}:{draft_id}", player_guid=selected_guid,
+                        lane=lane, artifact=artifact, preview=dry_run_payload,
+                        evidence={"draft_id": draft_id, "schema_version": schema_version,
+                                  "source_event_at": _draft_source_event_at(record),
+                                  "memory_revision": record.get("memory_revision"),
+                                  "quest_feasibility": feasibility},
+                    )
+                    if work.state == "received":
+                        work = ledger.authorize(work, policy=decision_payload, mode="automatic")
+                    if work.state == "authorized":
+                        if record.get("origin") == "autoplay_llm" and self._draft_memory_blocker(
+                            record=record, settings=settings, player_guid=selected_guid,
+                        ):
+                            raise RuntimeError("director_evidence_changed_before_apply")
+                        work = ledger.claim(work)
+                        try:
+                            apply_results = _execute_runtime_work(
+                                runtime=work.artifact.thaw(), coordinator=coordinator, mode="apply",
+                            )
+                            work = ledger.record_result(work, results=apply_results)
+                        except BaseException:
+                            ledger.mark_uncertain(work, reason="executor_outcome_unknown")
+                            raise
+                    if work.state in {"dispatching", "uncertain"}:
+                        raise RuntimeError(f"director_effect_{work.state}_requires_reconciliation")
+                    if work.state not in {"applied", "verified"}:
+                        raise RuntimeError(f"director_unexpected_state:{work.state}")
+                    apply_payload = {"at": utc_now_iso(), "draft_id": draft_id, "lane": lane,
+                                     "status": "applied", "director_request_id": work.request_id,
+                                     "artifact_hash": work.artifact_hash, "proof_state": work.state}
+                except Exception as exc:
+                    issue = self.store.add_issue({"reason": "director_apply_blocked", "kind": lane,
+                                                  "detail": str(exc)[:1000], "payload": dict(base_result)})
+                    self.store.update_draft(draft_id, {"state": "PARKED", "issues": [*_as_list(record.get("issues")), _compact_store_result(issue)]})
+                    results.append({**base_result, "status": "parked", "issue": _compact_store_result(issue)})
+                    continue
+                for key in idempotency_keys:
+                    self.store.mark_idempotency_key(key)
+                    seen_idempotency.add(key)
+                self.store.update_draft(draft_id, {"state": "APPLIED", "policy": decision_payload,
+                                                   "latest_apply": apply_payload})
+                results.append({**base_result, "status": "applied", "apply": apply_payload})
+                continue
+
             apply_results = _execute_runtime_work(runtime=runtime, coordinator=coordinator, mode="apply")
             apply_payload = {
                 "at": utc_now_iso(),
@@ -1866,6 +2148,27 @@ class AutoplayService:
                 })
                 results.append({**base_result, "status": "parked", "apply": apply_payload, "issue": _compact_store_result(issue)})
         return results
+
+    def _draft_memory_blocker(self, *, record: dict[str, Any], settings: Settings, player_guid: int) -> str | None:
+        from wm.character.memory import load_memory_entries
+        from wm.context.pack import build_memory_context_section
+        from wm.db.mysql_cli import MysqlCliClient
+
+        if int(record.get("player_guid") or 0) != player_guid:
+            return "draft_player_changed"
+        expected = str(record.get("memory_revision") or "")
+        if not expected:
+            return "draft_memory_revision_missing"
+        try:
+            section = build_memory_context_section(load_memory_entries(
+                client=MysqlCliClient(), settings=settings, player_guid=player_guid,
+            ))
+        except Exception:
+            return "draft_memory_unavailable"
+        current = _memory_revision(
+            active=section["active"], evidence=section["source_evidence"], excluded=section["excluded"],
+        )
+        return "draft_memory_changed" if current != expected else None
 
     def _safe_window(self, *, settings: Settings, session: dict[str, Any] | None) -> SafeWindow:
         return SafeWindow(
@@ -2144,6 +2447,9 @@ def _config_to_dict(config: AutoplayRuntimeConfig) -> dict[str, Any]:
         "llm_ambient_cooldown_seconds": int(config.llm_ambient_cooldown_seconds),
         "llm_conversation_memory_enabled": bool(config.llm_conversation_memory_enabled),
         "llm_scene_director_enabled": bool(config.llm_scene_director_enabled),
+        "durable_native_intent_enabled": bool(config.durable_native_intent_enabled),
+        "durable_director_enabled": bool(config.durable_director_enabled),
+        "durable_director_player_guid": config.durable_director_player_guid,
         "llm_model": config.llm_model,
         "llm_base_url": config.llm_base_url,
     }
@@ -2164,6 +2470,10 @@ def _merged_control_config(
     for key in ("llm_model", "llm_base_url"):
         if runtime_config.get(key) not in (None, ""):
             merged[key] = runtime_config[key]
+    if config.durable_director_enabled:
+        merged["durable_director_enabled"] = True
+    if config.durable_director_player_guid is not None:
+        merged["durable_director_player_guid"] = int(config.durable_director_player_guid)
     merged["llm_enabled"] = bool(merged.get("llm_enabled", True))
     merged["llm_chat_enabled"] = bool(merged.get("llm_chat_enabled", True))
     merged["llm_lanes"] = _normalize_lanes(merged.get("llm_lanes"))
@@ -2174,6 +2484,8 @@ def _merged_control_config(
     merged["llm_ambient_cooldown_seconds"] = int(merged.get("llm_ambient_cooldown_seconds") or 150)
     merged["llm_conversation_memory_enabled"] = bool(merged.get("llm_conversation_memory_enabled", True))
     merged["llm_scene_director_enabled"] = bool(merged.get("llm_scene_director_enabled", True))
+    merged["durable_native_intent_enabled"] = bool(merged.get("durable_native_intent_enabled", False))
+    merged["durable_director_enabled"] = bool(merged.get("durable_director_enabled", False))
     merged["llm_chat_context_epoch"] = int(merged.get("llm_chat_context_epoch") or 0)
     return merged
 
@@ -2293,6 +2605,13 @@ def _deterministic_facts(
 
 def _instruction_for_opportunity(opportunity: dict[str, Any]) -> str:
     lane = str(opportunity.get("lane") or "scene")
+    if lane == "quest" and opportunity.get("player_request"):
+        return (
+            f"Draft one playable, low-risk kill quest for this exact player request: "
+            f"{str(opportunity['player_request'])[:800]}. The host will reject unverified target hostility, "
+            "insufficient spawns, inaccessible turn-ins, and missing rewards. Do not invent IDs; "
+            "use only target and questgiver facts in the evidence packet."
+        )
     event = opportunity.get("source_event") if isinstance(opportunity.get("source_event"), dict) else {}
     event_type = str(event.get("event_type") or "event")
     return (
@@ -2305,15 +2624,34 @@ def _instruction_for_opportunity(opportunity: dict[str, Any]) -> str:
 
 def _compact_autoplay_context(context_pack: dict[str, Any], *, opportunity: dict[str, Any], player_guid: int) -> dict[str, Any]:
     source_event = opportunity.get("source_event") if isinstance(opportunity.get("source_event"), dict) else {}
-    player = _compact_context_value(_first_present(context_pack, "player", "character", "session", default={}), depth=2)
+    pack_guid = context_pack.get("player_guid")
+    if pack_guid is not None and int(pack_guid) != int(player_guid):
+        raise ValueError("session context belongs to another player")
+    character_state = dict(context_pack.get("character_state")) if isinstance(context_pack.get("character_state"), dict) else {}
+    character_state.pop("notes", None)
+    if isinstance(context_pack.get("memory"), list):
+        character_state["conversation_steering"] = context_pack["memory"]
+    player = _compact_context_value(
+        _first_present(context_pack, "player", "character", "session", default={}), depth=2
+    )
+    if not player:
+        player = {"guid": int(player_guid), "profile": _compact_context_value(character_state.get("profile"), depth=3)}
+    memory = context_pack.get("memory") if isinstance(context_pack.get("memory"), list) else []
+    recent_events = context_pack.get("recent_events") if isinstance(context_pack.get("recent_events"), list) else []
     return {
         "player_guid": int(player_guid),
         "player": player if isinstance(player, dict) else {},
+        "context_status": context_pack.get("status"),
+        "context_notes": [f"{note.split(':', 1)[0]}:unavailable" for note in context_pack.get("notes", []) if isinstance(note, str)],
+        "character_state": _compact_context_value(character_state, depth=4),
+        "memory": [_compact_context_value(entry, depth=3) for entry in memory if isinstance(entry, dict)],
+        "recent_events": [_compact_event(entry) for entry in recent_events[:5] if isinstance(entry, dict)],
+        "native_context_snapshot": _compact_context_value(context_pack.get("native_context_snapshot"), depth=4),
         "source_event": _compact_event(source_event),
         "lane": opportunity.get("lane"),
         "stable_key": opportunity.get("stable_key"),
         "allowed_native_action_kinds": ["player_chat_message"],
-        "style": "subtle in-world feedback; no rewards, SQL, GM commands, shell commands, or file edits",
+        "style": "grounded in observed play and character history; no SQL, GM commands, shell commands, or file edits",
         "wm_tools": autoplay_tool_manifest(),
     }
 
@@ -2341,6 +2679,8 @@ def _compact_opportunity_for_llm(opportunity: dict[str, Any]) -> dict[str, Any]:
         key: opportunity.get(key)
         for key in ("opportunity_id", "stable_key", "lane", "schema_version", "player_guid", "source_event_at", "source_event_key", "risk")
     }
+    if opportunity.get("player_request"):
+        compact["player_request"] = str(opportunity["player_request"])[:1000]
     source_event = opportunity.get("source_event") if isinstance(opportunity.get("source_event"), dict) else {}
     compact["source_event"] = _compact_event(source_event)
     return compact

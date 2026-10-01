@@ -7,7 +7,6 @@ from typing import Any
 from wm.config import Settings
 from wm.context.pack import build_session_context_pack
 from wm.db.mysql_cli import MysqlCliClient
-from wm.db.mysql_cli import MysqlCliError
 from wm.events.store import EventStore
 
 
@@ -50,9 +49,9 @@ def build_chat_world_context(
 
     context_pack: dict[str, Any] | None = None
     try:
-        context_pack = build_session_context_pack(player_guid=speaker_guid)
+        context_pack = build_session_context_pack(player_guid=speaker_guid, settings=settings, client=client)
     except Exception as exc:
-        notes.append(f"session_context_pack: {type(exc).__name__}: {exc}")
+        notes.append("session_context_pack:unavailable")
 
     recent_player_events: list[dict[str, Any]] = []
     recent_global_events: list[dict[str, Any]] = []
@@ -131,7 +130,8 @@ def build_chat_world_context(
         settings=settings,
         sql=(
             "SELECT PlayerGUID, AccountID, Online, MapID, ZoneID, AreaID, ZoneName, AreaName, "
-            "PosX, PosY, PosZ, Orientation, Level, HealthPct, InCombat, UpdatedAt "
+            "PosX, PosY, PosZ, Orientation, Level, HealthPct, InCombat, UpdatedAt, "
+            "TIMESTAMPDIFF(SECOND, UpdatedAt, NOW()) AS AgeSeconds "
             "FROM wm_bridge_player_presence "
             f"WHERE PlayerGUID = {speaker_guid} LIMIT 1"
         ),
@@ -145,7 +145,8 @@ def build_chat_world_context(
         client=client,
         settings=settings,
         sql=(
-            "SELECT PlayerGUID, MapID, ZoneID, AreaID, CreatureCount, GameObjectCount, PayloadJSON, UpdatedAt "
+            "SELECT PlayerGUID, MapID, ZoneID, AreaID, CreatureCount, GameObjectCount, PayloadJSON, UpdatedAt, "
+            "TIMESTAMPDIFF(SECOND, UpdatedAt, NOW()) AS AgeSeconds "
             "FROM wm_bridge_player_perception "
             f"WHERE PlayerGUID = {speaker_guid} LIMIT 1"
         ),
@@ -218,10 +219,8 @@ def _query_char(
             database=settings.char_db_name,
             sql=sql,
         )
-    except MysqlCliError as exc:
-        notes.append(f"{label}: {str(exc).splitlines()[-1] if str(exc) else type(exc).__name__}")
-    except Exception as exc:
-        notes.append(f"{label}: {type(exc).__name__}: {exc}")
+    except Exception:
+        notes.append(f"{label}:unavailable")
     return []
 
 
@@ -242,10 +241,8 @@ def _query_world(
             database=settings.world_db_name,
             sql=sql,
         )
-    except MysqlCliError as exc:
-        notes.append(f"{label}: {str(exc).splitlines()[-1] if str(exc) else type(exc).__name__}")
-    except Exception as exc:
-        notes.append(f"{label}: {type(exc).__name__}: {exc}")
+    except Exception:
+        notes.append(f"{label}:unavailable")
     return []
 
 
@@ -310,10 +307,14 @@ def _compact_session_context(context_pack: dict[str, Any] | None) -> dict[str, A
         "arc_states": character_state.get("arc_states"),
         "unlocks": character_state.get("unlocks"),
         "rewards": character_state.get("rewards"),
-        "conversation_steering": character_state.get("conversation_steering"),
+        "conversation_steering": (
+            context_pack.get("memory") if isinstance(context_pack.get("memory"), list)
+            else character_state.get("conversation_steering")
+        ),
+        "memory": context_pack.get("memory"),
         "prompt_queue": character_state.get("prompt_queue"),
         "native_context_snapshot": generation_input.get("native_context_snapshot"),
-        "notes": context_pack.get("notes"),
+        "notes": [f"{str(note).split(':', 1)[0]}:unavailable" for note in context_pack.get("notes", [])],
     })
 
 
@@ -349,12 +350,17 @@ def _live_location_from_presence(row: dict[str, Any] | None) -> dict[str, Any]:
             "note": "No presence heartbeat for this player yet. WM has not sensed the live position.",
         }
     online = _truthy(row.get("Online"))
+    try:
+        age_seconds = int(row["AgeSeconds"])
+    except (KeyError, TypeError, ValueError):
+        age_seconds = None
+    fresh = online and age_seconds is not None and 0 <= age_seconds <= 30
     return _json_clean({
         "source": "native_bridge_presence",
-        # The heartbeat keeps an online player's row fresh every few seconds; an
-        # offline player's row is the last sensed position, so it is not live.
-        "fresh": online,
+        "fresh": fresh,
         "online": online,
+        "age_seconds": age_seconds,
+        "note": None if fresh else "Presence heartbeat is missing or stale; location may no longer be current.",
         "updated_at": row.get("UpdatedAt"),
         "map_id": row.get("MapID"),
         "zone_id": row.get("ZoneID"),
@@ -383,17 +389,25 @@ def _perception_from_row(row: dict[str, Any] | None) -> dict[str, Any]:
             "source": "unavailable",
             "note": "No ambient perception heartbeat for this player yet.",
         }
+    try:
+        age_seconds = int(row["AgeSeconds"])
+    except (KeyError, TypeError, ValueError):
+        age_seconds = None
+    fresh = age_seconds is not None and 0 <= age_seconds <= 30
     return _json_clean({
         "source": "native_bridge_perception",
+        "fresh": fresh,
+        "age_seconds": age_seconds,
         "updated_at": row.get("UpdatedAt"),
         "map_id": row.get("MapID"),
         "zone_id": row.get("ZoneID"),
         "area_id": row.get("AreaID"),
-        "creature_count": row.get("CreatureCount"),
-        "gameobject_count": row.get("GameObjectCount"),
+        "creature_count": row.get("CreatureCount") if fresh else None,
+        "gameobject_count": row.get("GameObjectCount") if fresh else None,
         "detail_note": (
             "Ambient counts only. Request a context_snapshot to see specific "
             "nearby creatures/objects when it matters."
+            if fresh else "Ambient perception is stale or missing; request a fresh snapshot."
         ),
     })
 

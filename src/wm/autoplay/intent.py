@@ -64,6 +64,7 @@ def compile_intent(
     args: dict[str, Any] | None,
     modes: dict[str, str] | None,
     reason: str = "",
+    origin_key: str | None = None,
 ) -> CompiledIntent | IntentRejection:
     from wm.control.models import ControlProposal
 
@@ -79,7 +80,8 @@ def compile_intent(
     if issues:
         return IntentRejection("; ".join(issues)[:300])
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    idem = f"autoplay:intent:{_stable(f'{player_guid}:{verb}:{payload_args}:{now}')}"
+    identity = f"{player_guid}:{origin_key}:{verb}" if origin_key else f"{player_guid}:{verb}:{payload_args}:{now}"
+    idem = f"autoplay:intent:{_stable(identity)}"
     proposal = ControlProposal.model_validate(
         {
             "schema_version": "control.proposal.v1",

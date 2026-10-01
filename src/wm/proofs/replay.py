@@ -24,7 +24,7 @@ class FakeLmStudioResponder:
 
     def generate_json(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(kwargs)
-        return {"parsed": dict(self.response)}
+        return {"parsed": dict(self.response), "request": {"response_format": {"type": "json_schema"}}}
 
 
 @dataclass(slots=True)

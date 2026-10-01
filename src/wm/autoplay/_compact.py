@@ -73,6 +73,14 @@ def _compact_request(request: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+def _memory_revision(
+    *, active: list[dict[str, Any]], evidence: list[dict[str, Any]], excluded: list[dict[str, Any]]
+) -> str:
+    snapshot = {"active": active, "evidence": evidence, "excluded": excluded}
+    encoded = json.dumps(snapshot, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def _stable_key(value: str) -> str:
     return hashlib.sha1(value.encode("utf-8")).hexdigest()[:12]
 

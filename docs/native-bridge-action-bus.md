@@ -115,10 +115,11 @@ Core queue and gates:
 Queue timing and ordering:
 
 - `ExpiresAt` is the pending request deadline. If the row is still `pending` after this time, native code marks it `expired`.
-- `ClaimExpiresAt` is the execution lease. If worldserver crashes while a row is `claimed`, the next native poll or the Python maintenance CLI requeues it until `MaxAttempts` is reached.
+- `ClaimExpiresAt` is the execution lease. Only the effect-free `debug_ping`, `debug_echo`, and `debug_fail` actions may be requeued while under `MaxAttempts`. Other expired `claimed` rows become `uncertain`: they may already have taken effect, so neither native polling nor Python maintenance requeues them. Inspect game state and the request before any new submission. A late completion from the original worker may still replace `uncertain` with its actual result.
+- `ClaimToken` fences dispatch between pollers: the conditional claim update writes a per-claim UUID, and the worker executes only after reading back its own token. Apply `2026_09_30_00_wm_bridge_claim_token.sql` to the world DB before deploying a binary built with this behavior. Debug requeue clears the old token; uncertain gameplay claims retain it for audit.
 - `PurgeAfter` is only a Python cleanup hint. C++ never deletes terminal audit/debug rows automatically.
 - `Priority` sorts pending work as `1=urgent`, `5=normal`, `9=background`.
-- `SequenceID`, `SequenceOrder`, and `WaitForPrior` support manual/admin scene tests. Waiting rows run only after lower-order rows in the same sequence are `done`; if a prior row fails/rejects/expires, later waiting rows fail with `sequence_prior_failed`.
+- `SequenceID`, `SequenceOrder`, and `WaitForPrior` support manual/admin scene tests. Waiting rows run only after lower-order rows in the same sequence are `done`; if a prior row fails/rejects/expires, later waiting rows fail with `sequence_prior_failed`. An uncertain predecessor holds later rows pending until reconciled or a late receipt arrives.
 - `TargetMapID`, `TargetX`, `TargetY`, `TargetZ`, `TargetO`, and `TargetPlayerGUID` are optional structural coordinates for future spawn/move/teleport-style actions. Flexible details remain in `PayloadJSON`.
 
 Support tables staged for future capability bodies:

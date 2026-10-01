@@ -19,6 +19,7 @@ from wm.events.models import SubjectRef
 from wm.sources.native_bridge.action_kinds import NATIVE_ACTION_KIND_BY_ID
 from wm.sources.native_bridge.action_kinds import native_action_kind_ids
 from wm.sources.native_bridge.actions import NativeBridgeActionClient
+from wm.sources.native_bridge.actions import TERMINAL_ACTION_STATUSES
 
 
 class FakeMysqlClient:
@@ -33,10 +34,10 @@ class FakeMysqlClient:
         self.sql.append(sql)
         if "SELECT LAST_INSERT_ID() AS RequestID" in sql:
             return [{"RequestID": "42"}]
+        if "SELECT ROW_COUNT() AS Uncertain" in sql:
+            return [{"Uncertain": "1"}]
         if "SELECT ROW_COUNT() AS Requeued" in sql:
-            return [{"Requeued": "1"}]
-        if "SELECT ROW_COUNT() AS Failed" in sql:
-            return [{"Failed": "2"}]
+            return [{"Requeued": "2"}]
         if "SELECT ROW_COUNT() AS Deleted" in sql:
             return [{"Deleted": "3"}]
         if "FROM wm_bridge_player_scope" in sql:
@@ -948,6 +949,14 @@ class NativeBridgeActionTests(unittest.TestCase):
         self.assertIn("TargetMapID", joined)
         self.assertIn("-8949.95", joined)
 
+    def test_idempotency_key_cannot_alias_another_native_effect(self) -> None:
+        client = FakeMysqlClient()
+        bridge = NativeBridgeActionClient(client=client, settings=Settings())  # type: ignore[arg-type]
+
+        with self.assertRaisesRegex(ValueError, "different player, action, or payload"):
+            bridge.submit(idempotency_key="idem-1", player_guid=5406,
+                          action_kind="debug_echo", payload={"message": "changed"})
+
     def test_client_can_recover_and_cleanup_queue_rows(self) -> None:
         client = FakeMysqlClient()
         bridge = NativeBridgeActionClient(client=client, settings=Settings())  # type: ignore[arg-type]
@@ -955,12 +964,25 @@ class NativeBridgeActionTests(unittest.TestCase):
         recovered = bridge.recover_stale_claims()
         cleaned = bridge.cleanup_terminal_requests()
 
-        self.assertEqual(recovered, {"requeued": 1, "failed": 2})
+        self.assertEqual(recovered, {"requeued": 2, "uncertain": 1})
         self.assertEqual(cleaned, {"deleted": 3})
         joined = "\n".join(client.sql)
-        self.assertIn("claim_expired_requeued", joined)
-        self.assertIn("claim_expired_max_attempts", joined)
+        self.assertIn("claim_expired_outcome_unknown", joined)
+        self.assertIn("ActionKind IN ('debug_ping', 'debug_echo', 'debug_fail')", joined)
+        self.assertIn("Status = 'uncertain'", joined)
         self.assertIn("PurgeAfter IS NOT NULL", joined)
+        self.assertIn("Status IN ('done', 'failed', 'rejected', 'expired')", joined)
+
+    def test_uncertain_receipt_stops_wait_without_replay(self) -> None:
+        client = FakeMysqlClient()
+        client.request_status = "uncertain"
+        bridge = NativeBridgeActionClient(client=client, settings=Settings())  # type: ignore[arg-type]
+
+        request = bridge.wait(request_id=42, timeout_seconds=0.01)
+
+        self.assertEqual(request.status, "uncertain")
+        self.assertIn("uncertain", TERMINAL_ACTION_STATUSES)
+        self.assertFalse(any("claim_expired_requeued" in sql for sql in client.sql))
 
     def test_client_can_scope_player_and_set_policy(self) -> None:
         client = FakeMysqlClient()

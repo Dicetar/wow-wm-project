@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-05-13
+Last verified: 2026-09-30
 Verified by: Codex
 Doc type: reference
 
@@ -19,6 +19,8 @@ Repo-local skills live under `../.agents/skills/` and are selected by task:
 - `$wm-workflow` - repo cleanup, tests, docs, and general workflow
 - `$wm-live-bridge-lab` - BridgeLab watcher, live proof, player scope, and lab cleanup
 - `$wm-content-release` - quests, items, spells, arcs, scenes, and LLM proposal contracts
+- `$wm-skill-intake` - selective adoption of external coding-agent skills without replacing WM's release gates
+- `$wm-harness-task` - one-task harness/director implementation protocol for coding agents
 
 The [WM Agent Skills Lifecycle](AGENT_SKILLS_LIFECYCLE.md) adapts the public Agent Skills define/plan/build/verify/review/ship pattern to WM's repo-local skills and release gates. Validate the local skill set with `python scripts/validate_agent_skills.py`.
 
@@ -54,6 +56,10 @@ The repo uses a Diataxis-style split:
 
 ## Architecture / Decisions
 
+- [WM Harness Research and Decision Guide](plans/wm-harness-2026-09-30/README.md) - current-stack and clean-sheet options, weak-local-model contract, source assessment, technology choices, and delivery/evaluation plans; research, not deployed functionality
+- [WM Rebuild Plan: A Personal World Master](plans/wm-redesign-2026-09-23/REBUILD_PLAN.md) - current rebuild execution design, milestones, migration and player-experience gates; not a claim of implemented runtime behavior
+- [WM Redesign: Tools, Skills, and Review Method](plans/wm-redesign-2026-09-23/TOOLS_AND_SKILLS.md) - September 23 discovery assessment and anti-drift method; design-only, not a replacement for current runtime status
+- [ADR 0008: Durable Player Experience Director](adr/0008-durable-player-experience-director.md) - chosen staged-runtime and durable-lifecycle design
 - [ADR 0001: No stock live spell carriers](adr/0001-no-stock-live-spell-carriers.md)
 - [ADR 0002: Extend the existing action bus](adr/0002-extend-existing-action-bus.md)
 - [ADR 0003: Client shell bank for visible WM spells](adr/0003-client-shell-bank-for-visible-wm-spells.md)

@@ -510,6 +510,17 @@ class NativeBridgeSourceTests(unittest.TestCase):
         self.assertIn("wm_bridge_action_request", queue)
         self.assertIn("ClaimExpiresAt", queue)
         self.assertIn("sequence_prior_failed", queue)
+        self.assertIn("ActionKind IN ('debug_ping', 'debug_echo', 'debug_fail')", queue)
+        self.assertIn("Status = 'uncertain'", queue)
+        self.assertNotIn("'expired', 'uncertain')", queue)
+        self.assertIn('WorldDatabase.DirectExecute(', queue)
+        self.assertIn("SELECT UUID()", queue)
+        self.assertIn("ClaimToken = {}", queue)
+        self.assertIn("Status = 'claimed' AND ClaimToken = {}", queue)
+        self.assertLess(queue.index('WorldDatabase.DirectExecute(', queue.index('SELECT UUID()')),
+                        queue.index('ExecuteClaimedAction(requestId, playerGuid'))
+        migration = Path("native_modules/mod-wm-bridge/data/sql/world/updates/2026_09_30_00_wm_bridge_claim_token.sql").read_text(encoding="utf-8")
+        self.assertIn("ADD COLUMN ClaimToken VARCHAR(36)", migration)
         self.assertIn("ORDER BY req.Priority ASC", queue)
 
         # Action dispatch/behavior now lives in the registry + domain files.

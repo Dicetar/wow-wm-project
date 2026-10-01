@@ -15,11 +15,14 @@ def _chat_identity_facts(context: dict[str, Any], *, player_guid: int) -> dict[s
     database = context.get("database") if isinstance(context.get("database"), dict) else {}
     character_row = database.get("character_row") if isinstance(database.get("character_row"), dict) else {}
     live = context.get("live_location") if isinstance(context.get("live_location"), dict) else {}
+    live_fresh = bool(live.get("fresh"))
     name = _first_text(speaker.get("name"), character_row.get("name"))
     position = None
-    if live.get("x") is not None and live.get("y") is not None:
+    if live_fresh and live.get("x") is not None and live.get("y") is not None:
         position = {"x": live.get("x"), "y": live.get("y"), "z": live.get("z"), "o": live.get("o")}
-    location_source = live.get("source") or ("stale_characters_row" if character_row else "unknown")
+    location_source = live.get("source") if live_fresh else (
+        "source_event" if speaker.get("zone_id") is not None else "stale_characters_row" if character_row else "unknown"
+    )
     return {
         "player_guid": int(player_guid),
         "speaker_name": name,
@@ -28,14 +31,14 @@ def _chat_identity_facts(context: dict[str, Any], *, player_guid: int) -> dict[s
         "race": _first_text(character_row.get("race")),
         "class": _first_text(character_row.get("class")),
         "online": _first_text(character_row.get("online")),
-        "map": _first_text(live.get("map_id"), speaker.get("map_id"), character_row.get("map")),
-        "zone": _first_text(live.get("zone_id"), speaker.get("zone_id"), character_row.get("zone")),
-        "area": _first_text(live.get("area_id"), speaker.get("area_id")),
-        "zone_name": _first_text(live.get("zone_name")),
-        "area_name": _first_text(live.get("area_name")),
+        "map": _first_text(live.get("map_id") if live_fresh else None, speaker.get("map_id"), character_row.get("map")),
+        "zone": _first_text(live.get("zone_id") if live_fresh else None, speaker.get("zone_id"), character_row.get("zone")),
+        "area": _first_text(live.get("area_id") if live_fresh else None, speaker.get("area_id")),
+        "zone_name": _first_text(live.get("zone_name")) if live_fresh else None,
+        "area_name": _first_text(live.get("area_name")) if live_fresh else None,
         "position": position,
         "location_source": location_source,
-        "location_fresh": bool(live.get("fresh")),
+        "location_fresh": live_fresh,
         "remembered": _remembered_facts(context),
     }
 
@@ -43,7 +46,7 @@ def _chat_identity_facts(context: dict[str, Any], *, player_guid: int) -> dict[s
 def _remembered_facts(context: dict[str, Any], *, limit: int = 8) -> list[dict[str, Any]]:
     """Compact active, priority-ordered steering notes for the chat voice."""
     pack = context.get("session_context_pack") if isinstance(context.get("session_context_pack"), dict) else {}
-    notes = pack.get("conversation_steering")
+    notes = pack.get("memory") if isinstance(pack.get("memory"), list) else pack.get("conversation_steering")
     if not isinstance(notes, list):
         return []
     facts: list[dict[str, Any]] = []
@@ -89,13 +92,15 @@ def _voice_world_digest(context: dict[str, Any]) -> dict[str, Any]:
     perception = context.get("perception") if isinstance(context.get("perception"), dict) else {}
     events = context.get("events") if isinstance(context.get("events"), dict) else {}
     recent_chat = events.get("recent_wm_chat") if isinstance(events.get("recent_wm_chat"), list) else []
+    live_fresh = bool(live.get("fresh"))
     return {
         "live_location": {
-            key: live.get(key)
+            key: live.get(key) if live_fresh or key in {"source", "fresh"} else None
             for key in ("source", "fresh", "zone_id", "area_id", "zone_name", "area_name", "in_combat")
         },
         "perception": {
             "source": perception.get("source"),
+            "fresh": perception.get("fresh"),
             "creature_count": perception.get("creature_count"),
             "gameobject_count": perception.get("gameobject_count"),
         },

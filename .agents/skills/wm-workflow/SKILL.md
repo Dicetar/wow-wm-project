@@ -16,6 +16,8 @@ Before non-trivial work, read the current-state chain:
 
 Then read task-specific current docs. Trust current-state docs and postmortems over roadmap/design notes when they conflict.
 
+Read large handoffs by current update and relevant section; use a targeted search to locate details instead of sending the full file into the agent context. Load only the skill bodies needed for the current task, and keep command output bounded to the evidence needed for the next decision.
+
 ## Working Rules
 
 - Inspect existing systems before proposing architecture: `src/wm/`, `control/`, `native_modules/mod-wm-bridge/`, and `native_modules/mod-wm-spells/`.

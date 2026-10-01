@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from wm.autoplay.llm import AutoplayLlmAdapter
 from wm.autoplay.llm import llm_generation_schema
 from wm.autoplay.policy import AutoplayPolicy, SafeWindow
@@ -242,6 +244,21 @@ def test_llm_adapter_generates_and_locks_all_enabled_lane_drafts():
             assert result.draft["player_guid"] == 5408
 
 
+def test_llm_schema_fallback_is_draft_only():
+    class TextFallbackClient(FakeLlmClient):
+        def generate_json(self, **kwargs):
+            result = super().generate_json(**kwargs)
+            result["request"] = {"response_format": {"type": "text"}}
+            return result
+
+    result = AutoplayLlmAdapter(client=TextFallbackClient(ACTION_DRAFT)).generate(
+        schema_version="control.proposal.v1", instruction="propose a message",
+    )
+    assert not result.ok
+    assert result.draft is not None
+    assert any(issue["path"] == "llm.response_format" for issue in result.issues)
+
+
 def test_action_generation_schema_stays_compact_for_local_llm():
     schema = llm_generation_schema("control.proposal.v1", {"$defs": {"huge": {}}, "type": "object"})
 
@@ -278,6 +295,71 @@ def test_autoplay_context_compacts_large_session_pack():
     assert "events" not in compact
     assert "inventory" not in compact["player"]
     assert len(compact["player"]["summary"]) == 500
+
+
+def test_autoplay_context_preserves_personal_session_sections():
+    context = {
+        "schema_version": "wm.context_pack.session.v1",
+        "player_guid": 5408,
+        "status": "WORKING",
+        "character_state": {
+            "profile": {"character_name": "Astel", "level": 13},
+            "arc_states": [{"arc_key": "ruins", "status": "active"}],
+            "conversation_steering": [{"body": "Forgotten private note", "is_active": True}],
+            "notes": ["DB connection string and secret"],
+        },
+        "memory": [{"steering_key": "explore", "body": "More mysteries, fewer bounties", "source": "player"}],
+        "memory_exclusions": [{"steering_key": "forgotten", "state": "forgotten", "has_body": False}],
+        "recent_events": [{"event_id": 42, "event_type": "enter_area", "occurred_at": "2026-09-24T10:00:00Z"}],
+        "native_context_snapshot": {"map_id": 0, "zone_id": 1519},
+        "notes": [],
+    }
+    compact = _compact_autoplay_context(
+        context,
+        opportunity={"lane": "scene", "stable_key": "abc", "source_event": {"event_id": 42}},
+        player_guid=5408,
+    )
+
+    assert compact["player"]["profile"]["character_name"] == "Astel"
+    assert compact["character_state"]["arc_states"][0]["arc_key"] == "ruins"
+    assert compact["memory"][0]["body"] == "More mysteries, fewer bounties"
+    assert compact["recent_events"][0]["event_id"] == 42
+    assert compact["native_context_snapshot"]["zone_id"] == 1519
+    assert "forgotten" not in json.dumps(compact)
+    assert "Forgotten private note" not in json.dumps(compact)
+    assert "DB connection string and secret" not in json.dumps(compact)
+
+
+def test_autoplay_context_rejects_other_character():
+    with pytest.raises(ValueError, match="another player"):
+        _compact_autoplay_context(
+            {"player_guid": 5409, "memory": [{"body": "private"}]},
+            opportunity={"lane": "scene", "source_event": {}},
+            player_guid=5408,
+        )
+
+
+def test_autoplay_personal_context_reaches_model_request_without_excluded_note():
+    context = _compact_autoplay_context(
+        {
+            "player_guid": 5408, "status": "WORKING",
+            "character_state": {"profile": {"character_name": "Astel", "level": 13}},
+            "memory": [{"steering_key": "mysteries", "body": "More mysteries, fewer bounties"}],
+            "memory_exclusions": [{"steering_key": "forgotten", "body": "private old note"}],
+            "native_context_snapshot": {"zone_id": 1519},
+            "recent_events": [{"event_id": 42, "event_type": "enter_area"}],
+        },
+        opportunity={"lane": "scene", "source_event": {"event_id": 42}}, player_guid=5408,
+    )
+    result = AutoplayLlmAdapter(client=FakeLlmClient(SCENE_DRAFT)).generate(
+        schema_version="wm.scene.release.native_sequence.v1", instruction="draft",
+        context_pack=context,
+    )
+    sent = result.request["context_pack"]
+    assert sent["player"]["profile"]["character_name"] == "Astel"
+    assert sent["memory"][0]["body"] == "More mysteries, fewer bounties"
+    assert sent["native_context_snapshot"]["zone_id"] == 1519
+    assert "private old note" not in json.dumps(result.request)
 
 
 def test_llm_adapter_rejects_freeform_mutation_text():
@@ -495,6 +577,19 @@ def test_remembered_facts_surfaces_active_steering(tmp_path: Path):
     assert identity["remembered"] == [{"kind": "preferred_theme", "body": "Prefers undead foes."}]
 
 
+def test_remembered_facts_respects_filtered_empty_memory():
+    context = {
+        "speaker": {"guid": 5408},
+        "session_context_pack": {
+            "memory": [],
+            "conversation_steering": [
+                {"steering_kind": "player_fact", "body": "Forgotten private note", "is_active": True},
+            ],
+        },
+    }
+    assert _chat_identity_facts(context, player_guid=5408)["remembered"] == []
+
+
 def test_capture_conversation_memory_persists_durable_note(tmp_path: Path):
     service = _ambient_service(tmp_path)
     note = {"steering_key": "prefers_undead", "steering_kind": "preferred_theme", "body": "Likes undead.", "source": "conversation"}
@@ -616,6 +711,36 @@ def test_apply_pending_runs_scene_steps(tmp_path: Path):
     assert journal["cleanup_status"]["status"] == "temporary_spawn"
 
 
+def test_confirmed_intent_remains_pending_until_apply_succeeds(tmp_path: Path):
+    from wm.autoplay.intent import compile_intent
+
+    service = _ambient_service(tmp_path)
+    compiled = compile_intent(
+        player_guid=5408, verb="world_announce_to_player",
+        args={"message": "The road is clear."},
+        modes={"world_announce_to_player": "confirm"}, origin_key="event-42",
+    )
+    assert compiled.proposal.idempotency_key
+    pending = service.store.set_pending_intent(5408, {
+        "verb": compiled.verb, "risk": compiled.risk,
+        "proposal": compiled.proposal.model_dump(mode="json"),
+    })
+    with patch.object(service, "_apply_compiled", return_value={"intent": "apply_failed"}):
+        result = service._apply_pending(
+            settings=Settings.from_env(), player_guid=5408,
+            pending=pending, source_message="yes",
+        )
+    assert result["intent"] == "apply_failed"
+    assert service.store.load_pending_intent(5408) is not None
+    with patch.object(service, "_apply_compiled", return_value={"intent": "applied"}):
+        result = service._apply_pending(
+            settings=Settings.from_env(), player_guid=5408,
+            pending=pending, source_message="yes",
+        )
+    assert result["intent"] == "applied"
+    assert service.store.load_pending_intent(5408) is None
+
+
 def test_handle_intent_spawn_resolves_name_to_entry(tmp_path: Path):
     service = _ambient_service(tmp_path)
 
@@ -728,7 +853,7 @@ def test_autoplay_service_generates_llm_draft_from_recent_event(tmp_path: Path):
         event_id=10,
     )
 
-    with patch("wm.autoplay.service.build_session_context_pack", return_value={"player_guid": 1}):
+    with patch("wm.autoplay.service.build_session_context_pack", return_value={"player_guid": 1, "status": "WORKING", "character_state": {"profile": {"guid": 1}}}):
         service = AutoplayService(
             store=store,
             panel_state=panel,
@@ -752,6 +877,55 @@ def test_autoplay_service_generates_llm_draft_from_recent_event(tmp_path: Path):
     assert status["counters"]["drafts_generated"] == 1
     assert panel.list_drafts(limit=1)[0]["origin"] == "autoplay_llm"
     assert "kill-1" in store.load_seen_event_keys()
+
+
+def test_autoplay_defers_generation_when_character_context_is_unavailable(tmp_path: Path):
+    store = AutoplayStateStore(tmp_path / "autoplay")
+    panel = PanelState(tmp_path / "panel")
+    panel.ensure()
+    event = WMEvent(
+        event_class="observed", event_type="kill", source="test",
+        source_event_key="kill-retry", occurred_at=utc_now_iso(),
+        player_guid=1, subject_type="creature", subject_entry=21059, event_id=11,
+    )
+    service = AutoplayService(store=store, panel_state=panel)
+    with patch.object(service, "_recent_events", return_value=[event]), patch(
+        "wm.autoplay.service.build_session_context_pack",
+        return_value={"player_guid": 1, "status": "UNKNOWN", "character_state": None},
+    ), patch.object(service, "_llm_adapter") as adapter:
+        results = service._drive_llm_generation(
+            control_config={"llm_lanes": ["scene"], "llm_chat_enabled": False},
+            settings=Settings.from_env(), readiness={"ok": True},
+            session={"character_guid": 1}, llm={"ok": True}, status={},
+            ignore_cooldown=True,
+        )
+    assert results[0]["reason"] == "character_context_unavailable"
+    assert results[0]["retryable"] is True
+    assert "kill-retry" not in store.load_seen_event_keys()
+    adapter.return_value.generate.assert_not_called()
+
+
+def test_autoplay_defers_when_memory_query_failed_without_leaking_db_error(tmp_path: Path):
+    service = _ambient_service(tmp_path)
+    opportunity = {
+        "opportunity_id": "memory-retry", "schema_version": "wm.scene.release.native_sequence.v1",
+        "lane": "scene", "source_event": {"event_id": 42, "event_type": "kill"},
+    }
+    with patch("wm.autoplay.service.build_session_context_pack", return_value={
+        "player_guid": 5408, "status": "PARTIAL", "character_state": {"profile": {"guid": 5408}},
+        "notes": ["memory_context: secret DB error"],
+    }), patch.object(service, "_llm_adapter") as adapter:
+        result = service._generate_for_opportunity(
+            control_config={}, settings=Settings.from_env(), readiness={},
+            session={"character_guid": 5408}, llm={}, opportunity=opportunity,
+        )
+    assert result["retryable"] is True
+    adapter.return_value.generate.assert_not_called()
+    compact = _compact_autoplay_context(
+        {"player_guid": 5408, "notes": ["memory_context: secret DB error"]},
+        opportunity=opportunity, player_guid=5408,
+    )
+    assert compact["context_notes"] == ["memory_context:unavailable"]
 
 
 def test_drive_pending_runtime_dry_runs_then_applies_eligible_proposal(tmp_path: Path):
@@ -885,7 +1059,8 @@ def test_autoplay_service_auto_applies_policy_eligible_action_draft(tmp_path: Pa
     with patch.object(service, "_llm_health", return_value={"ok": True, "model": "local-model"}):
         with patch.object(service, "_recent_events", return_value=[]):
             with patch.object(service, "_control_coordinator", return_value=coordinator):
-                status = service.tick(config=AutoplayRuntimeConfig(player_guid=1, start_watcher=False, llm_cooldown_seconds=0))
+                with patch.object(service, "_draft_memory_blocker", return_value=None):
+                    status = service.tick(config=AutoplayRuntimeConfig(player_guid=1, start_watcher=False, llm_cooldown_seconds=0))
 
     assert [mode for mode, _proposal in coordinator.calls] == ["dry-run", "apply"]
     runtime_proposal = coordinator.calls[0][1]
@@ -895,6 +1070,31 @@ def test_autoplay_service_auto_applies_policy_eligible_action_draft(tmp_path: Pa
     assert status["latest_proposal"]["state"] == "APPLIED"
     assert status["counters"]["auto_applied"] == 1
     assert runtime_proposal.idempotency_key in store.load_idempotency_keys()
+
+
+def test_durable_director_scope_never_falls_back_to_legacy_writer(tmp_path: Path):
+    store = AutoplayStateStore(tmp_path / "autoplay")
+    panel = PanelState(tmp_path / "panel")
+    panel.ensure()
+    store.add_draft(_autoplay_record(draft_id="action-ledger", lane="action", payload=dict(ACTION_DRAFT)))
+    coordinator = FakeControlCoordinator()
+    service = AutoplayService(
+        store=store, panel_state=panel,
+        doctor_fn=lambda settings: [FakeDoctorCheck("world_db", "WORKING", "ok")],
+    )
+    config = AutoplayRuntimeConfig(
+        player_guid=1, start_watcher=False, llm_cooldown_seconds=0,
+        durable_director_enabled=True, durable_director_player_guid=1,
+    )
+    with patch.object(service, "_llm_health", return_value={"ok": True, "model": "local-model"}):
+        with patch.object(service, "_recent_events", return_value=[]):
+            with patch.object(service, "_control_coordinator", return_value=coordinator):
+                with patch.object(service, "_draft_memory_blocker", return_value=None):
+                    with patch("wm.autoplay.director_work.DirectorWorkLedger", side_effect=RuntimeError("ledger unavailable")):
+                        status = service.tick(config=config)
+    assert [mode for mode, _ in coordinator.calls] == ["dry-run"]
+    assert status["latest_proposal"]["state"] == "PARKED"
+    assert status["latest_autoplay"]["status"] == "parked"
 
 
 def test_autoplay_service_auto_applies_policy_eligible_scene_draft(tmp_path: Path):
@@ -912,7 +1112,8 @@ def test_autoplay_service_auto_applies_policy_eligible_scene_draft(tmp_path: Pat
     with patch.object(service, "_llm_health", return_value={"ok": True, "model": "local-model"}):
         with patch.object(service, "_recent_events", return_value=[]):
             with patch.object(service, "_control_coordinator", return_value=coordinator):
-                status = service.tick(config=AutoplayRuntimeConfig(player_guid=1, start_watcher=False, llm_cooldown_seconds=0))
+                with patch.object(service, "_draft_memory_blocker", return_value=None):
+                    status = service.tick(config=AutoplayRuntimeConfig(player_guid=1, start_watcher=False, llm_cooldown_seconds=0))
 
     assert [mode for mode, _proposal in coordinator.calls] == ["dry-run", "apply"]
     runtime_proposal = coordinator.calls[0][1]
@@ -939,7 +1140,8 @@ def test_autoplay_service_parks_scene_draft_when_policy_blocks_risk(tmp_path: Pa
     with patch.object(service, "_llm_health", return_value={"ok": True, "model": "local-model"}):
         with patch.object(service, "_recent_events", return_value=[]):
             with patch.object(service, "_control_coordinator", return_value=coordinator):
-                status = service.tick(config=AutoplayRuntimeConfig(player_guid=1, start_watcher=False, llm_cooldown_seconds=0))
+                with patch.object(service, "_draft_memory_blocker", return_value=None):
+                    status = service.tick(config=AutoplayRuntimeConfig(player_guid=1, start_watcher=False, llm_cooldown_seconds=0))
 
     assert [mode for mode, _proposal in coordinator.calls] == ["dry-run"]
     assert status["latest_proposal"]["state"] == "PARKED"
@@ -976,7 +1178,8 @@ def test_autoplay_service_auto_publishes_eligible_quest_draft(tmp_path: Path):
     with patch.object(service, "_llm_health", return_value={"ok": True, "model": "local-model"}):
         with patch.object(service, "_recent_events", return_value=[]):
             with patch.object(service, "_control_coordinator", return_value=coordinator):
-                status = service.tick(config=AutoplayRuntimeConfig(player_guid=1, start_watcher=False, llm_cooldown_seconds=0))
+                with patch.object(service, "_draft_memory_blocker", return_value=None):
+                    status = service.tick(config=AutoplayRuntimeConfig(player_guid=1, start_watcher=False, llm_cooldown_seconds=0))
 
     assert [mode for mode, _plan in coordinator.executor.calls] == ["dry-run", "apply"]
     plan = coordinator.executor.calls[0][1]
@@ -1632,7 +1835,7 @@ class _FakeIntentClient:
 
     def generate_json(self, **kwargs):
         self.calls.append(kwargs)
-        return {"parsed": self._parsed}
+        return {"parsed": self._parsed, "request": {"response_format": {"type": "json_schema"}}}
 
 
 def _spawn_manifest():
@@ -1656,6 +1859,21 @@ def test_extract_chat_intent_returns_none_when_act_false():
     client = _FakeIntentClient({"act": False, "verb": "", "args": {}, "reason": "just chatting"})
     intent = extract_chat_intent(
         client=client, player_guid=5408, message="hello there", manifest=_spawn_manifest()
+    )
+    assert intent is None
+
+
+def test_extract_chat_intent_rejects_text_fallback_even_if_parseable():
+    class _TextFallbackClient(_FakeIntentClient):
+        def generate_json(self, **kwargs):
+            result = super().generate_json(**kwargs)
+            result["request"]["response_format"]["type"] = "text"
+            return result
+
+    intent = extract_chat_intent(
+        client=_TextFallbackClient({"act": True, "verb": "creature_spawn",
+                                    "args": {"creature_entry": 299}, "reason": "player asked"}),
+        player_guid=5408, message="spawn a defias footpad", manifest=_spawn_manifest(),
     )
     assert intent is None
 
@@ -1686,7 +1904,7 @@ def test_live_location_from_presence_maps_online_row():
         "PlayerGUID": 5408, "Online": 1, "MapID": 0, "ZoneID": 1519, "AreaID": 1519,
         "ZoneName": "Stormwind City", "AreaName": "Stormwind City",
         "PosX": -8913.0, "PosY": 554.6, "PosZ": 93.7, "Orientation": 0.6,
-        "Level": 13, "HealthPct": 100, "InCombat": 0, "UpdatedAt": "2026-05-29 12:00:00",
+        "Level": 13, "HealthPct": 100, "InCombat": 0, "UpdatedAt": "2026-05-29 12:00:00", "AgeSeconds": 4,
     }
     live = _live_location_from_presence(row)
     assert live["source"] == "native_bridge_presence"
@@ -1704,6 +1922,13 @@ def test_live_location_from_presence_offline_is_not_fresh():
     assert live["online"] is False
 
 
+def test_live_location_from_presence_online_but_stale_is_not_fresh():
+    live = _live_location_from_presence({"Online": 1, "AgeSeconds": 45})
+    assert live["online"] is True
+    assert live["fresh"] is False
+    assert "stale" in live["note"]
+
+
 def test_live_location_from_presence_unavailable_without_row():
     live = _live_location_from_presence(None)
     assert live["source"] == "unavailable"
@@ -1715,17 +1940,56 @@ def test_perception_from_row_is_counts_only_ambient():
         "PlayerGUID": 5408, "MapID": 0, "ZoneID": 1519, "AreaID": 1519,
         "CreatureCount": 7, "GameObjectCount": 2,
         "PayloadJSON": json.dumps({"nearby_creatures": [{"name": "x"}]}),
-        "UpdatedAt": "2026-05-29 12:00:00",
+        "UpdatedAt": "2026-05-29 12:00:00", "AgeSeconds": 2,
     }
     perception = _perception_from_row(row)
     assert perception["source"] == "native_bridge_perception"
     assert perception["creature_count"] == 7
     assert perception["gameobject_count"] == 2
     assert perception["zone_id"] == 1519
+    assert perception["fresh"] is True
     # ambient block carries counts only, never per-entity detail
     assert "nearest_creatures" not in perception
     assert "nearest_gameobjects" not in perception
     assert "detail_note" in perception
+
+
+def test_stale_perception_does_not_expose_old_counts():
+    perception = _perception_from_row({
+        "CreatureCount": 7, "GameObjectCount": 2, "AgeSeconds": 120,
+    })
+    assert perception["fresh"] is False
+    assert perception["creature_count"] is None
+    assert perception["gameobject_count"] is None
+
+
+def test_chat_world_context_uses_runtime_db_settings_and_active_memory():
+    from wm.autoplay.world_context import build_chat_world_context
+
+    class EmptyDb:
+        def query(self, **kwargs):
+            return []
+
+    settings = Settings(world_db_port=33307, char_db_port=33307)
+    client = EmptyDb()
+    pack = {
+        "player_guid": 5408, "status": "WORKING",
+        "character_state": {"profile": {"character_name": "Astel"},
+                            "conversation_steering": [{"body": "forgotten private note", "is_active": True}]},
+        "memory": [{"body": "Prefers mysteries", "steering_kind": "preferred_theme"}],
+        "memory_exclusions": [{"body": "forgotten private note"}],
+        "notes": ["memory_context: secret DB error"],
+    }
+    with patch("wm.autoplay.world_context.MysqlCliClient", return_value=client), patch(
+        "wm.autoplay.world_context.build_session_context_pack", return_value=pack,
+    ) as builder:
+        context = build_chat_world_context(settings=settings, player_guid=5408, message="hello")
+    builder.assert_called_once_with(player_guid=5408, settings=settings, client=client)
+    session = context["session_context_pack"]
+    assert session["memory"][0]["body"] == "Prefers mysteries"
+    assert session["conversation_steering"][0]["body"] == "Prefers mysteries"
+    assert session["notes"] == ["memory_context:unavailable"]
+    assert "forgotten private note" not in json.dumps(context)
 
 
 def test_perception_from_row_unavailable_without_row():
@@ -1763,11 +2027,31 @@ def test_identity_facts_mark_unavailable_location_without_snapshot():
         "live_location": {"source": "unavailable", "fresh": False},
     }
     facts = _chat_identity_facts(context, player_guid=5408)
-    assert facts["location_source"] == "unavailable"
+    assert facts["location_source"] == "stale_characters_row"
     assert facts["location_fresh"] is False
     assert facts["position"] is None
     # falls back to the stale characters-row zone only as a last resort
     assert facts["zone"] == "40"
+
+
+def test_identity_facts_do_not_promote_stale_presence_to_live_location():
+    from wm.autoplay._chat_context import _voice_world_digest
+
+    context = {
+        "speaker": {"guid": 5408, "zone_id": 1519},
+        "database": {"character_row": {"zone": 40}},
+        "live_location": {"source": "native_bridge_presence", "fresh": False,
+                          "zone_id": 22, "zone_name": "Old zone", "x": 1.0, "y": 2.0},
+        "perception": {"source": "native_bridge_perception", "fresh": False,
+                       "creature_count": None},
+    }
+    identity = _chat_identity_facts(context, player_guid=5408)
+    digest = _voice_world_digest(context)
+    assert identity["zone"] == "1519"
+    assert identity["position"] is None
+    assert identity["zone_name"] is None
+    assert identity["location_source"] == "source_event"
+    assert digest["live_location"]["zone_name"] is None
 
 
 def test_compile_intent_rejects_off_verb():
@@ -1791,6 +2075,35 @@ def test_compile_intent_builds_proposal_with_locked_guid():
     assert out.proposal.player.guid == 5408
     assert out.mode == "auto"
     assert out.risk == "low"
+
+
+def test_compile_intent_event_origin_is_stable_across_retries():
+    first = compile_intent(
+        player_guid=5408, verb="world_announce_to_player",
+        args={"message": "The road is clear."}, modes={}, origin_key="native:event-42",
+    )
+    second = compile_intent(
+        player_guid=5408, verb="world_announce_to_player",
+        args={"message": "The road is clear."}, modes={}, origin_key="native:event-42",
+    )
+    assert first.proposal.idempotency_key == second.proposal.idempotency_key
+
+
+def test_durable_intent_db_failure_never_calls_native_apply(tmp_path: Path):
+    service = _ambient_service(tmp_path)
+    with patch.object(service, "_control_coordinator") as coordinator, patch(
+        "wm.autoplay.durable_native.DirectorLedger.accept", side_effect=OSError("db offline"),
+    ), patch.object(service, "_speak", return_value={"ok": True}):
+        coordinator.return_value.execute.return_value = SimpleNamespace(status="dry-run")
+        result = service._handle_intent(
+            settings=Settings.from_env(),
+            control_config={"durable_native_intent_enabled": True}, player_guid=5408,
+            intent={"verb": "world_announce_to_player", "args": {"message": "Watch the road."}},
+            source_message="warn me", source_event_key="native:event-42",
+        )
+    assert result["intent"] == "unavailable"
+    assert coordinator.return_value.execute.call_count == 1
+    assert coordinator.return_value.execute.call_args.kwargs["mode"] == "dry-run"
 
 
 def test_intent_failure_messages_hide_implementation_noise():

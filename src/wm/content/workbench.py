@@ -20,7 +20,7 @@ from wm.reserved.models import ReservedSlot
 from wm.runtime_sync import RuntimeCommandResult
 from wm.runtime_sync import SoapRuntimeClient
 from wm.sources.native_bridge.action_kinds import NATIVE_ACTION_KIND_BY_ID
-from wm.sources.native_bridge.actions import NativeBridgeActionClient
+from wm.sources.native_bridge.actions import NativeBridgeActionClient, TERMINAL_ACTION_STATUSES
 from wm.spells.models import ManagedSpellDraft
 from wm.spells.publish import SpellPublisher
 from wm.spells.publish import load_managed_spell_draft
@@ -737,7 +737,7 @@ def execute_shell_behavior_debug_request(
     request = debug_client.submit(player_guid=int(player_guid), behavior_kind=behavior_kind, payload=payload)
     deadline = time.time() + (float(timeout_seconds) if timeout_seconds is not None else settings.native_bridge_action_wait_seconds)
     current = request
-    while current.status not in {"done", "failed", "rejected", "expired"} and time.time() < deadline:
+    while current.status not in TERMINAL_ACTION_STATUSES and time.time() < deadline:
         time.sleep(max(settings.native_bridge_action_poll_seconds, 0.05))
         refreshed = debug_client.get(request_id=current.request_id)
         if refreshed is None:

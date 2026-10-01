@@ -1115,13 +1115,15 @@ async function refreshSlice() {
   try {
     const kind = $("inboxKindFilter")?.value || "";
     const inboxPath = kind ? `/api/wm/inbox?kind=${encodeURIComponent(kind)}` : "/api/wm/inbox";
-    const [status, pending, issues, log] = await Promise.all([
+    const [status, pending, issues, log, effects] = await Promise.all([
       api("/api/wm/session/status"),
       api(inboxPath),
       api("/api/wm/session/issues"),
-      api("/api/wm/session/log")
+      api("/api/wm/session/log"),
+      api("/api/wm/session/effects")
     ]);
     renderSliceStatus(status);
+    renderDirectorEffects(effects);
     renderSlicePending(pending.pending || []);
     renderSliceIssues(issues.issues || []);
     setOutput("sliceLog", (log.log || []).slice(-20));
@@ -1129,6 +1131,26 @@ async function refreshSlice() {
     renderSliceError(error.message);
   }
   await refreshCharacterOverview();
+}
+
+function renderDirectorEffects(response) {
+  const target = $("directorEffects");
+  if (!response.ok) {
+    target.textContent = response.error || "Durable effects unavailable";
+    return;
+  }
+  const items = response.effects || [];
+  if (!items.length) {
+    target.textContent = "No durable effects for this character.";
+    return;
+  }
+  target.innerHTML = items.map((item) => {
+    const kinds = (item.effects || []).map((effect) => `${effect.kind}: ${effect.state}`).join(", ");
+    const proof = item.proof ? "Player proof recorded" : "Player proof pending";
+    return `<div class="list-item"><strong>${escapeHtml(item.lane)} #${item.request_id}</strong> ` +
+      `<span>${escapeHtml(item.state)}</span><div>${escapeHtml(kinds)}</div>` +
+      `<div>${escapeHtml(proof)}</div></div>`;
+  }).join("");
 }
 
 function renderSliceStatus(status) {

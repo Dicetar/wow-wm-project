@@ -339,6 +339,8 @@ def _normalize_steering(raw: Any, *, player_guid: int) -> dict[str, Any]:
         metadata = {}
     if not isinstance(metadata, dict):
         raise JourneyPlanError("conversation_steering[].metadata must be an object.")
+    if "forgotten" in metadata:
+        raise JourneyPlanError("Use the memory forget action to redact a steering note.")
     return {
         "character_guid": int(player_guid),
         "steering_key": _required_text(raw.get("steering_key"), "conversation_steering[].steering_key"),
@@ -422,6 +424,10 @@ def _reward_insert_sql(reward: dict[str, Any]) -> str:
 
 
 def _steering_upsert_sql(note: dict[str, Any]) -> str:
+    if isinstance(note.get("metadata"), dict) and "forgotten" in note["metadata"]:
+        raise JourneyPlanError("Use the memory forget action to redact a steering note.")
+    # Inactive notes are controlled by explicit memory actions, not by later
+    # journey or model upserts that happen to reuse the same steering key.
     return (
         "INSERT INTO wm_character_conversation_steering "
         "(CharacterGUID, SteeringKey, SteeringKind, Body, Priority, Source, IsActive, MetadataJSON) VALUES "
@@ -429,8 +435,12 @@ def _steering_upsert_sql(note: dict[str, Any]) -> str:
         f"{_sql_string(note['body'])}, {int(note['priority'])}, {_sql_string(note['source'])}, "
         f"{_sql_bool(note['is_active'])}, {_json_or_null(note['metadata'])}) "
         "ON DUPLICATE KEY UPDATE "
-        "SteeringKind = VALUES(SteeringKind), Body = VALUES(Body), Priority = VALUES(Priority), "
-        "Source = VALUES(Source), IsActive = VALUES(IsActive), MetadataJSON = VALUES(MetadataJSON)"
+        "SteeringKind = IF(IsActive = 1, VALUES(SteeringKind), SteeringKind), "
+        "Body = IF(IsActive = 1, VALUES(Body), Body), "
+        "Priority = IF(IsActive = 1, VALUES(Priority), Priority), "
+        "Source = IF(IsActive = 1, VALUES(Source), Source), "
+        "MetadataJSON = IF(IsActive = 1, VALUES(MetadataJSON), MetadataJSON), "
+        "IsActive = IF(IsActive = 1, VALUES(IsActive), IsActive)"
     )
 
 

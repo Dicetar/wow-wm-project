@@ -92,6 +92,10 @@ def extract_chat_intent(
     except Exception:
         return None
     parsed = result.get("parsed") if isinstance(result, dict) else None
+    request_payload = result.get("request") if isinstance(result, dict) else None
+    response_format = request_payload.get("response_format") if isinstance(request_payload, dict) else None
+    if not isinstance(response_format, dict) or response_format.get("type") != "json_schema":
+        return None
     if not isinstance(parsed, dict):
         return None
     if not bool(parsed.get("act")):

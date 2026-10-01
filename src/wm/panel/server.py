@@ -150,6 +150,13 @@ class PanelApp:
             return self._session_memory()
         if path == "/api/wm/session/status":
             return self._session_status()
+        if path == "/api/wm/session/effects":
+            try:
+                items = self._session_director_effects()
+                session = self.state.load_session() or {}
+                return 200, {"ok": True, "character_guid": int(session["character_guid"]), "effects": items}
+            except Exception as exc:
+                return 200, {"ok": False, "effects": [], "error": str(exc)}
         if path == "/api/wm/inbox":
             return self._session_inbox(
                 kind=_query_str(query, "kind"),
@@ -172,23 +179,40 @@ class PanelApp:
         return 404, {"ok": False, "error": "Not found."}
 
     def _require_session(self) -> tuple[int, Any] | None:
-        if self._slice is None:
+        if not (self.state.load_session() or {}).get("character_guid"):
             return 404, {"ok": False, "error": "WM session not bootstrapped"}
         return None
+
+    def _session_director_effects(self) -> list[dict[str, Any]]:
+        session = self.state.load_session() or {}
+        guid = session.get("character_guid")
+        if guid in (None, ""):
+            raise ValueError("no active session")
+        from wm.autoplay.director_work import DirectorWorkLedger
+        from wm.config import Settings
+
+        return DirectorWorkLedger(settings=Settings.from_env()).list_recent(player_guid=int(guid))
 
     def _session_status(self) -> tuple[int, Any]:
         if (err := self._require_session()) is not None:
             return err
-        rt = self._slice
         session = self.state.load_session()
+        rt = self._slice
+        try:
+            effects = self._session_director_effects()
+        except Exception:
+            effects = []
         return 200, {
             "ok": True,
-            "character_guid": rt.runner.module.character_guid,
+            "character_guid": int(session["character_guid"]),
             "session": session,
-            "current_beat": rt.runner.current_beat_id,
-            "pending_count": len(rt.gate.pending()),
-            "issues_count": len(rt.issues.list_open()),
-            "applied_log_size": len(rt.applied_log),
+            "current_beat": rt.runner.current_beat_id if rt else None,
+            "pending_count": (len(rt.gate.pending()) if rt else 0) + sum(
+                item["state"] in {"received", "authorized", "dispatching"} for item in effects),
+            "issues_count": (len(rt.issues.list_open()) if rt else 0) + sum(
+                item["state"] == "uncertain" for item in effects),
+            "applied_log_size": (len(rt.applied_log) if rt else 0) + sum(
+                item["state"] in {"applied", "verified"} for item in effects),
         }
 
     def _session_memory(self) -> tuple[int, Any]:
@@ -226,7 +250,7 @@ class PanelApp:
             return err
         rt = self._slice
         items = []
-        for pp in rt.gate.pending():
+        for pp in rt.gate.pending() if rt else []:
             p = pp.proposal
             items.append({
                 "id": pp.id,
@@ -236,6 +260,14 @@ class PanelApp:
                 "payload": p.payload,
                 "provenance": p.provenance,
             })
+        try:
+            items.extend({"id": row["request_id"], "kind": row["lane"],
+                          "character_guid": int((self.state.load_session() or {})["character_guid"]),
+                          "narrative_summary": row["origin_key"], "payload": row,
+                          "provenance": "director"} for row in self._session_director_effects()
+                         if row["state"] in {"received", "authorized", "dispatching"})
+        except Exception:
+            pass
         return 200, {"pending": items}
 
     def _session_inbox(self, *, kind: str | None = None, character_guid: int = 0) -> tuple[int, Any]:
@@ -243,7 +275,7 @@ class PanelApp:
             return err
         rt = self._slice
         items = []
-        for pp in rt.gate.pending():
+        for pp in rt.gate.pending() if rt else []:
             p = pp.proposal
             if kind is not None and p.kind.value != kind:
                 continue
@@ -264,7 +296,7 @@ class PanelApp:
             return err
         rt = self._slice
         items = []
-        for it in rt.issues.list_open():
+        for it in rt.issues.list_open() if rt else []:
             items.append({
                 "id": it.id,
                 "kind": it.kind,
@@ -273,13 +305,25 @@ class PanelApp:
                 "payload": it.payload,
                 "provenance": it.provenance,
             })
+        try:
+            items.extend({"id": row["request_id"], "kind": row["lane"],
+                          "character_guid": int((self.state.load_session() or {})["character_guid"]),
+                          "reason": "director_effect_uncertain", "payload": row,
+                          "provenance": "director"} for row in self._session_director_effects()
+                         if row["state"] == "uncertain")
+        except Exception:
+            pass
         return 200, {"issues": items}
 
     def _session_log(self, *, limit: int = 50) -> tuple[int, Any]:
         if (err := self._require_session()) is not None:
             return err
         rt = self._slice
-        log = list(rt.applied_log)[-limit:]
+        log = list(rt.applied_log)[-limit:] if rt else []
+        try:
+            log.extend(self._session_director_effects()[:limit])
+        except Exception:
+            pass
         return 200, {"log": log}
 
     def _wm_readiness(self) -> dict[str, Any]:
@@ -530,6 +574,8 @@ class PanelApp:
             "llm_event_age_seconds",
             "llm_cooldown_seconds",
             "llm_events_per_tick",
+            "durable_director_enabled",
+            "durable_director_player_guid",
         ):
             if key in body:
                 updates[key] = body[key]

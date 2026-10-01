@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from wm.panel.catalog import CommandCatalog
 from wm.panel.catalog import CommandEntry
@@ -11,6 +12,25 @@ from wm.panel.state import PanelState
 
 
 class PanelServerTests(unittest.TestCase):
+    def test_wm_session_routes_work_without_legacy_slice_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            state = PanelState(Path(temp))
+            app = PanelApp(state=state, command_catalog=_catalog())
+            state.save_session({"character_guid": 5408, "source": "explicit_guid"})
+            row = {"request_id": 7, "origin_key": "test:7", "lane": "action",
+                   "state": "uncertain", "effects": [], "proof": None}
+            with patch.object(app, "_session_director_effects", return_value=[row]):
+                code, status = app.get("/api/wm/session/status")
+                self.assertEqual(code, 200)
+                self.assertEqual(status["character_guid"], 5408)
+                self.assertEqual(status["issues_count"], 1)
+                code, issues = app.get("/api/wm/session/issues")
+                self.assertEqual(code, 200)
+                self.assertEqual(issues["issues"][0]["reason"], "director_effect_uncertain")
+                code, effects = app.get("/api/wm/session/effects")
+                self.assertEqual(code, 200)
+                self.assertEqual(effects["effects"][0]["request_id"], 7)
+
     def test_status_and_schema_validation_endpoints(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             app = PanelApp(state=PanelState(Path(temp)), command_catalog=_catalog())

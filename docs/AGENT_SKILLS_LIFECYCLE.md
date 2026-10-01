@@ -1,5 +1,5 @@
 Status: WORKING
-Last verified: 2026-05-13
+Last verified: 2026-09-30
 Verified by: Codex
 Doc type: reference
 
@@ -26,6 +26,7 @@ Use the narrowest matching repo skill:
 | Repo cleanup, tests, docs, workflow, general code | `$wm-workflow` | Read order, dirty-worktree discipline, focused tests |
 | BridgeLab, watcher, native bridge, live proof, player scope | `$wm-live-bridge-lab` | Repo-owned watcher wrappers, scoped live proof |
 | Quests, items, spells, shells, arcs, scenes, context packs, LLM proposals | `$wm-content-release` | Strict schemas, fresh IDs, dry-run, packet, rollback |
+| External coding-agent skills for WM | `$wm-skill-intake` | Inspect host and existing skills, adapt one relevant pack, verify discovery |
 
 When more than one applies, load only the skill bodies needed for the current slice.
 

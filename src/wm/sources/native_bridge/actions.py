@@ -14,7 +14,7 @@ from wm.sources.native_bridge.action_kinds import NATIVE_ACTION_KIND_BY_ID
 from wm.sources.native_bridge.payload_contract import validate_native_action_payload
 
 
-TERMINAL_ACTION_STATUSES = {"done", "failed", "rejected", "expired"}
+TERMINAL_ACTION_STATUSES = {"done", "failed", "rejected", "expired", "uncertain"}
 
 
 @dataclass(slots=True)
@@ -124,10 +124,14 @@ class NativeBridgeActionClient:
             existing = self.get_by_idempotency_key(idempotency_key=idempotency_key)
             if existing is None:
                 raise RuntimeError("Native bridge action request was not created and no duplicate row was found.")
-            return existing
-        result = self.get(request_id=request_id)
-        if result is None:
-            raise RuntimeError(f"Native bridge action request {request_id} was created but could not be loaded.")
+            result = existing
+        else:
+            result = self.get(request_id=request_id)
+            if result is None:
+                raise RuntimeError(f"Native bridge action request {request_id} was created but could not be loaded.")
+        if (result.player_guid != int(player_guid) or result.action_kind != action_kind
+                or result.payload != (payload or {})):
+            raise ValueError("Native bridge idempotency key belongs to a different player, action, or payload.")
         return result
 
     def get(self, *, request_id: int) -> NativeBridgeActionRequest | None:
@@ -172,22 +176,22 @@ class NativeBridgeActionClient:
     def recover_stale_claims(self) -> dict[str, int]:
         requeued = self._query_world(
             "UPDATE wm_bridge_action_request "
-            "SET Status = 'pending', ClaimedAt = NULL, ClaimExpiresAt = NULL, ErrorText = 'claim_expired_requeued', "
-            "UpdatedAt = CURRENT_TIMESTAMP "
-            "WHERE Status = 'claimed' AND ClaimExpiresAt IS NOT NULL AND ClaimExpiresAt <= NOW() AND AttemptCount < MaxAttempts; "
+            "SET Status = 'pending', ClaimedAt = NULL, ClaimExpiresAt = NULL, ClaimToken = NULL, "
+            "ErrorText = 'claim_expired_requeued', UpdatedAt = CURRENT_TIMESTAMP "
+            "WHERE Status = 'claimed' AND ClaimExpiresAt IS NOT NULL AND ClaimExpiresAt <= NOW() "
+            "AND AttemptCount < MaxAttempts AND ActionKind IN ('debug_ping', 'debug_echo', 'debug_fail'); "
             "SELECT ROW_COUNT() AS Requeued"
         )
-        failed = self._query_world(
+        uncertain = self._query_world(
             "UPDATE wm_bridge_action_request "
-            "SET Status = 'failed', ProcessedAt = NOW(), ResultJSON = "
-            "'{\"ok\":false,\"action_kind\":\"action_queue\",\"message\":\"claim_expired_max_attempts\"}', "
-            "ErrorText = 'claim_expired_max_attempts', UpdatedAt = CURRENT_TIMESTAMP "
-            "WHERE Status = 'claimed' AND ClaimExpiresAt IS NOT NULL AND ClaimExpiresAt <= NOW() AND AttemptCount >= MaxAttempts; "
-            "SELECT ROW_COUNT() AS Failed"
+            "SET Status = 'uncertain', ClaimExpiresAt = NULL, "
+            "ErrorText = 'claim_expired_outcome_unknown', UpdatedAt = CURRENT_TIMESTAMP "
+            "WHERE Status = 'claimed' AND ClaimExpiresAt IS NOT NULL AND ClaimExpiresAt <= NOW(); "
+            "SELECT ROW_COUNT() AS Uncertain"
         )
         return {
             "requeued": _int_from_first_row(requeued, "Requeued"),
-            "failed": _int_from_first_row(failed, "Failed"),
+            "uncertain": _int_from_first_row(uncertain, "Uncertain"),
         }
 
     def cleanup_terminal_requests(self, *, older_than_seconds: int | None = None, limit: int = 500) -> dict[str, int]:

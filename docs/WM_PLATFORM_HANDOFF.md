@@ -7,6 +7,10 @@ Doc type: handoff
 
 This is the current entrypoint for a new engineer or LLM.
 
+## 2026-09-24 planning update - personalized director rebuild
+
+Use [WM Rebuild Plan](plans/wm-redesign-2026-09-23/REBUILD_PLAN.md) for the current implementation order and design decisions. This is planning, not a new release: the September 23 baseline was 1,245 tests passed / one DLL-guard failure; BridgeLab DB/SOAP were unavailable. No runtime fix or gameplay proof was performed in the planning session. Start with the test-floor repair and builder-to-generation context regression, then durable request recovery. Preserve the broader personal-arc, power, and world-continuity requirements.
+
 ## 2026-05-25 update - v1 stabilization truth
 
 - **Universal WM Session is v1 `WORKING` for the release scope.** `origin/main` is at `32a361e` (`chore(v1): stabilize operator readiness and panel session surface`), with `d60404f` as the release scope-freeze base. The spell-shell and native action loops are live-proven, and the tracked suite is green at `976 passed`. `/api/wm/session/*`, `/api/wm/inbox`, and `/api/wm/rollback` are the canonical panel routes; `/api/slice/*` remains a compatibility alias only.

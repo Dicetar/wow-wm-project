@@ -9,6 +9,7 @@ from typing import Any
 
 from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient
+from wm.sources.native_bridge.actions import TERMINAL_ACTION_STATUSES
 from wm.spells.platform import SpellBehaviorDebugClient
 
 ECHO_MODE_BEHAVIOR_KIND = "bonebound_echo_mode_v1"
@@ -124,7 +125,7 @@ def submit_echo_mode(
 
     deadline = time.time() + (float(timeout_seconds) if timeout_seconds is not None else settings.native_bridge_action_wait_seconds)
     current = debug_client.get(request_id=request_id)
-    while current is not None and current.status not in {"done", "failed", "rejected", "expired"} and time.time() < deadline:
+    while current is not None and current.status not in TERMINAL_ACTION_STATUSES and time.time() < deadline:
         time.sleep(max(settings.native_bridge_action_poll_seconds, 0.05))
         current = debug_client.get(request_id=request_id)
 

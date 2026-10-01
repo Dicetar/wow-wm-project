@@ -38,15 +38,19 @@ def memory_action_sql(*, player_guid: int, steering_key: str, action: str) -> st
         "suppress": "IsActive = 0",
         "forget": "Body = '', IsActive = 0, MetadataJSON = JSON_OBJECT('forgotten', true)",
     }[action_name]
+    pin_guard = (
+        " AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(MetadataJSON, '$.forgotten')), 'false') <> 'true'"
+        if action_name == "pin" else ""
+    )
     return (
         "START TRANSACTION; "
         "INSERT INTO wm_character_memory_action "
         "(CharacterGUID, SteeringKey, ActionKind, PreviousActive, PreviousPriority) "
         f"SELECT CharacterGUID, SteeringKey, '{action_name}', IsActive, Priority "
         "FROM wm_character_conversation_steering "
-        f"WHERE CharacterGUID = {int(player_guid)} AND SteeringKey = '{key}'; "
+        f"WHERE CharacterGUID = {int(player_guid)} AND SteeringKey = '{key}'{pin_guard}; "
         "UPDATE wm_character_conversation_steering "
-        f"SET {update} WHERE CharacterGUID = {int(player_guid)} AND SteeringKey = '{key}'; "
+        f"SET {update} WHERE CharacterGUID = {int(player_guid)} AND SteeringKey = '{key}'{pin_guard}; "
         "SELECT ROW_COUNT() AS affected_rows; "
         "COMMIT"
     )
@@ -66,6 +70,8 @@ def apply_memory_action(
     current = next((row for row in rows if str(row.get("SteeringKey") or "") == key), None)
     if current is None:
         return {"ok": False, "status": "not_found", "player_guid": int(player_guid), "steering_key": key}
+    if str(action).lower() == "pin" and _is_forgotten(current):
+        return {"ok": False, "status": "forgotten", "player_guid": int(player_guid), "steering_key": key}
     sql = memory_action_sql(player_guid=int(player_guid), steering_key=key, action=action)
     if mode == "dry-run":
         return {
@@ -111,6 +117,16 @@ def _validated_key(value: str) -> str:
     if not _KEY_RE.fullmatch(key):
         raise ValueError("steering_key must contain only letters, digits, underscore, dot, colon, or hyphen")
     return key
+
+
+def _is_forgotten(row: dict[str, Any]) -> bool:
+    metadata = row.get("MetadataJSON")
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except json.JSONDecodeError:
+            return False
+    return isinstance(metadata, dict) and metadata.get("forgotten") is True
 
 
 def _first_int(rows: list[dict[str, Any]], key: str) -> int:

@@ -1,0 +1,19 @@
+{
+    "faction_map": {
+        "68": "Undercity (Forsaken)",
+        "11": "Defias Brotherhood",
+        "1": "Stormwind",
+        "4": "Alliance"
+    },
+    "race_map": {
+        "1": "Human",
+        "2": "Orc",
+        "4": "Naga",
+        "5": "Undead"
+    },
+    "class_map": {
+        "1": "Warrior",
+        "2": "Mage",
+        "3": "Priest"
+    }
+}

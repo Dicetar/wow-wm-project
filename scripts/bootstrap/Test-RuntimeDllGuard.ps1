@@ -7,6 +7,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Get-Sha256 {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [System.BitConverter]::ToString($sha256.ComputeHash($stream)).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function Get-Inventory {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -21,7 +35,7 @@ function Get-Inventory {
         $items += [pscustomobject]@{
             name = $name
             length = $item.Length
-            sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            sha256 = Get-Sha256 -Path $item.FullName
         }
     }
     return $items
