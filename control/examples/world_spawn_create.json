@@ -1,0 +1,15 @@
+{
+  "action_kind": "world_spawn_create",
+  "payload": {
+    "object_type": "creature",
+    "entry": 504,
+    "map_id": 0,
+    "x": -11080.0,
+    "y": 1510.0,
+    "z": 46.0,
+    "orientation": 1.57,
+    "respawn_seconds": 60,
+    "phase_mask": 1,
+    "reason": "Temporary bandit reinforcement event in Moonbrook; remove the added spawn after the event."
+  }
+}

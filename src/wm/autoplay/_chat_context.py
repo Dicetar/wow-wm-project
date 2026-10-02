@@ -105,6 +105,8 @@ def _voice_world_digest(context: dict[str, Any]) -> dict[str, Any]:
             "gameobject_count": perception.get("gameobject_count"),
         },
         "recent_wm_chat": recent_chat[:3],
+        "world_read": context.get("world_read"),
+        "author_notes": context.get("author_notes"),
     }
 
 

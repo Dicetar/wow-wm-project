@@ -10,6 +10,7 @@ RISK_ORDER = {"low": 1, "medium": 2, "high": 3}
 SCHEMA_LANE: dict[str, str] = {
     "wm.quest.release.repeatable_bounty.v1": "quest",
     "wm.quest.release.one_shot.v1": "quest",
+    "wm.quest.release.material_delivery.v1": "quest",
     "wm.item.release.managed_power.v1": "item",
     "wm.ability.release.shell_power.v1": "ability",
     "wm.scene.release.native_sequence.v1": "scene",

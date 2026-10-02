@@ -73,6 +73,15 @@ class PanelApp:
             return 200, self._status()
         if path == "/api/catalog":
             return 200, {"commands": self.command_catalog.list_api()}
+        if path == "/api/wm/author-notes":
+            try:
+                guid = query.get("player_guid", [None])[0]
+                guid = int(guid) if guid else None
+                return 200, {"notes": self.state.author_notes.list(
+                    player_guid=guid, include_inactive=query.get("include_inactive", ["0"])[0] == "1"),
+                    "context": self.state.author_notes.context(guid) if guid else None}
+            except (ValueError, OSError) as exc:
+                return 400, {"ok": False, "error": str(exc)}
         if path == "/api/schemas":
             return 200, {"schemas": self.schema_catalog.list_api()}
         if path.startswith("/api/schemas/"):
@@ -157,6 +166,17 @@ class PanelApp:
                 return 200, {"ok": True, "character_guid": int(session["character_guid"]), "effects": items}
             except Exception as exc:
                 return 200, {"ok": False, "effects": [], "error": str(exc)}
+        if path == "/api/wm/session/decisions":
+            try:
+                session = self.state.load_session() or {}
+                from wm.autoplay.director_intake import DirectorIntakeLedger
+                from wm.config import Settings
+
+                guid = int(session["character_guid"])
+                decisions = DirectorIntakeLedger(settings=Settings.from_env()).list_recent(player_guid=guid)
+                return 200, {"ok": True, "character_guid": guid, "decisions": decisions}
+            except Exception as exc:
+                return 200, {"ok": False, "decisions": [], "error": str(exc)}
         if path == "/api/wm/inbox":
             return self._session_inbox(
                 kind=_query_str(query, "kind"),
@@ -479,6 +499,22 @@ class PanelApp:
 
     def post(self, raw_path: str, body: dict[str, Any]) -> tuple[int, Any]:
         path = urlparse(raw_path).path
+        if path == "/api/wm/author-notes":
+            try:
+                allowed = {"operation", "note_id", "revision", "origin_key", "scope", "player_guid",
+                           "text", "firmness", "topic", "expires_at"}
+                if set(body) - allowed:
+                    raise ValueError("Unknown Author's Note fields")
+                if body.get("operation") in {"edit", "archive"} and type(body.get("revision")) is not int:
+                    raise ValueError("Editing or archiving requires the displayed revision")
+                fields = {key: value for key, value in body.items()
+                          if key not in {"operation", "note_id", "revision", "origin_key"}}
+                return 200, self.state.author_notes.mutate(
+                    operation=body.get("operation", "add"), source="panel",
+                    note_id=body.get("note_id"), revision=body.get("revision"),
+                    origin_key=body.get("origin_key"), **fields)
+            except (ValueError, OSError) as exc:
+                return 400, {"ok": False, "error": str(exc)}
         if path == "/api/schema/validate":
             schema_version = str(body.get("schema_version") or (body.get("payload") or {}).get("schema_version") or "")
             return 200, self.schema_catalog.validate(schema_version, body.get("payload"))
@@ -531,6 +567,10 @@ class PanelApp:
             return self._session_approve(body)
         if path == "/api/wm/session/reject":
             return self._session_reject(body)
+        if path == "/api/wm/session/effects/approve":
+            return self._director_effect_approve(body)
+        if path == "/api/wm/session/effects/reject":
+            return self._director_effect_reject(body)
         if path == "/api/wm/rollback":
             return self._session_rollback(body)
         if path == "/api/wm/session/poll":
@@ -565,6 +605,8 @@ class PanelApp:
 
         store = self._autoplay_store or AutoplayStateStore()
         updates: dict[str, Any] = {}
+        if "initiative_preset" in body and body["initiative_preset"] not in {"on_demand", "moderate", "active"}:
+            raise ValueError("initiative_preset must be on_demand, moderate or active")
         for key in (
             "llm_enabled",
             "llm_chat_enabled",
@@ -576,6 +618,8 @@ class PanelApp:
             "llm_events_per_tick",
             "durable_director_enabled",
             "durable_director_player_guid",
+            "initiative_preset",
+            "activity_proposals_enabled",
         ):
             if key in body:
                 updates[key] = body[key]
@@ -617,11 +661,12 @@ class PanelApp:
                 player_guid=player_guid,
                 store=self._observability_store(),
                 manual_evidence=_manual_evidence_from_body(body),
+                client_observation=body.get("client_observation"),
                 target_provenance=target_provenance,
                 living_lane=str(body.get("living_lane") or "") or None,
                 living_outcome=str(body.get("living_outcome") or "") or None,
             )
-        except ValueError as exc:
+        except (ValueError, KeyError) as exc:
             return 400, {
                 "ok": False,
                 "error": str(exc),
@@ -718,6 +763,117 @@ class PanelApp:
             "detail": getattr(result, "detail", None),
             "error": getattr(result, "error", None),
         }
+
+    def _director_effect_approve(self, body: dict[str, Any]) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
+            return err
+        try:
+            request_id = int(body.get("request_id") or 0)
+            expected_hash = str(body.get("artifact_hash") or "")
+            if request_id <= 0 or len(expected_hash) != 64:
+                return 400, {"ok": False, "error": "request_id and exact artifact_hash are required"}
+            from wm.autoplay._runtime_plan import _execute_runtime_work, _runtime_idempotency_keys
+            from wm.autoplay._runtime_plan import _runtime_results_ok, _runtime_rollback_available
+            from wm.autoplay._compact import _applied_lane_counts
+            from wm.autoplay.director_work import DirectorWorkLedger, FrozenWork
+            from wm.autoplay.policy import AutoplayPolicy
+            from wm.autoplay.state import AutoplayStateStore
+            from wm.config import Settings
+            from wm.control._cli import build_live_coordinator
+
+            guid = int((self.state.load_session() or {})["character_guid"])
+            settings = Settings.from_env()
+            ledger = DirectorWorkLedger(settings=settings)
+            work, review = ledger.load_review(request_id=request_id, player_guid=guid)
+            if work.state != "received" or work.artifact_hash != expected_hash:
+                raise ValueError("director approval state or artifact hash changed")
+            lane = work.artifact.effect_kinds[0]
+            lane = "quest" if lane == "quest_publish" else "action" if work.artifact.kind == "control" else lane
+            if lane not in {"quest", "action"}:
+                raise ValueError("operator director approval is limited to quest and action work")
+            runtime = work.artifact.thaw()
+            if lane == "quest":
+                from wm.autoplay.quest_feasibility import assess_quest_plan
+
+                assess_quest_plan(plan=runtime["plan"], settings=settings)
+            if FrozenWork.from_runtime(runtime).artifact_hash != expected_hash:
+                raise ValueError("director preview changed before operator approval")
+            coordinator = build_live_coordinator(settings)
+            preview = _execute_runtime_work(runtime=runtime, coordinator=coordinator, mode="dry-run")
+            dry_run_ok = _runtime_results_ok(preview, expected="dry-run")
+            status = (self._autoplay_store or AutoplayStateStore()).load_status()
+            runtime_config = status.get("config") or {}
+            saved_policy = status.get("policy") or {}
+            if (not status.get("running") or status.get("paused")
+                    or not runtime_config.get("durable_director_enabled")
+                    or int(runtime_config.get("durable_director_player_guid") or 0) != guid
+                    or not saved_policy):
+                raise ValueError("director scope or policy is no longer active")
+            seen = (self._autoplay_store or AutoplayStateStore()).load_idempotency_keys()
+            evidence = review["evidence"]
+            readiness = self._wm_readiness()
+            policy = AutoplayPolicy(
+                max_auto_risk="high",
+                enabled_lanes=set(saved_policy.get("enabled_lanes") or []),
+                lane_budgets=dict(saved_policy.get("lane_budgets") or {}),
+                max_source_event_age_seconds=int(saved_policy.get("max_source_event_age_seconds") or 3600),
+                require_rollback_for_lanes=set(saved_policy.get("require_rollback_for_lanes") or []),
+            ).decide(
+                schema_version=str(evidence.get("schema_version") or ""), lane=lane,
+                risk=str(evidence.get("risk") or "high"), readiness_ok=bool(readiness.get("can_apply")),
+                lm_ok=True, session_ok=True, source_event_at=evidence.get("source_event_at"),
+                dry_run_ok=dry_run_ok, rollback_available=_runtime_rollback_available(lane),
+                idempotency_seen=any(key in seen for key in _runtime_idempotency_keys(runtime)),
+                lane_applied_count=_applied_lane_counts(status).get(lane, 0),
+            )
+            if not policy.ok:
+                raise ValueError("operator approval blocked: " + ",".join(policy.blockers))
+            work = ledger.authorize(work, policy={**policy.to_dict(), "operator_confirmed_hash": expected_hash},
+                                    mode="operator", principal="wm.panel")
+            work = ledger.claim(work)
+            try:
+                applied = _execute_runtime_work(runtime=work.artifact.thaw(), coordinator=coordinator, mode="apply")
+                work = ledger.record_result(work, results=applied)
+            except BaseException:
+                ledger.mark_uncertain(work, reason="operator_executor_outcome_unknown")
+                raise
+            if work.state != "applied":
+                raise RuntimeError(f"director effect {work.state} requires reconciliation")
+            draft_id = evidence.get("draft_id")
+            if draft_id:
+                (self._autoplay_store or AutoplayStateStore()).update_draft(str(draft_id), {"state": "APPLIED"})
+            return 200, {"ok": True, "request_id": request_id, "artifact_hash": expected_hash,
+                         "state": work.state, "player_visible_verified": False}
+        except (TypeError, ValueError, RuntimeError) as exc:
+            return 409, {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            return 500, {"ok": False, "error": str(exc)}
+
+    def _director_effect_reject(self, body: dict[str, Any]) -> tuple[int, Any]:
+        if (err := self._require_session()) is not None:
+            return err
+        try:
+            request_id = int(body.get("request_id") or 0)
+            expected_hash = str(body.get("artifact_hash") or "")
+            from wm.autoplay.director_work import DirectorWorkLedger
+            from wm.autoplay.state import AutoplayStateStore
+            from wm.config import Settings
+
+            ledger = DirectorWorkLedger(settings=Settings.from_env())
+            work, review = ledger.load_review(
+                request_id=request_id, player_guid=int((self.state.load_session() or {})["character_guid"]),
+            )
+            if work.artifact_hash != expected_hash:
+                raise ValueError("director rejection artifact hash changed")
+            work = ledger.reject(work, reason=str(body.get("reason") or "operator_rejected"))
+            draft_id = review["evidence"].get("draft_id")
+            if draft_id:
+                (self._autoplay_store or AutoplayStateStore()).update_draft(str(draft_id), {"state": "REJECTED"})
+            return 200, {"ok": True, "request_id": request_id, "state": work.state}
+        except (TypeError, ValueError, RuntimeError) as exc:
+            return 409, {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            return 500, {"ok": False, "error": str(exc)}
 
     def _session_rollback(self, body: dict[str, Any]) -> tuple[int, Any]:
         if (err := self._require_session()) is not None:

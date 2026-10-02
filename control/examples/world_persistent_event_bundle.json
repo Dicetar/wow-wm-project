@@ -1,0 +1,26 @@
+{
+  "schema_version": "wm.world.bundle.v1",
+  "id": "short_bandit_reinforcement",
+  "steps": [
+    {
+      "kind": "native",
+      "action_kind": "world_spawn_create",
+      "payload": {
+        "object_type": "creature",
+        "entry": 504,
+        "respawn_seconds": 30,
+        "reason": "Bandit reinforcements arrive during this short encounter; remove after the event."
+      }
+    },
+    {"kind": "wait", "seconds": 60},
+    {
+      "kind": "native",
+      "action_kind": "world_spawn_delete",
+      "payload": {
+        "object_type": "creature",
+        "spawn_id": {"from_step": 0, "field": "spawn_id"},
+        "reason": "Reinforcement event has ended."
+      }
+    }
+  ]
+}

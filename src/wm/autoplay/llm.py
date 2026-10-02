@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -113,9 +115,20 @@ class AutoplayLlmAdapter:
             )
         locked = lock_deterministic_facts(draft, deterministic_facts or {}, schema_version=schema_version)
         issues = screen_forbidden_content(locked)
+        if schema_version == "wm.quest.release.material_delivery.v1":
+            item = (locked.get("objective") or {}).get("item_entry")
+            if not any(row["item_entry"] == item for row in (deterministic_facts or {}).get("delivery_candidates", [])):
+                issues.append({"path": "objective.item_entry", "message": "Material is not a current delivery candidate.", "severity": "error"})
+        candidates = (deterministic_facts or {}).get("quest_candidates")
+        if schema_version == "wm.quest.release.repeatable_bounty.v1" and isinstance(candidates, list):
+            target = (locked.get("objective") or {}).get("target_entry")
+            if not any(candidate["target_entry"] == target for candidate in candidates):
+                issues.append({"path": "objective.target_entry", "message": "Target is not a current verified quest candidate.", "severity": "error"})
         request_payload = result.get("request") if isinstance(result.get("request"), dict) else {}
         response_format = request_payload.get("response_format") or {}
-        if isinstance(response_format, dict) and response_format.get("type") in {"text", "json_object"}:
+        if (isinstance(response_format, dict) and response_format.get("type") in {"text", "json_object"}
+                or schema_version == "wm.quest.release.material_delivery.v1"
+                and (not isinstance(response_format, dict) or response_format.get("type") != "json_schema")):
             issues.append({
                 "path": "llm.response_format",
                 "message": "Unconstrained model output is draft-only; structured regeneration is required before live apply.",
@@ -351,8 +364,45 @@ def llm_generation_schema(schema_version: str, schema: dict[str, Any]) -> dict[s
 
 
 def lock_deterministic_facts(draft: dict[str, Any], facts: dict[str, Any], *, schema_version: str) -> dict[str, Any]:
-    locked = dict(draft)
+    locked = deepcopy(draft)
     locked["schema_version"] = schema_version
+    if schema_version == "wm.quest.release.material_delivery.v1":
+        objective = locked.get("objective") or {}
+        candidates = facts.get("delivery_candidates") or []
+        selected = next((row for row in candidates if row["item_entry"] == objective.get("item_entry")), None)
+        if selected is None:
+            return locked
+        level = int(facts["quest_player_level"])
+        directions = (
+            f"Bring {selected['item_count']} {selected['item_name']} to {selected['questgiver_name']} "
+            f"in {selected['zone_name'] or 'the current area'} (map {selected['map_id']}) near "
+            f"{selected['questgiver_x']:.0f}, {selected['questgiver_y']:.0f}. "
+            "Items already owned count; the requested materials are consumed at turn-in."
+        )
+        generated = {
+            "title": f"A Request for {selected['item_name']}",
+            "quest_description": f"{selected['questgiver_name']} is seeking a reliable supplier.",
+              "objective_text": f"Deliver {selected['item_count']} {selected['item_name']}.",
+            "request_items_text": directions, "offer_reward_text": "These will do nicely. Here is your payment.",
+            "quest_level": level, "min_level": max(1, level - 3),
+            "questgiver_entry": selected["questgiver_entry"], "questgiver_name": selected["questgiver_name"],
+            "start_npc_entry": selected["questgiver_entry"], "end_npc_entry": selected["questgiver_entry"],
+            "objective": {"kind": "deliver", "item_entry": selected["item_entry"],
+                          "item_name": selected["item_name"], "item_count": selected["item_count"]},
+        }
+        narrative = locked.get("quest") or {}
+        quest = {key: generated[key] for key in (
+            "title", "quest_description", "objective_text", "request_items_text", "offer_reward_text",
+            "quest_level", "min_level", "questgiver_entry", "questgiver_name", "start_npc_entry", "end_npc_entry",
+        )}
+        for key in ("title", "quest_description", "offer_reward_text"):
+            if isinstance(narrative.get(key), str) and narrative[key].strip():
+                quest[key] = narrative[key][:80] if key == "title" else narrative[key][:2000]
+        quest.update(grant_mode="npc_start", template_defaults={"QuestType": 2, "SpecialFlags": 0})
+        return {"schema_version": schema_version, "quest_kind": "material_delivery",
+                "player_guid": int(facts["player_guid"]), "slot_policy": "fresh_reserved_required", "repeatable": False,
+                "quest": quest, "objective": generated["objective"],
+                "reward": {"kind": "money", "money_copper": max(100, level * 25)}}
     if facts.get("player_guid") not in (None, "") and "player_guid" in locked:
         locked["player_guid"] = int(facts["player_guid"])
     if schema_version == "wm.quest.release.repeatable_bounty.v1":
@@ -370,7 +420,23 @@ def lock_deterministic_facts(draft: dict[str, Any], facts: dict[str, Any], *, sc
         quest["template_defaults"]["SpecialFlags"] = 1
         objective = locked.get("objective") if isinstance(locked.get("objective"), dict) else {}
         objective["kind"] = "kill"
-        if source_event.get("subject_entry") not in (None, ""):
+        candidates = facts.get("quest_candidates")
+        if isinstance(candidates, list):
+            selected = next((candidate for candidate in candidates
+                             if candidate["target_entry"] == objective.get("target_entry")), None)
+            if selected is not None:
+                level = int(facts["quest_player_level"])
+                quest.pop("quest_id", None)
+                quest["quest_level"] = level
+                quest["min_level"] = max(1, level - 3)
+                quest["questgiver_entry"] = int(selected["questgiver_entry"])
+                quest["questgiver_name"] = str(selected["questgiver_name"])
+                quest["start_npc_entry"] = int(selected["questgiver_entry"])
+                quest["end_npc_entry"] = int(selected["questgiver_entry"])
+                objective["target_name"] = str(selected["target_name"])
+                objective["kill_count"] = min(3, int(selected["spawn_count"]))
+                locked["reward"] = {"kind": "money", "money_copper": max(100, level * 25)}
+        elif source_event.get("event_type") == "kill" and source_event.get("subject_entry") not in (None, ""):
             objective["target_entry"] = int(source_event["subject_entry"])
         metadata = source_event.get("metadata") if isinstance(source_event.get("metadata"), dict) else {}
         source_payload = metadata.get("payload") if isinstance(metadata.get("payload"), dict) else {}
@@ -380,6 +446,8 @@ def lock_deterministic_facts(draft: dict[str, Any], facts: dict[str, Any], *, sc
         reward = locked.get("reward") if isinstance(locked.get("reward"), dict) else {}
         if reward.get("kind") not in {"none", "money"}:
             reward = {"kind": "none"}
+        if isinstance(candidates, list) and selected is not None:
+            reward = locked["reward"]
         locked["quest"] = quest
         locked["objective"] = objective
         locked["reward"] = reward

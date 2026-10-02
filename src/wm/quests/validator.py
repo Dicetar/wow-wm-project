@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from wm.quests.models import BountyQuestDraft, ValidationIssue, ValidationResult
+from wm.quests.models import BountyQuestDraft, DeliveryQuestObjective, ValidationIssue, ValidationResult
 
 
 def validate_bounty_quest_draft(draft: BountyQuestDraft) -> ValidationResult:
@@ -51,12 +51,20 @@ def validate_bounty_quest_draft(draft: BountyQuestDraft) -> ValidationResult:
     if draft.end_npc_entry is None:
         issues.append(ValidationIssue(path="end_npc_entry", message="Bounty quests require a turn-in NPC entry."))
 
-    if draft.objective.target_entry <= 0:
-        issues.append(ValidationIssue(path="objective.target_entry", message="Target entry must be positive."))
-    if not draft.objective.target_name.strip():
-        issues.append(ValidationIssue(path="objective.target_name", message="Target name must not be empty."))
-    if draft.objective.kill_count < 1 or draft.objective.kill_count > 25:
-        issues.append(ValidationIssue(path="objective.kill_count", message="Kill count must be between 1 and 25."))
+    if isinstance(draft.objective, DeliveryQuestObjective):
+        if draft.objective.item_entry <= 0:
+            issues.append(ValidationIssue(path="objective.item_entry", message="Delivery item entry must be positive."))
+        if not draft.objective.item_name.strip():
+            issues.append(ValidationIssue(path="objective.item_name", message="Delivery item name must not be empty."))
+        if draft.objective.item_count < 1 or draft.objective.item_count > 255:
+            issues.append(ValidationIssue(path="objective.item_count", message="Delivery count must be between 1 and 255."))
+    else:
+        if draft.objective.target_entry <= 0:
+            issues.append(ValidationIssue(path="objective.target_entry", message="Target entry must be positive."))
+        if not draft.objective.target_name.strip():
+            issues.append(ValidationIssue(path="objective.target_name", message="Target name must not be empty."))
+        if draft.objective.kill_count < 1 or draft.objective.kill_count > 25:
+            issues.append(ValidationIssue(path="objective.kill_count", message="Kill count must be between 1 and 25."))
 
     if draft.reward.money_copper < 0:
         issues.append(ValidationIssue(path="reward.money_copper", message="Reward money cannot be negative."))

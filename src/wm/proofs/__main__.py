@@ -20,6 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--project-root", type=Path, default=Path.cwd())
     run.add_argument("--player-guid", type=int)
     run.add_argument("--mode", choices=["dry-run", "record"], default="dry-run")
+    run.add_argument("--client-observation", type=Path, help="JSON operator observation of the in-game result.")
     run.add_argument("--living-lane", choices=["rumor", "patron", "oath", "nemesis", "legend", "scene_director"])
     run.add_argument("--living-outcome", choices=["success", "failure", "cleanup", "suppression", "revocation"])
     run.add_argument("--json", action="store_true")
@@ -48,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.mode,
             living_lane=args.living_lane,
             living_outcome=args.living_outcome,
+            client_observation=(json.loads(args.client_observation.read_text(encoding="utf-8")) if args.client_observation else None),
         )
         if args.json:
             print(json.dumps(record, indent=2, ensure_ascii=False, sort_keys=True))
@@ -70,6 +72,7 @@ def _print_record(record: dict[str, Any]) -> None:
         f"proof_id={record.get('proof_id')} kind={record.get('proof_kind')} "
         f"status={record.get('status')} mode={record.get('mode')}"
     )
+    print(f"  server={record.get('server_status')} player_observation={record.get('client_status')}")
     for check in record.get("checks") or []:
         print(f"  {check.get('status')} {check.get('name')}: {check.get('detail')}")
     for blocker in record.get("blockers") or []:

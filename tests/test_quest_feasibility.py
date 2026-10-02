@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from wm.autoplay.quest_feasibility import assess_quest_plan
+from wm.autoplay.quest_feasibility import assess_quest_plan, discover_quest_candidates
 from wm.config import Settings
 
 
@@ -13,11 +13,21 @@ class FakeDatabase:
 
     def query(self, *, sql, **kwargs):
         if "FROM characters" in sql:
-            return [{"map": 0, "race": 1, "level": 20}]
+            return [{"race": 1}]
+        if "FROM wm_bridge_player_presence" in sql:
+            return [{"Online": 1, "MapID": 0, "ZoneName": "Westfall", "PosX": -10500,
+                     "PosY": 870, "Level": 20, "AgeSeconds": 2}]
+        if "SELECT COUNT(*) AS n FROM creature c" in sql:
+            return [{"n": 1}]
+        if "ct.entry AS entry" in sql:
+            return [{"entry": 234, "name": "Gryan", "x": -10500, "y": 870}]
+        if "JOIN creature_template ct ON ct.entry=c.id1" in sql:
+            return [{"target_entry": 449, "target_name": "Defias Knuckleduster", "target_level": 20,
+                     "spawn_count": self.spawn_count, "x": -10500, "y": 870}]
         if "FROM creature_template" in sql:
             return [{"name": "Defias Test", "minlevel": 20, "maxlevel": 20,
                      "EnemyGroup": self.enemy_group}]
-        if "MIN(position_x)" in sql:
+        if "AVG(position_x)" in sql:
             return [{"n": self.spawn_count, "x": -10500, "y": 870}]
         if "FROM creature" in sql:
             return [{"n": 1}]
@@ -50,3 +60,10 @@ def test_quest_feasibility_writes_concrete_directions():
     assert evidence["spawn_count"] == 6
     assert "Kill 3 Defias Test" in plan.actions[0].payload["objective_text"]
     assert "map 0 near -10500, 870" in plan.actions[0].payload["objective_text"]
+
+
+def test_discovery_returns_hostile_cluster_and_nearby_questgiver():
+    result = discover_quest_candidates(player_guid=5405, settings=Settings(), client=FakeDatabase())
+    assert result["player"]["level"] == 20
+    assert result["candidates"][0]["target_entry"] == 449
+    assert result["candidates"][0]["questgiver_entry"] == 234

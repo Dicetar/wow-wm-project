@@ -80,6 +80,59 @@ class WorkRequest:
 
 
 class DirectorWorkLedger(DirectorLedger):
+    def load_review(self, *, request_id: int, player_guid: int) -> tuple[WorkRequest, dict[str, Any]]:
+        if request_id <= 0 or player_guid <= 0:
+            raise ValueError("director review requires a request and player scope")
+        conn = self._open()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT req.OriginKey, artifact.PreviewJSON, artifact.EvidenceJSON "
+                    "FROM wm_director_request req JOIN wm_director_artifact artifact "
+                    "ON artifact.RequestID=req.RequestID "
+                    "WHERE req.RequestID=%s AND req.PlayerGUID=%s",
+                    (request_id, player_guid),
+                )
+                row = cursor.fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise ValueError("director work not found for selected player")
+        work = self.load(row["OriginKey"])
+        if work is None or work.request_id != request_id or work.player_guid != player_guid:
+            raise ValueError("director work scope changed")
+        return work, {"preview": json.loads(row["PreviewJSON"]),
+                      "evidence": json.loads(row["EvidenceJSON"])}
+
+    def reject(self, work: WorkRequest, *, reason: str) -> WorkRequest:
+        if work.state != "received":
+            raise ValueError("only unapproved work can be rejected")
+        conn = self._open()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE wm_director_request SET State='rejected', Revision=Revision+1 "
+                    "WHERE RequestID=%s AND PlayerGUID=%s AND ProposalHash=%s "
+                    "AND State='received' AND Revision=%s",
+                    (work.request_id, work.player_guid, work.artifact_hash, work.revision),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError("director rejection lost revision race")
+                cursor.execute(
+                    "INSERT INTO wm_director_transition "
+                    "(RequestID, Revision, FromState, ToState, Reason) "
+                    "VALUES (%s,%s,'received','rejected',%s)",
+                    (work.request_id, work.revision + 1, str(reason or "operator_rejected")[:191]),
+                )
+            conn.commit()
+            return WorkRequest(work.request_id, work.origin_key, work.player_guid, "rejected",
+                               work.revision + 1, work.artifact_hash, work.artifact)
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def list_recent(self, *, player_guid: int, limit: int = 30) -> list[dict[str, Any]]:
         if player_guid <= 0:
             raise ValueError("player scope is required")
@@ -88,7 +141,8 @@ class DirectorWorkLedger(DirectorLedger):
             with conn.cursor() as cursor:
                 cursor.execute(
                     "SELECT req.RequestID, req.OriginKey, req.Verb, req.State, req.Revision, "
-                    "req.CreatedAt, artifact.ArtifactHash, artifact.PreviewJSON, artifact.EvidenceJSON, "
+                    "req.CreatedAt, artifact.ArtifactHash, artifact.ArtifactJSON, "
+                    "artifact.PreviewJSON, artifact.EvidenceJSON, "
                     "auth.Mode, auth.Principal, auth.ExpiresAt, proof.ProofJSON "
                     "FROM wm_director_request req "
                     "JOIN wm_director_artifact artifact ON artifact.RequestID=req.RequestID "
@@ -117,6 +171,7 @@ class DirectorWorkLedger(DirectorLedger):
                 "request_id": int(row["RequestID"]), "origin_key": row["OriginKey"],
                 "lane": row["Verb"], "state": row["State"], "revision": int(row["Revision"]),
                 "created_at": row["CreatedAt"].isoformat(), "artifact_hash": row["ArtifactHash"],
+                "artifact": json.loads(row["ArtifactJSON"]),
                 "preview": json.loads(row["PreviewJSON"]),
                 "evidence": json.loads(row["EvidenceJSON"]),
                 "authorization": ({"mode": row["Mode"], "principal": row["Principal"],

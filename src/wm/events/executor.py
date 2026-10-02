@@ -17,7 +17,7 @@ from wm.items.publish import ItemPublisher
 from wm.quests.models import BountyQuestDraft
 from wm.quests.models import BountyQuestObjective
 from wm.quests.models import BountyQuestReward
-from wm.quests.publish import QuestPublisher
+from wm.quests.publish import QuestPublisher, bounty_draft_from_dict
 from wm.reactive.cooldowns import auto_bounty_grant_cooldown_key
 from wm.reactive.runtime import ReactiveQuestRuntimeManager
 from wm.reactive.store import ReactiveQuestStore
@@ -27,7 +27,7 @@ from wm.refs import npc_ref_from_value
 from wm.refs import player_ref_from_value
 from wm.refs import quest_ref_from_value
 from wm.reserved.db_allocator import ReservedSlotDbAllocator
-from wm.runtime_sync import SoapRuntimeClient
+from wm.runtime_sync import SoapRuntimeClient, build_default_quest_reload_commands
 from wm.spells.models import ManagedSpellDraft
 from wm.spells.models import ManagedSpellLink
 from wm.spells.models import ManagedSpellProcRule
@@ -304,8 +304,23 @@ class ReactionExecutor:
             draft = _build_quest_draft(clean_payload)
             publish_result = self.quest_publisher.publish(draft=draft, mode=mode)
             if mode == "apply" and publish_result.applied:
+                sync = []
+                if payload.get("_wm_runtime_sync"):
+                    soap = SoapRuntimeClient(settings=self.settings)
+                    for command in build_default_quest_reload_commands(questgiver_entry=draft.questgiver_entry):
+                        result = soap.execute_command(command)
+                        sync.append({"command": command, "ok": result.ok, "result": result.result,
+                                     "error": result.fault_string})
+                        if not result.ok:
+                            return ExecutionStepResult(kind="quest_publish", status="failed", details={
+                                "publish": publish_result.to_dict(), "runtime_sync": sync,
+                                "note": "Quest rows are published, but runtime synchronization failed; reconcile instead of republishing.",
+                            })
                 self._emit_action_event(plan=plan, event_type="quest_published", event_value=str(draft.quest_id))
-                return ExecutionStepResult(kind="quest_publish", status="applied", details=publish_result.to_dict())
+                details = publish_result.to_dict()
+                if payload.get("_wm_runtime_sync"):
+                    details["runtime_sync"] = sync
+                return ExecutionStepResult(kind="quest_publish", status="applied", details=details)
             if mode == "dry-run":
                 return ExecutionStepResult(
                     kind="quest_publish",
@@ -539,6 +554,8 @@ class ReactionExecutor:
 
 
 def _build_quest_draft(payload: dict[str, Any]) -> BountyQuestDraft:
+    if (payload.get("objective") or {}).get("kind") == "deliver":
+        return bounty_draft_from_dict(payload)
     objective_payload = payload.get("objective") or {}
     reward_payload = payload.get("reward") or {}
     quest_ref = quest_ref_from_value(payload.get("quest"))

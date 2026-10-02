@@ -18,9 +18,10 @@ def _quest_publish_payload_from_release(payload: dict[str, Any], *, record: dict
         quest_id = int(slot.reserved_id)
     questgiver_entry = int(quest.get("questgiver_entry") or quest.get("start_npc_entry") or quest.get("end_npc_entry") or 240)
     questgiver_name = str(quest.get("questgiver_name") or "World Master")
+    delivery = objective.get("kind") == "deliver"
     target_entry = int(objective.get("target_entry") or 1)
-    target_name = str(objective.get("target_name") or f"Target {target_entry}")
-    title = str(quest.get("title") or f"WM Bounty: {target_name}")[:80]
+    target_name = str(objective.get("item_name") if delivery else objective.get("target_name") or f"Target {target_entry}")
+    title = str(quest.get("title") or f"WM {'Delivery' if delivery else 'Bounty'}: {target_name}")[:80]
     return {
         "quest_id": quest_id,
         "quest_level": int(quest.get("quest_level") or 70),
@@ -35,14 +36,18 @@ def _quest_publish_payload_from_release(payload: dict[str, Any], *, record: dict
         "objective_text": str(quest.get("objective_text") or f"Slay {int(objective.get('kill_count') or 3)} {target_name}."),
         "offer_reward_text": str(quest.get("offer_reward_text") or "The world acknowledges your answer."),
         "request_items_text": str(quest.get("request_items_text") or "Return when the work is done."),
-        "objective": {
+        "objective": ({
+            "kind": "deliver", "item_entry": int(objective["item_entry"]),
+            "item_name": str(objective["item_name"]), "item_count": int(objective["item_count"]),
+        } if delivery else {
             "target_entry": target_entry,
             "target_name": target_name,
             "kill_count": int(objective.get("kill_count") or 3),
-        },
+        }),
         "reward": _quest_reward_payload(reward),
         "tags": ["wm_autoplay", "llm_draft"],
-        "template_defaults": dict(quest.get("template_defaults") or {"SpecialFlags": 1}),
+        "template_defaults": dict(quest.get("template_defaults") or ({"QuestType": 2, "SpecialFlags": 0} if delivery else {"SpecialFlags": 1})),
+        **({"_wm_runtime_sync": True} if delivery else {}),
         "_wm_reserved_slot": {
             "entity_type": "quest",
             "reserved_id": quest_id,
@@ -132,7 +137,7 @@ def _spell_publish_payload_from_release(payload: dict[str, Any], *, record: dict
 def _entry_from_payload(payload: dict[str, Any], lane: str) -> int | None:
     if lane == "quest":
         objective = payload.get("objective") if isinstance(payload.get("objective"), dict) else {}
-        return _int_or_none(objective.get("target_entry"))
+        return _int_or_none(objective.get("item_entry") if objective.get("kind") == "deliver" else objective.get("target_entry"))
     if lane == "item":
         return _int_or_none(payload.get("item_entry"))
     if lane == "spell":

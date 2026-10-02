@@ -27,6 +27,7 @@
       <button class="tab" data-tab="simplePublish" data-mode-scope="simple">Publish</button>
       <button class="tab" data-tab="simpleLlm" data-mode-scope="simple">LLM</button>
       <button class="tab" data-tab="simpleInbox" data-mode-scope="simple">Inbox</button>
+      <button class="tab" data-tab="authorNotes" data-mode-scope="both">Author's Notes</button>
       <button class="tab" data-tab="overview" data-mode-scope="advanced">Overview</button>
       <button class="tab" data-tab="slice" data-mode-scope="advanced">WM Session</button>
       <button class="tab" data-tab="watcher" data-mode-scope="advanced">Watcher</button>
@@ -38,6 +39,25 @@
     </nav>
 
     <main>
+      <section id="authorNotes" class="tab-panel" data-mode-scope="both">
+        <h2>Author's Notes</h2>
+        <div class="form-grid">
+          <label>Scope <select id="noteScope"><option value="character">Character</option><option value="world">World</option></select></label>
+          <label>Character GUID <input id="noteGuid" type="number" min="1" placeholder="active session"></label>
+          <label>Firmness <select id="noteFirmness"><option value="preference">Preference</option><option value="firm">Firm Constraint</option></select></label>
+          <label>Topic <input id="noteTopic" maxlength="80"></label>
+          <label>Expires <input id="noteExpiry" type="datetime-local"></label>
+        </div>
+        <label>Direction <textarea id="noteText" rows="4" maxlength="500"></textarea></label>
+        <div class="button-row">
+          <button id="noteSave" class="primary">Add Note</button>
+          <button id="noteNew">New Note</button>
+          <button id="noteRefresh">Refresh</button>
+          <label class="checkbox-label"><input id="noteInactive" type="checkbox"> Include Archived / Expired</label>
+        </div>
+        <div id="noteOutput" role="status"></div>
+        <div id="noteList" class="list"></div>
+      </section>
       <section id="simpleDashboard" class="tab-panel active" data-mode-scope="simple">
         <div class="grid two">
           <section class="panel">
@@ -205,6 +225,7 @@
 
         <section class="panel">
           <h2>Decision and Effects</h2>
+          <div id="directorDecisions" class="list"></div>
           <div id="directorEffects" class="list"></div>
         </section>
 
@@ -212,6 +233,8 @@
           <h2>Autoplay</h2>
           <div class="form-grid">
             <label class="checkbox-label"><input id="autoplayLlmEnabled" type="checkbox"> LLM enabled</label>
+            <label>Initiative <select id="autoplayInitiative"><option value="on_demand">On Demand</option><option value="moderate" selected>Moderate</option><option value="active">Active</option></select></label>
+            <label class="checkbox-label"><input id="autoplayActivities" type="checkbox" checked> Gathering opportunities</label>
             <label>Lanes <input id="autoplayLanes" value="scene,action"></label>
             <label>Model <input id="autoplayModel" placeholder="LM Studio model id"></label>
             <label>Event Age Seconds <input id="autoplayEventAgeSeconds" type="number" value="300"></label>

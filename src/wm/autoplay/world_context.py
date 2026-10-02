@@ -166,6 +166,13 @@ def build_chat_world_context(
         label="latest_native_snapshot",
     ))
 
+    activity_context: dict[str, Any] = {}
+    try:
+        from wm.autoplay.activities import read_activity_context
+        activity_context = read_activity_context(player_guid=speaker_guid, settings=settings, client=client)
+    except Exception as exc:
+        notes.append(f"activities:unavailable:{type(exc).__name__}")
+
     return {
         "schema_version": "wm.autoplay.chat_world_context.v1",
         "speaker": {
@@ -181,6 +188,7 @@ def build_chat_world_context(
         "source_event": _compact_event(event_payload) if event_payload else None,
         "live_location": _live_location_from_presence(presence_row),
         "perception": _perception_from_row(perception_row),
+        "activities": activity_context,
         "database": {
             # position_x/y/z are dropped: they reflect the last character save, not
             # the live position. Live coordinates are exposed via `live_location`.

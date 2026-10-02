@@ -30,7 +30,7 @@ namespace WmBridge
         bool presenceEnabled = true;
         uint32 presenceIntervalMs = 3000;
         bool perceptionEnabled = true;
-        uint32 perceptionIntervalMs = 150000;
+        uint32 perceptionIntervalMs = 20000;
         uint32 perceptionRadius = 40;
         bool aoeLootEnabled = false;
         float aoeLootRadius = 35.0f;

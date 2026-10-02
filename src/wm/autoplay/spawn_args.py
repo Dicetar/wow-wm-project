@@ -32,6 +32,12 @@ _PASSTHROUGH_KEYS = (
     "follow_angle",
     "duration_ms",
     "arc_key",
+    "map_id",
+    "x",
+    "y",
+    "z",
+    "orientation",
+    "use_template_faction",
 )
 
 

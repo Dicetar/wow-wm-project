@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from wm.quests.models import DeliveryQuestObjective
+
 
 @dataclass(slots=True)
 class QuestSqlPlan:
@@ -37,6 +39,8 @@ DEFAULT_QUEST_TEMPLATE_COLUMNS = {
     "RewardFactionOverride1",
     "RequiredNpcOrGo1",
     "RequiredNpcOrGoCount1",
+    "RequiredItemId1",
+    "RequiredItemCount1",
 }
 
 _XP_REWARD_COLUMNS = ("RewardXPDifficulty", "RewardXPId", "RewardXP")
@@ -144,7 +148,7 @@ def compile_bounty_quest_sql_plan(
     add_default_column("Method", "2")
     add_default_column("QuestMethod", "2")
     add_default_column("Type", "0")
-    add_default_column("QuestType", "0")
+    add_default_column("QuestType", "2" if isinstance(draft.objective, DeliveryQuestObjective) else "0")
     add_column("QuestLevel", str(draft.quest_level))
     add_column("MinLevel", str(draft.min_level))
     add_default_column("ZoneOrSort")
@@ -211,8 +215,14 @@ def compile_bounty_quest_sql_plan(
         if faction_column is not None and value_column is not None:
             add_column(faction_column, str(int(reward.faction_id)))
             add_column(value_column, str(int(reward.value)))
-    add_column("RequiredNpcOrGo1", str(draft.objective.target_entry))
-    add_column("RequiredNpcOrGoCount1", str(draft.objective.kill_count))
+    if isinstance(draft.objective, DeliveryQuestObjective):
+        add_column("RequiredNpcOrGo1", "0")
+        add_column("RequiredNpcOrGoCount1", "0")
+        add_column("RequiredItemId1", str(draft.objective.item_entry))
+        add_column("RequiredItemCount1", str(draft.objective.item_count))
+    else:
+        add_column("RequiredNpcOrGo1", str(draft.objective.target_entry))
+        add_column("RequiredNpcOrGoCount1", str(draft.objective.kill_count))
 
     for column_name in sorted(
         set(template_defaults) & quest_template_addon_columns - set(quest_template_columns) - {"ID", "SpecialFlags"}

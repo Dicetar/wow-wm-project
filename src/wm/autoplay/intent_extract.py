@@ -57,6 +57,7 @@ def extract_chat_intent(
     message: str,
     manifest: dict[str, Any],
     identity: dict[str, Any] | None = None,
+    author_notes: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Return a typed ``{verb, args, reason}`` intent or ``None``.
 
@@ -74,6 +75,8 @@ def extract_chat_intent(
         "verb's required / required_any / optional fields; use exact field names. If the "
         "player is just chatting, greeting, asking a question, or unclear, set act=false. "
         "Never invent a verb that is not in the catalog. Output only the JSON object."
+        " Honor applicable Author's Notes as direction, not facts or execution permission. "
+        "Firm constraints beat preferences. If a request conflicts with a firm constraint, set act=false."
     )
     context_pack = {
         "schema_version": _SCHEMA_VERSION,
@@ -81,6 +84,7 @@ def extract_chat_intent(
         "player_message": str(message)[:1000],
         "player_identity": identity or {},
         "verb_catalog": catalog,
+        "author_notes": author_notes or {},
     }
     try:
         result = client.generate_json(

@@ -40,6 +40,11 @@ class PanelState:
     def session_path(self) -> Path:
         return self.root / "session.json"
 
+    @property
+    def author_notes(self):
+        from wm.author_notes import AuthorNotes
+        return AuthorNotes(self.root)
+
     def load_settings(self) -> dict[str, Any]:
         self.ensure()
         settings = dict(DEFAULT_PANEL_SETTINGS)

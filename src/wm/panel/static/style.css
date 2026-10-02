@@ -320,6 +320,17 @@ legend {
   text-align: left;
 }
 
+.director-preview {
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.director-hash {
+  overflow-wrap: anywhere;
+}
+
 .card {
   border: 1px solid var(--line);
   border-radius: 8px;

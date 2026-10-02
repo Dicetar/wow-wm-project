@@ -117,4 +117,5 @@ def _compact_chat_world_context(context: dict[str, Any]) -> dict[str, Any]:
         "has_native_context_snapshot": bool(native.get("latest_context_snapshot")),
         "session_context_status": session_context.get("status"),
         "notes": context.get("notes") or [],
+        "world_read": context.get("world_read"),
     }

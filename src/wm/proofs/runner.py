@@ -196,6 +196,7 @@ def run_proof_packet(
     target_provenance: dict[str, Any] | None = None,
     living_lane: str | None = None,
     living_outcome: str | None = None,
+    client_observation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     packet = _packet_by_kind(proof_kind)
     root = Path(project_root).resolve()
@@ -238,7 +239,19 @@ def run_proof_packet(
         for ref in check.get("evidence_refs", [])
         if isinstance(ref, dict)
     ]
-    status = _record_status(packet=packet, checks=checks, evidence_checks=evidence_checks, mode=mode)
+    server_status = _record_status(packet=packet, checks=checks, evidence_checks=evidence_checks, mode=mode)
+    client_required = packet.requires_player and (
+        packet.proof_kind != "living_lane" or living_outcome in {"success", "cleanup"}
+    )
+    observation = _client_observation(
+        client_observation, player_guid=player_guid, proof_kind=proof_kind,
+        evidence_since=evidence_since,
+    )
+    client_status = "observed" if observation else "pending" if client_required else "not_required"
+    status = "manual_required" if server_status == "passed" and client_status == "pending" else server_status
+    next_actions = _next_actions(checks)
+    if client_status == "pending":
+        next_actions.append("Observe the result in-game for the selected character and record a structured client_observation with an evidence reference.")
     record = {
         "schema_version": "wm.proof.record.v1",
         "proof_id": f"proof-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
@@ -247,6 +260,10 @@ def run_proof_packet(
         "summary": packet.summary,
         "mode": str(mode or "dry-run"),
         "status": status,
+        "server_status": server_status,
+        "client_status": client_status,
+        "client_observation": observation,
+        "player_visible_verified": server_status == "passed" and observation is not None,
         "player_guid": player_guid,
         "target_provenance": target,
         "living": living,
@@ -257,7 +274,7 @@ def run_proof_packet(
         "required_services": list(packet.required_services),
         "checks": checks,
         "blockers": blockers,
-        "next_actions": _next_actions(checks),
+        "next_actions": next_actions,
         "runtime_summary": runtime.get("summary", {}),
         "runtime_incidents": runtime.get("incidents", []),
         "evidence_window": {
@@ -281,6 +298,36 @@ def run_proof_packet(
         "evidence": list(manual_evidence or []),
     }
     return obs.save_proof(record)
+
+
+def _client_observation(
+    value: dict[str, Any] | None, *, player_guid: int | None,
+    proof_kind: str, evidence_since: str | None,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("client_observation must be an object")
+    if value.get("source") != "operator_in_game":
+        raise ValueError("client observation requires source=operator_in_game")
+    if not player_guid or type(value.get("player_guid")) is not int or value["player_guid"] != player_guid:
+        raise ValueError("client observation must match the selected player_guid")
+    if value.get("proof_kind") != proof_kind or value.get("outcome") != "observed":
+        raise ValueError("client observation must name this proof_kind and outcome=observed")
+    observed = _parse_iso_datetime(value.get("observed_at"))
+    since = _parse_iso_datetime(evidence_since)
+    if observed is None or since is None or observed < since or observed > datetime.now(timezone.utc):
+        raise ValueError("client observation must belong to the current runtime evidence window")
+    summary = value.get("summary")
+    reference = value.get("evidence_ref")
+    if not isinstance(summary, str) or not summary.strip() or not isinstance(reference, str) or not reference.strip():
+        raise ValueError("client observation requires summary and evidence_ref")
+    return {
+        "source": "operator_in_game", "player_guid": player_guid,
+        "proof_kind": proof_kind, "outcome": "observed",
+        "observed_at": _format_utc(observed), "summary": summary.strip(),
+        "evidence_ref": reference.strip(),
+    }
 
 
 def _packet_by_kind(proof_kind: str) -> ProofPacket:
@@ -317,7 +364,7 @@ def _runtime_checks(*, packet: ProofPacket, runtime: dict[str, Any]) -> list[dic
 
 
 def _evidence_since(*, packet: ProofPacket, runtime: dict[str, Any]) -> str | None:
-    if packet.proof_kind not in {"chat_action", "ambient", "memory", "scene", "living_lane"}:
+    if packet.proof_kind not in {"chat_action", "ambient", "memory", "scene", "living_lane", "content"}:
         return None
     services = runtime.get("services") if isinstance(runtime.get("services"), dict) else {}
     starts: list[datetime] = []

@@ -204,9 +204,10 @@
         "angle_offset",
         "follow_player",
         "follow_distance",
-        "follow_angle"
+        "follow_angle",
+        "map_id", "x", "y", "z", "orientation", "use_template_faction"
       ],
-      "notes": "Spawns a temporary WM-owned creature near the scoped player and records it in wm_bridge_world_object with LiveGUIDLow. Provide creature_name (e.g. 'deer', 'wolf') and WM resolves it to a creature_entry automatically, or pass a known creature_entry directly. The creature appears near the player; no coordinates are needed."
+      "notes": "Spawns a temporary WM-owned creature and records its live GUID. Default placement is near the selected player; supply x/y/z together for exact placement on that player's map. Set use_template_faction=true for ordinary hostile/neutral template behavior instead of player faction. Host name resolution must resolve creature_name before native submission."
     },
     "creature_despawn": {
       "required_any": [
@@ -455,9 +456,24 @@
         "arc_key",
         "duration_ms",
         "distance",
-        "angle_offset"
+        "angle_offset",
+        "map_id", "x", "y", "z", "orientation"
       ],
-      "notes": "Spawns a temporary WM-owned gameobject near the scoped player, recorded in wm_bridge_world_object. duration_ms is converted to native seconds."
+      "notes": "Spawns a temporary WM-owned gameobject near the selected player or at exact x/y/z on the same map. orientation sets facing; duration_ms is converted to native seconds."
+    },
+    "world_spawn_create": {
+      "required": ["object_type", "entry", "reason"],
+      "optional": ["map_id", "x", "y", "z", "orientation", "respawn_seconds", "phase_mask"],
+      "notes": "Persistent outdoor spawn. object_type is creature or gameobject. Coordinates are exact; omitted coordinates use the selected player's location. Returns a database spawn_id, not a temporary live GUID. Uses template faction."
+    },
+    "world_spawn_update": {
+      "required": ["object_type", "spawn_id", "reason"],
+      "optional": ["map_id", "x", "y", "z", "orientation", "respawn_seconds", "phase_mask"],
+      "notes": "Updates a loaded persistent spawn on the selected player's map. spawn_id is creature.guid or gameobject.guid. Respawn delay is seconds between deaths/uses, not a spawn-density multiplier."
+    },
+    "world_spawn_delete": {
+      "required": ["object_type", "spawn_id", "reason"],
+      "notes": "Deletes a loaded persistent spawn. Provide the player action, replacement content, or event reason; does not delete its template."
     },
     "gameobject_despawn": {
       "required_any": [

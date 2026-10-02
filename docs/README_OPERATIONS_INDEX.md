@@ -48,6 +48,10 @@ The repo uses a Diataxis-style split:
 
 ## How-To / Operations
 
+- [Author's Notes](AUTHORS_NOTES.md) - persistent World/Character direction, panel editing, explicit in-game commands and decision context; source implementation pending proof
+- [World Ingredient Tools](WORLD_INGREDIENT_TOOLS.md) - read-only local scouting, template/source lookup and typed natural-language information requests; source implementation pending tests/live proof
+- [Material Delivery Quests](MATERIAL_DELIVERY_QUESTS.md) - single-item delivery drafting, existing-inventory semantics, panel/publication flow and remaining live proof
+- [World Editing Tools](WORLD_EDITING_TOOLS.md) - precise placement, persistent spawn editing, respawn timing, and publication/native event bundles; implementation pending build and live trial
 - [Development Workflow](DEVELOPMENT_WORKFLOW.md) - default repo workflow
 - [How-To Conventions](HOWTO_CONVENTIONS.md) - format rules for future operational guides
 - [Cleanup Playbook](CLEANUP_PLAYBOOK.md) - cleanup and reset discipline
@@ -56,6 +60,8 @@ The repo uses a Diataxis-style split:
 
 ## Architecture / Decisions
 
+- [WM Tool Capability Map](WM_TOOL_CAPABILITY_MAP.md) - current source inventory and feature-first backlog for observation, activities, NPC offers, content and world events; distinguishes implementation from runtime availability
+- [WM Capability Roadmap](WM_CAPABILITY_ROADMAP.md) - capability direction with historical May diagnosis; current inventory lives in the tool capability map
 - [WM Harness Research and Decision Guide](plans/wm-harness-2026-09-30/README.md) - current-stack and clean-sheet options, weak-local-model contract, source assessment, technology choices, and delivery/evaluation plans; research, not deployed functionality
 - [WM Rebuild Plan: A Personal World Master](plans/wm-redesign-2026-09-23/REBUILD_PLAN.md) - current rebuild execution design, milestones, migration and player-experience gates; not a claim of implemented runtime behavior
 - [WM Redesign: Tools, Skills, and Review Method](plans/wm-redesign-2026-09-23/TOOLS_AND_SKILLS.md) - September 23 discovery assessment and anti-drift method; design-only, not a replacement for current runtime status

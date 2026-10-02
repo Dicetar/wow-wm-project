@@ -31,6 +31,13 @@ Read large handoffs by current update and relevant section; use a targeted searc
 
 ## Default Loop
 
+Current user instructions control verification timing: do not run tests, builds,
+linters, browser checks, or gameplay proof unless explicitly requested. Older
+workflow examples are commands to use when authorized, not standing permission.
+For a checkpoint/handoff, inspect git and source, preserve existing work, and
+report untested source as PARTIAL. Save conversation handoffs outside the repo
+when the invoked handoff skill requires the OS temporary directory.
+
 1. Read the current code and docs for the area.
 2. Make the smallest useful change.
 3. Run focused tests first.

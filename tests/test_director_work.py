@@ -49,12 +49,20 @@ def test_director_ledger_survives_restart_and_fences_dispatch() -> None:
     artifact = FrozenWork.from_runtime({"kind": "plan", "plan": _plan()})
     ledger = DirectorWorkLedger(settings=settings)
     request_id: int | None = None
+    rejected_request_id: int | None = None
     try:
         prepared = ledger.prepare(
             origin_key=origin, player_guid=5408, lane="test",
             artifact=artifact, preview={"status": "dry-run"}, evidence={"source": "test"},
         )
         request_id = prepared.request_id
+        reviewed, review = ledger.load_review(request_id=request_id, player_guid=5408)
+        assert reviewed == prepared
+        assert review["preview"]["status"] == "dry-run"
+        listed = next(row for row in ledger.list_recent(player_guid=5408) if row["request_id"] == request_id)
+        assert listed["artifact"]["plan"]["actions"][0]["kind"] == "noop"
+        with pytest.raises(ValueError, match="not found"):
+            ledger.load_review(request_id=request_id, player_guid=5405)
         assert ledger.prepare(origin_key=origin, player_guid=5408, lane="test", artifact=artifact,
                               preview={"status": "dry-run"}, evidence={"source": "test"}).request_id == request_id
         changed = _plan()
@@ -76,8 +84,16 @@ def test_director_ledger_survives_restart_and_fences_dispatch() -> None:
         assert applied.state == "applied"
         verified = ledger.verify(applied, proof={"ok": True, "source": "test_receipt"})
         assert verified.state == DirectorWorkLedger(settings=settings).load(origin).state == "verified"
+        rejection = ledger.prepare(
+            origin_key=f"{origin}:reject", player_guid=5408, lane="test", artifact=artifact,
+            preview={"status": "dry-run"}, evidence={"source": "test"},
+        )
+        rejected_request_id = rejection.request_id
+        assert ledger.reject(rejection, reason="operator_rejected").state == "rejected"
+        with pytest.raises(ValueError, match="only unapproved"):
+            ledger.reject(ledger.load(f"{origin}:reject"), reason="again")
     finally:
-        if request_id is not None:
+        if request_id is not None or rejected_request_id is not None:
             conn = pymysql.connect(
                 host=settings.world_db_host, port=settings.world_db_port,
                 user=settings.world_db_user, password=settings.world_db_password,
@@ -87,7 +103,9 @@ def test_director_ledger_survives_restart_and_fences_dispatch() -> None:
                 with conn.cursor() as cursor:
                     for table in ("wm_director_proof", "wm_director_effect", "wm_director_authorization",
                                   "wm_director_artifact", "wm_director_transition", "wm_director_request"):
-                        cursor.execute(f"DELETE FROM {table} WHERE RequestID=%s", (request_id,))
+                        for row_id in (request_id, rejected_request_id):
+                            if row_id is not None:
+                                cursor.execute(f"DELETE FROM {table} WHERE RequestID=%s", (row_id,))
                 conn.commit()
             finally:
                 conn.close()

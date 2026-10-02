@@ -30,6 +30,19 @@ enchant-on-kill lane uses (`src/wm/reactive/random_enchant.py`,
 `SELECT Status, ResultJSON FROM wm_bridge_action_request WHERE ActionKind='player_random_enchant_item' AND PlayerGUID=5408 ORDER BY RequestID DESC LIMIT 1;`
 
 ## Gotchas
+
+- Distinguish the scoped reward bus action from player-used vellums 910007/910008
+  and Enchanting Stone 910015. Those consumables are global/unbound; they must
+  not inherit the bus player allowlist. Inspect their dedicated native scripts.
+- Stone upgrades use an item-GUID level in wm_item_stat_upgrade, multiply stats
+  by 2^level, and consume a stone per attempt. They are separate from random
+  enchant slots. Check equipped stat/enchantment hooks as well as weapon damage
+  when diagnosing a stat increase; weapon damage alone does not prove all stats.
+- High haste does not by itself establish custom cooldown reduction. Trace the
+  native overcap hook, server cooldown table/packets, and client Spell.dbc patch
+  separately before editing. Removing static client cooldown fields does not
+  prove server cooldown behavior or player-visible cooldowns.
+
 - Target item not in the player's bags → nothing to enchant; not a bus error.
 - Don't conflate with a fixed enchant — this rolls a random one; for a specific
   managed effect, use a managed item (wm-create-item) or ability (wm-grant-ability).

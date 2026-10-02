@@ -11,7 +11,7 @@ from wm.config import Settings
 from wm.db.mysql_cli import MysqlCliClient, MysqlCliError
 from wm.quests.bounty import build_bounty_quest_draft
 from wm.quests.compiler import compile_bounty_quest_sql_plan
-from wm.quests.models import BountyQuestDraft, BountyQuestObjective, BountyQuestReputationReward, BountyQuestReward
+from wm.quests.models import BountyQuestDraft, BountyQuestObjective, BountyQuestReputationReward, BountyQuestReward, DeliveryQuestObjective
 from wm.quests.validator import validate_bounty_quest_draft
 from wm.targets.resolver import TargetProfile
 
@@ -101,6 +101,8 @@ class QuestPublisher:
             "wm_rollback_snapshot",
             "wm_reserved_slot",
         }
+        if isinstance(draft.objective, DeliveryQuestObjective):
+            required_tables.add("item_template")
         all_tables = set(required_tables) | {"quest_offer_reward", "quest_request_items", "quest_template_addon"}
         table_presence = self._table_presence(all_tables)
 
@@ -134,6 +136,37 @@ class QuestPublisher:
                     message=f"Required quest_template column `{column_name}` is missing.",
                 )
             )
+
+        if isinstance(draft.objective, DeliveryQuestObjective):
+            for column_name in ("RequiredItemId1", "RequiredItemCount1"):
+                if column_name not in quest_template_columns:
+                    report.issues.append(PublishIssue(
+                        path=f"quest_template.{column_name}",
+                        message=f"Delivery objectives require quest_template.{column_name}.",
+                    ))
+            if table_presence.get("item_template", False):
+                item_rows = self._query_world(
+                    "SELECT entry, name, maxcount, bonding FROM item_template "
+                    f"WHERE entry = {int(draft.objective.item_entry)}"
+                )
+                if not item_rows:
+                    report.issues.append(PublishIssue(
+                        path="objective.item_entry",
+                        message=f"Delivery item {draft.objective.item_entry} does not exist in item_template.",
+                    ))
+                else:
+                    item = item_rows[0]
+                    if int(item.get("bonding") or 0) == 4:
+                        report.issues.append(PublishIssue(
+                            path="objective.item_entry",
+                            message="Material delivery requires an ordinary item; quest-bound turn-in may remove all owned copies.",
+                        ))
+                    maxcount = int(item.get("maxcount") or 0)
+                    if maxcount > 0 and draft.objective.item_count > maxcount:
+                        report.issues.append(PublishIssue(
+                            path="objective.item_count",
+                            message=f"Delivery count exceeds the item's unique ownership limit ({maxcount}).",
+                        ))
 
         if not compatibility["quest_description_supported"]:
             report.issues.append(
@@ -259,7 +292,7 @@ class QuestPublisher:
                         message=f"Ender NPC entry {draft.end_npc_entry} does not exist in creature_template.",
                     )
                 )
-            if not self._creature_exists(draft.objective.target_entry):
+            if not isinstance(draft.objective, DeliveryQuestObjective) and not self._creature_exists(draft.objective.target_entry):
                 report.issues.append(
                     PublishIssue(
                         path="objective.target_entry",
@@ -579,6 +612,25 @@ def bounty_draft_from_dict(raw: dict) -> BountyQuestDraft:
         raise ValueError("Quest draft JSON must be an object.")
 
     objective = raw.get("objective") or {}
+    objective_kind = objective.get("kind", "kill")
+    if objective_kind == "deliver":
+        if any(key in objective for key in ("target_entry", "target_name", "kill_count")):
+            raise ValueError("Delivery objectives cannot also contain kill-target fields.")
+        parsed_objective = DeliveryQuestObjective(
+            item_entry=int(objective["item_entry"]),
+            item_name=str(objective["item_name"]),
+            item_count=int(objective["item_count"]),
+        )
+    elif objective_kind == "kill":
+        if any(key in objective for key in ("item_entry", "item_name", "item_count")):
+            raise ValueError("Kill objectives cannot also contain delivery-item fields.")
+        parsed_objective = BountyQuestObjective(
+            target_entry=int(objective["target_entry"]),
+            target_name=str(objective["target_name"]),
+            kill_count=int(objective["kill_count"]),
+        )
+    else:
+        raise ValueError(f"Unsupported quest objective kind: {objective_kind}")
     reward = raw.get("reward") or {}
     reward_reputations = [
         BountyQuestReputationReward(
@@ -599,11 +651,7 @@ def bounty_draft_from_dict(raw: dict) -> BountyQuestDraft:
         objective_text=str(raw["objective_text"]),
         offer_reward_text=str(raw["offer_reward_text"]),
         request_items_text=str(raw["request_items_text"]),
-        objective=BountyQuestObjective(
-            target_entry=int(objective["target_entry"]),
-            target_name=str(objective["target_name"]),
-            kill_count=int(objective["kill_count"]),
-        ),
+        objective=parsed_objective,
         reward=BountyQuestReward(
             money_copper=int(reward.get("money_copper", 0)),
             reward_item_entry=(

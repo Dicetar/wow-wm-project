@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from wm.autoplay.llm import AutoplayLlmAdapter
 from wm.autoplay.llm import llm_generation_schema
+from wm.autoplay._runtime_plan import _runtime_publish_plan_from_draft
 from wm.autoplay.policy import AutoplayPolicy, SafeWindow
 from wm.autoplay.service import AutoplayRuntimeConfig, AutoplayService, drive_pending_runtime
 from wm.autoplay.service import _chat_max_tokens
@@ -242,6 +244,48 @@ def test_llm_adapter_generates_and_locks_all_enabled_lane_drafts():
             assert set(result.draft["source_event"]) == {"event_id", "source", "source_event_key", "event_type"}
         else:
             assert result.draft["player_guid"] == 5408
+
+
+def test_director_quest_uses_verified_candidate_not_chat_subject():
+    candidate = {"target_entry": 449, "target_name": "Defias Knuckleduster", "spawn_count": 6,
+                 "questgiver_entry": 234, "questgiver_name": "Gryan"}
+    draft = {**QUEST_DRAFT, "objective": {"kind": "kill", "target_entry": 449, "kill_count": 99}}
+    original = deepcopy(draft)
+    facts = {"player_guid": 5408, "quest_candidates": [candidate], "quest_player_level": 20,
+             "source_event": {"event_type": "chat", "subject_entry": 5408}}
+    result = AutoplayLlmAdapter(client=FakeLlmClient(draft)).generate(
+        schema_version=draft["schema_version"], instruction="make quest", deterministic_facts=facts,
+    )
+    assert result.ok, result.issues
+    assert result.draft["objective"]["target_entry"] == 449
+    assert result.draft["objective"]["kill_count"] == 3
+    assert result.draft["quest"]["questgiver_entry"] == 234
+    assert result.draft["quest"]["end_npc_entry"] == 234
+    assert result.draft["quest"]["quest_level"] == 20
+    assert result.draft["reward"]["money_copper"] > 0
+    assert draft == original
+
+    invalid = {**draft, "objective": {"kind": "kill", "target_entry": 5408, "kill_count": 3}}
+    rejected = AutoplayLlmAdapter(client=FakeLlmClient(invalid)).generate(
+        schema_version=draft["schema_version"], instruction="make quest", deterministic_facts=facts,
+    )
+    assert not rejected.ok
+    assert any(issue["path"] == "objective.target_entry" for issue in rejected.issues)
+
+
+def test_director_quest_plan_subject_is_target_not_chat_player():
+    draft = {**QUEST_DRAFT, "quest": {**QUEST_DRAFT["quest"], "quest_id": 910900,
+                                      "grant_mode": "direct_grant"},
+             "objective": {"kind": "kill", "target_entry": 449, "kill_count": 3}}
+    plan = _runtime_publish_plan_from_draft(
+        record={"lane": "quest", "player_guid": 5408, "parsed_json": draft, "draft_id": "test-quest",
+                "opportunity": {"player_request": "Give me a quest", "source_event": {
+                    "event_type": "chat", "subject_type": "player", "subject_entry": 5408}}},
+        settings=Settings(),
+    )
+    assert plan.subject.subject_type == "creature"
+    assert plan.subject.subject_entry == 449
+    assert plan.actions[1].payload["subject"]["entry"] == 449
 
 
 def test_llm_schema_fallback_is_draft_only():
@@ -1095,6 +1139,36 @@ def test_durable_director_scope_never_falls_back_to_legacy_writer(tmp_path: Path
     assert [mode for mode, _ in coordinator.calls] == ["dry-run"]
     assert status["latest_proposal"]["state"] == "PARKED"
     assert status["latest_autoplay"]["status"] == "parked"
+
+
+def test_director_risk_only_draft_waits_for_operator_without_apply(tmp_path: Path):
+    store = AutoplayStateStore(tmp_path / "autoplay")
+    panel = PanelState(tmp_path / "panel")
+    panel.ensure()
+    payload = {**ACTION_DRAFT, "risk": {"level": "medium", "irreversible": False, "notes": []}}
+    store.add_draft(_autoplay_record(draft_id="action-review", lane="action", payload=payload))
+    coordinator = FakeControlCoordinator()
+    service = AutoplayService(
+        store=store, panel_state=panel,
+        doctor_fn=lambda settings: [FakeDoctorCheck("world_db", "WORKING", "ok")],
+    )
+    ledger = MagicMock()
+    ledger.prepare.return_value = SimpleNamespace(state="received", request_id=7)
+    config = AutoplayRuntimeConfig(
+        player_guid=1, start_watcher=False, llm_cooldown_seconds=0,
+        durable_director_enabled=True, durable_director_player_guid=1,
+    )
+    with patch.object(service, "_llm_health", return_value={"ok": True, "model": "local-model"}), \
+         patch.object(service, "_recent_events", return_value=[]), \
+         patch.object(service, "_control_coordinator", return_value=coordinator), \
+         patch.object(service, "_draft_memory_blocker", return_value=None), \
+         patch("wm.autoplay.director_work.DirectorWorkLedger", return_value=ledger):
+        status = service.tick(config=config)
+    assert [mode for mode, _ in coordinator.calls] == ["dry-run"]
+    assert status["latest_proposal"]["state"] == "AWAITING_APPROVAL"
+    assert status["latest_proposal"]["director_request_id"] == 7
+    ledger.authorize.assert_not_called()
+    ledger.claim.assert_not_called()
 
 
 def test_autoplay_service_auto_applies_policy_eligible_scene_draft(tmp_path: Path):

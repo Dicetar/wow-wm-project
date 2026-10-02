@@ -32,6 +32,7 @@
 #include "wm_bridge_json.h"
 #include "wm_bridge_random_enchant.h"
 #include "wm_effect_registry.h"
+#include "wm_bridge_placement.h"
 
 #include <algorithm>
 #include <cctype>
@@ -385,12 +386,18 @@ namespace
 
         Position position;
         player->GetClosePoint(position.m_positionX, position.m_positionY, position.m_positionZ, 1.0f, distance, player->GetOrientation() + angleOffset);
+        position.SetOrientation(player->GetOrientation());
+        if (!WmBridge::ResolvePlacement(player, payloadJson, position))
+        {
+            CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_spawn_position"), "invalid_spawn_position");
+            return true;
+        }
         TempSummon* creature = player->SummonCreature(
             entry,
             position.m_positionX,
             position.m_positionY,
             position.m_positionZ,
-            player->GetOrientation(),
+            position.GetOrientation(),
             TEMPSUMMON_TIMED_DESPAWN,
             durationMs);
         if (!creature)
@@ -399,9 +406,14 @@ namespace
             return true;
         }
 
-        creature->SetCreatorGUID(player->GetGUID());
-        creature->SetOwnerGUID(player->GetGUID());
-        creature->SetFaction(player->GetFaction());
+        bool useTemplateFaction = false;
+        TryExtractJsonBoolField(payloadJson, "use_template_faction", useTemplateFaction);
+        if (!useTemplateFaction)
+        {
+            creature->SetCreatorGUID(player->GetGUID());
+            creature->SetOwnerGUID(player->GetGUID());
+            creature->SetFaction(player->GetFaction());
+        }
         creature->SetPhaseMask(player->GetPhaseMask(), false);
 
         bool followPlayer = false;

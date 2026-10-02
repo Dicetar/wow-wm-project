@@ -28,6 +28,7 @@ namespace
             WmBridge::RegisterWmBridgeCreatureActions(r);
             WmBridge::RegisterWmBridgeCompanionActions(r);
             WmBridge::RegisterWmBridgeGameObjectActions(r);
+            WmBridge::RegisterWmBridgeSpawnActions(r);
             WmBridge::RegisterWmBridgeGossipActions(r);
             return r;
         }();

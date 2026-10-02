@@ -47,6 +47,7 @@ namespace WmBridge
     void RegisterWmBridgeEnvironmentActions(ActionRegistry& registry);
     void RegisterWmBridgeCompanionActions(ActionRegistry& registry);
     void RegisterWmBridgeGameObjectActions(ActionRegistry& registry);
+    void RegisterWmBridgeSpawnActions(ActionRegistry& registry);
     void RegisterWmBridgeGossipActions(ActionRegistry& registry);
     void RegisterWmBridgeDebugActions(ActionRegistry& registry);
 }

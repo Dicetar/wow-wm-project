@@ -4,6 +4,7 @@ from wm.quests.models import (
     BountyQuestDraft,
     BountyQuestObjective,
     BountyQuestReward,
+    DeliveryQuestObjective,
     ValidationIssue,
     ValidationResult,
 )
@@ -13,6 +14,7 @@ __all__ = [
     "BountyQuestDraft",
     "BountyQuestObjective",
     "BountyQuestReward",
+    "DeliveryQuestObjective",
     "QuestSqlPlan",
     "ValidationIssue",
     "ValidationResult",

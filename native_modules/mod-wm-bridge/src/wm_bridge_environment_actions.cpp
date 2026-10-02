@@ -7,6 +7,7 @@
 #include "DatabaseEnv.h"
 #include "Cell.h"
 #include "CellImpl.h"
+#include "Bag.h"
 #include "Creature.h"
 #include "DBCStores.h"
 #include "GameObject.h"
@@ -40,6 +41,7 @@
 #include <initializer_list>
 #include <limits>
 #include <list>
+#include <map>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -52,11 +54,69 @@ namespace
 
     uint32 gPerceptionRefreshTimer = 0;
 
+    std::string BuildInventoryJson(Player* player)
+    {
+        std::map<uint32, uint32> counts;
+        auto add = [&](Item* item)
+        {
+            if (item)
+                counts[item->GetEntry()] += item->GetCount();
+        };
+        for (uint8 slot = 0; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+            add(player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+        for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+            if (Bag* bag = player->GetBagByPos(bagSlot))
+                for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+                    add(player->GetItemByPos(bagSlot, static_cast<uint8>(slot)));
+        std::string json = "[";
+        bool first = true;
+        for (auto const& entry : counts)
+        {
+            if (!first)
+                json += ",";
+            first = false;
+            bool firstField = true;
+            std::string item = "{";
+            JsonAppendNumberField(item, firstField, "item_entry", entry.first);
+            JsonAppendNumberField(item, firstField, "count", entry.second);
+            if (ItemTemplate const* info = sObjectMgr->GetItemTemplate(entry.first))
+                JsonAppendStringField(item, firstField, "item_name", info->Name1);
+            json += item + "}";
+        }
+        return json + "]";
+    }
+
+    std::string BuildProfessionsJson(Player* player)
+    {
+        std::string json = "[";
+        bool first = true;
+        for (uint32 skill : {164u, 165u, 171u, 182u, 186u, 197u, 202u, 333u, 393u, 755u, 356u, 185u, 129u})
+        {
+            if (!player->HasSkill(skill))
+                continue;
+            if (!first)
+                json += ",";
+            first = false;
+            std::string entry = "{";
+            bool firstField = true;
+            JsonAppendNumberField(entry, firstField, "skill_id", skill);
+            JsonAppendNumberField(entry, firstField, "value", player->GetSkillValue(skill));
+            JsonAppendNumberField(entry, firstField, "maximum", player->GetMaxSkillValue(skill));
+            json += entry + "}";
+        }
+        return json + "]";
+    }
+
     std::string BuildCreatureJson(Player const* player, Creature const* creature)
     {
         std::string json = "{";
         bool firstField = true;
         JsonAppendNumberField(json, firstField, "entry", creature->GetEntry());
+        JsonAppendNumberField(json, firstField, "spawn_id", creature->GetSpawnId());
+        JsonAppendNumberField(json, firstField, "respawn_seconds", creature->GetRespawnDelay());
+        JsonAppendNumberField(json, firstField, "phase_mask", creature->GetPhaseMask());
+        JsonAppendFloatField(json, firstField, "orientation", creature->GetOrientation());
+        JsonAppendBoolField(json, firstField, "hostile", creature->IsHostileTo(player));
         JsonAppendStringField(json, firstField, "name", creature->GetName());
         JsonAppendStringField(json, firstField, "guid", creature->GetGUID().ToString());
         JsonAppendNumberField(json, firstField, "level", creature->GetLevel());
@@ -74,6 +134,10 @@ namespace
         std::string json = "{";
         bool firstField = true;
         JsonAppendNumberField(json, firstField, "entry", gameObject->GetEntry());
+        JsonAppendNumberField(json, firstField, "spawn_id", gameObject->GetSpawnId());
+        JsonAppendNumberField(json, firstField, "respawn_seconds", gameObject->GetRespawnDelay());
+        JsonAppendNumberField(json, firstField, "phase_mask", gameObject->GetPhaseMask());
+        JsonAppendFloatField(json, firstField, "orientation", gameObject->GetOrientation());
         JsonAppendStringField(json, firstField, "name", gameObject->GetName());
         JsonAppendStringField(json, firstField, "guid", gameObject->GetGUID().ToString());
         JsonAppendNumberField(json, firstField, "type", static_cast<long long>(gameObject->GetGoType()));
@@ -169,6 +233,10 @@ namespace
         JsonAppendNumberField(json, firstField, "nearby_gameobject_count", gameObjectCount);
         JsonAppendRawField(json, firstField, "nearby_creatures", creatures);
         JsonAppendRawField(json, firstField, "nearby_gameobjects", gameObjects);
+        JsonAppendNumberField(json, firstField, "phase_mask", player->GetPhaseMask());
+        JsonAppendRawField(json, firstField, "inventory", BuildInventoryJson(player));
+        JsonAppendStringField(json, firstField, "inventory_scope", "carried_and_equipped_not_bank");
+        JsonAppendRawField(json, firstField, "professions", BuildProfessionsJson(player));
         json += "}";
         return json;
     }

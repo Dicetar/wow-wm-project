@@ -11,7 +11,21 @@ safeguards (control contracts, dry-run, policy gates, native C++ validation, aud
 rollback) are infrastructure to **ride on**, not work to expand. New features must use
 those gates; they must not weaken or duplicate them.
 
-## 1. Corrected Current State
+## Current Direction - 2026-10-01
+
+Use [WM Tool Capability Map](WM_TOOL_CAPABILITY_MAP.md) for the current source-grounded
+inventory and needed-feature list. It covers observation, activity interpretation,
+content authoring, world tools, NPC interaction, events, initiative presets and memory.
+The immediate direction is a playable activity -> optional opportunity -> completion
+loop, not another safety framework or character-specific arc.
+
+The sections below preserve the May diagnosis and design history. Their action counts,
+chat-only limitation and implementation priorities are not current inventory: chat
+intents, durable director work, memory and additional native/world tools now exist.
+Existing source does not imply current deployment or player-visible proof. The current
+handoff remains the runtime status source.
+
+## 1. Historical Current-State Assessment (2026-05-29)
 
 The 2026-05-27 handoff lists "build one visible launcher" as the top objective. That is
 **already done** in local WIP:

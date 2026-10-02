@@ -129,5 +129,5 @@ WmBridge.Presence.IntervalMS = 3000
 #        Default: 1
 #
 WmBridge.Perception.Enable = 1
-WmBridge.Perception.IntervalMS = 150000
+WmBridge.Perception.IntervalMS = 20000
 WmBridge.Perception.Radius = 40

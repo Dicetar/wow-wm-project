@@ -1,0 +1,22 @@
+{
+  "schema_version": "wm.world.bundle.v1",
+  "id": "bandit_camp_encounter",
+  "steps": [
+    {
+      "kind": "native",
+      "action_kind": "world_announce_to_player",
+      "payload": {"message": "Scouts report a new bandit camp ahead."}
+    },
+    {
+      "kind": "native",
+      "action_kind": "creature_spawn",
+      "payload": {
+        "creature_entry": 504,
+        "arc_key": "event:bandit_camp_encounter",
+        "duration_ms": 120000,
+        "distance": 15,
+        "use_template_faction": true
+      }
+    }
+  ]
+}

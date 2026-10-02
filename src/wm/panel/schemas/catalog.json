@@ -1,5 +1,60 @@
 [
   {
+    "id": "wm.quest.release.material_delivery.v1",
+    "label": "Material Delivery",
+    "description": "An optional single-material delivery offered by an existing questgiver.",
+    "lane": "quest", "mutating": true, "dry_run_required": true,
+    "validator": "wm.content.release",
+    "schema": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "quest_kind", "player_guid", "slot_policy", "repeatable", "quest", "objective", "reward"],
+      "properties": {
+        "schema_version": {"type": "string", "const": "wm.quest.release.material_delivery.v1"},
+        "quest_kind": {"type": "string", "const": "material_delivery"},
+        "player_guid": {"type": "integer", "minimum": 1},
+        "slot_policy": {"type": "string", "const": "fresh_reserved_required"},
+        "repeatable": {"type": "boolean", "const": false},
+        "quest": {
+          "type": "object", "additionalProperties": false,
+          "required": ["title", "quest_description", "objective_text", "request_items_text", "offer_reward_text"],
+          "properties": {
+            "title": {"type": "string", "minLength": 1, "maxLength": 80},
+            "quest_description": {"type": "string", "minLength": 1},
+            "objective_text": {"type": "string", "minLength": 1},
+            "request_items_text": {"type": "string", "minLength": 1},
+            "offer_reward_text": {"type": "string", "minLength": 1},
+            "quest_level": {"type": "integer", "minimum": 1, "maximum": 80},
+            "min_level": {"type": "integer", "minimum": 1, "maximum": 80},
+            "questgiver_entry": {"type": "integer", "minimum": 1},
+            "questgiver_name": {"type": "string"},
+            "start_npc_entry": {"type": "integer", "minimum": 1},
+            "end_npc_entry": {"type": "integer", "minimum": 1},
+            "grant_mode": {"type": "string", "const": "npc_start"},
+            "template_defaults": {
+              "type": "object", "additionalProperties": false,
+              "properties": {"QuestType": {"type": "integer", "const": 2}, "SpecialFlags": {"type": "integer", "const": 0}}
+            }
+          }
+        },
+        "objective": {
+          "type": "object", "additionalProperties": false, "required": ["kind", "item_entry"],
+          "properties": {
+            "kind": {"type": "string", "const": "deliver"},
+            "item_entry": {"type": "integer", "minimum": 1},
+            "item_name": {"type": "string"},
+            "item_count": {"type": "integer", "minimum": 1, "maximum": 255}
+          }
+        },
+        "reward": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "money_copper"],
+          "properties": {"kind": {"type": "string", "const": "money"}, "money_copper": {"type": "integer", "minimum": 1, "maximum": 1000000}}
+        }
+      }
+    },
+    "ui": {"order": ["quest", "objective", "reward"], "icon": "quest"}
+  },
+  {
     "id": "control.proposal.v1",
     "label": "Control Proposal",
     "description": "A strict WM ControlProposal routed through the existing control coordinator.",

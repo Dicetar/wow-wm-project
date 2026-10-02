@@ -33,6 +33,7 @@ For each quest row:
 - `QuestCompletionLog`: where to turn in or what final action remains.
 - `ObjectiveText*`: concrete objective labels matching the required objective columns.
 - `RequiredNpcOrGo*` and `RequiredNpcOrGoCount*`: correct sign and count. Creature IDs are positive; gameobject IDs are negative.
+- Item-delivery objectives: `RequiredItemId*` and `RequiredItemCount*` must reference the intended existing items/counts, with unrelated creature objectives cleared. State that existing inventory qualifies and items are consumed at turn-in. Ordinary material delivery must not use quest-bound items: the core can remove all copies of those items. See [Material Delivery Quests](MATERIAL_DELIVERY_QUESTS.md) for the current single-item authoring path.
 - `RewardItem*`, `RewardAmount*`, `RewardDisplaySpell`, `RewardSpell`, `RewardMoney`, and reward text: explicitly set or explicitly cleared.
 - `quest_template_addon`: `PrevQuestID`, `NextQuestID`, and `SpecialFlags` when chaining or repeatability matters.
 - `quest_request_items` and `quest_offer_reward`: completion and reward text.

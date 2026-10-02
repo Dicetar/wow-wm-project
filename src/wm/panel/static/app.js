@@ -106,7 +106,9 @@ async function loadAll() {
   renderSettings(settings);
   renderDrafts(drafts.drafts || []);
   syncSessionInputs(state.activeSession);
-  selectSchema($("contentSchema").value || state.schemas[0]?.id);
+  if (!$("noteGuid").value && state.activeSession?.character_guid) $("noteGuid").value = state.activeSession.character_guid;
+  await refreshAuthorNotes();
+  selectSchema($("contentSchema").value || state.schemas.find(schema => schema.id === "control.proposal.v1")?.id || state.schemas[0]?.id);
 }
 
 function bindTabs() {
@@ -139,13 +141,13 @@ function setPanelMode(mode) {
   });
   document.querySelectorAll(".tab").forEach((button) => {
     const scope = button.dataset.modeScope || "advanced";
-    button.hidden = scope !== state.panelMode;
+    button.hidden = scope !== "both" && scope !== state.panelMode;
   });
   document.querySelectorAll(".tab-panel").forEach((panel) => {
     const scope = panel.dataset.modeScope || "advanced";
-    panel.hidden = scope !== state.panelMode;
+    panel.hidden = scope !== "both" && scope !== state.panelMode;
   });
-  const activeButton = document.querySelector(`.tab.active[data-mode-scope="${state.panelMode}"], .tab.active:not([data-mode-scope])`);
+  const activeButton = document.querySelector(`.tab.active[data-mode-scope="${state.panelMode}"], .tab.active[data-mode-scope="both"], .tab.active:not([data-mode-scope])`);
   if (!activeButton || activeButton.hidden) {
     const first = document.querySelector(`.tab[data-mode-scope="${state.panelMode}"]:not([hidden])`);
     if (first) activateTab(first.dataset.tab);
@@ -171,6 +173,11 @@ function bindEditorTabs() {
 }
 
 function bindActions() {
+  $("noteSave").addEventListener("click", saveAuthorNote);
+  $("noteNew").addEventListener("click", resetNoteEditor);
+  $("noteRefresh").addEventListener("click", refreshAuthorNotes);
+  $("noteInactive").addEventListener("change", refreshAuthorNotes);
+  $("noteScope").addEventListener("change", () => { $("noteGuid").disabled = $("noteScope").value === "world"; });
   $("themeToggle").addEventListener("click", toggleTheme);
   $("refreshAll").addEventListener("click", loadAll);
   $("saveLlmSettings").addEventListener("click", saveLlmSettings);
@@ -221,6 +228,92 @@ function bindActions() {
   $("simpleRejectDraft").addEventListener("click", rejectSelectedDraft);
   $("simpleDryRunDraft").addEventListener("click", dryRunSelectedDraft);
   $("simpleRollback").addEventListener("click", simpleRollback);
+}
+
+function resetNoteEditor() {
+  state.selectedNote = null;
+  $("noteScope").disabled = false;
+  $("noteGuid").disabled = $("noteScope").value === "world";
+  $("noteText").value = "";
+  $("noteTopic").value = "";
+  $("noteExpiry").value = "";
+  $("noteFirmness").value = "preference";
+  $("noteSave").textContent = "Add Note";
+  setOutput("noteOutput", "");
+}
+
+function editAuthorNote(note) {
+  state.selectedNote = note;
+  $("noteScope").value = note.scope;
+  $("noteScope").disabled = true;
+  $("noteGuid").value = note.player_guid || "";
+  $("noteGuid").disabled = true;
+  $("noteText").value = note.text;
+  $("noteFirmness").value = note.firmness;
+  $("noteTopic").value = note.topic;
+  if (note.expires_at) {
+    const date = new Date(note.expires_at);
+    $("noteExpiry").value = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  } else $("noteExpiry").value = "";
+  $("noteSave").textContent = "Save Changes";
+  setOutput("noteOutput", `${note.note_id} / revision ${note.revision}`);
+}
+
+async function refreshAuthorNotes() {
+  try {
+    const guid = Number($("noteGuid").value || state.activeSession?.character_guid || 0);
+    const query = new URLSearchParams({ include_inactive: $("noteInactive").checked ? "1" : "0" });
+    if (guid > 0) query.set("player_guid", String(guid));
+    const result = await api(`/api/wm/author-notes?${query}`);
+    $("noteList").replaceChildren();
+    for (const note of result.notes || []) {
+      const row = document.createElement("article");
+      const title = document.createElement("strong");
+      title.textContent = `${note.scope === "world" ? "World" : `Character ${note.player_guid}`} / ${note.firmness} / ${note.active ? "Active" : note.archived ? "Archived" : "Expired"}`;
+      const text = document.createElement("p");
+      text.textContent = note.text;
+      const details = document.createElement("small");
+      details.textContent = `${note.note_id} / r${note.revision}${note.topic ? ` / ${note.topic}` : ""}${note.expires_at ? ` / expires ${new Date(note.expires_at).toLocaleString()}` : ""}`;
+      row.append(title, text, details);
+      if (!note.archived) {
+        const buttons = document.createElement("div");
+        buttons.className = "button-row";
+        const edit = document.createElement("button");
+        edit.textContent = "Edit";
+        edit.addEventListener("click", () => editAuthorNote(note));
+        const archive = document.createElement("button");
+        archive.textContent = "Archive";
+        archive.addEventListener("click", async () => {
+          try {
+            await api("/api/wm/author-notes", { method: "POST", body: JSON.stringify({ operation: "archive", note_id: note.note_id, revision: note.revision }) });
+            if (state.selectedNote?.note_id === note.note_id) resetNoteEditor();
+            await refreshAuthorNotes();
+          } catch (error) { setOutput("noteOutput", error.message); }
+        });
+        buttons.append(edit, archive);
+        row.append(buttons);
+      }
+      $("noteList").append(row);
+    }
+    if (!result.notes?.length) $("noteList").textContent = "No notes.";
+  } catch (error) { setOutput("noteOutput", error.message); }
+}
+
+async function saveAuthorNote() {
+  try {
+    const selected = state.selectedNote;
+    const body = {
+      operation: selected ? "edit" : "add", scope: $("noteScope").value,
+      player_guid: $("noteScope").value === "character" ? Number($("noteGuid").value) : null,
+      text: $("noteText").value, firmness: $("noteFirmness").value, topic: $("noteTopic").value,
+      expires_at: $("noteExpiry").value ? new Date($("noteExpiry").value).toISOString() : null
+    };
+    if (selected) { body.note_id = selected.note_id; body.revision = selected.revision; }
+    const result = await api("/api/wm/author-notes", { method: "POST", body: JSON.stringify(body) });
+    resetNoteEditor();
+    setOutput("noteOutput", `Saved ${result.note.note_id}.`);
+    await refreshAuthorNotes();
+  } catch (error) { setOutput("noteOutput", error.message); }
 }
 
 function renderStatus(status) {
@@ -303,7 +396,10 @@ function renderProofChecklist(proofs) {
   target.innerHTML = sprintKinds.map((kind) => {
     const packet = packets.find((item) => item.proof_kind === kind) || { proof_kind: kind, title: kind };
     const record = latest[kind] || {};
-    const status = record.status || "not_run";
+    const legacyClientPending = packet.requires_player && record.status === "passed" && !record.client_status;
+    const status = legacyClientPending ? "manual_required" : record.status || "not_run";
+    const serverStatus = record.server_status || record.status || "not_run";
+    const clientStatus = record.client_status || (packet.requires_player ? "pending" : "not_required");
     const blocker = Array.isArray(record.blockers) && record.blockers.length ? record.blockers[0] : "";
     const evidenceChecks = Array.isArray(record.evidence_checks) ? record.evidence_checks : [];
     const pendingEvidence = evidenceChecks.filter((item) => item.status && item.status !== "PASS");
@@ -319,6 +415,7 @@ function renderProofChecklist(proofs) {
         </div>
         <div class="small muted">${escapeHtml(blocker || evidenceDetail || record.summary || packet.summary || "")}${escapeHtml(createdAtLine)}</div>
         ${windowLine}
+        <div class="small muted">Server: ${escapeHtml(serverStatus)} | Player observation: ${escapeHtml(clientStatus)}</div>
       </div>`;
   }).join("");
 }
@@ -447,6 +544,8 @@ function renderAutoplay(autoplay) {
   $("autoplayEventAgeSeconds").value = config.llm_event_age_seconds ?? 300;
   $("autoplayCooldownSeconds").value = config.llm_cooldown_seconds ?? 60;
   $("autoplayEventsPerTick").value = config.llm_events_per_tick ?? 1;
+  $("autoplayInitiative").value = config.initiative_preset || "moderate";
+  $("autoplayActivities").checked = config.activity_proposals_enabled !== false;
 }
 
 function autoplayConfigPayload() {
@@ -458,7 +557,9 @@ function autoplayConfigPayload() {
     llm_base_url: $("llmBaseUrl").value || null,
     llm_event_age_seconds: Number($("autoplayEventAgeSeconds").value || 300),
     llm_cooldown_seconds: Number($("autoplayCooldownSeconds").value || 60),
-    llm_events_per_tick: Number($("autoplayEventsPerTick").value || 1)
+    llm_events_per_tick: Number($("autoplayEventsPerTick").value || 1),
+    initiative_preset: $("autoplayInitiative").value,
+    activity_proposals_enabled: $("autoplayActivities").checked
   };
 }
 
@@ -1115,14 +1216,18 @@ async function refreshSlice() {
   try {
     const kind = $("inboxKindFilter")?.value || "";
     const inboxPath = kind ? `/api/wm/inbox?kind=${encodeURIComponent(kind)}` : "/api/wm/inbox";
-    const [status, pending, issues, log, effects] = await Promise.all([
+    const [readiness, status, pending, issues, log, decisions, effects] = await Promise.all([
+      api("/api/wm/readiness"),
       api("/api/wm/session/status"),
       api(inboxPath),
       api("/api/wm/session/issues"),
       api("/api/wm/session/log"),
+      api("/api/wm/session/decisions"),
       api("/api/wm/session/effects")
     ]);
+    renderWmReadiness(readiness);
     renderSliceStatus(status);
+    renderDirectorDecisions(decisions);
     renderDirectorEffects(effects);
     renderSlicePending(pending.pending || []);
     renderSliceIssues(issues.issues || []);
@@ -1131,6 +1236,31 @@ async function refreshSlice() {
     renderSliceError(error.message);
   }
   await refreshCharacterOverview();
+}
+
+function renderDirectorDecisions(response) {
+  const target = $("directorDecisions");
+  if (!target) return;
+  if (!response.ok) {
+    target.textContent = response.error || "Director decisions unavailable";
+    return;
+  }
+  const items = response.decisions || [];
+  if (!items.length) {
+    target.textContent = "No director decisions for this character.";
+    return;
+  }
+  target.innerHTML = items.map((item) => {
+    const outcome = item.decision?.outcome || item.state;
+    const capability = item.decision?.capability || "";
+    return `<div class="list-item"><strong>${escapeHtml(outcome)}</strong> ` +
+      `<span>${escapeHtml(capability)}</span><div>${escapeHtml(item.state)}` +
+      `${item.development_task_id ? ` · Development task #${escapeHtml(item.development_task_id)}` : ""}` +
+      ` · ${escapeHtml(item.created_at)}</div>` +
+      `<details><summary>Evidence and decision</summary>` +
+      `<pre class="director-preview">${escapeHtml(pretty({evidence: item.evidence, decision: item.decision, development_task: item.development_task}))}</pre>` +
+      `</details></div>`;
+  }).join("");
 }
 
 function renderDirectorEffects(response) {
@@ -1147,10 +1277,34 @@ function renderDirectorEffects(response) {
   target.innerHTML = items.map((item) => {
     const kinds = (item.effects || []).map((effect) => `${effect.kind}: ${effect.state}`).join(", ");
     const proof = item.proof ? "Player proof recorded" : "Player proof pending";
+    const review = `<details><summary>Operations and evidence</summary>` +
+      `<pre class="director-preview">${escapeHtml(pretty({
+        artifact: item.artifact, preview: item.preview, evidence: item.evidence
+      }))}</pre></details>`;
+    const decision = item.state === "received"
+      ? `<div class="button-row"><button type="button" data-director-action="approve" data-request-id="${item.request_id}" data-artifact-hash="${escapeHtml(item.artifact_hash)}">Approve</button> ` +
+        `<button type="button" data-director-action="reject" data-request-id="${item.request_id}" data-artifact-hash="${escapeHtml(item.artifact_hash)}">Reject</button></div>`
+      : "";
     return `<div class="list-item"><strong>${escapeHtml(item.lane)} #${item.request_id}</strong> ` +
       `<span>${escapeHtml(item.state)}</span><div>${escapeHtml(kinds)}</div>` +
-      `<div>${escapeHtml(proof)}</div></div>`;
+      `<div>${escapeHtml(proof)}</div><div class="director-hash" title="Artifact hash">${escapeHtml(item.artifact_hash)}</div>${review}${decision}</div>`;
   }).join("");
+  target.querySelectorAll("[data-director-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const action = button.dataset.directorAction;
+      const requestId = Number(button.dataset.requestId);
+      const artifactHash = button.dataset.artifactHash;
+      if (!window.confirm(`${action === "approve" ? "Approve and apply" : "Reject"} director work #${requestId}?\n${artifactHash}`)) return;
+      try {
+        await api(`/api/wm/session/effects/${action}`, {
+          method: "POST", body: JSON.stringify({ request_id: requestId, artifact_hash: artifactHash })
+        });
+        await refreshSlice();
+      } catch (error) {
+        target.textContent = error.message;
+      }
+    });
+  });
 }
 
 function renderSliceStatus(status) {

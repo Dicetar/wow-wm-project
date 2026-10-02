@@ -33,6 +33,8 @@ def default_status() -> dict[str, Any]:
             "llm_chat_enabled": True,
             "durable_native_intent_enabled": False,
             "durable_director_enabled": False,
+            "initiative_preset": "moderate",
+            "activity_proposals_enabled": True,
             "llm_lanes": ["chat", "scene", "action"],
             "llm_event_age_seconds": 300,
             "llm_cooldown_seconds": 60,
@@ -422,7 +424,11 @@ def _normalize_config_value(key: str, value: Any) -> Any:
         if guid <= 0:
             raise ValueError("durable director player GUID must be positive")
         return guid
-    if key in {"llm_enabled", "llm_chat_enabled", "durable_native_intent_enabled", "durable_director_enabled"}:
+    if key == "initiative_preset":
+        if value not in {"on_demand", "moderate", "active"}:
+            raise ValueError("initiative_preset must be on_demand, moderate or active")
+        return value
+    if key in {"llm_enabled", "llm_chat_enabled", "durable_native_intent_enabled", "durable_director_enabled", "activity_proposals_enabled"}:
         if isinstance(value, str):
             return value.strip().lower() in {"1", "true", "yes", "on"}
         return bool(value)

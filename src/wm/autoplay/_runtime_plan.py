@@ -78,15 +78,25 @@ def _runtime_publish_plan_from_draft(*, record: dict[str, Any], settings: Settin
         raise ValueError(f"{lane} draft is missing player_guid")
     opportunity = record.get("opportunity") if isinstance(record.get("opportunity"), dict) else {}
     source_event = opportunity.get("source_event") if isinstance(opportunity.get("source_event"), dict) else {}
+    request_quest = lane == "quest" and bool(opportunity.get("player_request"))
+    delivery = lane == "quest" and (payload.get("objective") or {}).get("kind") == "deliver"
     subject = SubjectRef(
-        subject_type=str(source_event.get("subject_type") or lane),
-        subject_entry=int(source_event.get("subject_entry") or _entry_from_payload(payload, lane) or 0),
+        subject_type="item" if delivery else "creature" if request_quest else str(source_event.get("subject_type") or lane),
+        subject_entry=int((_entry_from_payload(payload, lane) if request_quest or delivery else
+                           source_event.get("subject_entry") or _entry_from_payload(payload, lane)) or 0),
     )
     allocator = ReservedSlotDbAllocator(client=MysqlCliClient(), settings=settings)
     actions: list[Any] = []
     if lane == "quest":
         quest_payload = _quest_publish_payload_from_release(payload, record=record, allocator=allocator)
-        actions.append(PlannedAction(kind="quest_publish", payload=quest_payload, description="Autoplay publishes an LLM-authored repeatable bounty."))
+        actions.append(PlannedAction(kind="quest_publish", payload=quest_payload, description="Autoplay publishes a material delivery." if delivery else "Autoplay publishes an LLM-authored repeatable bounty."))
+        if delivery:
+            actions.append(PlannedAction(
+                kind="native_bridge_action", payload={
+                    "native_action_kind": "world_announce_to_player", "risk_level": "low",
+                    "payload": {"message": "Optional delivery available: " + quest_payload["request_items_text"]},
+                }, description="Tell the selected player where to find the optional NPC offer.",
+            ))
         if str(quest_payload.get("grant_mode") or "") == "direct_grant":
             actions.append(PlannedAction(
                 kind="quest_grant",

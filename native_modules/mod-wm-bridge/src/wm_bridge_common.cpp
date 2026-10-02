@@ -128,7 +128,7 @@ namespace WmBridge
         gBridgeConfig.presenceEnabled = sConfigMgr->GetOption<bool>("WmBridge.Presence.Enable", true);
         gBridgeConfig.presenceIntervalMs = sConfigMgr->GetOption<uint32>("WmBridge.Presence.IntervalMS", 3000);
         gBridgeConfig.perceptionEnabled = sConfigMgr->GetOption<bool>("WmBridge.Perception.Enable", true);
-        gBridgeConfig.perceptionIntervalMs = sConfigMgr->GetOption<uint32>("WmBridge.Perception.IntervalMS", 150000);
+        gBridgeConfig.perceptionIntervalMs = sConfigMgr->GetOption<uint32>("WmBridge.Perception.IntervalMS", 20000);
         gBridgeConfig.perceptionRadius = sConfigMgr->GetOption<uint32>("WmBridge.Perception.Radius", 40);
         gBridgeConfig.aoeLootEnabled = sConfigMgr->GetOption<bool>("WmBridge.AoeLoot.Enable", false);
         gBridgeConfig.aoeLootRadius = sConfigMgr->GetOption<float>("WmBridge.AoeLoot.Radius", 35.0f);

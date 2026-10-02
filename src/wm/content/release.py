@@ -15,6 +15,7 @@ from wm.spells.shell_bank import load_spell_shell_bank
 
 REPEATABLE_BOUNTY_SCHEMA = "wm.quest.release.repeatable_bounty.v1"
 ONE_SHOT_SCHEMA = "wm.quest.release.one_shot.v1"
+MATERIAL_DELIVERY_SCHEMA = "wm.quest.release.material_delivery.v1"
 STORY_ARC_SCHEMA = "wm.quest.release.story_arc.v1"
 STORY_ARC_BRANCH_LOCK_PLAN_SCHEMA = "wm.quest.release.story_arc.branch_lock_plan.v1"
 ABILITY_SHELL_POWER_SCHEMA = "wm.ability.release.shell_power.v1"
@@ -24,6 +25,7 @@ ITEM_MANAGED_POWER_SCHEMA = "wm.item.release.managed_power.v1"
 QUEST_KIND_BY_SCHEMA = {
     REPEATABLE_BOUNTY_SCHEMA: "repeatable_bounty",
     ONE_SHOT_SCHEMA: "one_shot",
+    MATERIAL_DELIVERY_SCHEMA: "material_delivery",
     STORY_ARC_SCHEMA: "story_arc",
 }
 CONTENT_KIND_BY_SCHEMA = {
@@ -132,6 +134,7 @@ _QUEST_KEYS = {
     "end_npc_entry",
     "template_defaults",
 }
+_TOP_LEVEL_KEYS_BY_SCHEMA[MATERIAL_DELIVERY_SCHEMA] = set(_TOP_LEVEL_KEYS_BY_SCHEMA[ONE_SHOT_SCHEMA])
 _OBJECTIVE_KEYS = {
     "kind",
     "target_entry",
@@ -139,6 +142,7 @@ _OBJECTIVE_KEYS = {
     "kill_count",
     "item_entry",
     "item_name",
+    "item_count",
     "count",
     "npc_entry",
     "npc_name",
@@ -539,6 +543,13 @@ def validate_content_release_spec(raw: dict[str, Any]) -> ReleaseValidationResul
         _validate_repeatable_bounty(raw, issues=issues)
     elif schema_version == ONE_SHOT_SCHEMA:
         _validate_one_shot(raw, issues=issues)
+    elif schema_version == MATERIAL_DELIVERY_SCHEMA:
+        _validate_one_shot(raw, issues=issues)
+        objective = _dict_or_issue(raw.get("objective"), "objective", issues=issues)
+        _require_objective_kind(objective, expected="deliver", path="objective.kind", issues=issues)
+        _require_positive_int(objective, "item_entry", path="objective.item_entry", issues=issues)
+        _require_positive_int(objective, "item_count", path="objective.item_count", issues=issues)
+        _require_non_empty_string(objective, "item_name", path="objective.item_name", issues=issues)
     elif schema_version == STORY_ARC_SCHEMA:
         _validate_story_arc(raw, issues=issues)
     elif schema_version == ABILITY_SHELL_POWER_SCHEMA:
@@ -952,6 +963,13 @@ def _managed_item_power_contract(raw: dict[str, Any]) -> dict[str, Any]:
 
 def _release_live_proof_checklist(raw: dict[str, Any]) -> list[str]:
     schema_version = str(raw.get("schema_version") or "")
+    if schema_version == MATERIAL_DELIVERY_SCHEMA:
+        return [
+            "Player sees concrete material count and directions to the existing NPC offer.",
+            "Accepting counts carried materials; declining or ignoring does not force a quest grant.",
+            "Turn-in consumes exactly the requested quantity and pays the quest reward once.",
+            "Native announcement and quest publication receipts are separate from player-visible proof.",
+        ]
     if schema_version == REPEATABLE_BOUNTY_SCHEMA:
         return [
             "Scoped player can accept or receive the repeatable bounty.",
@@ -993,7 +1011,7 @@ def _release_live_proof_checklist(raw: dict[str, Any]) -> list[str]:
 
 def _release_plan_id_detail(raw: dict[str, Any]) -> str:
     schema_version = str(raw.get("schema_version") or "")
-    if schema_version in {REPEATABLE_BOUNTY_SCHEMA, ONE_SHOT_SCHEMA}:
+    if schema_version in {REPEATABLE_BOUNTY_SCHEMA, ONE_SHOT_SCHEMA, MATERIAL_DELIVERY_SCHEMA}:
         return f"Quest slot policy: {raw.get('slot_policy')}; failed visible quest IDs must be retired."
     if schema_version == STORY_ARC_SCHEMA:
         return "Each story arc node requires a fresh quest ID; branch losers need journey state and safe quest removal/failure handling."
@@ -1011,7 +1029,7 @@ def _release_plan_id_detail(raw: dict[str, Any]) -> str:
 
 def _release_plan_runtime_detail(raw: dict[str, Any]) -> str:
     schema_version = str(raw.get("schema_version") or "")
-    if schema_version in {REPEATABLE_BOUNTY_SCHEMA, ONE_SHOT_SCHEMA, STORY_ARC_SCHEMA}:
+    if schema_version in {REPEATABLE_BOUNTY_SCHEMA, ONE_SHOT_SCHEMA, STORY_ARC_SCHEMA, MATERIAL_DELIVERY_SCHEMA}:
         return "Reload quest_template/addon and starter/ender tables or restart worldserver when reload safety is unknown."
     if schema_version == ABILITY_SHELL_POWER_SCHEMA:
         return "Stage server DBC, rebuild/install client patch when spellbook/action-bar truth is required, then restart worldserver."

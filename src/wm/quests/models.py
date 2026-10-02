@@ -32,6 +32,17 @@ class BountyQuestObjective:
 
 
 @dataclass(slots=True)
+class DeliveryQuestObjective:
+    item_entry: int
+    item_name: str
+    item_count: int
+    kind: str = field(default="deliver", init=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
 class BountyQuestReward:
     money_copper: int = 0
     reward_item_entry: int | None = None
@@ -103,7 +114,7 @@ class BountyQuestDraft:
     objective_text: str
     offer_reward_text: str
     request_items_text: str
-    objective: BountyQuestObjective
+    objective: BountyQuestObjective | DeliveryQuestObjective
     reward: BountyQuestReward
     start_npc_entry: int | None = None
     end_npc_entry: int | None = None

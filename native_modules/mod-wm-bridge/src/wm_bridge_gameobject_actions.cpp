@@ -8,6 +8,7 @@
 #include "wm_bridge_action_registry.h"
 #include "wm_bridge_action_support.h"
 #include "wm_bridge_json.h"
+#include "wm_bridge_placement.h"
 
 #include <algorithm>
 #include <cmath>
@@ -273,7 +274,7 @@ namespace
         Position position;
         player->GetClosePoint(position.m_positionX, position.m_positionY, position.m_positionZ, 1.0f, distance, player->GetOrientation() + angleOffset);
         position.SetOrientation(Position::NormalizeOrientation(player->GetOrientation() + angleOffset));
-        if (!MapMgr::IsValidMapCoord(player->GetMapId(), position))
+        if (!WmBridge::ResolvePlacement(player, payloadJson, position))
         {
             CompleteAction(requestId, "rejected", actionKind, ActionResultJson("rejected", actionKind, "invalid_spawn_position"), "invalid_spawn_position");
             return true;

@@ -2,6 +2,7 @@
 #include "Channel.h"
 #include "ScriptMgr.h"
 #include "Creature.h"
+#include "DBCStores.h"
 #include "GameObject.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
@@ -128,6 +129,7 @@ namespace
         }
 
         row.subjectGuid = lootGuid.ToString();
+        WmBridge::JsonAppendString(payload, firstField, "loot_source_guid", lootGuid.ToString());
 
         if (lootGuid.IsCreature())
         {
@@ -137,6 +139,9 @@ namespace
             if (Creature* creature = player->GetMap() ? player->GetMap()->GetCreature(lootGuid) : nullptr)
             {
                 WmBridge::JsonAppendString(payload, firstField, "loot_source_name", creature->GetName());
+                WmBridge::JsonAppendNumber(payload, firstField, "loot_type", creature->loot.loot_type);
+                if (creature->loot.loot_type == LOOT_SKINNING && !creature->IsAlive())
+                    WmBridge::JsonAppendString(payload, firstField, "gathering_kind", "skinning");
             }
             return;
         }
@@ -149,6 +154,21 @@ namespace
             if (GameObject* gameObject = player->GetMap() ? player->GetMap()->GetGameObject(lootGuid) : nullptr)
             {
                 WmBridge::JsonAppendString(payload, firstField, "loot_source_name", gameObject->GetName());
+                WmBridge::JsonAppendNumber(payload, firstField, "loot_type", gameObject->loot.loot_type);
+                if (gameObject->loot.loot_type == LOOT_FISHING)
+                    WmBridge::JsonAppendString(payload, firstField, "gathering_kind", "fishing");
+                else if (LockEntry const* lock = sLockStore.LookupEntry(gameObject->GetGOInfo()->GetLockId()))
+                    for (uint32 i = 0; i < MAX_LOCK_CASE; ++i)
+                        if (lock->Type[i] == LOCK_KEY_SKILL)
+                        {
+                            if (lock->Index[i] == LOCKTYPE_MINING)
+                                WmBridge::JsonAppendString(payload, firstField, "gathering_kind", "mining");
+                            else if (lock->Index[i] == LOCKTYPE_HERBALISM)
+                                WmBridge::JsonAppendString(payload, firstField, "gathering_kind", "herbalism");
+                            else
+                                continue;
+                            break;
+                        }
             }
         }
     }

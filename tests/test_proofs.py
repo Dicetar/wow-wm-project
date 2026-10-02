@@ -56,7 +56,10 @@ def test_living_lane_packet_passes_only_with_matching_scoped_audit(tmp_path):
         living_outcome="success",
         target_provenance={"source": "marker", "player_guid": 5408, "marker_spell_id": 946602, "bridge_event_id": 11, "selected_at": "2026-01-01T00:05:00Z"},
     )
-    assert record["status"] == "passed"
+    assert record["server_status"] == "passed"
+    assert record["status"] == "manual_required"
+    assert record["client_status"] == "pending"
+    assert record["player_visible_verified"] is False
     assert record["evidence_checks"][0]["status"] == "PASS"
 
 
@@ -258,7 +261,8 @@ def test_ambient_packet_passes_with_journal_evidence(tmp_path):
 
     assert entry["kind"] == "ambient_narration"
     assert entry["payload_kind"] == "area_entry"
-    assert record["status"] == "passed"
+    assert record["server_status"] == "passed"
+    assert record["status"] == "manual_required"
     assert {ref["kind"] for ref in record["evidence_refs"]} >= {"ambient_narration", "ambient_suppressed"}
 
 
@@ -284,7 +288,8 @@ def test_chat_action_packet_passes_with_chat_deed_and_verification(tmp_path):
         runtime_status=runtime,
     )
 
-    assert record["status"] == "passed"
+    assert record["server_status"] == "passed"
+    assert record["status"] == "manual_required"
     assert {check["name"]: check["status"] for check in record["evidence_checks"]} == {
         "journal:chat": "PASS",
         "journal:intent_or_deed": "PASS",
@@ -333,7 +338,8 @@ def test_chat_action_packet_ignores_evidence_before_runtime_window(tmp_path):
         runtime_status=runtime,
     )
 
-    assert record["status"] == "passed"
+    assert record["server_status"] == "passed"
+    assert record["status"] == "manual_required"
 
 
 def test_chat_action_packet_requires_freshness_window_before_accepting_evidence(tmp_path):
@@ -393,7 +399,8 @@ def test_memory_packet_waits_for_later_chat_turn(tmp_path):
         runtime_status=runtime,
     )
 
-    assert record["status"] == "passed"
+    assert record["server_status"] == "passed"
+    assert record["status"] == "manual_required"
 
 
 def test_memory_packet_compares_later_chat_timestamps_by_instant(tmp_path):
@@ -419,7 +426,8 @@ def test_memory_packet_compares_later_chat_timestamps_by_instant(tmp_path):
         runtime_status=runtime,
     )
 
-    assert record["status"] == "passed"
+    assert record["server_status"] == "passed"
+    assert record["status"] == "manual_required"
 
 
 def test_scene_packet_passes_with_cleanup_evidence(tmp_path):
@@ -441,7 +449,8 @@ def test_scene_packet_passes_with_cleanup_evidence(tmp_path):
         runtime_status=runtime,
     )
 
-    assert record["status"] == "passed"
+    assert record["server_status"] == "passed"
+    assert record["status"] == "manual_required"
     assert any(check["name"] == "scene:cleanup" and check["status"] == "PASS" for check in record["evidence_checks"])
 
 
